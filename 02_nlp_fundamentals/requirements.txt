@@ -1,0 +1,6 @@
+jupyter
+transformers
+sentence-transformers
+torch
+spacy
+scikit-learn
