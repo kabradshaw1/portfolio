@@ -22,7 +22,7 @@ AI workflow development
 Prompt engineering
 Deployment and maintenance of AI models across all environments including Production.
 Code review, testing and documentation
-Continuous learning in Generative AI related fields                                                                                                                                                              ---     
+Continuous learning in Generative AI related fields                                                                                                  ---     
 I want to start just with writing the readme.md file.  I want to make a professional readme that specifies the purpose of this repo.  This will contain an
 outline of the repo.  I will need some exercises to refresh myself on stuff I haven't used in awhile.  Then it will have application that shows utilization
 of all of the requirements for the job application.  It should be assumed that all text in the readme should be breefly explaining the parts of this project demonstate relivent skills for the job I am applying to.  
