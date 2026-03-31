@@ -1,4 +1,5 @@
 import io
+
 import pytest
 from PyPDF2 import PdfWriter
 

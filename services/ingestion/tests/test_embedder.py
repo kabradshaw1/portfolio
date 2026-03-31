@@ -1,13 +1,12 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 from app.embedder import embed_texts
 
 
 @pytest.mark.asyncio
 async def test_embed_texts_returns_list_of_vectors():
-    mock_response = {
-        "embeddings": [[0.1] * 768, [0.2] * 768]
-    }
+    mock_response = {"embeddings": [[0.1] * 768, [0.2] * 768]}
     with patch("app.embedder.httpx.AsyncClient") as MockClient:
         client_instance = AsyncMock()
         client_instance.post.return_value = AsyncMock(

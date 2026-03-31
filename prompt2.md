@@ -1,1 +1,0 @@
-ollama will be hosted on a seperate machine.  The development is happening on a mac that I am currently working.  This machine doesn't have enough vram to run an llm.  I will be running ollama on is windows.  Neither computer has docker installed yet.  The backend for the final portfolio app will be run on the windows app, and the frontend will be on vercel.  

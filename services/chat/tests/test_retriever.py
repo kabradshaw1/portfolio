@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from app.retriever import QdrantRetriever
 
 
@@ -33,9 +34,7 @@ def test_search_returns_chunks_with_scores(mock_qdrant_client):
         ),
     ]
 
-    retriever = QdrantRetriever(
-        host="localhost", port=6333, collection_name="test"
-    )
+    retriever = QdrantRetriever(host="localhost", port=6333, collection_name="test")
     results = retriever.search(query_vector=[0.1] * 768, top_k=5)
 
     assert len(results) == 2
@@ -47,9 +46,7 @@ def test_search_returns_chunks_with_scores(mock_qdrant_client):
 
 def test_search_respects_top_k(mock_qdrant_client):
     mock_qdrant_client.search.return_value = []
-    retriever = QdrantRetriever(
-        host="localhost", port=6333, collection_name="test"
-    )
+    retriever = QdrantRetriever(host="localhost", port=6333, collection_name="test")
     retriever.search(query_vector=[0.1] * 768, top_k=3)
 
     call_args = mock_qdrant_client.search.call_args
@@ -58,8 +55,6 @@ def test_search_respects_top_k(mock_qdrant_client):
 
 def test_search_empty_results(mock_qdrant_client):
     mock_qdrant_client.search.return_value = []
-    retriever = QdrantRetriever(
-        host="localhost", port=6333, collection_name="test"
-    )
+    retriever = QdrantRetriever(host="localhost", port=6333, collection_name="test")
     results = retriever.search(query_vector=[0.1] * 768, top_k=5)
     assert results == []

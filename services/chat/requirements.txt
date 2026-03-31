@@ -7,3 +7,4 @@ pydantic-settings==2.3.0
 sse-starlette==2.1.0
 pytest==8.2.0
 pytest-asyncio==0.23.0
+pytest-cov==5.0.0

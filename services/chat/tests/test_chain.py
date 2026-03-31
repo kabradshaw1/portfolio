@@ -1,5 +1,6 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from app.chain import rag_query
 
 
@@ -7,9 +8,7 @@ from app.chain import rag_query
 @patch("app.chain.stream_ollama_response")
 @patch("app.chain.embed_texts", new_callable=AsyncMock)
 @patch("app.chain.QdrantRetriever")
-async def test_rag_query_returns_generator(
-    MockRetriever, mock_embed, mock_stream
-):
+async def test_rag_query_returns_generator(MockRetriever, mock_embed, mock_stream):
     mock_embed.return_value = [[0.1] * 768]
     retriever_instance = MagicMock()
     retriever_instance.search.return_value = [

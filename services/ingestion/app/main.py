@@ -41,7 +41,9 @@ async def health():
     ollama_ok = False
 
     try:
-        qclient = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port, timeout=3)
+        qclient = QdrantClient(
+            host=settings.qdrant_host, port=settings.qdrant_port, timeout=3
+        )
         qclient.get_collections()
         qdrant_ok = True
     except Exception:
@@ -59,6 +61,7 @@ async def health():
     status_code = 200 if (qdrant_ok and ollama_ok) else 503
 
     from fastapi.responses import JSONResponse
+
     return JSONResponse(
         status_code=status_code,
         content={
@@ -104,7 +107,9 @@ async def ingest(file: UploadFile = File(...)):
             model=settings.embedding_model,
         )
     except (httpx.ConnectError, httpx.TimeoutException) as e:
-        raise HTTPException(status_code=503, detail=f"Embedding service unavailable: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"Embedding service unavailable: {e}"
+        )
 
     document_id = str(uuid.uuid4())
     try:

@@ -1,4 +1,5 @@
 import io
+
 import pytest
 from app.pdf_parser import extract_pages
 

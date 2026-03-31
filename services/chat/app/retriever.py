@@ -6,9 +6,7 @@ class QdrantRetriever:
         self.client = QdrantClient(host=host, port=port)
         self.collection_name = collection_name
 
-    def search(
-        self, query_vector: list[float], top_k: int = 5
-    ) -> list[dict]:
+    def search(self, query_vector: list[float], top_k: int = 5) -> list[dict]:
         results = self.client.search(
             collection_name=self.collection_name,
             query_vector=query_vector,

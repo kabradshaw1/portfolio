@@ -1,10 +1,9 @@
 import io
-import httpx
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-from fastapi.testclient import TestClient
-from app.main import app
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+from app.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -86,7 +85,9 @@ def test_ingest_rejects_non_pdf(mock_get_store):
 @patch("app.main.get_store")
 @patch("app.main.embed_texts", new_callable=AsyncMock)
 @patch("app.main.extract_pages")
-def test_ingest_returns_503_when_ollama_unreachable(mock_extract, mock_embed, mock_get_store):
+def test_ingest_returns_503_when_ollama_unreachable(
+    mock_extract, mock_embed, mock_get_store
+):
     mock_extract.return_value = [
         {"page_number": 1, "text": "Hello world. " * 100},
     ]

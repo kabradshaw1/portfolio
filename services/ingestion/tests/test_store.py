@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 from app.store import QdrantStore
 
 
@@ -13,13 +14,13 @@ def mock_qdrant_client():
 
 def test_store_init_creates_collection_if_not_exists(mock_qdrant_client):
     mock_qdrant_client.collection_exists.return_value = False
-    store = QdrantStore(host="localhost", port=6333, collection_name="test")
+    QdrantStore(host="localhost", port=6333, collection_name="test")
     mock_qdrant_client.create_collection.assert_called_once()
 
 
 def test_store_init_skips_creation_if_exists(mock_qdrant_client):
     mock_qdrant_client.collection_exists.return_value = True
-    store = QdrantStore(host="localhost", port=6333, collection_name="test")
+    QdrantStore(host="localhost", port=6333, collection_name="test")
     mock_qdrant_client.create_collection.assert_not_called()
 
 
@@ -57,24 +58,30 @@ def test_list_documents(mock_qdrant_client):
 
     mock_qdrant_client.scroll.return_value = (
         [
-            MagicMock(payload={
-                "document_id": "doc-1",
-                "filename": "a.pdf",
-                "page_number": 1,
-                "chunk_index": 0,
-            }),
-            MagicMock(payload={
-                "document_id": "doc-1",
-                "filename": "a.pdf",
-                "page_number": 1,
-                "chunk_index": 1,
-            }),
-            MagicMock(payload={
-                "document_id": "doc-2",
-                "filename": "b.pdf",
-                "page_number": 1,
-                "chunk_index": 0,
-            }),
+            MagicMock(
+                payload={
+                    "document_id": "doc-1",
+                    "filename": "a.pdf",
+                    "page_number": 1,
+                    "chunk_index": 0,
+                }
+            ),
+            MagicMock(
+                payload={
+                    "document_id": "doc-1",
+                    "filename": "a.pdf",
+                    "page_number": 1,
+                    "chunk_index": 1,
+                }
+            ),
+            MagicMock(
+                payload={
+                    "document_id": "doc-2",
+                    "filename": "b.pdf",
+                    "page_number": 1,
+                    "chunk_index": 0,
+                }
+            ),
         ],
         None,
     )

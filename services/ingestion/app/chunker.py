@@ -26,11 +26,13 @@ def chunk_pages(
 
         splits = splitter.split_text(text)
         for split in splits:
-            chunks.append({
-                "text": split,
-                "page_number": page["page_number"],
-                "chunk_index": index,
-            })
+            chunks.append(
+                {
+                    "text": split,
+                    "page_number": page["page_number"],
+                    "chunk_index": index,
+                }
+            )
             index += 1
 
     return chunks
