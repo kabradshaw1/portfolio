@@ -31,8 +31,21 @@ export function ChatWindow({ messages }: ChatWindowProps) {
     <ScrollArea className="flex-1 p-4">
       <div className="mx-auto max-w-3xl space-y-4">
         {messages.length === 0 && (
-          <div className="flex h-full items-center justify-center pt-32 text-muted-foreground">
-            Upload a PDF and ask a question to get started.
+          <div className="mx-auto max-w-md pt-24 text-center text-muted-foreground">
+            <h2 className="mb-3 text-lg font-medium text-foreground">
+              Document Q&A Assistant
+            </h2>
+            <p className="mb-4 text-sm leading-relaxed">
+              This app uses RAG (Retrieval-Augmented Generation) to answer
+              questions about your documents. Upload a PDF using the button
+              above, then ask a question below.
+            </p>
+            <p className="text-sm leading-relaxed">
+              Your question is matched against the document content, and
+              relevant passages are sent to the LLM to generate a grounded
+              answer. Source citations (filename and page number) appear below
+              each response.
+            </p>
           </div>
         )}
         {messages.map((msg, i) => (
