@@ -2,6 +2,7 @@ import uuid
 from io import BytesIO
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.chunker import chunk_pages
 from app.config import settings
@@ -10,6 +11,13 @@ from app.pdf_parser import extract_pages
 from app.store import QdrantStore
 
 app = FastAPI(title="Ingestion API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _store: QdrantStore | None = None
 
