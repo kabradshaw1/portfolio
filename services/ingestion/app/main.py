@@ -97,20 +97,26 @@ async def ingest(file: UploadFile = File(...)):
         raise HTTPException(status_code=422, detail="No text content found in PDF")
 
     texts = [c["text"] for c in chunks]
-    vectors = await embed_texts(
-        texts=texts,
-        ollama_base_url=settings.ollama_base_url,
-        model=settings.embedding_model,
-    )
+    try:
+        vectors = await embed_texts(
+            texts=texts,
+            ollama_base_url=settings.ollama_base_url,
+            model=settings.embedding_model,
+        )
+    except (httpx.ConnectError, httpx.TimeoutException) as e:
+        raise HTTPException(status_code=503, detail=f"Embedding service unavailable: {e}")
 
     document_id = str(uuid.uuid4())
-    store = get_store()
-    store.upsert(
-        chunks=chunks,
-        vectors=vectors,
-        document_id=document_id,
-        filename=file.filename,
-    )
+    try:
+        store = get_store()
+        store.upsert(
+            chunks=chunks,
+            vectors=vectors,
+            document_id=document_id,
+            filename=file.filename,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Vector store unavailable: {e}")
 
     return {
         "status": "success",

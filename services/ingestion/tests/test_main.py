@@ -84,6 +84,26 @@ def test_ingest_rejects_non_pdf(mock_get_store):
 
 
 @patch("app.main.get_store")
+@patch("app.main.embed_texts", new_callable=AsyncMock)
+@patch("app.main.extract_pages")
+def test_ingest_returns_503_when_ollama_unreachable(mock_extract, mock_embed, mock_get_store):
+    mock_extract.return_value = [
+        {"page_number": 1, "text": "Hello world. " * 100},
+    ]
+    mock_embed.side_effect = httpx.ConnectError("Connection refused")
+    mock_store = MagicMock()
+    mock_get_store.return_value = mock_store
+
+    pdf_content = b"%PDF-1.4 fake content"
+    response = client.post(
+        "/ingest",
+        files={"file": ("test.pdf", io.BytesIO(pdf_content), "application/pdf")},
+    )
+
+    assert response.status_code == 503
+
+
+@patch("app.main.get_store")
 def test_documents_list(mock_get_store):
     mock_store = MagicMock()
     mock_store.list_documents.return_value = [

@@ -79,3 +79,21 @@ def test_chat_streams_response(mock_rag_query):
 def test_chat_requires_question():
     response = client.post("/chat", json={})
     assert response.status_code == 422
+
+
+@patch("app.main.rag_query")
+def test_chat_returns_error_when_backend_unreachable(mock_rag_query):
+    async def failing_rag_query(**kwargs):
+        raise httpx.ConnectError("Connection refused")
+        yield  # make it a generator
+
+    mock_rag_query.return_value = failing_rag_query()
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        response = c.post(
+            "/chat",
+            json={"question": "What is this?"},
+        )
+    # SSE endpoint should still return 200 but with an error event in the stream
+    assert response.status_code == 200
+    assert "error" in response.text.lower() or "unavailable" in response.text.lower()

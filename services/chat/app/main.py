@@ -62,15 +62,20 @@ async def health():
 @app.post("/chat")
 async def chat(request: ChatRequest):
     async def event_generator():
-        async for event in rag_query(
-            question=request.question,
-            ollama_base_url=settings.ollama_base_url,
-            chat_model=settings.chat_model,
-            embedding_model=settings.embedding_model,
-            qdrant_host=settings.qdrant_host,
-            qdrant_port=settings.qdrant_port,
-            collection_name=request.collection or settings.collection_name,
-        ):
-            yield {"data": json.dumps(event)}
+        try:
+            async for event in rag_query(
+                question=request.question,
+                ollama_base_url=settings.ollama_base_url,
+                chat_model=settings.chat_model,
+                embedding_model=settings.embedding_model,
+                qdrant_host=settings.qdrant_host,
+                qdrant_port=settings.qdrant_port,
+                collection_name=request.collection or settings.collection_name,
+            ):
+                yield {"data": json.dumps(event)}
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            yield {"data": json.dumps({"error": f"Backend service unavailable: {e}"})}
+        except Exception as e:
+            yield {"data": json.dumps({"error": f"Internal error: {e}"})}
 
     return EventSourceResponse(event_generator())
