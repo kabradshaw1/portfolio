@@ -20,7 +20,7 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     question: str
-    collection: str = "default"
+    collection: str | None = None
 
 
 @app.get("/health")

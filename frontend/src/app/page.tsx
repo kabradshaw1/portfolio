@@ -22,7 +22,7 @@ export default function Home() {
         const res = await fetch(`${baseUrl}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question, collection: "default" }),
+          body: JSON.stringify({ question }),
         });
 
         if (!res.ok) {
