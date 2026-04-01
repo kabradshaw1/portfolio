@@ -1,14 +1,46 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { ChatWindow, Message, Source } from "@/components/ChatWindow";
 import { MessageInput } from "@/components/MessageInput";
 import { FileUpload } from "@/components/FileUpload";
+import { DocumentList, Document } from "@/components/DocumentList";
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [documentCount, setDocumentCount] = useState(0);
+  const [documents, setDocuments] = useState<Document[]>([]);
+
+  const ingestionBaseUrl =
+    process.env.NEXT_PUBLIC_INGESTION_API_URL || "http://localhost:8001";
+
+  const fetchDocuments = useCallback(async () => {
+    try {
+      const res = await fetch(`${ingestionBaseUrl}/documents`);
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data.documents);
+      }
+    } catch {
+      // Silently fail — documents list is non-critical
+    }
+  }, [ingestionBaseUrl]);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, [fetchDocuments]);
+
+  const handleDelete = useCallback(
+    async (documentId: string) => {
+      const res = await fetch(`${ingestionBaseUrl}/documents/${documentId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        await fetchDocuments();
+      }
+    },
+    [ingestionBaseUrl, fetchDocuments]
+  );
 
   const handleSend = useCallback(
     async (question: string) => {
@@ -73,7 +105,6 @@ export default function Home() {
           }
         }
 
-        // Attach sources to the final assistant message
         if (sources.length > 0) {
           setMessages((prev) => {
             const updated = [...prev];
@@ -83,7 +114,6 @@ export default function Home() {
           });
         }
 
-        // Handle empty response
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last.role === "assistant" && !last.content) {
@@ -115,9 +145,12 @@ export default function Home() {
     []
   );
 
-  const handleUploaded = useCallback((_filename: string, _chunks: number) => {
-    setDocumentCount((prev) => prev + 1);
-  }, []);
+  const handleUploaded = useCallback(
+    (_filename: string, _chunks: number) => {
+      fetchDocuments();
+    },
+    [fetchDocuments]
+  );
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -125,10 +158,8 @@ export default function Home() {
       <header className="flex items-center justify-between border-b px-6 py-3">
         <h1 className="text-lg font-semibold">Document Q&A Assistant</h1>
         <div className="flex items-center gap-4">
-          {documentCount > 0 && (
-            <span className="text-sm text-muted-foreground">
-              {documentCount} document{documentCount !== 1 ? "s" : ""} uploaded
-            </span>
+          {documents.length > 0 && (
+            <DocumentList documents={documents} onDelete={handleDelete} />
           )}
           <FileUpload onUploaded={handleUploaded} />
         </div>
