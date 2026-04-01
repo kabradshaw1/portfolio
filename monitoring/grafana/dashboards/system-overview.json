@@ -16,7 +16,7 @@
     {
       "title": "CPU Usage %",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "id": 1,
       "datasource": { "type": "prometheus", "uid": "" },
       "fieldConfig": {
@@ -49,15 +49,14 @@
       ]
     },
     {
-      "title": "RAM Usage",
-      "type": "gauge",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "title": "RAM Used",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
       "id": 2,
       "datasource": { "type": "prometheus", "uid": "" },
       "fieldConfig": {
         "defaults": {
           "unit": "decbytes",
-          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -72,34 +71,35 @@
       },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
       },
       "targets": [
         {
           "expr": "windows_memory_physical_total_bytes - windows_memory_physical_free_bytes",
-          "legendFormat": "Used RAM",
+          "legendFormat": "",
           "refId": "A"
         }
       ]
     },
     {
-      "title": "Disk Usage",
-      "type": "gauge",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "title": "RAM %",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
       "id": 3,
       "datasource": { "type": "prometheus", "uid": "" },
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
+          "unit": "percent",
           "min": 0,
-          "max": 1,
+          "max": 100,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.7 },
-              { "color": "red", "value": 0.9 }
+              { "color": "yellow", "value": 75 },
+              { "color": "red", "value": 90 }
             ]
           },
           "color": { "mode": "thresholds" }
@@ -108,13 +108,51 @@
       },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
       },
       "targets": [
         {
-          "expr": "1 - (windows_logical_disk_free_bytes{volume=\"C:\"} / windows_logical_disk_size_bytes{volume=\"C:\"})",
-          "legendFormat": "C: Drive",
+          "expr": "(1 - (windows_memory_physical_free_bytes / windows_memory_physical_total_bytes)) * 100",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Disk C: %",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "id": 4,
+      "datasource": { "type": "prometheus", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "(1 - (windows_logical_disk_free_bytes{volume=\"C:\"} / windows_logical_disk_size_bytes{volume=\"C:\"})) * 100",
+          "legendFormat": "",
           "refId": "A"
         }
       ]
@@ -129,8 +167,8 @@
     {
       "title": "GPU Utilization %",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
-      "id": 4,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "id": 5,
       "datasource": { "type": "prometheus", "uid": "" },
       "fieldConfig": {
         "defaults": {
@@ -162,15 +200,14 @@
       ]
     },
     {
-      "title": "VRAM Usage",
-      "type": "gauge",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
-      "id": 5,
+      "title": "VRAM Used",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 10 },
+      "id": 6,
       "datasource": { "type": "prometheus", "uid": "" },
       "fieldConfig": {
         "defaults": {
           "unit": "decbytes",
-          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -185,22 +222,60 @@
       },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
       },
       "targets": [
         {
           "expr": "nvidia_smi_memory_used_bytes",
-          "legendFormat": "VRAM Used",
+          "legendFormat": "",
           "refId": "A"
         }
       ]
     },
     {
-      "title": "GPU Temperature",
+      "title": "VRAM %",
       "type": "stat",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
-      "id": 6,
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 10 },
+      "id": 7,
+      "datasource": { "type": "prometheus", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 65 },
+              { "color": "red", "value": 90 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "(nvidia_smi_memory_used_bytes / nvidia_smi_memory_total_bytes) * 100",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "GPU Temp",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 10 },
+      "id": 8,
       "datasource": { "type": "prometheus", "uid": "" },
       "fieldConfig": {
         "defaults": {
@@ -220,13 +295,13 @@
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "textMode": "auto"
       },
       "targets": [
         {
           "expr": "nvidia_smi_temperature_gpu",
-          "legendFormat": "GPU Temp",
+          "legendFormat": "",
           "refId": "A"
         }
       ]
@@ -239,127 +314,41 @@
       "type": "row"
     },
     {
-      "title": "Container CPU Usage %",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
-      "id": 7,
-      "datasource": { "type": "prometheus", "uid": "" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "min": 0,
-          "color": { "mode": "palette-classic" }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
-      },
-      "targets": [
-        {
-          "expr": "rate(container_cpu_usage_seconds_total{name=~\".+\"}[1m]) * 100",
-          "legendFormat": "{{name}}",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "title": "Container Memory Usage",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
-      "id": 8,
-      "datasource": { "type": "prometheus", "uid": "" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "decbytes",
-          "min": 0,
-          "color": { "mode": "palette-classic" }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
-      },
-      "targets": [
-        {
-          "expr": "container_memory_usage_bytes{name=~\".+\"}",
-          "legendFormat": "{{name}}",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "title": "Container Network I/O",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "title": "Container Status",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 19 },
       "id": 9,
       "datasource": { "type": "prometheus", "uid": "" },
       "fieldConfig": {
         "defaults": {
-          "unit": "Bps",
-          "color": { "mode": "palette-classic" }
+          "mappings": [
+            {
+              "type": "range",
+              "options": {
+                "from": 0,
+                "to": 999999999,
+                "result": { "text": "Running", "color": "green" }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          },
+          "color": { "mode": "thresholds" },
+          "noValue": "Down"
         },
         "overrides": []
       },
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "name",
+        "orientation": "horizontal"
       },
-      "targets": [
-        {
-          "expr": "rate(container_network_receive_bytes_total{name=~\".+\"}[1m])",
-          "legendFormat": "{{name}} RX",
-          "refId": "A"
-        },
-        {
-          "expr": "rate(container_network_transmit_bytes_total{name=~\".+\"}[1m])",
-          "legendFormat": "{{name}} TX",
-          "refId": "B"
-        }
-      ]
-    },
-    {
-      "title": "Container Uptime",
-      "type": "table",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
-      "id": 10,
-      "datasource": { "type": "prometheus", "uid": "" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 300 },
-              { "color": "green", "value": 3600 }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "name" },
-            "properties": [{ "id": "custom.width", "value": 200 }]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "sortBy": [{ "displayName": "name", "desc": false }]
-      },
-      "transformations": [
-        { "id": "labelsToFields", "options": {} },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": { "Time": true, "Value": false, "__name__": true, "id": true, "image": true, "instance": true, "job": true },
-            "renameByName": { "Value": "Uptime" }
-          }
-        }
-      ],
       "targets": [
         {
           "expr": "time() - container_start_time_seconds{name=~\".+\"}",
@@ -378,5 +367,5 @@
   "timezone": "browser",
   "title": "System Overview",
   "uid": "system-overview",
-  "version": 1
+  "version": 2
 }
