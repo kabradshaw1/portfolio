@@ -105,3 +105,8 @@ class QdrantStore:
             ),
         )
         return len(records)
+
+    def delete_collection(self, collection_name: str) -> None:
+        if not self.client.collection_exists(collection_name):
+            raise ValueError(f"Collection {collection_name} not found")
+        self.client.delete_collection(collection_name=collection_name)

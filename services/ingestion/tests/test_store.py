@@ -123,3 +123,23 @@ def test_delete_document_not_found(mock_qdrant_client):
     count = store.delete_document("nonexistent")
     assert count == 0
     mock_qdrant_client.delete.assert_not_called()
+
+
+def test_delete_collection(mock_qdrant_client):
+    mock_qdrant_client.collection_exists.return_value = True
+    store = QdrantStore(host="localhost", port=6333, collection_name="test")
+
+    mock_qdrant_client.collection_exists.return_value = True
+    store.delete_collection("e2e-test")
+    mock_qdrant_client.delete_collection.assert_called_once_with(
+        collection_name="e2e-test"
+    )
+
+
+def test_delete_collection_not_found(mock_qdrant_client):
+    mock_qdrant_client.collection_exists.return_value = True
+    store = QdrantStore(host="localhost", port=6333, collection_name="test")
+
+    mock_qdrant_client.collection_exists.return_value = False
+    with pytest.raises(ValueError, match="Collection nonexistent not found"):
+        store.delete_collection("nonexistent")
