@@ -100,9 +100,30 @@ def test_delete_document(mock_qdrant_client):
 
     mock_qdrant_client.scroll.return_value = (
         [
-            MagicMock(payload={"document_id": "doc-1", "filename": "a.pdf", "page_number": 1, "chunk_index": 0}),
-            MagicMock(payload={"document_id": "doc-1", "filename": "a.pdf", "page_number": 1, "chunk_index": 1}),
-            MagicMock(payload={"document_id": "doc-1", "filename": "a.pdf", "page_number": 2, "chunk_index": 2}),
+            MagicMock(
+                payload={
+                    "document_id": "doc-1",
+                    "filename": "a.pdf",
+                    "page_number": 1,
+                    "chunk_index": 0,
+                }
+            ),
+            MagicMock(
+                payload={
+                    "document_id": "doc-1",
+                    "filename": "a.pdf",
+                    "page_number": 1,
+                    "chunk_index": 1,
+                }
+            ),
+            MagicMock(
+                payload={
+                    "document_id": "doc-1",
+                    "filename": "a.pdf",
+                    "page_number": 2,
+                    "chunk_index": 2,
+                }
+            ),
         ],
         None,
     )
