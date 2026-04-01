@@ -73,6 +73,7 @@ docker-compose.yml      # Qdrant + ingestion + chat services
 - `main` — production. Pushes trigger deploy + post-deploy smoke tests.
 - `staging` — integration branch. Pushes trigger mocked Playwright E2E tests.
 - `feat/*`, `fix/*` — feature branches merged into `staging` first.
+- **Kyle handles all git push and merge operations.** Claude should commit locally but never push to remote.
 
 **Developer workflow:**
 1. Create feature branch from `staging`
