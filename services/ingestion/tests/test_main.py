@@ -119,6 +119,30 @@ def test_documents_list(mock_get_store):
     assert data["documents"][0]["filename"] == "test.pdf"
 
 
+@patch("app.main.get_store")
+def test_delete_document_success(mock_get_store):
+    mock_store = MagicMock()
+    mock_store.delete_document.return_value = 5
+    mock_get_store.return_value = mock_store
+
+    response = client.delete("/documents/abc-123")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "deleted"
+    assert data["document_id"] == "abc-123"
+    assert data["chunks_deleted"] == 5
+
+
+@patch("app.main.get_store")
+def test_delete_document_not_found(mock_get_store):
+    mock_store = MagicMock()
+    mock_store.delete_document.return_value = 0
+    mock_get_store.return_value = mock_store
+
+    response = client.delete("/documents/nonexistent")
+    assert response.status_code == 404
+
+
 def test_cors_rejects_unknown_origin():
     response = client.options(
         "/health",

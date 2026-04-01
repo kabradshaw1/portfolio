@@ -135,3 +135,18 @@ async def ingest(file: UploadFile = File(...)):
 async def list_documents():
     store = get_store()
     return {"documents": store.list_documents()}
+
+
+@app.delete("/documents/{document_id}")
+async def delete_document(document_id: str):
+    store = get_store()
+    chunks_deleted = store.delete_document(document_id)
+    if chunks_deleted == 0:
+        raise HTTPException(
+            status_code=404, detail=f"No document found with id {document_id}"
+        )
+    return {
+        "status": "deleted",
+        "document_id": document_id,
+        "chunks_deleted": chunks_deleted,
+    }
