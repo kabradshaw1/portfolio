@@ -117,3 +117,17 @@ def test_documents_list(mock_get_store):
     data = response.json()
     assert len(data["documents"]) == 1
     assert data["documents"][0]["filename"] == "test.pdf"
+
+
+def test_cors_rejects_unknown_origin():
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "https://evil.example.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") != "*"
+    assert "evil.example.com" not in response.headers.get(
+        "access-control-allow-origin", ""
+    )

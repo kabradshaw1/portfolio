@@ -16,7 +16,7 @@ app = FastAPI(title="Ingestion API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.allowed_origins.split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
