@@ -310,35 +310,26 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
       "id": 102,
-      "title": "Containers",
+      "title": "Services",
       "type": "row"
     },
     {
-      "title": "Container Status",
+      "title": "Services Running",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 19 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 19 },
       "id": 9,
       "datasource": { "type": "prometheus", "uid": "" },
       "fieldConfig": {
         "defaults": {
-          "mappings": [
-            {
-              "type": "range",
-              "options": {
-                "from": 0,
-                "to": 999999999,
-                "result": { "text": "Running", "color": "green" }
-              }
-            }
-          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null }
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 6 },
+              { "color": "green", "value": 8 }
             ]
           },
-          "color": { "mode": "thresholds" },
-          "noValue": "Down"
+          "color": { "mode": "thresholds" }
         },
         "overrides": []
       },
@@ -346,13 +337,45 @@
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
         "graphMode": "none",
-        "textMode": "name",
-        "orientation": "horizontal"
+        "textMode": "auto"
       },
       "targets": [
         {
-          "expr": "time() - container_start_time_seconds{name=~\".+\"}",
-          "legendFormat": "{{name}}",
+          "expr": "count(up == 1)",
+          "legendFormat": "Running",
+          "refId": "A",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "title": "Total Services",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 19 },
+      "id": 10,
+      "datasource": { "type": "prometheus", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "count(up)",
+          "legendFormat": "Total",
           "refId": "A",
           "instant": true
         }

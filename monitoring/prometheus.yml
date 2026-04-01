@@ -18,3 +18,23 @@ scrape_configs:
   - job_name: "cadvisor"
     static_configs:
       - targets: ["cadvisor:8080"]
+
+  - job_name: "qdrant"
+    metrics_path: /healthz
+    static_configs:
+      - targets: ["qdrant:6333"]
+
+  - job_name: "ingestion"
+    metrics_path: /health
+    static_configs:
+      - targets: ["ingestion:8000"]
+
+  - job_name: "chat"
+    metrics_path: /health
+    static_configs:
+      - targets: ["chat:8000"]
+
+  - job_name: "grafana"
+    metrics_path: /api/health
+    static_configs:
+      - targets: ["grafana:3000"]
