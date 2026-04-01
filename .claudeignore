@@ -1,0 +1,25 @@
+# Dependencies & build output
+frontend/node_modules/
+frontend/.next/
+
+# Python artifacts
+__pycache__/
+*.pyc
+
+# Caches
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Superpowers artifacts
+.superpowers/
+docs/superpowers/
+
+# Lessons (Kyle learns through these independently)
+lessons/
+
+# Test fixtures
+test.pdf
+
+prompt.md
