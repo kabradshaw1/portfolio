@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     qdrant_host: str = "qdrant"
     qdrant_port: int = 6333
     collection_name: str = "documents"
+    allowed_origins: str = "https://kylebradshaw.dev"
 
 
 settings = Settings()

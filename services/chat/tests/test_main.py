@@ -96,3 +96,17 @@ def test_chat_returns_error_when_backend_unreachable(mock_rag_query):
     # SSE endpoint should still return 200 but with an error event in the stream
     assert response.status_code == 200
     assert "error" in response.text.lower() or "unavailable" in response.text.lower()
+
+
+def test_cors_rejects_unknown_origin():
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "https://evil.example.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") != "*"
+    assert "evil.example.com" not in response.headers.get(
+        "access-control-allow-origin", ""
+    )
