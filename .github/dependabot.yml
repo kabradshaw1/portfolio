@@ -4,22 +4,26 @@ updates:
     directory: /services/ingestion
     schedule:
       interval: weekly
+    target-branch: staging
     open-pull-requests-limit: 5
 
   - package-ecosystem: pip
     directory: /services/chat
     schedule:
       interval: weekly
+    target-branch: staging
     open-pull-requests-limit: 5
 
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
+    target-branch: staging
     open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    target-branch: staging
     open-pull-requests-limit: 5

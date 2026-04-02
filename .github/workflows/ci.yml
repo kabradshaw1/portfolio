@@ -285,6 +285,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Set up Tailscale
+        # NOTE: authkey expires every 90 days (free plan). Regenerate at
+        # Tailscale admin → Keys and update TAILSCALE_AUTHKEY in GitHub secrets.
         uses: tailscale/github-action@v3
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}

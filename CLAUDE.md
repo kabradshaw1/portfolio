@@ -124,9 +124,21 @@ All jobs run on every push. Security + E2E jobs gate deployment.
 **Quality:** ruff lint/format, pytest + coverage, tsc, Next.js build
 **Security:** Bandit (SAST), pip-audit, npm audit, gitleaks, Hadolint, CORS guardrail
 **E2E:** Playwright mocked tests (staging), production smoke tests (post-deploy)
-**Deploy:** SSH to Windows PC → `docker compose up -d --build`
+**Deploy:** GHCR images built in CI → SSH to Windows PC → `docker compose pull && up -d`
 
 **Known:** langchain 0.2.x has 5 CVEs that require 0.3.x migration (ignored in pip-audit). Migration tracked as future work.
+
+**Tailscale authkey:** Expires every 90 days (free plan). Regenerate at Tailscale admin → Keys and update `TAILSCALE_AUTHKEY` in GitHub repo secrets.
+
+## Adding a New Service
+
+When adding a new service under `services/`, update these:
+1. `ci.yml` — add to `backend-tests.strategy.matrix.service`
+2. `ci.yml` — add to `docker-build.strategy.matrix.service`
+3. `ci.yml` — add to `security-pip-audit.strategy.matrix.service`
+4. `ci.yml` — add Dockerfile path to `security-hadolint.strategy.matrix.dockerfile`
+5. `docker-compose.yml` — add service with GHCR image
+6. `ci.yml` deploy step — add service name to `docker compose pull` command
 
 ## Design Specs
 
