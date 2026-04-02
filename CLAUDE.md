@@ -82,6 +82,33 @@ docker-compose.yml      # Qdrant + ingestion + chat services
 4. If all pass, merge `staging` into `main`
 5. CI deploys to production, runs smoke tests against live URLs
 
+**Exception:** Hotfixes for CI/production breakage can go straight to `main`.
+
+**Git commands (Kyle runs all push/merge):**
+```bash
+# Start feature work
+git checkout staging && git pull origin staging
+git checkout -b feat/my-feature
+
+# Work and commit (Claude does this part)
+git add <files> && git commit -m "feat: description"
+
+# Merge feature → staging (Kyle does this)
+git checkout staging
+git merge feat/my-feature
+git push origin staging
+# Wait for staging CI (lint + tests + security + E2E) to pass
+
+# Promote staging → main (Kyle does this)
+git checkout main && git pull origin main
+git merge staging
+git push origin main
+# Wait for deploy + smoke tests to pass
+
+# Clean up
+git branch -d feat/my-feature
+```
+
 ## Pre-commit Requirements
 
 Before every commit, ensure code passes CI checks:
