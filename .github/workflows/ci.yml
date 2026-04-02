@@ -295,15 +295,11 @@ jobs:
           host: 100.79.113.84
           username: PC
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: GITHUB_TOKEN
           script: |
-            echo $GITHUB_TOKEN | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd ${{ secrets.DEPLOY_PATH }}
             git pull origin main
             docker compose pull ingestion chat
             docker compose up -d
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   smoke-production:
     name: Production Smoke Tests
