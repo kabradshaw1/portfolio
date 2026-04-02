@@ -82,6 +82,14 @@ docker-compose.yml      # Qdrant + ingestion + chat services
 4. If all pass, merge `staging` into `main`
 5. CI deploys to production, runs smoke tests against live URLs
 
+## Pre-commit Requirements
+
+Before every commit, ensure code passes CI checks:
+- **Python:** `ruff check services/` and `ruff format --check services/` must pass
+- **Frontend:** `cd frontend && npx tsc --noEmit` must pass
+- Pre-commit hooks run automatically (ruff lint + format on `services/`)
+- If pre-commit rejects a commit, stage the auto-fixed files and re-commit
+
 ## CI/CD Pipeline
 
 All jobs run on every push. Security + E2E jobs gate deployment.
@@ -90,6 +98,8 @@ All jobs run on every push. Security + E2E jobs gate deployment.
 **Security:** Bandit (SAST), pip-audit, npm audit, gitleaks, Hadolint, CORS guardrail
 **E2E:** Playwright mocked tests (staging), production smoke tests (post-deploy)
 **Deploy:** SSH to Windows PC → `docker compose up -d --build`
+
+**Known:** langchain 0.2.x has 5 CVEs that require 0.3.x migration (ignored in pip-audit). Migration tracked as future work.
 
 ## Design Specs
 
