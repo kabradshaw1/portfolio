@@ -100,6 +100,7 @@ async def ingest(
     try:
         pages = extract_pages(BytesIO(content))
     except ValueError as e:
+        # User-facing parse errors (e.g., "No extractable text") — safe to expose
         raise HTTPException(status_code=422, detail=str(e))
 
     chunks = chunk_pages(
@@ -139,7 +140,7 @@ async def ingest(
             filename=file.filename,
         )
     except Exception as e:
-        logger.error("Vector store error: %s", e)
+        logger.error("Vector store error: %s", e, exc_info=True)
         raise HTTPException(status_code=503, detail="Vector store unavailable")
 
     return {

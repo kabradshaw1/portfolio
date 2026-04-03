@@ -83,7 +83,7 @@ async def chat(request: ChatRequest):
             logger.error("Backend service error: %s", e)
             yield {"data": json.dumps({"error": "Service unavailable"})}
         except Exception as e:
-            logger.error("Internal error: %s", e)
+            logger.error("Internal error: %s", e, exc_info=True)
             yield {"data": json.dumps({"error": "Internal error"})}
 
     return EventSourceResponse(event_generator())
