@@ -23,7 +23,7 @@ _COLLECTION_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,100}$")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
