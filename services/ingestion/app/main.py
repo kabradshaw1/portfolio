@@ -1,3 +1,5 @@
+import logging
+import re
 import uuid
 from io import BytesIO
 
@@ -12,12 +14,16 @@ from app.embedder import embed_texts
 from app.pdf_parser import extract_pages
 from app.store import QdrantStore
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Ingestion API")
+
+_COLLECTION_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,100}$")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -77,6 +83,9 @@ async def ingest(
     file: UploadFile = File(...),
     collection: str | None = Query(default=None),
 ):
+    if collection is not None and not _COLLECTION_NAME_RE.match(collection):
+        raise HTTPException(status_code=422, detail="Invalid collection name")
+
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=422, detail="Only PDF files are accepted")
 
@@ -91,6 +100,7 @@ async def ingest(
     try:
         pages = extract_pages(BytesIO(content))
     except ValueError as e:
+        # User-facing parse errors (e.g., "No extractable text") — safe to expose
         raise HTTPException(status_code=422, detail=str(e))
 
     chunks = chunk_pages(
@@ -110,9 +120,8 @@ async def ingest(
             model=settings.embedding_model,
         )
     except (httpx.ConnectError, httpx.TimeoutException) as e:
-        raise HTTPException(
-            status_code=503, detail=f"Embedding service unavailable: {e}"
-        )
+        logger.error("Embedding service error: %s", e)
+        raise HTTPException(status_code=503, detail="Embedding service unavailable")
 
     document_id = str(uuid.uuid4())
     try:
@@ -131,7 +140,8 @@ async def ingest(
             filename=file.filename,
         )
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Vector store unavailable: {e}")
+        logger.error("Vector store error: %s", e, exc_info=True)
+        raise HTTPException(status_code=503, detail="Vector store unavailable")
 
     return {
         "status": "success",
@@ -164,6 +174,8 @@ async def delete_document(document_id: str):
 
 @app.delete("/collections/{collection_name}")
 async def delete_collection(collection_name: str):
+    if not _COLLECTION_NAME_RE.match(collection_name):
+        raise HTTPException(status_code=422, detail="Invalid collection name")
     store = get_store()
     try:
         store.delete_collection(collection_name)

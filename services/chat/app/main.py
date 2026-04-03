@@ -1,28 +1,31 @@
 import json
+import logging
 
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
 from sse_starlette.sse import EventSourceResponse
 
 from app.chain import rag_query
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Chat API")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 
 class ChatRequest(BaseModel):
-    question: str
-    collection: str | None = None
+    question: str = Field(max_length=2000)
+    collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
 
 
 @app.get("/health")
@@ -77,8 +80,10 @@ async def chat(request: ChatRequest):
             ):
                 yield {"data": json.dumps(event)}
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            yield {"data": json.dumps({"error": f"Backend service unavailable: {e}"})}
+            logger.error("Backend service error: %s", e)
+            yield {"data": json.dumps({"error": "Service unavailable"})}
         except Exception as e:
-            yield {"data": json.dumps({"error": f"Internal error: {e}"})}
+            logger.error("Internal error: %s", e, exc_info=True)
+            yield {"data": json.dumps({"error": "Internal error"})}
 
     return EventSourceResponse(event_generator())

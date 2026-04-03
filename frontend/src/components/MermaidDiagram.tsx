@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import mermaid from "mermaid";
+import DOMPurify from "dompurify";
 
 mermaid.initialize({
   startOnLoad: false,
@@ -20,7 +21,7 @@ export function MermaidDiagram({ chart }: { chart: string }) {
     const id = `mermaid-${Date.now()}`;
     mermaid.render(id, chart).then(({ svg }) => {
       if (ref.current) {
-        ref.current.innerHTML = svg;
+        ref.current.innerHTML = DOMPurify.sanitize(svg);
       }
     });
   }, [chart]);
