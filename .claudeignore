@@ -16,8 +16,8 @@ __pycache__/
 .superpowers/
 docs/superpowers/
 
-# Lessons (Kyle learns through these independently)
-lessons/
+# Architecture Decision Records
+docs/adr/
 
 # Test fixtures
 test.pdf

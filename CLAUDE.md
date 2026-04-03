@@ -42,7 +42,9 @@ services/
 frontend/               # Next.js + shadcn/ui — chat UI, PDF upload, document management
 ├── e2e/                # Playwright E2E tests (mocked + production smoke)
 ├── src/components/     # ChatWindow, FileUpload, DocumentList, MessageInput, SourceBadge
-lessons/                # 7 Jupyter notebooks rebuilding the services from scratch
+docs/adr/               # Architecture Decision Records (notebooks per service + markdown ADRs)
+├── document-qa/        # 7 notebooks explaining the Document Q&A services step-by-step
+├── template-adr.md     # Lightweight ADR template for smaller decisions
 .github/workflows/      # CI/CD pipeline with security scanning
 docker-compose.yml      # Qdrant + ingestion + chat services
 .env.example            # Config template
@@ -56,17 +58,15 @@ docker-compose.yml      # Qdrant + ingestion + chat services
 - Limited hands-on experience with Python data processing, LLM workflows, RAG, prompt engineering
 - Has written Python for Django, taken tutorials, but limited production Python experience
 
-## Lesson Notebooks
+## Architecture Decision Records (ADRs)
 
-7 notebooks in `lessons/` that rebuild both Python services from scratch. Each notebook follows this format:
+Design decision documentation lives in `docs/adr/`, organized by service. Two formats:
 
-1. **Intro** — what you're building and why
-2. **Prerequisites** — pip installs, connectivity checks
-3. **Package Introductions** — what each library does, why chosen, key APIs
-4. **Go/TS Comparison** — map concepts to what Kyle already knows
-5. **Build It** — code cells with explanatory markdown between
-6. **Experiment** — tweak parameters, observe effects
-7. **Check Your Understanding** — reflection prompts
+**Jupyter notebooks** — for service-level documentation. Each notebook walks through how a service was built step-by-step, explaining design decisions along the way. Sections: Overview, Architecture Context, Package Introductions, Go/TS Comparison, Build It, Experiment, Check Your Understanding.
+
+**Markdown ADRs** — for smaller, standalone decisions (e.g., "Why Qdrant over Pinecone"). Use `docs/adr/template-adr.md` as a starting point.
+
+Current notebooks: `docs/adr/document-qa/` (7 notebooks covering the ingestion and chat services).
 
 ## Branching & Workflow
 
@@ -139,12 +139,13 @@ When adding a new service under `services/`, update these:
 4. `ci.yml` — add Dockerfile path to `security-hadolint.strategy.matrix.dockerfile`
 5. `docker-compose.yml` — add service with GHCR image
 6. `ci.yml` deploy step — add service name to `docker compose pull` command
+7. `docs/adr/<service-name>/` — create companion ADR notebooks explaining the service's design decisions step-by-step
 
 ## Design Specs
 
 - `docs/superpowers/specs/2026-03-31-document-qa-assistant-design.md` — full system architecture
 - `docs/superpowers/specs/2026-03-31-frontend-design.md` — frontend design
-- `docs/superpowers/specs/2026-03-31-lesson-notebooks-design.md` — lesson notebook design
+- `docs/superpowers/specs/2026-03-31-lesson-notebooks-design.md` — ADR notebook design
 - `docs/superpowers/specs/2026-03-31-devsecops-design.md` — security hardening
 - `docs/superpowers/specs/2026-04-01-e2e-testing-and-staging-design.md` — E2E testing & staging workflow
 
@@ -153,6 +154,6 @@ When adding a new service under `services/`, update these:
 - **Backend:** Complete — unit tests passing, Docker Compose on Windows, CORS hardened via env var
 - **Frontend:** Complete — chat UI, PDF upload, document management with delete
 - **E2E Tests:** 9 mocked Playwright tests + production smoke suite
-- **Lessons:** Complete — 7 notebooks
+- **ADRs:** Complete — 7 notebooks in `docs/adr/document-qa/`
 - **Deployed:** Frontend on Vercel, backend via Cloudflare Tunnel
 - **Security:** Automated scanning in CI (Bandit, pip-audit, npm audit, gitleaks, Hadolint)
