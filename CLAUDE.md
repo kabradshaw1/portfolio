@@ -9,7 +9,7 @@ Portfolio project for a Gen AI Engineer job application — a Document Q&A Assis
 - FastAPI (Python backend microservices)
 - Qdrant (vector database, Docker container)
 - Ollama (mistral 7B for chat, nomic-embed-text for embeddings)
-- LangChain text splitters (chunking only — not using the full LangChain framework)
+- LangChain text splitters
 - Next.js + TypeScript + shadcn/ui (frontend)
 - Playwright (E2E testing)
 - Docker Compose (backend orchestration)
@@ -112,10 +112,8 @@ git branch -d feat/my-feature
 ## Pre-commit Requirements
 
 Before every commit, ensure code passes CI checks:
-- **Python:** `ruff check services/` and `ruff format --check services/` must pass
+- **Python:** see `services/CLAUDE.md`
 - **Frontend:** `cd frontend && npx tsc --noEmit` must pass
-- Pre-commit hooks run automatically (ruff lint + format on `services/`)
-- If pre-commit rejects a commit, stage the auto-fixed files and re-commit
 
 ## CI/CD Pipeline
 
@@ -126,20 +124,7 @@ All jobs run on every push. Security + E2E jobs gate deployment.
 **E2E:** Playwright mocked tests (staging), production smoke tests (post-deploy)
 **Deploy:** GHCR images built in CI → SSH to Windows PC → `docker compose pull && up -d`
 
-**Known:** langchain 0.2.x has 5 CVEs that require 0.3.x migration (ignored in pip-audit). Migration tracked as future work.
-
 **Tailscale authkey:** Expires every 90 days (free plan). Regenerate at Tailscale admin → Keys and update `TAILSCALE_AUTHKEY` in GitHub repo secrets.
-
-## Adding a New Service
-
-When adding a new service under `services/`, update these:
-1. `ci.yml` — add to `backend-tests.strategy.matrix.service`
-2. `ci.yml` — add to `docker-build.strategy.matrix.service`
-3. `ci.yml` — add to `security-pip-audit.strategy.matrix.service`
-4. `ci.yml` — add Dockerfile path to `security-hadolint.strategy.matrix.dockerfile`
-5. `docker-compose.yml` — add service with GHCR image
-6. `ci.yml` deploy step — add service name to `docker compose pull` command
-7. `docs/adr/<service-name>/` — create companion ADR notebooks explaining the service's design decisions step-by-step
 
 ## Design Specs
 
