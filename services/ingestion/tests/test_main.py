@@ -221,3 +221,20 @@ def test_ingest_rejects_too_long_collection_name():
     )
     assert response.status_code == 422
     assert "Invalid collection name" in response.json()["detail"]
+
+
+def test_ingest_rejects_empty_collection_name():
+    pdf_content = b"%PDF-1.4 fake content"
+    response = client.post(
+        "/ingest?collection=",
+        files={"file": ("test.pdf", io.BytesIO(pdf_content), "application/pdf")},
+    )
+    assert response.status_code == 422
+    assert "Invalid collection name" in response.json()["detail"]
+
+
+@patch("app.main.get_store")
+def test_delete_collection_rejects_invalid_name(mock_get_store):
+    response = client.delete("/collections/DROP TABLE users")
+    assert response.status_code == 422
+    assert "Invalid collection name" in response.json()["detail"]

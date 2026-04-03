@@ -15,6 +15,8 @@ from app.store import QdrantStore
 
 app = FastAPI(title="Ingestion API")
 
+_COLLECTION_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,100}$")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
@@ -78,7 +80,7 @@ async def ingest(
     file: UploadFile = File(...),
     collection: str | None = Query(default=None),
 ):
-    if collection and not re.match(r"^[a-zA-Z0-9_-]{1,100}$", collection):
+    if collection is not None and not _COLLECTION_NAME_RE.match(collection):
         raise HTTPException(status_code=422, detail="Invalid collection name")
 
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -168,6 +170,8 @@ async def delete_document(document_id: str):
 
 @app.delete("/collections/{collection_name}")
 async def delete_collection(collection_name: str):
+    if not _COLLECTION_NAME_RE.match(collection_name):
+        raise HTTPException(status_code=422, detail="Invalid collection name")
     store = get_store()
     try:
         store.delete_collection(collection_name)
