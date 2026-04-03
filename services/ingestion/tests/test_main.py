@@ -102,6 +102,8 @@ def test_ingest_returns_503_when_ollama_unreachable(
     )
 
     assert response.status_code == 503
+    assert "Connection refused" not in response.json()["detail"]
+    assert response.json()["detail"] == "Embedding service unavailable"
 
 
 @patch("app.main.get_store")

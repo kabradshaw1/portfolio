@@ -1,4 +1,5 @@
 import json
+import logging
 
 import httpx
 from fastapi import FastAPI
@@ -9,6 +10,8 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.chain import rag_query
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Chat API")
 
@@ -77,8 +80,10 @@ async def chat(request: ChatRequest):
             ):
                 yield {"data": json.dumps(event)}
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            yield {"data": json.dumps({"error": f"Backend service unavailable: {e}"})}
+            logger.error("Backend service error: %s", e)
+            yield {"data": json.dumps({"error": "Service unavailable"})}
         except Exception as e:
-            yield {"data": json.dumps({"error": f"Internal error: {e}"})}
+            logger.error("Internal error: %s", e)
+            yield {"data": json.dumps({"error": "Internal error"})}
 
     return EventSourceResponse(event_generator())

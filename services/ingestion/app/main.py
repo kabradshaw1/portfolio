@@ -1,3 +1,4 @@
+import logging
 import re
 import uuid
 from io import BytesIO
@@ -12,6 +13,8 @@ from app.config import settings
 from app.embedder import embed_texts
 from app.pdf_parser import extract_pages
 from app.store import QdrantStore
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Ingestion API")
 
@@ -116,9 +119,8 @@ async def ingest(
             model=settings.embedding_model,
         )
     except (httpx.ConnectError, httpx.TimeoutException) as e:
-        raise HTTPException(
-            status_code=503, detail=f"Embedding service unavailable: {e}"
-        )
+        logger.error("Embedding service error: %s", e)
+        raise HTTPException(status_code=503, detail="Embedding service unavailable")
 
     document_id = str(uuid.uuid4())
     try:
@@ -137,7 +139,8 @@ async def ingest(
             filename=file.filename,
         )
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Vector store unavailable: {e}")
+        logger.error("Vector store error: %s", e)
+        raise HTTPException(status_code=503, detail="Vector store unavailable")
 
     return {
         "status": "success",
