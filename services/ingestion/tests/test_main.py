@@ -200,3 +200,24 @@ def test_ingest_with_custom_collection(mock_extract, mock_embed, mock_qdrant_sto
 
     assert response.status_code == 200
     mock_store.upsert.assert_called_once()
+
+
+def test_ingest_rejects_invalid_collection_name():
+    pdf_content = b"%PDF-1.4 fake content"
+    response = client.post(
+        "/ingest?collection=DROP%20TABLE%20users",
+        files={"file": ("test.pdf", io.BytesIO(pdf_content), "application/pdf")},
+    )
+    assert response.status_code == 422
+    assert "Invalid collection name" in response.json()["detail"]
+
+
+def test_ingest_rejects_too_long_collection_name():
+    pdf_content = b"%PDF-1.4 fake content"
+    long_name = "a" * 101
+    response = client.post(
+        f"/ingest?collection={long_name}",
+        files={"file": ("test.pdf", io.BytesIO(pdf_content), "application/pdf")},
+    )
+    assert response.status_code == 422
+    assert "Invalid collection name" in response.json()["detail"]

@@ -1,3 +1,4 @@
+import re
 import uuid
 from io import BytesIO
 
@@ -77,6 +78,9 @@ async def ingest(
     file: UploadFile = File(...),
     collection: str | None = Query(default=None),
 ):
+    if collection and not re.match(r"^[a-zA-Z0-9_-]{1,100}$", collection):
+        raise HTTPException(status_code=422, detail="Invalid collection name")
+
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=422, detail="Only PDF files are accepted")
 
