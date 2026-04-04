@@ -12,8 +12,8 @@ export default function RagDemo() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
 
-  const ingestionBaseUrl =
-    process.env.NEXT_PUBLIC_INGESTION_API_URL || "http://localhost:8001";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const ingestionBaseUrl = `${apiUrl}/ingestion`;
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -50,9 +50,8 @@ export default function RagDemo() {
       setIsStreaming(true);
 
       try {
-        const baseUrl =
-          process.env.NEXT_PUBLIC_CHAT_API_URL || "http://localhost:8002";
-        const res = await fetch(`${baseUrl}/chat`, {
+        const chatBaseUrl = `${apiUrl}/chat`;
+        const res = await fetch(`${chatBaseUrl}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ question }),

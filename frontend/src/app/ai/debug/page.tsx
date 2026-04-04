@@ -11,8 +11,8 @@ export default function DebugPage() {
   const [error, setError] = useState<string | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
-  const debugApiUrl =
-    process.env.NEXT_PUBLIC_DEBUG_API_URL || "http://localhost:8003";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const debugApiUrl = `${apiUrl}/debug`;
 
   // Auto-scroll timeline as events arrive
   useEffect(() => {

@@ -26,8 +26,8 @@ export function DebugForm({ onSubmit, isLoading }: DebugFormProps) {
   const [indexStatus, setIndexStatus] = useState<IndexStatus>("idle");
   const [indexMessage, setIndexMessage] = useState<string | null>(null);
 
-  const debugApiUrl =
-    process.env.NEXT_PUBLIC_DEBUG_API_URL || "http://localhost:8003";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const debugApiUrl = `${apiUrl}/debug`;
 
   const handleIndex = async () => {
     if (!projectPath.trim()) return;

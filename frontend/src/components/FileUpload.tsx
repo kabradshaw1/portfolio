@@ -23,9 +23,9 @@ export function FileUpload({ onUploaded }: FileUploadProps) {
     formData.append("file", file);
 
     try {
-      const baseUrl =
-        process.env.NEXT_PUBLIC_INGESTION_API_URL || "http://localhost:8001";
-      const res = await fetch(`${baseUrl}/ingest`, {
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/ingestion/ingest`, {
         method: "POST",
         body: formData,
       });
