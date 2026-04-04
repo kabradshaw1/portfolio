@@ -17,17 +17,26 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 ## Infrastructure
 
 - **Mac (dev machine):** Code editing, frontend dev server, no GPU
-- **Windows (PC@100.79.113.84 via Tailscale):** Ollama (RTX 3090), Docker Compose (Qdrant + backend services)
+- **Windows (PC@100.79.113.84 via Tailscale):** Ollama (RTX 3090), Minikube (all backend services)
 - **SSH:** `ssh PC@100.79.113.84` — key-based auth configured
-- **Local dev:** SSH tunnel forwards `localhost:8000` to Windows nginx gateway
+- **Minikube:** All backend services run in Kubernetes on the Windows PC
+  - `ai-services` namespace: Python AI services + Qdrant
+  - `java-tasks` namespace: Java microservices + databases
+  - `monitoring` namespace: Prometheus + Grafana
+  - NGINX Ingress Controller routes all traffic by path
+  - `minikube tunnel` exposes Ingress on localhost:80
+- **Ollama:** Runs natively on Windows (GPU access), reached from K8s via ExternalName service
+- **Local dev:** Docker Compose for both stacks (no Minikube needed for development)
+  - SSH tunnel forwards `localhost:8000` to Windows nginx gateway
   ```bash
   ssh -f -N -L 8000:localhost:8000 PC@100.79.113.84
   ```
 - **Frontend:** `npm run dev` in `frontend/`, points to `localhost:8000` via tunnel
 - **Production:** Frontend on Vercel (`https://kylebradshaw.dev`), backend via Cloudflare Tunnel:
-  - `https://api.kylebradshaw.dev` → Windows PC :8000 (nginx gateway)
-  - nginx routes by path: `/ingestion/*`, `/chat/*`, `/debug/*` → respective services
+  - `https://api.kylebradshaw.dev` → Windows PC localhost:80 (Minikube Ingress)
+  - Ingress routes by path: `/ingestion/*`, `/chat/*`, `/debug/*` → Python services; `/graphql`, `/api/auth/*` → Java services; `/grafana/*` → monitoring
   - Cloudflared installed as Windows service (auto-starts on boot)
+  - `minikube tunnel` must be running as background process
 
 ## Project Structure
 
@@ -44,6 +53,10 @@ services/
 │   └── tests/          # unit tests
 nginx/                  # Reverse proxy — path-based routing to backend services
 ├── nginx.conf          # /ingestion/*, /chat/*, /debug/* → respective services
+k8s/                    # Kubernetes manifests — production deployment (Minikube)
+├── ai-services/        # Python AI services + Qdrant namespace
+├── monitoring/         # Prometheus + Grafana namespace
+└── deploy.sh           # Unified deploy script for all namespaces
 frontend/               # Next.js + shadcn/ui — chat UI, PDF upload, document management, debug
 ├── e2e/                # Playwright E2E tests (mocked + production smoke)
 ├── src/components/     # ChatWindow, FileUpload, DocumentList, DebugForm, AgentTimeline, etc.
@@ -149,3 +162,4 @@ All jobs run on every push. Security + E2E jobs gate deployment.
 - **ADRs:** 7 notebooks in `docs/adr/document-qa/`
 - **Deployed:** Frontend on Vercel, backend via Cloudflare Tunnel (`api.kylebradshaw.dev`)
 - **Security:** Automated scanning in CI (Bandit, pip-audit, npm audit, gitleaks, Hadolint)
+- **K8s Deployment:** All services in Minikube (3 namespaces), NGINX Ingress Controller, unified deploy script
