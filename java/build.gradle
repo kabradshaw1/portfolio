@@ -32,7 +32,18 @@ subprojects {
     }
 
     tasks.named('test') {
-        useJUnitPlatform()
+        useJUnitPlatform {
+            excludeTags 'integration'
+        }
+        jvmArgs '-Dnet.bytebuddy.experimental=true'
+    }
+
+    tasks.register('integrationTest', Test) {
+        description = 'Runs Testcontainers integration tests (requires Docker).'
+        group = 'verification'
+        useJUnitPlatform {
+            includeTags 'integration'
+        }
         jvmArgs '-Dnet.bytebuddy.experimental=true'
     }
 
