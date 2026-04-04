@@ -1,0 +1,94 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+import { ApolloProvider } from "@apollo/client/react";
+import { apolloClient } from "@/lib/apollo-client";
+import {
+  clearTokens,
+  getAccessToken,
+  isLoggedIn as checkIsLoggedIn,
+  setTokens,
+  GATEWAY_URL,
+} from "@/lib/auth";
+
+interface AuthUser {
+  userId: string;
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
+interface AuthContextType {
+  user: AuthUser | null;
+  isLoggedIn: boolean;
+  login: (code: string, redirectUri: string) => Promise<void>;
+  logout: () => void;
+}
+
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  isLoggedIn: false,
+  login: async () => {},
+  logout: () => {},
+});
+
+export function useAuth() {
+  return useContext(AuthContext);
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    if (checkIsLoggedIn()) {
+      setIsAuthenticated(true);
+      const stored = localStorage.getItem("java_user");
+      if (stored) {
+        setUser(JSON.parse(stored));
+      }
+    }
+  }, []);
+
+  const login = useCallback(async (code: string, redirectUri: string) => {
+    const res = await fetch(`${GATEWAY_URL}/api/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, redirectUri }),
+    });
+    if (!res.ok) throw new Error("Login failed");
+    const data = await res.json();
+    setTokens(data.accessToken, data.refreshToken);
+    const authUser: AuthUser = {
+      userId: data.userId,
+      email: data.email,
+      name: data.name,
+      avatarUrl: data.avatarUrl,
+    };
+    localStorage.setItem("java_user", JSON.stringify(authUser));
+    setUser(authUser);
+    setIsAuthenticated(true);
+  }, []);
+
+  const logout = useCallback(() => {
+    clearTokens();
+    localStorage.removeItem("java_user");
+    setUser(null);
+    setIsAuthenticated(false);
+    apolloClient.clearStore();
+  }, []);
+
+  return (
+    <AuthContext.Provider
+      value={{ user, isLoggedIn: isAuthenticated, login, logout }}
+    >
+      <ApolloProvider client={apolloClient}>{children}</ApolloProvider>
+    </AuthContext.Provider>
+  );
+}
