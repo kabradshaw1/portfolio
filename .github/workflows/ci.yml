@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ingestion, chat]
+        service: [ingestion, chat, debug]
     steps:
       - uses: actions/checkout@v4
 
@@ -90,7 +90,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        service: [ingestion, chat]
+        service: [ingestion, chat, debug]
     steps:
       - uses: actions/checkout@v4
 
@@ -147,7 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ingestion, chat]
+        service: [ingestion, chat, debug]
     steps:
       - uses: actions/checkout@v4
 
@@ -212,6 +212,7 @@ jobs:
         dockerfile:
           - services/ingestion/Dockerfile
           - services/chat/Dockerfile
+          - services/debug/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -300,7 +301,7 @@ jobs:
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             git pull origin main
-            docker compose pull ingestion chat
+            docker compose pull ingestion chat debug
             docker compose up -d
 
   smoke-production:
