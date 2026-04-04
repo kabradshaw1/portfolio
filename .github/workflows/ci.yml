@@ -305,11 +305,13 @@ jobs:
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             git pull origin main
-            docker compose pull ingestion chat debug
-            docker compose up -d
-            cd java
-            docker compose pull task-service activity-service notification-service gateway-service 2>/dev/null || true
-            docker compose up -d 2>/dev/null || true
+            kubectl apply -f k8s/ai-services/ --recursive
+            kubectl apply -f java/k8s/ --recursive
+            kubectl apply -f k8s/monitoring/ --recursive
+            kubectl rollout restart deployment -n ai-services
+            kubectl rollout restart deployment -n java-tasks
+            kubectl rollout status deployment -n ai-services --timeout=180s
+            kubectl rollout status deployment -n java-tasks --timeout=180s
 
   smoke-production:
     name: Production Smoke Tests
@@ -342,4 +344,5 @@ jobs:
         env:
           SMOKE_FRONTEND_URL: https://kylebradshaw.dev
           SMOKE_API_URL: https://api.kylebradshaw.dev
+          SMOKE_GRAPHQL_URL: https://api.kylebradshaw.dev/graphql
         run: npx playwright test e2e/smoke.spec.ts --config=playwright.smoke.config.ts
