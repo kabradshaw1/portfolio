@@ -1,0 +1,18 @@
+server:
+  port: 8080
+
+spring:
+  graphql:
+    graphiql:
+      enabled: true
+    schema:
+      locations: classpath:graphql/
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-secret-key-at-least-32-characters-long}
+  services:
+    task-url: ${TASK_SERVICE_URL:http://localhost:8081}
+    activity-url: ${ACTIVITY_SERVICE_URL:http://localhost:8082}
+    notification-url: ${NOTIFICATION_SERVICE_URL:http://localhost:8083}
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
