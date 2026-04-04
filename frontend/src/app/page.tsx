@@ -40,6 +40,23 @@ export default function Home() {
               </CardContent>
             </Card>
           </Link>
+          <Link href="/java" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>Full Stack Java Developer</CardTitle>
+                <CardDescription>
+                  Task Management System built with Spring Boot, GraphQL, and
+                  Kubernetes
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Microservices architecture with PostgreSQL, MongoDB, Redis,
+                  RabbitMQ, Google OAuth, and CI/CD automation.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       </div>
     </div>
