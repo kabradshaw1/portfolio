@@ -1,0 +1,38 @@
+type Query {
+    me: User
+    project(id: ID!): Project
+    myProjects: [Project!]!
+    task(id: ID!): Task
+    taskActivity(taskId: ID!): [ActivityEvent!]!
+    taskComments(taskId: ID!): [Comment!]!
+    myNotifications(unreadOnly: Boolean): NotificationResponse!
+}
+
+type Mutation {
+    createProject(input: CreateProjectInput!): Project!
+    updateProject(id: ID!, input: UpdateProjectInput!): Project!
+    deleteProject(id: ID!): Boolean!
+    createTask(input: CreateTaskInput!): Task!
+    updateTask(id: ID!, input: UpdateTaskInput!): Task!
+    deleteTask(id: ID!): Boolean!
+    assignTask(taskId: ID!, userId: ID!): Task!
+    addComment(taskId: ID!, body: String!): Comment!
+    markNotificationRead(id: ID!): Boolean!
+    markAllNotificationsRead: Boolean!
+}
+
+type User { id: ID!, email: String!, name: String!, avatarUrl: String }
+type Project { id: ID!, name: String!, description: String, ownerId: ID!, ownerName: String!, createdAt: String! }
+type Task { id: ID!, projectId: ID!, title: String!, description: String, status: TaskStatus!, priority: TaskPriority!, assigneeId: ID, assigneeName: String, dueDate: String, createdAt: String!, updatedAt: String! }
+type ActivityEvent { id: ID!, projectId: String!, taskId: String!, actorId: String!, eventType: String!, metadata: String, timestamp: String! }
+type Comment { id: ID!, taskId: String!, authorId: String!, body: String!, createdAt: String! }
+type Notification { id: ID!, type: String!, message: String!, taskId: String!, read: Boolean!, createdAt: String! }
+type NotificationResponse { notifications: [Notification!]!, unreadCount: Int! }
+
+enum TaskStatus { TODO, IN_PROGRESS, DONE }
+enum TaskPriority { LOW, MEDIUM, HIGH }
+
+input CreateProjectInput { name: String!, description: String }
+input UpdateProjectInput { name: String, description: String }
+input CreateTaskInput { projectId: ID!, title: String!, description: String, priority: TaskPriority, dueDate: String }
+input UpdateTaskInput { title: String, description: String, status: TaskStatus, priority: TaskPriority, dueDate: String }
