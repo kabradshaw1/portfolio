@@ -7,4 +7,5 @@ data:
   TASK_SERVICE_URL: http://task-service:8081
   ACTIVITY_SERVICE_URL: http://activity-service:8082
   NOTIFICATION_SERVICE_URL: http://notification-service:8083
-  ALLOWED_ORIGINS: http://localhost:3000
+  ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
+  GRAPHIQL_ENABLED: "true"

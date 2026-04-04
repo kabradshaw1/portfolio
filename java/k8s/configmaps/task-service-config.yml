@@ -9,4 +9,4 @@ data:
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_USER: guest
   RABBITMQ_PASSWORD: guest
-  ALLOWED_ORIGINS: http://localhost:3000
+  ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev

@@ -1,0 +1,47 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: java-tasks-ingress
+  namespace: java-tasks
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /graphql
+            pathType: Exact
+            backend:
+              service:
+                name: gateway-service
+                port:
+                  number: 8080
+          - path: /graphiql
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway-service
+                port:
+                  number: 8080
+          - path: /api/auth/(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: task-service
+                port:
+                  number: 8081
+          - path: /actuator/health
+            pathType: Exact
+            backend:
+              service:
+                name: gateway-service
+                port:
+                  number: 8080
+          - path: /rabbitmq(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: rabbitmq
+                port:
+                  number: 15672
