@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: debug-config
+  namespace: ai-services
+data:
+  OLLAMA_BASE_URL: http://ollama:11434
+  CHAT_MODEL: qwen2.5:14b
+  EMBEDDING_MODEL: nomic-embed-text
+  QDRANT_HOST: qdrant
+  QDRANT_PORT: "6333"
+  MAX_AGENT_STEPS: "10"
+  MAX_GREP_MATCHES: "20"
+  TEST_TIMEOUT_SECONDS: "30"
+  ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev

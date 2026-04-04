@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingestion-config
+  namespace: ai-services
+data:
+  OLLAMA_BASE_URL: http://ollama:11434
+  EMBEDDING_MODEL: nomic-embed-text
+  QDRANT_HOST: qdrant
+  QDRANT_PORT: "6333"
+  COLLECTION_NAME: documents
+  CHUNK_SIZE: "1000"
+  CHUNK_OVERLAP: "200"
+  MAX_FILE_SIZE_MB: "50"
+  ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev

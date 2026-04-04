@@ -7,3 +7,11 @@ repos:
         files: ^services/
       - id: ruff-format
         files: ^services/
+  - repo: local
+    hooks:
+      - id: java-checkstyle
+        name: Java Checkstyle
+        entry: bash -c 'export JAVA_HOME=/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home && export PATH="$JAVA_HOME/bin:$PATH" && java/gradlew -p java checkstyleMain checkstyleTest --no-daemon'
+        language: system
+        files: ^java/.*\.java$
+        pass_filenames: false
