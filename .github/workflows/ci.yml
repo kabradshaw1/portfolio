@@ -213,6 +213,10 @@ jobs:
           - services/ingestion/Dockerfile
           - services/chat/Dockerfile
           - services/debug/Dockerfile
+          - java/task-service/Dockerfile
+          - java/activity-service/Dockerfile
+          - java/notification-service/Dockerfile
+          - java/gateway-service/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -303,6 +307,9 @@ jobs:
             git pull origin main
             docker compose pull ingestion chat debug
             docker compose up -d
+            cd java
+            docker compose pull task-service activity-service notification-service gateway-service 2>/dev/null || true
+            docker compose up -d 2>/dev/null || true
 
   smoke-production:
     name: Production Smoke Tests
