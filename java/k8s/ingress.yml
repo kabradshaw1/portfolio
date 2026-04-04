@@ -38,10 +38,3 @@ spec:
                 name: gateway-service
                 port:
                   number: 8080
-          - path: /rabbitmq(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: rabbitmq
-                port:
-                  number: 15672

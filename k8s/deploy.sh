@@ -75,6 +75,7 @@ kubectl apply -f "$SCRIPT_DIR/monitoring/services/grafana.yml"
 echo "==> Applying Ingress resources..."
 kubectl apply -f "$SCRIPT_DIR/ai-services/ingress.yml"
 kubectl apply -f "$REPO_DIR/java/k8s/ingress.yml"
+kubectl apply -f "$REPO_DIR/java/k8s/ingress-rabbitmq.yml"
 kubectl apply -f "$SCRIPT_DIR/monitoring/ingress.yml"
 
 echo "==> Waiting for all application services..."
