@@ -1,0 +1,6 @@
+rootProject.name = 'java-task-management'
+
+include 'task-service'
+include 'activity-service'
+include 'notification-service'
+include 'gateway-service'
