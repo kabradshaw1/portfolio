@@ -8,15 +8,20 @@ Design decision documentation for this project. Each document explains *why* thi
 docs/adr/
 ├── README.md              # This file
 ├── template-adr.md        # Markdown template for standalone decisions
-└── document-qa/           # ADR notebooks for the Document Q&A services
+├── document-qa/           # ADR notebooks for the Document Q&A services
+│   ├── requirements.txt
+│   ├── 01_python_fastapi_basics.ipynb
+│   ├── 02_pdf_parsing_and_chunking.ipynb
+│   ├── 03_embeddings_and_vectors.ipynb
+│   ├── 04_qdrant_vector_storage.ipynb
+│   ├── 05_rag_chain_and_prompts.ipynb
+│   ├── 06_streaming_and_sse.ipynb
+│   └── 07_wiring_the_endpoints.ipynb
+└── document-debugger/     # ADR notebooks for the Debug Assistant service
     ├── requirements.txt
-    ├── 01_python_fastapi_basics.ipynb
-    ├── 02_pdf_parsing_and_chunking.ipynb
-    ├── 03_embeddings_and_vectors.ipynb
-    ├── 04_qdrant_vector_storage.ipynb
-    ├── 05_rag_chain_and_prompts.ipynb
-    ├── 06_streaming_and_sse.ipynb
-    └── 07_wiring_the_endpoints.ipynb
+    ├── 01_code_aware_chunking.ipynb
+    ├── 02_agent_loop_and_tool_calling.ipynb
+    └── 03_agent_tools_and_security.ipynb
 ```
 
 New services get their own subdirectory (e.g., `docs/adr/new-service/`).
