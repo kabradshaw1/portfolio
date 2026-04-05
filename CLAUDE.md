@@ -133,8 +133,9 @@ Before every commit, run the relevant preflight checks and fix any failures. Onl
 
 - **Python changes:** `make preflight-python` and `make preflight-security`
 - **Frontend changes:** `make preflight-frontend`
-- **Java changes:** `ssh PC@100.79.113.84 "cd C:\Users\PC\repos\gen_ai_engineer && cd java && ./gradlew checkstyleMain checkstyleTest test integrationTest --no-daemon"`
-- **Full sweep:** `make preflight` (runs Python + frontend + security locally, then Java separately over SSH)
+- **Java changes:** `make preflight-java` (checkstyle + unit tests, runs locally)
+- **Java integration tests:** `make preflight-java-integration` (runs over SSH on Windows PC, on-demand)
+- **Full sweep:** `make preflight` (runs Python + frontend + security + Java locally)
 
 If a check fails, fix it before committing. If you can't fix it, explain the failure to Kyle before suggesting a push.
 

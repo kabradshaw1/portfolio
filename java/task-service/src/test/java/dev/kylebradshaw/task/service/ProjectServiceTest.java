@@ -66,7 +66,7 @@ class ProjectServiceTest {
 
         User owner = new User("test@example.com", "Test User", null);
         Project project = new Project("Project", "Desc", owner);
-        when(projectRepo.findAllById(List.of(projectId))).thenReturn(List.of(project));
+        when(projectRepo.findAllByIdWithOwner(List.of(projectId))).thenReturn(List.of(project));
 
         List<Project> result = service.getProjectsForUser(userId);
         assertThat(result).hasSize(1);

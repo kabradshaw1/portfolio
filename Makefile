@@ -1,4 +1,4 @@
-.PHONY: preflight preflight-python preflight-frontend preflight-java preflight-security
+.PHONY: preflight preflight-python preflight-frontend preflight-java preflight-java-integration preflight-security
 
 # Run all CI checks locally before pushing
 preflight: preflight-python preflight-frontend preflight-security preflight-java
@@ -26,14 +26,17 @@ preflight-frontend:
 	@echo "\n=== Frontend: build ==="
 	cd frontend && npm run build
 
-# --- Java (requires JDK 21 + Docker for integration tests) ---
+# --- Java (checkstyle + unit tests run locally) ---
 preflight-java:
 	@echo "\n=== Java: checkstyle ==="
 	cd java && ./gradlew checkstyleMain checkstyleTest --no-daemon
 	@echo "\n=== Java: unit tests ==="
 	cd java && ./gradlew test --no-daemon
-	@echo "\n=== Java: integration tests ==="
-	cd java && ./gradlew integrationTest --no-daemon
+
+# --- Java integration tests (requires Windows PC via SSH) ---
+preflight-java-integration:
+	@echo "\n=== Java: integration tests (via SSH) ==="
+	ssh PC@100.79.113.84 "cd C:\Users\PC\repos\gen_ai_engineer && git pull && cd java && ./gradlew integrationTest --no-daemon"
 
 # --- Security scans ---
 preflight-security:
