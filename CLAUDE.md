@@ -129,9 +129,14 @@ git branch -d feat/my-feature
 
 ## Pre-commit Requirements
 
-Before every commit, ensure code passes CI checks:
-- **Python:** see `services/CLAUDE.md`
-- **Frontend:** `cd frontend && npx tsc --noEmit` must pass
+Before every commit, run the relevant preflight checks and fix any failures. Only escalate to Kyle if you can't resolve the issue.
+
+- **Python changes:** `make preflight-python` and `make preflight-security`
+- **Frontend changes:** `make preflight-frontend`
+- **Java changes:** `ssh PC@100.79.113.84 "cd C:\Users\PC\repos\gen_ai_engineer && cd java && ./gradlew checkstyleMain checkstyleTest test integrationTest --no-daemon"`
+- **Full sweep:** `make preflight` (runs Python + frontend + security locally, then Java separately over SSH)
+
+If a check fails, fix it before committing. If you can't fix it, explain the failure to Kyle before suggesting a push.
 
 ## CI/CD Pipeline
 

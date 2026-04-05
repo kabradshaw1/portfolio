@@ -121,7 +121,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Bandit
-        run: pip install bandit
+        run: pip install bandit==1.9.4
 
       - name: Run Bandit
         run: bandit -r services/ -f json -ll -o bandit-report.json || true
@@ -136,7 +136,7 @@ jobs:
           results = data.get('results', [])
           if results:
               for r in results:
-                  print(f\"{r['severity']}: {r['filename']}:{r['line_number']} - {r['issue_text']}\")
+                  print(f\"{r['issue_severity']}: {r['filename']}:{r['line_number']} - {r['issue_text']}\")
               sys.exit(1)
           print('No issues found')
           "

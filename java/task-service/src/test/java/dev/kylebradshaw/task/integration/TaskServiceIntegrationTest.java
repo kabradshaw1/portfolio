@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.kylebradshaw.task.dto.CreateProjectRequest;
 import dev.kylebradshaw.task.entity.User;
 import dev.kylebradshaw.task.repository.UserRepository;
+import dev.kylebradshaw.task.security.JwtService;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -56,20 +57,24 @@ class TaskServiceIntegrationTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
     @Autowired private UserRepository userRepo;
+    @Autowired private JwtService jwtService;
 
     private User testUser;
+    private String accessToken;
 
     @BeforeEach
     void setUp() {
         testUser = userRepo.findByEmail("integration@test.com")
                 .orElseGet(() -> userRepo.save(
                         new User("integration@test.com", "Integration User", null)));
+        accessToken = jwtService.generateAccessToken(testUser.getId(), testUser.getEmail());
     }
 
     @Test
     void createAndGetProject() throws Exception {
         var request = new CreateProjectRequest("Integration Project", "Testing");
         mockMvc.perform(post("/api/projects")
+                        .header("Authorization", "Bearer " + accessToken)
                         .header("X-User-Id", testUser.getId().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
@@ -77,6 +82,7 @@ class TaskServiceIntegrationTest {
                 .andExpect(jsonPath("$.name").value("Integration Project"));
 
         mockMvc.perform(get("/api/projects")
+                        .header("Authorization", "Bearer " + accessToken)
                         .header("X-User-Id", testUser.getId().toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.name == 'Integration Project')]").exists());
@@ -86,6 +92,7 @@ class TaskServiceIntegrationTest {
     void createTask_viaProject() throws Exception {
         var projectReq = new CreateProjectRequest("Task Test Project", "For tasks");
         String projectJson = mockMvc.perform(post("/api/projects")
+                        .header("Authorization", "Bearer " + accessToken)
                         .header("X-User-Id", testUser.getId().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(projectReq)))
@@ -95,6 +102,7 @@ class TaskServiceIntegrationTest {
         String projectId = objectMapper.readTree(projectJson).get("id").asText();
 
         mockMvc.perform(post("/api/tasks")
+                        .header("Authorization", "Bearer " + accessToken)
                         .header("X-User-Id", testUser.getId().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
