@@ -260,6 +260,55 @@ kubectl rollout restart deployment -n ai-services
 kubectl rollout restart deployment -n java-tasks
 ```
 
+## Automated Startup (Scheduled Tasks)
+
+Instead of manually running `minikube tunnel` and `ollama serve` after each reboot, use the scheduled task script:
+
+```powershell
+# Run as Administrator
+powershell -ExecutionPolicy Bypass -File k8s/create-scheduled-tasks.ps1
+```
+
+This creates two Windows scheduled tasks:
+
+**Ollama Serve** (starts 10 seconds after boot):
+- Runs `ollama serve` with `OLLAMA_HOST=0.0.0.0` and `OLLAMA_ORIGINS=*`
+- Runs as user `PC` with highest privileges
+- Why `0.0.0.0`: By default, Ollama binds to `127.0.0.1`. Minikube pods reach the host via `host.minikube.internal`, which is a different network interface. Without `0.0.0.0`, Ollama returns 403 Forbidden to pod requests.
+- Why `OLLAMA_ORIGINS=*`: Ollama rejects cross-origin requests by default. Requests from K8s pods appear as different origins.
+
+**Minikube Tunnel** (starts 30 seconds after boot):
+- Runs `minikube tunnel` as SYSTEM with highest privileges
+- The 30-second delay gives Docker Desktop time to initialize (Minikube depends on it)
+- Creates a network route so the Ingress LoadBalancer is accessible on `localhost:80`
+
+Both tasks auto-restart up to 3 times on failure (1-minute interval).
+
+**Important:** If you use the Ollama desktop app, disable its auto-start. The desktop app may grab port 11434 before the scheduled task runs and will bind to `127.0.0.1` instead of `0.0.0.0`.
+
+**Verify tasks are registered:**
+```powershell
+Get-ScheduledTask -TaskName 'Minikube Tunnel','Ollama Serve' | Select-Object TaskName, State
+```
+
+## Lessons Learned
+
+**Ollama `OLLAMA_HOST` binding:** The most common issue after setting up K8s. Ollama defaults to `127.0.0.1`, which is unreachable from Minikube's Docker network. Set `OLLAMA_HOST=0.0.0.0` either via the scheduled task or as a machine-level environment variable. The Ollama desktop app may ignore environment variables — use `ollama serve` directly instead.
+
+**Docker Desktop must start before Minikube:** If Docker Desktop isn't running when Minikube starts, the cluster will fail. The scheduled task ordering (Ollama at 10s, Tunnel at 30s) assumes Docker Desktop auto-starts on login. If it doesn't, enable auto-start in Docker Desktop settings.
+
+**GHCR image pull secrets:** GitHub Container Registry packages default to private. Minikube needs `imagePullSecrets` on every deployment that pulls from GHCR. Create the secret in each namespace:
+```powershell
+kubectl create secret docker-registry ghcr-secret `
+  --docker-server=ghcr.io `
+  --docker-username=kabradshaw1 `
+  --docker-password=<github-pat-with-read:packages> `
+  -n ai-services
+# Repeat for java-tasks namespace
+```
+
+**Ingress rewrite-target pattern:** The AI services ingress uses `rewrite-target: /$2` with path patterns like `/chat(/|$)(.*)`. The `(/|$)(.*)` capture group is required — without it, `/$2` has nothing to substitute and all requests rewrite to `/`.
+
 ## Stopping Everything
 
 ```powershell

@@ -48,3 +48,5 @@ docker-compose.override.yml
 frontend/.env.local
 frontend/node_modules/
 frontend/.next/
+
+.claude/settings.local.json
