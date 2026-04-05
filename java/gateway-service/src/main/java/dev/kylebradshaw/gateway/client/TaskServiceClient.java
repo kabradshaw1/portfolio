@@ -21,7 +21,7 @@ public class TaskServiceClient {
 
     public List<ProjectDto> getMyProjects(String userId) {
         return client.get()
-                .uri("/projects")
+                .uri("/api/projects")
                 .header("X-User-Id", userId)
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
@@ -29,14 +29,14 @@ public class TaskServiceClient {
 
     public ProjectDto getProject(String id) {
         return client.get()
-                .uri("/projects/{id}", id)
+                .uri("/api/projects/{id}", id)
                 .retrieve()
                 .body(ProjectDto.class);
     }
 
     public ProjectDto createProject(String userId, Map<String, Object> input) {
         return client.post()
-                .uri("/projects")
+                .uri("/api/projects")
                 .header("X-User-Id", userId)
                 .body(input)
                 .retrieve()
@@ -45,7 +45,7 @@ public class TaskServiceClient {
 
     public ProjectDto updateProject(String id, String userId, Map<String, Object> input) {
         return client.put()
-                .uri("/projects/{id}", id)
+                .uri("/api/projects/{id}", id)
                 .header("X-User-Id", userId)
                 .body(input)
                 .retrieve()
@@ -54,7 +54,7 @@ public class TaskServiceClient {
 
     public void deleteProject(String id, String userId) {
         client.delete()
-                .uri("/projects/{id}", id)
+                .uri("/api/projects/{id}", id)
                 .header("X-User-Id", userId)
                 .retrieve()
                 .toBodilessEntity();
@@ -62,21 +62,21 @@ public class TaskServiceClient {
 
     public TaskDto getTask(String id) {
         return client.get()
-                .uri("/tasks/{id}", id)
+                .uri("/api/tasks/{id}", id)
                 .retrieve()
                 .body(TaskDto.class);
     }
 
     public List<TaskDto> getTasksByProject(String projectId) {
         return client.get()
-                .uri("/tasks?projectId={projectId}", projectId)
+                .uri("/api/tasks?projectId={projectId}", projectId)
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
     }
 
     public TaskDto createTask(String userId, Map<String, Object> input) {
         return client.post()
-                .uri("/tasks")
+                .uri("/api/tasks")
                 .header("X-User-Id", userId)
                 .body(input)
                 .retrieve()
@@ -85,7 +85,7 @@ public class TaskServiceClient {
 
     public TaskDto updateTask(String id, String userId, Map<String, Object> input) {
         return client.put()
-                .uri("/tasks/{id}", id)
+                .uri("/api/tasks/{id}", id)
                 .header("X-User-Id", userId)
                 .body(input)
                 .retrieve()
@@ -94,7 +94,7 @@ public class TaskServiceClient {
 
     public TaskDto assignTask(String taskId, String assigneeId, String userId) {
         return client.put()
-                .uri("/tasks/{taskId}/assign/{assigneeId}", taskId, assigneeId)
+                .uri("/api/tasks/{taskId}/assign/{assigneeId}", taskId, assigneeId)
                 .header("X-User-Id", userId)
                 .retrieve()
                 .body(TaskDto.class);
@@ -102,7 +102,7 @@ public class TaskServiceClient {
 
     public void deleteTask(String id, String userId) {
         client.delete()
-                .uri("/tasks/{id}", id)
+                .uri("/api/tasks/{id}", id)
                 .header("X-User-Id", userId)
                 .retrieve()
                 .toBodilessEntity();
