@@ -3,7 +3,7 @@ import path from "path";
 
 test.describe("Upload flow", () => {
   test("uploads a PDF and shows status", async ({ page }) => {
-    await page.route("**/documents", (route) => {
+    await page.route("**/ingestion/documents", (route) => {
       if (route.request().method() === "GET") {
         return route.fulfill({
           status: 200,
@@ -22,7 +22,7 @@ test.describe("Upload flow", () => {
       return route.continue();
     });
 
-    await page.route("**/ingest**", (route) =>
+    await page.route("**/ingestion/ingest", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
