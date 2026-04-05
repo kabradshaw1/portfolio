@@ -1,6 +1,8 @@
 package dev.kylebradshaw.task.repository;
 
 import dev.kylebradshaw.task.dto.MemberWorkloadRow;
+import dev.kylebradshaw.task.dto.PercentilesRow;
+import dev.kylebradshaw.task.dto.WeeklyThroughputRow;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -90,5 +92,55 @@ public class AnalyticsRepository {
                         rs.getInt("assigned_count"),
                         rs.getInt("completed_count")))
                 .list();
+    }
+
+    public List<WeeklyThroughputRow> weeklyThroughput(UUID projectId, int weeks) {
+        return jdbc.sql("""
+                WITH week_series AS (
+                    SELECT generate_series(
+                        date_trunc('week', now()) - ((:weeks - 1) * INTERVAL '1 week'),
+                        date_trunc('week', now()),
+                        INTERVAL '1 week'
+                    ) AS week_start
+                )
+                SELECT to_char(ws.week_start, 'IYYY-"W"IW') AS week,
+                       COALESCE(SUM(CASE WHEN t.completed_at >= ws.week_start
+                                          AND t.completed_at < ws.week_start + INTERVAL '1 week'
+                                         THEN 1 ELSE 0 END), 0) AS completed,
+                       COALESCE(SUM(CASE WHEN t.created_at >= ws.week_start
+                                          AND t.created_at < ws.week_start + INTERVAL '1 week'
+                                         THEN 1 ELSE 0 END), 0) AS created
+                FROM week_series ws
+                LEFT JOIN tasks t ON t.project_id = :projectId
+                GROUP BY ws.week_start
+                ORDER BY ws.week_start DESC
+                """)
+                .param("projectId", projectId)
+                .param("weeks", weeks)
+                .query((rs, rowNum) -> new WeeklyThroughputRow(
+                        rs.getString("week"),
+                        rs.getInt("completed"),
+                        rs.getInt("created")))
+                .list();
+    }
+
+    public PercentilesRow leadTimePercentiles(UUID projectId) {
+        return jdbc.sql("""
+                SELECT COALESCE(PERCENTILE_CONT(0.50) WITHIN GROUP
+                           (ORDER BY EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600), 0) AS p50,
+                       COALESCE(PERCENTILE_CONT(0.75) WITHIN GROUP
+                           (ORDER BY EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600), 0) AS p75,
+                       COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP
+                           (ORDER BY EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600), 0) AS p95
+                FROM tasks
+                WHERE project_id = :projectId
+                  AND completed_at IS NOT NULL
+                """)
+                .param("projectId", projectId)
+                .query((rs, rowNum) -> new PercentilesRow(
+                        rs.getDouble("p50"),
+                        rs.getDouble("p75"),
+                        rs.getDouble("p95")))
+                .single();
     }
 }
