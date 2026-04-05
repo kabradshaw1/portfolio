@@ -7,82 +7,73 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.jdbc.core.simple.JdbcClient;
+import javax.sql.DataSource;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class AnalyticsRepository {
 
-    private final JdbcClient jdbc;
+    private final NamedParameterJdbcTemplate jdbc;
 
-    public AnalyticsRepository(JdbcClient jdbc) {
-        this.jdbc = jdbc;
+    public AnalyticsRepository(DataSource dataSource) {
+        this.jdbc = new NamedParameterJdbcTemplate(dataSource);
     }
 
     public Map<String, Integer> countByStatus(UUID projectId) {
+        var params = new MapSqlParameterSource("projectId", projectId);
         Map<String, Integer> result = new HashMap<>();
-        jdbc.sql("""
+        jdbc.query("""
                 SELECT status, COUNT(*) AS cnt
                 FROM tasks
                 WHERE project_id = :projectId
                 GROUP BY status
-                """)
-                .param("projectId", projectId)
-                .query((rs, rowNum) -> {
-                    result.put(rs.getString("status"), rs.getInt("cnt"));
-                    return null;
-                })
-                .list();
+                """, params, rs -> {
+            result.put(rs.getString("status"), rs.getInt("cnt"));
+        });
         return result;
     }
 
     public Map<String, Integer> countByPriority(UUID projectId) {
+        var params = new MapSqlParameterSource("projectId", projectId);
         Map<String, Integer> result = new HashMap<>();
-        jdbc.sql("""
+        jdbc.query("""
                 SELECT priority, COUNT(*) AS cnt
                 FROM tasks
                 WHERE project_id = :projectId
                 GROUP BY priority
-                """)
-                .param("projectId", projectId)
-                .query((rs, rowNum) -> {
-                    result.put(rs.getString("priority"), rs.getInt("cnt"));
-                    return null;
-                })
-                .list();
+                """, params, rs -> {
+            result.put(rs.getString("priority"), rs.getInt("cnt"));
+        });
         return result;
     }
 
     public int countOverdue(UUID projectId) {
-        return jdbc.sql("""
+        var params = new MapSqlParameterSource("projectId", projectId);
+        Integer count = jdbc.queryForObject("""
                 SELECT COUNT(*) AS cnt
                 FROM tasks
                 WHERE project_id = :projectId
                   AND status != 'DONE'
                   AND due_date < CURRENT_DATE
-                """)
-                .param("projectId", projectId)
-                .query((rs, rowNum) -> rs.getInt("cnt"))
-                .single();
+                """, params, Integer.class);
+        return count != null ? count : 0;
     }
 
     public Double avgCompletionTimeHours(UUID projectId) {
-        return jdbc.sql("""
+        var params = new MapSqlParameterSource("projectId", projectId);
+        return jdbc.queryForObject("""
                 SELECT AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600) AS avg_hours
                 FROM tasks
                 WHERE project_id = :projectId
                   AND completed_at IS NOT NULL
-                """)
-                .param("projectId", projectId)
-                .query((rs, rowNum) -> {
-                    double val = rs.getDouble("avg_hours");
-                    return rs.wasNull() ? null : val;
-                })
-                .single();
+                """, params, Double.class);
     }
 
     public List<MemberWorkloadRow> memberWorkload(UUID projectId) {
-        return jdbc.sql("""
+        var params = new MapSqlParameterSource("projectId", projectId);
+        return jdbc.query("""
                 SELECT u.id AS user_id,
                        u.name,
                        COUNT(*) FILTER (WHERE t.status != 'DONE') AS assigned_count,
@@ -93,18 +84,18 @@ public class AnalyticsRepository {
                   AND t.assignee_id IS NOT NULL
                 GROUP BY u.id, u.name
                 ORDER BY assigned_count DESC
-                """)
-                .param("projectId", projectId)
-                .query((rs, rowNum) -> new MemberWorkloadRow(
-                        rs.getObject("user_id", UUID.class),
-                        rs.getString("name"),
-                        rs.getInt("assigned_count"),
-                        rs.getInt("completed_count")))
-                .list();
+                """, params, (rs, rowNum) -> new MemberWorkloadRow(
+                rs.getObject("user_id", UUID.class),
+                rs.getString("name"),
+                rs.getInt("assigned_count"),
+                rs.getInt("completed_count")));
     }
 
     public List<WeeklyThroughputRow> weeklyThroughput(UUID projectId, int weeks) {
-        return jdbc.sql("""
+        var params = new MapSqlParameterSource()
+                .addValue("projectId", projectId)
+                .addValue("weeks", weeks);
+        return jdbc.query("""
                 WITH week_series AS (
                     SELECT generate_series(
                         date_trunc('week', now()) - ((:weeks - 1) * INTERVAL '1 week'),
@@ -123,18 +114,15 @@ public class AnalyticsRepository {
                 LEFT JOIN tasks t ON t.project_id = :projectId
                 GROUP BY ws.week_start
                 ORDER BY ws.week_start DESC
-                """)
-                .param("projectId", projectId)
-                .param("weeks", weeks)
-                .query((rs, rowNum) -> new WeeklyThroughputRow(
-                        rs.getString("week"),
-                        rs.getInt("completed"),
-                        rs.getInt("created")))
-                .list();
+                """, params, (rs, rowNum) -> new WeeklyThroughputRow(
+                rs.getString("week"),
+                rs.getInt("completed"),
+                rs.getInt("created")));
     }
 
     public PercentilesRow leadTimePercentiles(UUID projectId) {
-        return jdbc.sql("""
+        var params = new MapSqlParameterSource("projectId", projectId);
+        return jdbc.queryForObject("""
                 SELECT COALESCE(PERCENTILE_CONT(0.50) WITHIN GROUP
                            (ORDER BY EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600), 0) AS p50,
                        COALESCE(PERCENTILE_CONT(0.75) WITHIN GROUP
@@ -144,12 +132,9 @@ public class AnalyticsRepository {
                 FROM tasks
                 WHERE project_id = :projectId
                   AND completed_at IS NOT NULL
-                """)
-                .param("projectId", projectId)
-                .query((rs, rowNum) -> new PercentilesRow(
-                        rs.getDouble("p50"),
-                        rs.getDouble("p75"),
-                        rs.getDouble("p95")))
-                .single();
+                """, params, (rs, rowNum) -> new PercentilesRow(
+                rs.getDouble("p50"),
+                rs.getDouble("p75"),
+                rs.getDouble("p95")));
     }
 }
