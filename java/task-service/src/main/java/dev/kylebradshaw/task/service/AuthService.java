@@ -1,15 +1,19 @@
 package dev.kylebradshaw.task.service;
 
 import dev.kylebradshaw.task.dto.AuthResponse;
+import dev.kylebradshaw.task.entity.PasswordResetToken;
 import dev.kylebradshaw.task.entity.RefreshToken;
 import dev.kylebradshaw.task.entity.User;
+import dev.kylebradshaw.task.repository.PasswordResetTokenRepository;
 import dev.kylebradshaw.task.repository.RefreshTokenRepository;
 import dev.kylebradshaw.task.repository.UserRepository;
 import dev.kylebradshaw.task.security.JwtService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Service
 public class AuthService {
@@ -17,13 +21,22 @@ public class AuthService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtService jwtService;
+    private final PasswordEncoder passwordEncoder;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final EmailService emailService;
 
     public AuthService(UserRepository userRepository,
                        RefreshTokenRepository refreshTokenRepository,
-                       JwtService jwtService) {
+                       JwtService jwtService,
+                       PasswordEncoder passwordEncoder,
+                       PasswordResetTokenRepository passwordResetTokenRepository,
+                       EmailService emailService) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.jwtService = jwtService;
+        this.passwordEncoder = passwordEncoder;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
+        this.emailService = emailService;
     }
 
     @Transactional
@@ -39,6 +52,57 @@ public class AuthService {
         }
 
         return issueTokens(user);
+    }
+
+    @Transactional
+    public AuthResponse register(String email, String password, String name) {
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new IllegalArgumentException("Email already registered");
+        }
+
+        String hashedPassword = passwordEncoder.encode(password);
+        User user = new User(email, name, hashedPassword, true);
+        user = userRepository.save(user);
+
+        return issueTokens(user);
+    }
+
+    @Transactional
+    public AuthResponse login(String email, String password) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
+
+        if (user.getPasswordHash() == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new IllegalArgumentException("Invalid email or password");
+        }
+
+        return issueTokens(user);
+    }
+
+    @Transactional
+    public void forgotPassword(String email) {
+        userRepository.findByEmail(email).ifPresent(user -> {
+            String token = UUID.randomUUID().toString();
+            Instant expiresAt = Instant.now().plusSeconds(3600);
+            PasswordResetToken resetToken = new PasswordResetToken(token, user, expiresAt);
+            passwordResetTokenRepository.save(resetToken);
+            emailService.sendPasswordResetEmail(email, token);
+        });
+    }
+
+    @Transactional
+    public void resetPassword(String token, String newPassword) {
+        PasswordResetToken resetToken = passwordResetTokenRepository.findByToken(token)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid reset token"));
+
+        if (resetToken.isExpired()) {
+            throw new IllegalArgumentException("Reset token has expired");
+        }
+
+        User user = resetToken.getUser();
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        passwordResetTokenRepository.delete(resetToken);
     }
 
     @Transactional
