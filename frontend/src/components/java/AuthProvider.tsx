@@ -26,6 +26,8 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoggedIn: boolean;
   login: (code: string, redirectUri: string) => Promise<void>;
+  loginWithPassword: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -33,11 +35,32 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoggedIn: false,
   login: async () => {},
+  loginWithPassword: async () => {},
+  register: async () => {},
   logout: () => {},
 });
 
 export function useAuth() {
   return useContext(AuthContext);
+}
+
+function handleAuthResponse(data: {
+  accessToken: string;
+  refreshToken: string;
+  userId: string;
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+}): AuthUser {
+  setTokens(data.accessToken, data.refreshToken);
+  const authUser: AuthUser = {
+    userId: data.userId,
+    email: data.email,
+    name: data.name,
+    avatarUrl: data.avatarUrl,
+  };
+  localStorage.setItem("java_user", JSON.stringify(authUser));
+  return authUser;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -58,14 +81,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     if (!res.ok) throw new Error("Login failed");
     const data = await res.json();
-    setTokens(data.accessToken, data.refreshToken);
-    const authUser: AuthUser = {
-      userId: data.userId,
-      email: data.email,
-      name: data.name,
-      avatarUrl: data.avatarUrl,
-    };
-    localStorage.setItem("java_user", JSON.stringify(authUser));
+    const authUser = handleAuthResponse(data);
+    setUser(authUser);
+    setIsAuthenticated(true);
+  }, []);
+
+  const loginWithPassword = useCallback(async (email: string, password: string) => {
+    const res = await fetch(`${GATEWAY_URL}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || "Invalid email or password");
+    }
+    const data = await res.json();
+    const authUser = handleAuthResponse(data);
+    setUser(authUser);
+    setIsAuthenticated(true);
+  }, []);
+
+  const register = useCallback(async (email: string, password: string, name: string) => {
+    const res = await fetch(`${GATEWAY_URL}/api/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name }),
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || "Registration failed");
+    }
+    const data = await res.json();
+    const authUser = handleAuthResponse(data);
     setUser(authUser);
     setIsAuthenticated(true);
   }, []);
@@ -80,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoggedIn: isAuthenticated, login, logout }}
+      value={{ user, isLoggedIn: isAuthenticated, login, loginWithPassword, register, logout }}
     >
       <ApolloProvider client={apolloClient}>{children}</ApolloProvider>
     </AuthContext.Provider>
