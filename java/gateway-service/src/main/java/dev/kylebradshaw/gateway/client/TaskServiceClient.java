@@ -1,7 +1,9 @@
 package dev.kylebradshaw.gateway.client;
 
 import dev.kylebradshaw.gateway.dto.ProjectDto;
+import dev.kylebradshaw.gateway.dto.ProjectStatsDto;
 import dev.kylebradshaw.gateway.dto.TaskDto;
+import dev.kylebradshaw.gateway.dto.VelocityDto;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
@@ -106,5 +108,19 @@ public class TaskServiceClient {
                 .header("X-User-Id", userId)
                 .retrieve()
                 .toBodilessEntity();
+    }
+
+    public ProjectStatsDto getProjectStats(String projectId) {
+        return client.get()
+                .uri("/analytics/projects/{id}/stats", projectId)
+                .retrieve()
+                .body(ProjectStatsDto.class);
+    }
+
+    public VelocityDto getProjectVelocity(String projectId, int weeks) {
+        return client.get()
+                .uri("/analytics/projects/{id}/velocity?weeks={weeks}", projectId, weeks)
+                .retrieve()
+                .body(VelocityDto.class);
     }
 }

@@ -9,12 +9,12 @@ import java.util.UUID;
 
 public record TaskResponse(UUID id, UUID projectId, String title, String description, TaskStatus status,
                            TaskPriority priority, UUID assigneeId, String assigneeName, LocalDate dueDate,
-                           Instant createdAt, Instant updatedAt) {
+                           Instant createdAt, Instant updatedAt, Instant completedAt) {
     public static TaskResponse from(Task task) {
         return new TaskResponse(task.getId(), task.getProject().getId(), task.getTitle(), task.getDescription(),
                 task.getStatus(), task.getPriority(),
                 task.getAssignee() != null ? task.getAssignee().getId() : null,
                 task.getAssignee() != null ? task.getAssignee().getName() : null,
-                task.getDueDate(), task.getCreatedAt(), task.getUpdatedAt());
+                task.getDueDate(), task.getCreatedAt(), task.getUpdatedAt(), task.getCompletedAt());
     }
 }

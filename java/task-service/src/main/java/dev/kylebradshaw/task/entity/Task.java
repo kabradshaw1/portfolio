@@ -52,6 +52,9 @@ public class Task {
     @Column(name = "updated_at")
     private Instant updatedAt = Instant.now();
 
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
     protected Task() {}
 
     public Task(Project project, String title, String description, TaskPriority priority, LocalDate dueDate) {
@@ -130,5 +133,13 @@ public class Task {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public Instant getCompletedAt() {
+        return completedAt;
+    }
+
+    public void setCompletedAt(Instant completedAt) {
+        this.completedAt = completedAt;
     }
 }

@@ -10,6 +10,7 @@ import dev.kylebradshaw.task.dto.CreateProjectRequest;
 import dev.kylebradshaw.task.entity.User;
 import dev.kylebradshaw.task.repository.UserRepository;
 import dev.kylebradshaw.task.security.JwtService;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -21,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.RabbitMQContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -39,6 +41,10 @@ class TaskServiceIntegrationTest {
     @Container
     static RabbitMQContainer rabbitmq = new RabbitMQContainer("rabbitmq:3-management-alpine");
 
+    @Container
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
+            .withExposedPorts(6379);
+
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -46,6 +52,8 @@ class TaskServiceIntegrationTest {
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.rabbitmq.host", rabbitmq::getHost);
         registry.add("spring.rabbitmq.port", rabbitmq::getAmqpPort);
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         registry.add("app.jwt.secret", () -> "integration-test-secret-key-at-least-32-characters");
         registry.add("app.jwt.access-token-ttl-ms", () -> "900000");
         registry.add("app.jwt.refresh-token-ttl-ms", () -> "604800000");
@@ -111,5 +119,46 @@ class TaskServiceIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("Integration Task"))
                 .andExpect(jsonPath("$.status").value("TODO"));
+    }
+
+    @Test
+    void analyticsEndpoints_returnStats() throws Exception {
+        // Create a project
+        var projectReq = new CreateProjectRequest("Analytics Project", "For analytics");
+        String projectJson = mockMvc.perform(post("/api/projects")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("X-User-Id", testUser.getId().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(projectReq)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String projectId = objectMapper.readTree(projectJson).get("id").asText();
+
+        // Create tasks with different priorities
+        for (String title : List.of("Task 1", "Task 2", "Task 3")) {
+            mockMvc.perform(post("/api/tasks")
+                            .header("Authorization", "Bearer " + accessToken)
+                            .header("X-User-Id", testUser.getId().toString())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "projectId", projectId, "title", title,
+                                    "priority", "HIGH"))))
+                    .andExpect(status().isCreated());
+        }
+
+        // Get project stats
+        mockMvc.perform(get("/api/analytics/projects/{id}/stats", projectId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.taskCountByStatus.TODO").value(3))
+                .andExpect(jsonPath("$.taskCountByPriority.HIGH").value(3))
+                .andExpect(jsonPath("$.overdueCount").value(0));
+
+        // Get velocity (may be empty but should return valid structure)
+        mockMvc.perform(get("/api/analytics/projects/{id}/velocity", projectId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.weeklyThroughput").isArray());
     }
 }

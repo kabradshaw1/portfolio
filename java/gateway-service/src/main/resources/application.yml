@@ -2,6 +2,12 @@ server:
   port: 8080
 
 spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+  cache:
+    type: redis
   graphql:
     graphiql:
       enabled: ${GRAPHIQL_ENABLED:false}

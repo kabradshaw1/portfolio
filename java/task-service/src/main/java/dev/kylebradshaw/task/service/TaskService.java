@@ -4,13 +4,17 @@ import dev.kylebradshaw.task.dto.CreateTaskRequest;
 import dev.kylebradshaw.task.dto.TaskEventMessage;
 import dev.kylebradshaw.task.dto.UpdateTaskRequest;
 import dev.kylebradshaw.task.entity.Task;
+import dev.kylebradshaw.task.entity.TaskStatus;
 import dev.kylebradshaw.task.entity.User;
 import dev.kylebradshaw.task.repository.ProjectRepository;
 import dev.kylebradshaw.task.repository.TaskRepository;
 import dev.kylebradshaw.task.repository.UserRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +33,10 @@ public class TaskService {
         this.eventPublisher = eventPublisher;
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "project-stats", allEntries = true),
+            @CacheEvict(value = "project-velocity", allEntries = true)
+    })
     @Transactional
     public Task createTask(CreateTaskRequest request, UUID actorId) {
         var project = projectRepo.findById(request.projectId())
@@ -43,6 +51,10 @@ public class TaskService {
         return task;
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "project-stats", allEntries = true),
+            @CacheEvict(value = "project-velocity", allEntries = true)
+    })
     @Transactional
     public Task updateTask(UUID taskId, UpdateTaskRequest request, UUID actorId) {
         Task task = taskRepo.findById(taskId).orElseThrow(() -> new IllegalArgumentException("Task not found"));
@@ -55,6 +67,11 @@ public class TaskService {
         }
         if (request.status() != null && request.status() != task.getStatus()) {
             task.setStatus(request.status());
+            if (request.status() == TaskStatus.DONE) {
+                task.setCompletedAt(Instant.now());
+            } else {
+                task.setCompletedAt(null);
+            }
             statusChanged = true;
         }
         if (request.priority() != null) {
@@ -92,6 +109,10 @@ public class TaskService {
         return taskRepo.findByProjectId(projectId);
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "project-stats", allEntries = true),
+            @CacheEvict(value = "project-velocity", allEntries = true)
+    })
     @Transactional
     public void deleteTask(UUID taskId, UUID actorId) {
         Task task = taskRepo.findById(taskId).orElseThrow(() -> new IllegalArgumentException("Task not found"));

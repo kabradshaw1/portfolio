@@ -17,6 +17,7 @@ import dev.kylebradshaw.task.entity.User;
 import dev.kylebradshaw.task.repository.ProjectRepository;
 import dev.kylebradshaw.task.repository.TaskRepository;
 import dev.kylebradshaw.task.repository.UserRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -95,6 +96,42 @@ class TaskServiceTest {
         Task result = service.assignTask(taskId, assigneeId, userId);
         assertThat(result.getAssignee()).isEqualTo(assignee);
         verify(eventPublisher).publish(eq("task.assigned"), any(TaskEventMessage.class));
+    }
+
+    @Test
+    void updateTask_setsCompletedAtWhenDone() {
+        UUID userId = UUID.randomUUID();
+        User owner = new User("test@example.com", "Owner", null);
+        Project project = new Project("Project", "Desc", owner);
+        Task task = new Task(project, "Task", "Desc", TaskPriority.MEDIUM, null);
+        UUID taskId = UUID.randomUUID();
+
+        when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
+        when(taskRepo.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var request = new UpdateTaskRequest(null, null, TaskStatus.DONE, null, null);
+        Task result = service.updateTask(taskId, request, userId);
+
+        assertThat(result.getCompletedAt()).isNotNull();
+    }
+
+    @Test
+    void updateTask_clearsCompletedAtWhenReopened() {
+        UUID userId = UUID.randomUUID();
+        User owner = new User("test@example.com", "Owner", null);
+        Project project = new Project("Project", "Desc", owner);
+        Task task = new Task(project, "Task", "Desc", TaskPriority.MEDIUM, null);
+        task.setStatus(TaskStatus.DONE);
+        task.setCompletedAt(Instant.now());
+        UUID taskId = UUID.randomUUID();
+
+        when(taskRepo.findById(taskId)).thenReturn(Optional.of(task));
+        when(taskRepo.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var request = new UpdateTaskRequest(null, null, TaskStatus.TODO, null, null);
+        Task result = service.updateTask(taskId, request, userId);
+
+        assertThat(result.getCompletedAt()).isNull();
     }
 
     @Test

@@ -6,6 +6,9 @@ type Query {
     taskActivity(taskId: ID!): [ActivityEvent!]!
     taskComments(taskId: ID!): [Comment!]!
     myNotifications(unreadOnly: Boolean): NotificationResponse!
+    projectStats(projectId: ID!): ProjectStats!
+    projectVelocity(projectId: ID!, weeks: Int = 8): VelocityMetrics!
+    projectHealth(projectId: ID!): ProjectHealth!
 }
 
 type Mutation {
@@ -36,3 +39,38 @@ input CreateProjectInput { name: String!, description: String }
 input UpdateProjectInput { name: String, description: String }
 input CreateTaskInput { projectId: ID!, title: String!, description: String, priority: TaskPriority, dueDate: String }
 input UpdateTaskInput { title: String, description: String, status: TaskStatus, priority: TaskPriority, dueDate: String }
+
+type TaskStatusCounts { todo: Int!, inProgress: Int!, done: Int! }
+type TaskPriorityCounts { low: Int!, medium: Int!, high: Int! }
+type MemberWorkload { userId: ID!, name: String!, assignedCount: Int!, completedCount: Int! }
+type ProjectStats {
+    taskCountByStatus: TaskStatusCounts!
+    taskCountByPriority: TaskPriorityCounts!
+    overdueCount: Int!
+    avgCompletionTimeHours: Float
+    memberWorkload: [MemberWorkload!]!
+}
+
+type WeeklyThroughput { week: String!, completed: Int!, created: Int! }
+type Percentiles { p50: Float!, p75: Float!, p95: Float! }
+type VelocityMetrics {
+    weeklyThroughput: [WeeklyThroughput!]!
+    avgLeadTimeHours: Float
+    leadTimePercentiles: Percentiles!
+}
+
+type EventTypeCount { eventType: String!, count: Int! }
+type WeeklyActivity { week: String!, events: Int!, comments: Int! }
+type ActivityStats {
+    totalEvents: Int!
+    eventCountByType: [EventTypeCount!]!
+    commentCount: Int!
+    activeContributors: Int!
+    weeklyActivity: [WeeklyActivity!]!
+}
+
+type ProjectHealth {
+    stats: ProjectStats!
+    velocity: VelocityMetrics!
+    activity: ActivityStats!
+}

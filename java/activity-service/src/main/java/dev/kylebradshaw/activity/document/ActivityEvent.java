@@ -3,8 +3,14 @@ package dev.kylebradshaw.activity.document;
 import java.time.Instant;
 import java.util.Map;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+@CompoundIndexes({
+    @CompoundIndex(name = "idx_project_timestamp", def = "{'projectId': 1, 'timestamp': -1}"),
+    @CompoundIndex(name = "idx_task_timestamp", def = "{'taskId': 1, 'timestamp': -1}")
+})
 @Document(collection = "activity_events")
 public class ActivityEvent {
     @Id private String id;

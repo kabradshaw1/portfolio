@@ -6,18 +6,34 @@ spring:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:5432/taskdb
     username: ${POSTGRES_USER:taskuser}
     password: ${POSTGRES_PASSWORD:taskpass}
+    hikari:
+      maximum-pool-size: 5        # (core_count * 2) + spindle_count; single-core K8s pod + SSD
+      minimum-idle: 2
+      connection-timeout: 10000   # 10s — fail fast rather than queue indefinitely
+      idle-timeout: 300000        # 5min — release idle connections to free DB resources
+      max-lifetime: 1200000       # 20min — rotate before PostgreSQL's default timeout
+      leak-detection-threshold: 30000  # 30s — warn if a connection is held too long
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: 5672
     username: ${RABBITMQ_USER:guest}
     password: ${RABBITMQ_PASSWORD:guest}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+  cache:
+    type: redis
 
 app:
   jwt:

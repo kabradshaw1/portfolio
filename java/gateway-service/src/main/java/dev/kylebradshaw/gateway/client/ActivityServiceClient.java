@@ -1,6 +1,7 @@
 package dev.kylebradshaw.gateway.client;
 
 import dev.kylebradshaw.gateway.dto.ActivityEventDto;
+import dev.kylebradshaw.gateway.dto.ActivityStatsDto;
 import dev.kylebradshaw.gateway.dto.CommentDto;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
@@ -31,6 +32,13 @@ public class ActivityServiceClient {
                 .uri("/comments/task/{taskId}", taskId)
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
+    }
+
+    public ActivityStatsDto getActivityStats(String projectId, int weeks) {
+        return client.get()
+                .uri("/activity/project/{projectId}/stats?weeks={weeks}", projectId, weeks)
+                .retrieve()
+                .body(ActivityStatsDto.class);
     }
 
     public CommentDto addComment(String taskId, String userId, String body) {
