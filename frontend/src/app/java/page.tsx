@@ -3,13 +3,6 @@ import Link from "next/link";
 export default function JavaPage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
-      <Link
-        href="/"
-        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        &larr; Home
-      </Link>
-
       <h1 className="mt-8 text-3xl font-bold">Full Stack Java Developer</h1>
 
       <section className="mt-8">

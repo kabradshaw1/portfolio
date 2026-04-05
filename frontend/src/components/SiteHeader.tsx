@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { FileText } from "lucide-react";
-import { useAuth } from "./AuthProvider";
-import { NotificationBell } from "./NotificationBell";
+import { useAuth } from "@/components/java/AuthProvider";
+import { NotificationBell } from "@/components/java/NotificationBell";
 
 export function SiteHeader() {
   const { user, isLoggedIn, logout } = useAuth();
@@ -11,11 +11,19 @@ export function SiteHeader() {
   return (
     <header className="border-b border-foreground/10 bg-background">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-        <Link href="/java" className="text-lg font-semibold">
+        <Link href="/" className="text-lg font-semibold">
           Kyle Bradshaw
         </Link>
 
         <nav className="flex items-center gap-4">
+          <a
+            href="https://github.com/kabradshaw1/portfolio"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Portfolio
+          </a>
           <a
             href="https://github.com/kabradshaw1"
             target="_blank"

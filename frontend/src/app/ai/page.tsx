@@ -42,14 +42,6 @@ export default function AISection() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-3xl px-6 py-12">
-        {/* Navigation */}
-        <Link
-          href="/"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          &larr; Home
-        </Link>
-
         {/* Header */}
         <h1 className="mt-8 text-3xl font-bold">AI / Gen AI Engineer</h1>
 
