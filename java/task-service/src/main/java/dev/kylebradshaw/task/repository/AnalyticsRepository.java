@@ -3,6 +3,7 @@ package dev.kylebradshaw.task.repository;
 import dev.kylebradshaw.task.dto.MemberWorkloadRow;
 import dev.kylebradshaw.task.dto.PercentilesRow;
 import dev.kylebradshaw.task.dto.WeeklyThroughputRow;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,29 +20,37 @@ public class AnalyticsRepository {
     }
 
     public Map<String, Integer> countByStatus(UUID projectId) {
-        var rows = jdbc.sql("""
+        Map<String, Integer> result = new HashMap<>();
+        jdbc.sql("""
                 SELECT status, COUNT(*) AS cnt
                 FROM tasks
                 WHERE project_id = :projectId
                 GROUP BY status
                 """)
                 .param("projectId", projectId)
-                .query((rs, rowNum) -> Map.entry(rs.getString("status"), rs.getInt("cnt")))
+                .query((rs, rowNum) -> {
+                    result.put(rs.getString("status"), rs.getInt("cnt"));
+                    return null;
+                })
                 .list();
-        return Map.ofEntries(rows.toArray(Map.Entry[]::new));
+        return result;
     }
 
     public Map<String, Integer> countByPriority(UUID projectId) {
-        var rows = jdbc.sql("""
+        Map<String, Integer> result = new HashMap<>();
+        jdbc.sql("""
                 SELECT priority, COUNT(*) AS cnt
                 FROM tasks
                 WHERE project_id = :projectId
                 GROUP BY priority
                 """)
                 .param("projectId", projectId)
-                .query((rs, rowNum) -> Map.entry(rs.getString("priority"), rs.getInt("cnt")))
+                .query((rs, rowNum) -> {
+                    result.put(rs.getString("priority"), rs.getInt("cnt"));
+                    return null;
+                })
                 .list();
-        return Map.ofEntries(rows.toArray(Map.Entry[]::new));
+        return result;
     }
 
     public int countOverdue(UUID projectId) {
