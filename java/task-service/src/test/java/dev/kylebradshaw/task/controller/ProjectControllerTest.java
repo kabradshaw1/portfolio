@@ -65,7 +65,7 @@ class ProjectControllerTest {
                 }}
         );
 
-        mockMvc.perform(post("/api/projects")
+        mockMvc.perform(post("/projects")
                         .header("X-User-Id", userId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
@@ -81,7 +81,7 @@ class ProjectControllerTest {
 
         when(projectService.getProjectsForUser(userId)).thenReturn(List.of(project));
 
-        mockMvc.perform(get("/api/projects")
+        mockMvc.perform(get("/projects")
                         .header("X-User-Id", userId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("Alpha Project"));
@@ -95,7 +95,7 @@ class ProjectControllerTest {
 
         when(projectService.getProject(projectId)).thenReturn(project);
 
-        mockMvc.perform(get("/api/projects/{id}", projectId))
+        mockMvc.perform(get("/projects/{id}", projectId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Beta Project"));
     }
@@ -116,7 +116,7 @@ class ProjectControllerTest {
                 }}
         );
 
-        mockMvc.perform(put("/api/projects/{id}", projectId)
+        mockMvc.perform(put("/projects/{id}", projectId)
                         .header("X-User-Id", userId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
@@ -131,7 +131,7 @@ class ProjectControllerTest {
 
         doNothing().when(projectService).deleteProject(projectId, userId);
 
-        mockMvc.perform(delete("/api/projects/{id}", projectId)
+        mockMvc.perform(delete("/projects/{id}", projectId)
                         .header("X-User-Id", userId.toString()))
                 .andExpect(status().isNoContent());
     }

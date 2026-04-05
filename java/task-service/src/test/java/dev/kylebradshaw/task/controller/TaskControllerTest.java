@@ -72,7 +72,7 @@ class TaskControllerTest {
                 "title", "Write tests"
         ));
 
-        mockMvc.perform(post("/api/tasks")
+        mockMvc.perform(post("/tasks")
                         .header("X-User-Id", actorId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
@@ -87,7 +87,7 @@ class TaskControllerTest {
 
         when(taskService.getTasksByProject(projectId)).thenReturn(List.of(task));
 
-        mockMvc.perform(get("/api/tasks")
+        mockMvc.perform(get("/tasks")
                         .param("projectId", projectId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("Implement feature"));
@@ -100,7 +100,7 @@ class TaskControllerTest {
 
         when(taskService.getTask(taskId)).thenReturn(task);
 
-        mockMvc.perform(get("/api/tasks/{id}", taskId))
+        mockMvc.perform(get("/tasks/{id}", taskId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Get task"));
     }
@@ -115,7 +115,7 @@ class TaskControllerTest {
 
         String body = objectMapper.writeValueAsString(Map.of("title", "Updated Title"));
 
-        mockMvc.perform(put("/api/tasks/{id}", taskId)
+        mockMvc.perform(put("/tasks/{id}", taskId)
                         .header("X-User-Id", actorId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
@@ -132,7 +132,7 @@ class TaskControllerTest {
 
         when(taskService.assignTask(taskId, assigneeId, actorId)).thenReturn(assigned);
 
-        mockMvc.perform(put("/api/tasks/{id}/assign/{assigneeId}", taskId, assigneeId)
+        mockMvc.perform(put("/tasks/{id}/assign/{assigneeId}", taskId, assigneeId)
                         .header("X-User-Id", actorId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Assigned Task"));
@@ -145,7 +145,7 @@ class TaskControllerTest {
 
         doNothing().when(taskService).deleteTask(taskId, actorId);
 
-        mockMvc.perform(delete("/api/tasks/{id}", taskId)
+        mockMvc.perform(delete("/tasks/{id}", taskId)
                         .header("X-User-Id", actorId.toString()))
                 .andExpect(status().isNoContent());
     }

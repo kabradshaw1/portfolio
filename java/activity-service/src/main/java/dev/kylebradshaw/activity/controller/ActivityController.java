@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/activity")
+@RequestMapping("/activity")
 public class ActivityController {
     private final ActivityService activityService;
 

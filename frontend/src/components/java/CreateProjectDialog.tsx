@@ -23,15 +23,21 @@ interface Props {
 export function CreateProjectDialog({ onClose, onCreated }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [createProject, { loading }] = useMutation(CREATE_PROJECT);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    await createProject({
-      variables: { input: { name: name.trim(), description: description.trim() || null } },
-    });
-    onCreated();
+    setError(null);
+    try {
+      await createProject({
+        variables: { input: { name: name.trim(), description: description.trim() || null } },
+      });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create project");
+    }
   };
 
   return (
@@ -56,6 +62,9 @@ export function CreateProjectDialog({ onClose, onCreated }: Props) {
               placeholder="Optional description"
             />
           </div>
+          {error && (
+            <p className="text-sm text-destructive">{error}</p>
+          )}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" type="button" onClick={onClose}>
               Cancel

@@ -22,7 +22,7 @@ import org.springframework.web.client.RestClient;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/auth")
 public class AuthController {
 
     private final AuthService authService;
@@ -47,7 +47,7 @@ public class AuthController {
 
     /**
      * Exchange Google authorization code for user info and issue tokens.
-     * POST /api/auth/google
+     * POST /auth/google
      */
     @PostMapping("/google")
     public AuthResponse googleLogin(@Valid @RequestBody AuthRequest request) {
@@ -86,7 +86,7 @@ public class AuthController {
 
     /**
      * Refresh access token using a valid refresh token.
-     * POST /api/auth/refresh
+     * POST /auth/refresh
      */
     @PostMapping("/refresh")
     public AuthResponse refresh(@RequestBody Map<String, String> body) {

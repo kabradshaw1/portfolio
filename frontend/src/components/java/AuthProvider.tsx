@@ -74,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const login = useCallback(async (code: string, redirectUri: string) => {
-    const res = await fetch(`${GATEWAY_URL}/api/auth/google`, {
+    const res = await fetch(`${GATEWAY_URL}/auth/google`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, redirectUri }),
@@ -87,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loginWithPassword = useCallback(async (email: string, password: string) => {
-    const res = await fetch(`${GATEWAY_URL}/api/auth/login`, {
+    const res = await fetch(`${GATEWAY_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -103,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const register = useCallback(async (email: string, password: string, name: string) => {
-    const res = await fetch(`${GATEWAY_URL}/api/auth/register`, {
+    const res = await fetch(`${GATEWAY_URL}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, name }),

@@ -69,7 +69,7 @@ class AuthControllerTest {
 
         String body = objectMapper.writeValueAsString(Map.of("refreshToken", refreshTokenStr));
 
-        mockMvc.perform(post("/api/auth/refresh")
+        mockMvc.perform(post("/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
@@ -90,7 +90,7 @@ class AuthControllerTest {
         // MockMvc propagates unhandled exceptions as NestedServletException.
         // We verify the service was called and the exception originates correctly.
         try {
-            mockMvc.perform(post("/api/auth/refresh")
+            mockMvc.perform(post("/auth/refresh")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body));
         } catch (Exception ex) {
@@ -113,7 +113,7 @@ class AuthControllerTest {
         String body = objectMapper.writeValueAsString(
                 new RegisterRequest("new@example.com", "password123", "New User"));
 
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
@@ -133,7 +133,7 @@ class AuthControllerTest {
         String body = objectMapper.writeValueAsString(
                 new LoginRequest("user@example.com", "password123"));
 
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
@@ -147,7 +147,7 @@ class AuthControllerTest {
         String body = objectMapper.writeValueAsString(
                 new ForgotPasswordRequest("user@example.com"));
 
-        mockMvc.perform(post("/api/auth/forgot-password")
+        mockMvc.perform(post("/auth/forgot-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isNoContent());
@@ -160,7 +160,7 @@ class AuthControllerTest {
         String body = objectMapper.writeValueAsString(
                 new ResetPasswordRequest("valid-token", "newpassword123"));
 
-        mockMvc.perform(post("/api/auth/reset-password")
+        mockMvc.perform(post("/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isNoContent());
