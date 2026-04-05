@@ -50,3 +50,5 @@ frontend/node_modules/
 frontend/.next/
 
 .claude/settings.local.json
+.vercel
+.env*.local
