@@ -25,6 +25,9 @@ public class User {
     @Column(name = "avatar_url")
     private String avatarUrl;
 
+    @Column(name = "password_hash")
+    private String passwordHash;
+
     @Column(name = "created_at", updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -34,6 +37,12 @@ public class User {
         this.email = email;
         this.name = name;
         this.avatarUrl = avatarUrl;
+    }
+
+    public User(String email, String name, String passwordHash, boolean isPasswordUser) {
+        this.email = email;
+        this.name = name;
+        this.passwordHash = passwordHash;
     }
 
     public UUID getId() {
@@ -58,6 +67,14 @@ public class User {
 
     public void setAvatarUrl(String avatarUrl) {
         this.avatarUrl = avatarUrl;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 
     public Instant getCreatedAt() {
