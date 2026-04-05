@@ -92,9 +92,9 @@ Current notebooks: `docs/adr/document-qa/` (7 notebooks covering the ingestion a
 - `staging` — integration branch. Pushes trigger mocked Playwright E2E tests.
 - **Kyle handles all git push and merge operations.** Claude should commit locally but never push to remote.
 
-**Developer workflow (using git worktrees):**
+**All code changes must use git worktrees.** Never commit directly to `main` or `staging`. This applies to both agent work and main-conversation work.
 
-Claude agents use `isolation: "worktree"` to work in isolated copies of the repo. This avoids branch switching on the main working tree and lets multiple agents work in parallel without conflicts.
+Claude uses `isolation: "worktree"` to work in isolated copies of the repo. This avoids branch switching on the main working tree and lets multiple agents work in parallel without conflicts.
 
 1. Agent spawned with `isolation: "worktree"` — gets a temporary worktree with its own branch
 2. Agent makes changes and commits in the worktree
@@ -103,11 +103,23 @@ Claude agents use `isolation: "worktree"` to work in isolated copies of the repo
 5. If all pass, Kyle merges `staging` into `main`
 6. CI deploys to production, runs smoke tests against live URLs
 
+**For main-conversation work (no subagent):** Use the `EnterWorktree` tool to create an isolated worktree before making changes. Commit there, then use `ExitWorktree` when done.
+
 **Exception:** Hotfixes for CI/production breakage can go straight to `main`.
+
+**When work is complete:** Claude must list all worktree branches created during the session, with a summary of what each contains. Format:
+```
+Worktree branches created:
+- worktree-agent-XXXX — <summary of changes>
+- worktree-agent-YYYY — <summary of changes>
+```
 
 **Git commands (Kyle runs all push/merge):**
 ```bash
 # After agent completes work in a worktree, the result includes the branch name.
+# Push the branch to GitHub for CI:
+git push origin <worktree-branch>
+
 # Merge that branch into staging:
 git checkout staging && git pull origin staging
 git merge <worktree-branch>
@@ -119,13 +131,13 @@ git checkout main && git pull origin main
 git merge staging
 git push origin main
 # Wait for deploy + smoke tests to pass
-```
 
-**For non-agent work (Claude in main conversation):**
-```bash
-# Claude commits directly on the current branch
-git add <files> && git commit -m "feat: description"
-# Kyle pushes when ready
+# Clean up worktrees after merging (worktrees accumulate disk space):
+git worktree remove .claude/worktrees/<worktree-dir>
+git branch -d <worktree-branch>
+# Or clean up all merged worktrees at once:
+git worktree list  # see what exists
+git worktree prune  # remove stale entries
 ```
 
 ## Pre-commit Requirements
