@@ -114,38 +114,56 @@ Worktree branches created:
 - worktree-agent-YYYY — <summary of changes>
 ```
 
-**Git commands (Kyle runs all push/merge):**
-```bash
-# After agent completes work in a worktree, the result includes the branch name.
-# Push the branch to GitHub for CI:
-git push origin <worktree-branch>
+**Kyle's worktree workflow (step by step):**
 
-# Merge that branch into staging:
+```bash
+# ── Step 1: Review what the agent built ──
+# List all worktrees to see what exists:
+git worktree list
+
+# See what changed on the worktree branch:
+git log --oneline main..<worktree-branch>
+git diff --stat main..<worktree-branch>
+
+# ── Step 2: Push to staging to trigger CI ──
 git checkout staging && git pull origin staging
 git merge <worktree-branch>
 git push origin staging
-# Wait for staging CI (lint + tests + security + E2E) to pass
+# CI runs: lint, unit tests, security scans, E2E tests
 
-# Promote staging → main (Kyle does this)
+# ── Step 3: If CI passes, promote to main ──
 git checkout main && git pull origin main
 git merge staging
 git push origin main
-# Wait for deploy + smoke tests to pass
+# CI runs: deploy + smoke tests
 
-# Clean up worktrees after merging (worktrees accumulate disk space):
+# ── Step 4: Clean up the worktree ──
+# Remove the worktree directory (frees disk space):
 git worktree remove .claude/worktrees/<worktree-dir>
+# Delete the local branch:
 git branch -d <worktree-branch>
-# Or clean up all merged worktrees at once:
-git worktree list  # see what exists
-git worktree prune  # remove stale entries
+# Delete the remote branch (if you pushed it directly):
+git push origin --delete <worktree-branch>
+
+# ── Bulk cleanup: remove all stale worktrees ──
+git worktree list        # see what exists
+git worktree prune       # remove entries for deleted directories
 ```
+
+**How worktrees work (quick reference):**
+- Each worktree is a separate checkout of the repo in `.claude/worktrees/`
+- It has its own branch (e.g., `worktree-agent-a516b636`)
+- Agents commit to that branch — main stays untouched
+- You merge the branch into staging/main when ready
+- After merging, clean up the worktree directory + branch to free disk space
+- `git worktree list` shows all active worktrees at any time
 
 ## Pre-commit Requirements
 
 Before every commit, run the relevant preflight checks and fix any failures. Only escalate to Kyle if you can't resolve the issue.
 
 - **Python changes:** `make preflight-python` and `make preflight-security`
-- **Frontend changes:** `make preflight-frontend`
+- **Frontend changes:** `make preflight-frontend` and `make preflight-e2e`
 - **Java changes:** `make preflight-java` (checkstyle + unit tests, runs locally)
 - **Java integration tests:** `make preflight-java-integration` (runs over SSH on Windows PC, on-demand)
 - **Full sweep:** `make preflight` (runs Python + frontend + security + Java locally)

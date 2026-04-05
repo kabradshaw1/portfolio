@@ -1,4 +1,4 @@
-.PHONY: preflight preflight-python preflight-frontend preflight-java preflight-java-integration preflight-security
+.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-security
 
 # Run all CI checks locally before pushing
 preflight: preflight-python preflight-frontend preflight-security preflight-java
@@ -25,6 +25,11 @@ preflight-frontend:
 	cd frontend && npx tsc --noEmit
 	@echo "\n=== Frontend: build ==="
 	cd frontend && npm run build
+
+# --- Frontend E2E (mocked, no backend needed) ---
+preflight-e2e:
+	@echo "\n=== E2E: mocked Playwright tests ==="
+	cd frontend && npx playwright test
 
 # --- Java (checkstyle + unit tests run locally) ---
 preflight-java:
