@@ -14,9 +14,11 @@ export default function Home() {
         {/* Name & Bio */}
         <h1 className="text-4xl font-bold">Kyle Bradshaw</h1>
         <p className="mt-6 text-lg text-muted-foreground leading-relaxed">
-          [Placeholder: General bio. Introduce yourself, your background in
-          software engineering, and what you bring to the table. This page serves
-          as the entry point to role-specific sections below.]
+          Software engineer focused on building production systems with modern
+          tooling. Since August 2022, I&apos;ve been working full-time on
+          personal projects and consulting, with a focus on Go, TypeScript, and
+          cloud-native infrastructure. This portfolio showcases two areas of
+          specialization — AI/ML engineering and full-stack Java development.
         </p>
 
         {/* Sections */}
