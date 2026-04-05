@@ -37,11 +37,14 @@ public class ProjectService {
 
     public List<Project> getProjectsForUser(UUID userId) {
         List<UUID> projectIds = memberRepo.findByUserId(userId).stream().map(ProjectMember::getProjectId).toList();
-        return projectRepo.findAllById(projectIds);
+        if (projectIds.isEmpty()) {
+            return List.of();
+        }
+        return projectRepo.findAllByIdWithOwner(projectIds);
     }
 
     public Project getProject(UUID projectId) {
-        return projectRepo.findById(projectId).orElseThrow(() -> new IllegalArgumentException("Project not found"));
+        return projectRepo.findByIdWithOwner(projectId).orElseThrow(() -> new IllegalArgumentException("Project not found"));
     }
 
     @Transactional

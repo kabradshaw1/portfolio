@@ -213,7 +213,7 @@ async def test_execute_tool_unknown_tool():
     result = await execute_tool(
         tool_name="unknown_tool",
         arguments={},
-        project_path="/tmp",
+        project_path="/mock/project",
         collection="debug-test",
         ollama_base_url="http://localhost:11434",
         embedding_model="nomic-embed-text",

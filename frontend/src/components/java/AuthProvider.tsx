@@ -4,14 +4,12 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useState,
 } from "react";
 import { ApolloProvider } from "@apollo/client/react";
 import { apolloClient } from "@/lib/apollo-client";
 import {
   clearTokens,
-  getAccessToken,
   isLoggedIn as checkIsLoggedIn,
   setTokens,
   GATEWAY_URL,
@@ -43,18 +41,14 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  useEffect(() => {
-    if (checkIsLoggedIn()) {
-      setIsAuthenticated(true);
-      const stored = localStorage.getItem("java_user");
-      if (stored) {
-        setUser(JSON.parse(stored));
-      }
-    }
-  }, []);
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    if (typeof window === "undefined" || !checkIsLoggedIn()) return null;
+    const stored = localStorage.getItem("java_user");
+    return stored ? JSON.parse(stored) : null;
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    () => typeof window !== "undefined" && checkIsLoggedIn(),
+  );
 
   const login = useCallback(async (code: string, redirectUri: string) => {
     const res = await fetch(`${GATEWAY_URL}/api/auth/google`, {

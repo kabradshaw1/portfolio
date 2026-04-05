@@ -62,7 +62,7 @@ def test_index_success(mock_index, mock_isdir):
         "files_indexed": 5,
         "chunks": 42,
     }
-    response = client.post("/index", json={"path": "/tmp/myproject"})
+    response = client.post("/index", json={"path": "/mock/myproject"})
     assert response.status_code == 200
     data = response.json()
     assert data["collection"] == "debug-myproject"
@@ -86,7 +86,7 @@ def test_index_nonexistent_path(mock_index):
 def test_debug_streams_sse_events(mock_agent):
     from app.main import _project_paths
 
-    _project_paths["debug-test"] = "/tmp/test"
+    _project_paths["debug-test"] = "/mock/project"
 
     async def fake_events(*args, **kwargs):
         yield {"event": "thinking", "data": {"step": 1, "content": "Analyzing..."}}

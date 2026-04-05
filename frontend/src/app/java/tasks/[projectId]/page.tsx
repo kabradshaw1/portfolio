@@ -46,8 +46,7 @@ export default function ProjectPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
 
-  const fetchTasks = useCallback(async () => {
-    setTasksLoading(true);
+  const loadTasks = useCallback(async (): Promise<Task[]> => {
     const token = getAccessToken();
     const res = await fetch(
       `${GATEWAY_URL}/api/tasks?projectId=${projectId}`,
@@ -55,15 +54,22 @@ export default function ProjectPage() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       }
     );
-    if (res.ok) {
-      setTasks(await res.json());
-    }
-    setTasksLoading(false);
+    return res.ok ? res.json() : [];
   }, [projectId]);
 
+  const fetchTasks = useCallback(() => {
+    loadTasks().then((data) => {
+      setTasks(data);
+      setTasksLoading(false);
+    });
+  }, [loadTasks]);
+
   useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+    loadTasks().then((data) => {
+      setTasks(data);
+      setTasksLoading(false);
+    });
+  }, [loadTasks]);
 
   if (projectLoading || tasksLoading) {
     return (
