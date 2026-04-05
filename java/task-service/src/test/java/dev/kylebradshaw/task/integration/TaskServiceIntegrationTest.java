@@ -1,5 +1,6 @@
 package dev.kylebradshaw.task.integration;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -148,6 +149,12 @@ class TaskServiceIntegrationTest {
         }
 
         // Get project stats
+        var statsResult = mockMvc.perform(get("/api/analytics/projects/{id}/stats", projectId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andReturn();
+        System.out.println("Analytics stats status: " + statsResult.getResponse().getStatus());
+        System.out.println("Analytics stats body: " + statsResult.getResponse().getContentAsString());
+        assertThat(statsResult.getResponse().getStatus()).isEqualTo(200);
         mockMvc.perform(get("/api/analytics/projects/{id}/stats", projectId)
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
