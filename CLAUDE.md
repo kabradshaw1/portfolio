@@ -90,30 +90,27 @@ Current notebooks: `docs/adr/document-qa/` (7 notebooks covering the ingestion a
 
 - `main` — production. Pushes trigger deploy + post-deploy smoke tests.
 - `staging` — integration branch. Pushes trigger mocked Playwright E2E tests.
-- `feat/*`, `fix/*` — feature branches merged into `staging` first.
 - **Kyle handles all git push and merge operations.** Claude should commit locally but never push to remote.
 
-**Developer workflow:**
-1. Create feature branch from `staging`
-2. Push — CI runs lint, unit tests, security scans
-3. Merge into `staging` — CI runs mocked E2E tests
-4. If all pass, merge `staging` into `main`
-5. CI deploys to production, runs smoke tests against live URLs
+**Developer workflow (using git worktrees):**
+
+Claude agents use `isolation: "worktree"` to work in isolated copies of the repo. This avoids branch switching on the main working tree and lets multiple agents work in parallel without conflicts.
+
+1. Agent spawned with `isolation: "worktree"` — gets a temporary worktree with its own branch
+2. Agent makes changes and commits in the worktree
+3. Kyle reviews the worktree diff, merges into `staging`, and pushes
+4. CI runs lint, unit tests, security scans, E2E tests on `staging`
+5. If all pass, Kyle merges `staging` into `main`
+6. CI deploys to production, runs smoke tests against live URLs
 
 **Exception:** Hotfixes for CI/production breakage can go straight to `main`.
 
 **Git commands (Kyle runs all push/merge):**
 ```bash
-# Start feature work
+# After agent completes work in a worktree, the result includes the branch name.
+# Merge that branch into staging:
 git checkout staging && git pull origin staging
-git checkout -b feat/my-feature
-
-# Work and commit (Claude does this part)
-git add <files> && git commit -m "feat: description"
-
-# Merge feature → staging (Kyle does this)
-git checkout staging
-git merge feat/my-feature
+git merge <worktree-branch>
 git push origin staging
 # Wait for staging CI (lint + tests + security + E2E) to pass
 
@@ -122,9 +119,13 @@ git checkout main && git pull origin main
 git merge staging
 git push origin main
 # Wait for deploy + smoke tests to pass
+```
 
-# Clean up
-git branch -d feat/my-feature
+**For non-agent work (Claude in main conversation):**
+```bash
+# Claude commits directly on the current branch
+git add <files> && git commit -m "feat: description"
+# Kyle pushes when ready
 ```
 
 ## Pre-commit Requirements
