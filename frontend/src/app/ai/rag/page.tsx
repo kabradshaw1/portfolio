@@ -166,7 +166,7 @@ export default function RagDemo() {
           <h1 className="text-lg font-semibold">Document Q&A Assistant</h1>
         </div>
         <div className="flex items-center gap-4">
-          {documents.length > 0 && (
+          {documents?.length > 0 && (
             <DocumentList documents={documents} onDelete={handleDelete} />
           )}
           <FileUpload onUploaded={handleUploaded} />
