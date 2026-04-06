@@ -24,6 +24,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -163,6 +164,16 @@ class AuthControllerTest {
         mockMvc.perform(post("/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteUser_returnsNoContent() throws Exception {
+        UUID userId = UUID.randomUUID();
+        doNothing().when(authService).deleteUser(userId);
+
+        mockMvc.perform(delete("/auth/user")
+                        .header("X-User-Id", userId.toString()))
                 .andExpect(status().isNoContent());
     }
 }
