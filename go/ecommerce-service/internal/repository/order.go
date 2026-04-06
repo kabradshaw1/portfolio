@@ -26,7 +26,7 @@ func (r *OrderRepository) Create(ctx context.Context, userID uuid.UUID, total in
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var order model.Order
 	err = tx.QueryRow(ctx,

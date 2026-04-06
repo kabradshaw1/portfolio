@@ -27,9 +27,9 @@ repos:
         language: system
         files: ^frontend/.*\.(ts|tsx|js|jsx)$
         pass_filenames: false
-      - id: go-vet
-        name: Go Vet
-        entry: bash -c 'cd go/auth-service && go vet ./... && cd ../ecommerce-service && go vet ./...'
+      - id: go-lint
+        name: Go Lint
+        entry: bash -c 'cd go/auth-service && ~/go/bin/golangci-lint run ./... && cd ../ecommerce-service && ~/go/bin/golangci-lint run ./...'
         language: system
         files: ^go/.*\.go$
         pass_filenames: false
