@@ -6,13 +6,13 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 
 ## Tech Stack
 
-- FastAPI (Python backend microservices)
-- Qdrant (vector database, Docker container)
-- Ollama (Qwen 2.5 14B for chat/debug, nomic-embed-text for embeddings)
-- LangChain text splitters
-- Next.js + TypeScript + shadcn/ui (frontend)
-- Playwright (E2E testing)
-- Docker Compose (backend orchestration)
+- **Python:** FastAPI microservices (ingestion, chat, debug), LangChain text splitters, Qdrant vector DB
+- **Java:** Spring Boot microservices (task, activity, notification, gateway), PostgreSQL, MongoDB, Redis, RabbitMQ, GraphQL
+- **Go:** Auth service + ecommerce service, PostgreSQL, Redis, RabbitMQ
+- **AI/ML:** Ollama (Qwen 2.5 14B for chat/debug, nomic-embed-text for embeddings)
+- **Frontend:** Next.js + TypeScript + shadcn/ui, Apollo Client (GraphQL)
+- **Testing:** pytest, JUnit, Go test/benchmarks, Playwright (E2E)
+- **Infra:** Docker Compose, Minikube (K8s), NGINX Ingress, Cloudflare Tunnel, GitHub Actions
 
 ## Infrastructure
 
@@ -22,6 +22,7 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 - **Minikube:** All backend services run in Kubernetes on the Windows PC
   - `ai-services` namespace: Python AI services + Qdrant
   - `java-tasks` namespace: Java microservices + databases
+  - `go-ecommerce` namespace: Go auth + ecommerce services
   - `monitoring` namespace: Prometheus + Grafana
   - NGINX Ingress Controller routes all traffic by path
   - `minikube tunnel` exposes Ingress on localhost:80
@@ -34,38 +35,45 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 - **Frontend:** `npm run dev` in `frontend/`, points to `localhost:8000` via tunnel
 - **Production:** Frontend on Vercel (`https://kylebradshaw.dev`), backend via Cloudflare Tunnel:
   - `https://api.kylebradshaw.dev` → Windows PC localhost:80 (Minikube Ingress)
-  - Ingress routes by path: `/ingestion/*`, `/chat/*`, `/debug/*` → Python services; `/graphql`, `/api/auth/*` → Java services; `/grafana/*` → monitoring
+  - Ingress routes by path: `/ingestion/*`, `/chat/*`, `/debug/*` → Python services; `/graphql`, `/api/auth/*` → Java services; `/go/*` → Go services; `/grafana/*` → monitoring
   - Cloudflared installed as Windows service (auto-starts on boot)
   - `minikube tunnel` must be running as background process
 
 ## Project Structure
 
 ```
-services/
-├── ingestion/          # FastAPI — PDF upload, parse, chunk, embed, store, delete
-│   ├── app/            # main.py, pdf_parser.py, chunker.py, embedder.py, store.py, config.py
-│   └── tests/          # unit tests
-├── chat/               # FastAPI — question embed, search, RAG prompt, stream
-│   ├── app/            # main.py, retriever.py, prompt.py, chain.py, config.py
-│   └── tests/          # unit tests
-├── debug/              # FastAPI — code indexing, agent loop, tool execution, debug streaming
-│   ├── app/            # main.py, agent.py, tools.py, indexer.py, prompts.py, config.py
-│   └── tests/          # unit tests
-nginx/                  # Reverse proxy — path-based routing to backend services
-├── nginx.conf          # /ingestion/*, /chat/*, /debug/* → respective services
-k8s/                    # Kubernetes manifests — production deployment (Minikube)
-├── ai-services/        # Python AI services + Qdrant namespace
-├── monitoring/         # Prometheus + Grafana namespace
-└── deploy.sh           # Unified deploy script for all namespaces
-frontend/               # Next.js + shadcn/ui — chat UI, PDF upload, document management, debug
-├── e2e/                # Playwright E2E tests (mocked + production smoke)
-├── src/components/     # ChatWindow, FileUpload, DocumentList, DebugForm, AgentTimeline, etc.
-docs/adr/               # Architecture Decision Records (notebooks per service + markdown ADRs)
-├── document-qa/        # 7 notebooks explaining the Document Q&A services step-by-step
-├── template-adr.md     # Lightweight ADR template for smaller decisions
-.github/workflows/      # CI/CD pipeline with security scanning
-docker-compose.yml      # nginx gateway + Qdrant + ingestion + chat + debug services
-.env.example            # Config template
+services/                   # Python AI microservices
+├── ingestion/              # FastAPI — PDF upload, parse, chunk, embed, store, delete
+├── chat/                   # FastAPI — question embed, search, RAG prompt, stream
+├── debug/                  # FastAPI — code indexing, agent loop, tool execution, debug streaming
+java/                       # Java microservices (Spring Boot, Gradle multi-project)
+├── task-service/           # Task/project CRUD, PostgreSQL, JPA
+├── activity-service/       # Activity feed, MongoDB, Redis caching, analytics aggregation
+├── notification-service/   # Event-driven notifications, RabbitMQ consumer
+├── gateway-service/        # GraphQL gateway, routes to task/activity/notification
+├── k8s/                    # Java-specific K8s manifests
+go/                         # Go microservices
+├── auth-service/           # JWT auth (register, login, refresh), PostgreSQL
+├── ecommerce-service/      # Products, cart, orders, Redis caching, RabbitMQ worker pool
+├── k8s/                    # Go-specific K8s manifests
+frontend/                   # Next.js + shadcn/ui
+├── src/app/                # Pages: ai/ (rag, debug), java/ (tasks), go/ (ecommerce)
+├── src/components/         # Shared UI + domain components (java/, go/)
+├── src/lib/                # API clients, auth utils, Apollo GraphQL client
+├── e2e/                    # Playwright E2E tests (mocked + production smoke)
+nginx/                      # Reverse proxy — path-based routing to all backend stacks
+k8s/                        # Kubernetes manifests — production deployment (Minikube)
+├── ai-services/            # Python AI services + Qdrant
+├── monitoring/             # Prometheus + Grafana
+├── deploy.sh               # Unified deploy script for all namespaces
+monitoring/                 # Prometheus + Grafana config files
+docs/adr/                   # Architecture Decision Records
+├── document-qa/            # 7 notebooks (Python/FastAPI, RAG pipeline)
+├── document-debugger/      # 3 notebooks (code-aware chunking, agent loop, tools)
+├── java-task-management/   # 7 markdown lessons (Spring Boot, JPA, GraphQL, etc.)
+├── *.md                    # Standalone ADRs (CI/CD, deployment, K8s migration, etc.)
+.github/workflows/          # CI/CD: ci.yml (Python + frontend), java-ci.yml, go-ci.yml
+docker-compose.yml          # Python services + nginx + Qdrant
 ```
 
 ## Kyle's Background
@@ -84,7 +92,11 @@ Design decision documentation lives in `docs/adr/`, organized by service. Two fo
 
 **Markdown ADRs** — for smaller, standalone decisions (e.g., "Why Qdrant over Pinecone"). Use `docs/adr/template-adr.md` as a starting point.
 
-Current notebooks: `docs/adr/document-qa/` (7 notebooks covering the ingestion and chat services).
+Current ADRs:
+- `docs/adr/document-qa/` — 7 Jupyter notebooks covering the ingestion and chat services
+- `docs/adr/document-debugger/` — 3 Jupyter notebooks covering the debug assistant
+- `docs/adr/java-task-management/` — 7 markdown lessons covering the Java microservices stack
+- Standalone markdown ADRs for CI/CD, deployment architecture, K8s migration, analytics, auth, etc.
 
 ## Branching & Workflow
 
@@ -113,7 +125,8 @@ Before every commit, run the relevant preflight checks and fix any failures. Onl
 - **Frontend changes:** `make preflight-frontend` and `make preflight-e2e`
 - **Java changes:** `make preflight-java` (checkstyle + unit tests, runs locally)
 - **Java integration tests:** `make preflight-java-integration` (runs over SSH on Windows PC, on-demand)
-- **Full sweep:** `make preflight` (runs Python + frontend + security + Java locally)
+- **Go changes:** `make preflight-go` (lint + tests)
+- **Full sweep:** `make preflight` (runs Python + frontend + security + Java + Go locally)
 
 If a check fails, fix it before committing. If you can't fix it, explain the failure to Kyle before suggesting a push.
 
@@ -121,29 +134,10 @@ If a check fails, fix it before committing. If you can't fix it, explain the fai
 
 All jobs run on every push. Security + E2E jobs gate deployment.
 
-**Quality:** ruff lint/format, pytest + coverage, tsc, Next.js build
+**Quality:** ruff lint/format, pytest + coverage, tsc, Next.js build, checkstyle, golangci-lint, Go tests
 **Security:** Bandit (SAST), pip-audit, npm audit, gitleaks, Hadolint, CORS guardrail
 **E2E:** Playwright mocked tests (staging), production smoke tests (post-deploy)
 **Deploy:** GHCR images built in CI → SSH to Windows PC → `docker compose pull && up -d`
+**Separate CI workflows:** `ci.yml` (Python + frontend + security), `java-ci.yml`, `go-ci.yml`
 
 **Tailscale authkey:** Expires every 90 days (free plan). Regenerate at Tailscale admin → Keys and update `TAILSCALE_AUTHKEY` in GitHub repo secrets.
-
-## Design Specs
-
-- `docs/superpowers/specs/2026-03-31-document-qa-assistant-design.md` — full system architecture
-- `docs/superpowers/specs/2026-03-31-frontend-design.md` — frontend design
-- `docs/superpowers/specs/2026-03-31-lesson-notebooks-design.md` — ADR notebook design
-- `docs/superpowers/specs/2026-03-31-devsecops-design.md` — security hardening
-- `docs/superpowers/specs/2026-04-01-e2e-testing-and-staging-design.md` — E2E testing & staging workflow
-- `docs/superpowers/specs/2026-04-03-debug-assistant-design.md` — debug assistant architecture
-
-## Current State
-
-- **Backend:** Ingestion + chat + debug services, all with unit tests, Docker Compose on Windows
-- **Frontend:** Document Q&A chat UI + Debug Assistant with agent timeline
-- **Gateway:** nginx reverse proxy — single API domain with path-based routing
-- **E2E Tests:** 9 mocked Playwright tests + production smoke suite
-- **ADRs:** 7 notebooks in `docs/adr/document-qa/`
-- **Deployed:** Frontend on Vercel, backend via Cloudflare Tunnel (`api.kylebradshaw.dev`)
-- **Security:** Automated scanning in CI (Bandit, pip-audit, npm audit, gitleaks, Hadolint)
-- **K8s Deployment:** All services in Minikube (3 namespaces), NGINX Ingress Controller, unified deploy script
