@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-auth-service
+  namespace: go-ecommerce
+spec:
+  selector:
+    app: go-auth-service
+  ports:
+    - port: 8091
+      targetPort: 8091

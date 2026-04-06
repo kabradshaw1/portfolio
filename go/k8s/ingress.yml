@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: go-ecommerce-ingress
+  namespace: go-ecommerce
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /go-auth/(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: go-auth-service
+                port:
+                  number: 8091
+          - path: /go-api/(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: go-ecommerce-service
+                port:
+                  number: 8092

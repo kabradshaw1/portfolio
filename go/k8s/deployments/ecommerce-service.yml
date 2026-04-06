@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-ecommerce-service
+  namespace: go-ecommerce
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: go-ecommerce-service
+  template:
+    metadata:
+      labels:
+        app: go-ecommerce-service
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: go-ecommerce-service
+          image: ghcr.io/kabradshaw1/portfolio/go-ecommerce-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8092
+          envFrom:
+            - configMapRef:
+                name: ecommerce-service-config
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: go-secrets
+                  key: jwt-secret
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8092
+            initialDelaySeconds: 5
+            periodSeconds: 10
