@@ -1,7 +1,7 @@
-.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-security
+.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-security
 
 # Run all CI checks locally before pushing
-preflight: preflight-python preflight-frontend preflight-security preflight-java
+preflight: preflight-python preflight-frontend preflight-security preflight-java preflight-go
 	@echo "\n✅ All preflight checks passed"
 
 # --- Python services ---
@@ -42,6 +42,15 @@ preflight-java:
 preflight-java-integration:
 	@echo "\n=== Java: integration tests (via SSH) ==="
 	ssh PC@100.79.113.84 "cd C:\Users\PC\repos\portfolio && git pull && cd java && ./gradlew integrationTest --no-daemon"
+
+# --- Go services ---
+preflight-go:
+	@echo "\n=== Go: linting ==="
+	cd go/auth-service && golangci-lint run ./...
+	cd go/ecommerce-service && golangci-lint run ./...
+	@echo "\n=== Go: tests ==="
+	cd go/auth-service && go test ./... -v -race
+	cd go/ecommerce-service && go test ./... -v -race
 
 # --- Security scans ---
 preflight-security:
