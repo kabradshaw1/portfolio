@@ -5,7 +5,10 @@ import dev.kylebradshaw.task.entity.PasswordResetToken;
 import dev.kylebradshaw.task.entity.RefreshToken;
 import dev.kylebradshaw.task.entity.User;
 import dev.kylebradshaw.task.repository.PasswordResetTokenRepository;
+import dev.kylebradshaw.task.repository.ProjectMemberRepository;
+import dev.kylebradshaw.task.repository.ProjectRepository;
 import dev.kylebradshaw.task.repository.RefreshTokenRepository;
+import dev.kylebradshaw.task.repository.TaskRepository;
 import dev.kylebradshaw.task.repository.UserRepository;
 import dev.kylebradshaw.task.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +50,15 @@ class AuthServiceTest {
     @Mock
     private EmailService emailService;
 
+    @Mock
+    private ProjectRepository projectRepository;
+
+    @Mock
+    private ProjectMemberRepository projectMemberRepository;
+
+    @Mock
+    private TaskRepository taskRepository;
+
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     private AuthService authService;
@@ -54,7 +66,8 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         authService = new AuthService(userRepository, refreshTokenRepository,
-                jwtService, passwordEncoder, passwordResetTokenRepository, emailService);
+                jwtService, passwordEncoder, passwordResetTokenRepository, emailService,
+                projectRepository, projectMemberRepository, taskRepository);
     }
 
     @Test

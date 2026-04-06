@@ -2,10 +2,14 @@ package dev.kylebradshaw.task.service;
 
 import dev.kylebradshaw.task.dto.AuthResponse;
 import dev.kylebradshaw.task.entity.PasswordResetToken;
+import dev.kylebradshaw.task.entity.Project;
 import dev.kylebradshaw.task.entity.RefreshToken;
 import dev.kylebradshaw.task.entity.User;
 import dev.kylebradshaw.task.repository.PasswordResetTokenRepository;
+import dev.kylebradshaw.task.repository.ProjectMemberRepository;
+import dev.kylebradshaw.task.repository.ProjectRepository;
 import dev.kylebradshaw.task.repository.RefreshTokenRepository;
+import dev.kylebradshaw.task.repository.TaskRepository;
 import dev.kylebradshaw.task.repository.UserRepository;
 import dev.kylebradshaw.task.security.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -13,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -24,19 +29,28 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailService emailService;
+    private final ProjectRepository projectRepository;
+    private final ProjectMemberRepository projectMemberRepository;
+    private final TaskRepository taskRepository;
 
     public AuthService(UserRepository userRepository,
                        RefreshTokenRepository refreshTokenRepository,
                        JwtService jwtService,
                        PasswordEncoder passwordEncoder,
                        PasswordResetTokenRepository passwordResetTokenRepository,
-                       EmailService emailService) {
+                       EmailService emailService,
+                       ProjectRepository projectRepository,
+                       ProjectMemberRepository projectMemberRepository,
+                       TaskRepository taskRepository) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.jwtService = jwtService;
         this.passwordEncoder = passwordEncoder;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.emailService = emailService;
+        this.projectRepository = projectRepository;
+        this.projectMemberRepository = projectMemberRepository;
+        this.taskRepository = taskRepository;
     }
 
     @Transactional
@@ -103,6 +117,22 @@ public class AuthService {
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
         passwordResetTokenRepository.delete(resetToken);
+    }
+
+    @Transactional
+    public void deleteUser(UUID userId) {
+        List<Project> ownedProjects = projectRepository.findByOwnerId(userId);
+        List<UUID> ownedProjectIds = ownedProjects.stream().map(Project::getId).toList();
+
+        if (!ownedProjectIds.isEmpty()) {
+            taskRepository.deleteByProjectIdIn(ownedProjectIds);
+        }
+        taskRepository.clearAssigneeByUserId(userId);
+        projectMemberRepository.deleteByUserId(userId);
+        projectRepository.deleteAll(ownedProjects);
+        refreshTokenRepository.deleteByUserId(userId);
+        passwordResetTokenRepository.deleteByUserId(userId);
+        userRepository.deleteById(userId);
     }
 
     @Transactional
