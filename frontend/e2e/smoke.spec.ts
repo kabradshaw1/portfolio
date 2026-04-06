@@ -94,7 +94,7 @@ test.describe("Java task management smoke tests", () => {
     await expect(page.getByPlaceholder("Email")).toBeVisible();
     await expect(page.getByPlaceholder("Password")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Sign in" })
+      page.getByRole("button", { name: "Sign in", exact: true })
     ).toBeVisible();
   });
 

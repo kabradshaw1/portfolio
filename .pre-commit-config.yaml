@@ -15,3 +15,15 @@ repos:
         language: system
         files: ^java/.*\.java$
         pass_filenames: false
+      - id: frontend-typecheck
+        name: Frontend Type Check
+        entry: bash -c 'cd frontend && npx tsc --noEmit'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
+      - id: frontend-lint
+        name: Frontend Lint
+        entry: bash -c 'cd frontend && npm run lint'
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
