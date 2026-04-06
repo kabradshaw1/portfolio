@@ -9,3 +9,4 @@ data:
   NOTIFICATION_SERVICE_URL: http://notification-service:8083
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
   GRAPHIQL_ENABLED: "true"
+  REDIS_HOST: redis
