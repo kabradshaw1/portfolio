@@ -92,71 +92,18 @@ Current notebooks: `docs/adr/document-qa/` (7 notebooks covering the ingestion a
 - `staging` — integration branch. Pushes trigger mocked Playwright E2E tests.
 - **Kyle handles all git push and merge operations.** Claude should commit locally but never push to remote.
 
-**All code changes must use git worktrees.** Never commit directly to `main` or `staging`. This applies to both agent work and main-conversation work.
+**New features and non-urgent changes happen on a feature branch:**
 
-Claude uses `isolation: "worktree"` to work in isolated copies of the repo. This avoids branch switching on the main working tree and lets multiple agents work in parallel without conflicts.
+1. Claude creates a feature branch from `main` (e.g., `fix-task-403`, `add-analytics`)
+2. Claude makes changes and commits on the feature branch
+3. Kyle reviews the diff, pushes the feature branch, and watches CI
+4. Kyle merges the feature branch into `staging` and pushes — watches CI (lint, tests, security, E2E)
+5. If all pass, Kyle merges `staging` into `main` and pushes — watches CI (deploy + smoke tests)
+6. Kyle deletes the feature branch after merge
 
-1. Agent spawned with `isolation: "worktree"` — gets a temporary worktree with its own branch
-2. Agent makes changes and commits in the worktree
-3. Kyle reviews the worktree diff, merges into `staging`, and pushes
-4. CI runs lint, unit tests, security scans, E2E tests on `staging`
-5. If all pass, Kyle merges `staging` into `main`
-6. CI deploys to production, runs smoke tests against live URLs
+**Fixes for things already in production can go straight to `main`.**
 
-**For main-conversation work (no subagent):** Use the `EnterWorktree` tool to create an isolated worktree before making changes. Commit there, then use `ExitWorktree` when done.
-
-**Exception:** Hotfixes for CI/production breakage can go straight to `main`.
-
-**When work is complete:** Claude must list all worktree branches created during the session, with a summary of what each contains. Format:
-```
-Worktree branches created:
-- worktree-agent-XXXX — <summary of changes>
-- worktree-agent-YYYY — <summary of changes>
-```
-
-**Kyle's worktree workflow (step by step):**
-
-```bash
-# ── Step 1: Review what the agent built ──
-# List all worktrees to see what exists:
-git worktree list
-
-# See what changed on the worktree branch:
-git log --oneline main..<worktree-branch>
-git diff --stat main..<worktree-branch>
-
-# ── Step 2: Push to staging to trigger CI ──
-git checkout staging && git pull origin staging
-git merge <worktree-branch>
-git push origin staging
-# CI runs: lint, unit tests, security scans, E2E tests
-
-# ── Step 3: If CI passes, promote to main ──
-git checkout main && git pull origin main
-git merge staging
-git push origin main
-# CI runs: deploy + smoke tests
-
-# ── Step 4: Clean up the worktree ──
-# Remove the worktree directory (frees disk space):
-git worktree remove .claude/worktrees/<worktree-dir>
-# Delete the local branch:
-git branch -d <worktree-branch>
-# Delete the remote branch (if you pushed it directly):
-git push origin --delete <worktree-branch>
-
-# ── Bulk cleanup: remove all stale worktrees ──
-git worktree list        # see what exists
-git worktree prune       # remove entries for deleted directories
-```
-
-**How worktrees work (quick reference):**
-- Each worktree is a separate checkout of the repo in `.claude/worktrees/`
-- It has its own branch (e.g., `worktree-agent-a516b636`)
-- Agents commit to that branch — main stays untouched
-- You merge the branch into staging/main when ready
-- After merging, clean up the worktree directory + branch to free disk space
-- `git worktree list` shows all active worktrees at any time
+**Do not use git worktrees or the EnterWorktree/ExitWorktree tools.**
 
 ## Pre-commit Requirements
 
