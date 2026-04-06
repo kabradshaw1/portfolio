@@ -17,8 +17,9 @@ export default function Home() {
           Software engineer focused on building production systems with modern
           tooling. Since August 2022, I&apos;ve been working full-time on
           personal projects and consulting, with a focus on Go, TypeScript, and
-          cloud-native infrastructure. This portfolio showcases two areas of
-          specialization — AI/ML engineering and full-stack Java development.
+          cloud-native infrastructure. This portfolio showcases three areas of
+          specialization — agentic AI systems, Go backend services, and
+          full-stack Java development.
         </p>
 
         {/* Sections */}
@@ -38,6 +39,24 @@ export default function Home() {
                   A full-stack retrieval-augmented generation system
                   demonstrating PDF ingestion, vector search, prompt
                   engineering, and streaming LLM responses.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/go" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>Go Backend Developer</CardTitle>
+                <CardDescription>
+                  Ecommerce platform built with Go, PostgreSQL, Redis, and
+                  RabbitMQ
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Microservices architecture with JWT authentication, product
+                  catalog, cart, orders, and asynchronous worker pools — deployed
+                  on Kubernetes.
                 </p>
               </CardContent>
             </Card>
