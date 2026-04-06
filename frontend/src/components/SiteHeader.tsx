@@ -16,6 +16,12 @@ export function SiteHeader() {
         </Link>
 
         <nav className="flex items-center gap-4">
+          <Link
+            href="/go"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Go
+          </Link>
           <a
             href="https://github.com/kabradshaw1/portfolio"
             target="_blank"
