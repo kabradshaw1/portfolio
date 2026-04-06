@@ -411,7 +411,7 @@ jobs:
 
           # Apply manifests by piping from CI runner to remote kubectl
           for f in $(find k8s/ai-services -name '*.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
-          for f in $(find java/k8s -name '*.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          for f in $(find java/k8s -name '*.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/monitoring -name '*.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 
           # Restart deployments to pull new images

@@ -17,7 +17,11 @@ kubectl apply -f "$REPO_DIR/java/k8s/namespace.yml"
 kubectl apply -f "$SCRIPT_DIR/monitoring/namespace.yml"
 
 echo "==> Applying secrets..."
-kubectl apply -f "$REPO_DIR/java/k8s/secrets/java-secrets.yml"
+if [ -f "$REPO_DIR/java/k8s/secrets/java-secrets.yml" ]; then
+  kubectl apply -f "$REPO_DIR/java/k8s/secrets/java-secrets.yml"
+else
+  echo "    WARN: java-secrets.yml not found — copy java-secrets.yml.template and fill in values"
+fi
 
 echo "==> Applying ConfigMaps..."
 kubectl apply -f "$SCRIPT_DIR/ai-services/configmaps/"
@@ -107,7 +111,7 @@ echo "      /chat/*         — RAG chat API"
 echo "      /debug/*        — Debug assistant API"
 echo "      /graphql        — Java GraphQL API"
 echo "      /graphiql       — GraphQL IDE"
-echo "      /api/auth/*     — OAuth authentication"
+echo "      /auth/*         — OAuth authentication"
 echo "      /grafana/       — Monitoring dashboards"
 echo "      /rabbitmq/      — Message broker UI"
 echo ""

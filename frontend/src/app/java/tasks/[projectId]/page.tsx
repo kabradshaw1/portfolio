@@ -49,7 +49,7 @@ export default function ProjectPage() {
   const loadTasks = useCallback(async (): Promise<Task[]> => {
     const token = getAccessToken();
     const res = await fetch(
-      `${GATEWAY_URL}/api/tasks?projectId=${projectId}`,
+      `${GATEWAY_URL}/tasks?projectId=${projectId}`,
       {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       }

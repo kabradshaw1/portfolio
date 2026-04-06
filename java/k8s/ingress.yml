@@ -31,6 +31,13 @@ spec:
                 name: task-service
                 port:
                   number: 8081
+          - path: /tasks(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: task-service
+                port:
+                  number: 8081
           - path: /actuator/health
             pathType: Exact
             backend:
