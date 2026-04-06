@@ -15,7 +15,7 @@ func BenchmarkProductList(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		svc.List(ctx, params)
+		_, _, _ = svc.List(ctx, params)
 	}
 }
 
@@ -26,6 +26,6 @@ func BenchmarkProductListByCategory(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		svc.List(ctx, params)
+		_, _, _ = svc.List(ctx, params)
 	}
 }

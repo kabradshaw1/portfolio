@@ -11,7 +11,7 @@ func BenchmarkRegister(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		svc.Register(ctx, "bench@test.com", "password123", "Bench User")
+		_, _ = svc.Register(ctx, "bench@test.com", "password123", "Bench User")
 	}
 }
 
@@ -19,10 +19,10 @@ func BenchmarkLogin(b *testing.B) {
 	repo := newMockRepo()
 	svc := NewAuthService(repo, "test-secret-at-least-32-characters-long!!", 900000, 604800000)
 	ctx := context.Background()
-	svc.Register(ctx, "bench@test.com", "password123", "Bench User")
+	_, _ = svc.Register(ctx, "bench@test.com", "password123", "Bench User")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		svc.Login(ctx, "bench@test.com", "password123")
+		_, _ = svc.Login(ctx, "bench@test.com", "password123")
 	}
 }
