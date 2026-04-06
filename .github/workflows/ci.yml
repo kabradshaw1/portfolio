@@ -409,11 +409,14 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           SSH="ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key PC@100.79.113.84"
 
-          # Apply manifests by piping from CI runner to remote kubectl
-          for f in $(find k8s/ai-services -name '*.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
-          for f in $(find java/k8s -name '*.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
-          for f in $(find k8s/monitoring -name '*.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
-          for f in $(find go/k8s -name '*.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          # Apply namespaces first to avoid race conditions
+          for f in $(find k8s go/k8s java/k8s -name 'namespace.yml' 2>/dev/null); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+
+          # Apply remaining manifests
+          for f in $(find k8s/ai-services -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          for f in $(find java/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          for f in $(find k8s/monitoring -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          for f in $(find go/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 
           # Restart deployments to pull new images
           $SSH "kubectl rollout restart deployment -n ai-services"
