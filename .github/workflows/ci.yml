@@ -391,6 +391,8 @@ jobs:
       - security-cors-check
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
+      - uses: actions/checkout@v4
+
       - name: Set up Tailscale
         # NOTE: authkey expires every 90 days (free plan). Regenerate at
         # Tailscale admin → Keys and update TAILSCALE_AUTHKEY in GitHub secrets.
@@ -398,22 +400,27 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Deploy backend via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: 100.79.113.84
-          username: PC
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            git pull origin main
-            kubectl apply -f k8s/ai-services/ --recursive
-            kubectl apply -f java/k8s/ --recursive
-            kubectl apply -f k8s/monitoring/ --recursive
-            kubectl rollout restart deployment -n ai-services
-            kubectl rollout restart deployment -n java-tasks
-            kubectl rollout status deployment -n ai-services --timeout=180s
-            kubectl rollout status deployment -n java-tasks --timeout=180s
+      - name: Apply K8s manifests via SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH="ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key PC@100.79.113.84"
+
+          # Apply manifests by piping from CI runner to remote kubectl
+          for f in $(find k8s/ai-services -name '*.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          for f in $(find java/k8s -name '*.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          for f in $(find k8s/monitoring -name '*.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+
+          # Restart deployments to pull new images
+          $SSH "kubectl rollout restart deployment -n ai-services"
+          $SSH "kubectl rollout restart deployment -n java-tasks"
+          $SSH "kubectl rollout status deployment -n ai-services --timeout=180s"
+          $SSH "kubectl rollout status deployment -n java-tasks --timeout=180s"
+
+          rm -f ~/.ssh/deploy_key
 
   smoke-production:
     name: Production Smoke Tests
