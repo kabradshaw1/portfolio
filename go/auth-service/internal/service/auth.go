@@ -15,6 +15,7 @@ type UserRepo interface {
 	Create(ctx context.Context, email, passwordHash, name string) (*model.User, error)
 	FindByEmail(ctx context.Context, email string) (*model.User, error)
 	FindByID(ctx context.Context, id string) (*model.User, error)
+	UpsertGoogleUser(ctx context.Context, email, name, avatarURL string) (*model.User, error)
 }
 
 // AuthService handles registration, login, and token refresh.
@@ -97,6 +98,15 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*model.
 	return s.generateTokens(user)
 }
 
+// AuthenticateGoogleUser upserts a Google-authenticated user and issues tokens.
+func (s *AuthService) AuthenticateGoogleUser(ctx context.Context, email, name, avatarURL string) (*model.AuthResponse, error) {
+	user, err := s.repo.UpsertGoogleUser(ctx, email, name, avatarURL)
+	if err != nil {
+		return nil, err
+	}
+	return s.generateTokens(user)
+}
+
 // generateTokens creates an access token and a refresh token for the user.
 func (s *AuthService) generateTokens(user *model.User) (*model.AuthResponse, error) {
 	now := time.Now()
@@ -123,11 +133,17 @@ func (s *AuthService) generateTokens(user *model.User) (*model.AuthResponse, err
 		return nil, err
 	}
 
+	avatar := ""
+	if user.AvatarURL != nil {
+		avatar = *user.AvatarURL
+	}
+
 	return &model.AuthResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		UserID:       user.ID.String(),
 		Email:        user.Email,
 		Name:         user.Name,
+		AvatarURL:    avatar,
 	}, nil
 }

@@ -59,6 +59,10 @@ func (m *mockUserRepo) FindByID(_ context.Context, id string) (*model.User, erro
 	return nil, fmt.Errorf("user not found")
 }
 
+func (m *mockUserRepo) UpsertGoogleUser(_ context.Context, _ string, _ string, _ string) (*model.User, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 // --- tests ---
 
 func TestRegisterHandler(t *testing.T) {
