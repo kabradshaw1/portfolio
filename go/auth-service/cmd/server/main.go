@@ -54,7 +54,7 @@ func main() {
 	// Wire dependencies
 	userRepo := repository.NewUserRepository(pool)
 	authSvc := service.NewAuthService(userRepo, jwtSecret, 900000, 604800000)
-	authHandler := handler.NewAuthHandler(authSvc)
+	authHandler := handler.NewAuthHandler(authSvc, nil) // TODO(task8): wire google client
 	healthHandler := handler.NewHealthHandler(pool)
 
 	// Set up Gin
