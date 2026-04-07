@@ -41,7 +41,7 @@ export function GoUserDropdown() {
               Orders
             </DropdownMenuItem>
             <DropdownMenuItem
-              onSelect={() => {
+              onClick={() => {
                 logout();
                 router.push("/go/ecommerce");
               }}
