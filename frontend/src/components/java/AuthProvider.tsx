@@ -71,18 +71,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    if (!checkIsLoggedIn()) return;
-    const stored = localStorage.getItem("java_user");
-    if (stored) {
-      try {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setUser(JSON.parse(stored));
-      } catch {
-        /* corrupt entry — ignore */
+    if (checkIsLoggedIn()) {
+      const stored = localStorage.getItem("java_user");
+      if (stored) {
+        try {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setUser(JSON.parse(stored));
+        } catch {
+          /* corrupt entry — ignore */
+        }
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsAuthenticated(true);
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setIsAuthenticated(true);
+
+    const handler = () => {
+      setUser(null);
+      setIsAuthenticated(false);
+      localStorage.removeItem("java_user");
+    };
+    window.addEventListener("java-auth-cleared", handler);
+    return () => window.removeEventListener("java-auth-cleared", handler);
   }, []);
 
   const login = useCallback(async (code: string, redirectUri: string) => {

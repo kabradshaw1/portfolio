@@ -19,7 +19,10 @@ const authLink = setContext((_, { headers }) => {
 });
 
 const errorLink = new ErrorLink(({ error, operation, forward }) => {
-  if (error instanceof ServerError && error.statusCode === 403) {
+  if (
+    error instanceof ServerError &&
+    (error.statusCode === 401 || error.statusCode === 403)
+  ) {
     return new Observable((observer) => {
       refreshAccessToken()
         .then((newToken) => {
