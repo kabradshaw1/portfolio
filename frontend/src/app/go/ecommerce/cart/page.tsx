@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useGoCart } from "@/components/go/GoCartProvider";
 import { goApiFetch } from "@/lib/go-api";
 
 interface CartItem {
@@ -16,6 +17,7 @@ function formatPrice(cents: number): string {
 }
 
 export default function CartPage() {
+  const { refresh } = useGoCart();
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState(false);
@@ -38,11 +40,12 @@ export default function CartPage() {
   }, [fetchCart]);
 
   async function removeItem(itemId: string) {
-    const res = await goApiFetch(`/cart/items/${itemId}`, {
+    const res = await goApiFetch(`/cart/${itemId}`, {
       method: "DELETE",
     });
     if (res.ok) {
       setItems((prev) => prev.filter((i) => i.id !== itemId));
+      await refresh();
     }
   }
 

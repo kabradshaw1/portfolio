@@ -50,7 +50,7 @@ export default function ProductDetailPage() {
     setError("");
     setAdding(true);
     try {
-      const res = await goApiFetch("/cart/items", {
+      const res = await goApiFetch("/cart", {
         method: "POST",
         body: JSON.stringify({ productId: product.id, quantity: 1 }),
       });
