@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -27,12 +28,14 @@ export function GoUserDropdown() {
       <DropdownMenuContent align="end">
         {isLoggedIn && user ? (
           <>
-            <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">{user.name}</span>
-                <span className="text-xs text-muted-foreground">{user.email}</span>
-              </div>
-            </DropdownMenuLabel>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{user.name}</span>
+                  <span className="text-xs text-muted-foreground">{user.email}</span>
+                </div>
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem render={<Link href="/go/ecommerce/orders" />}>
               Orders
