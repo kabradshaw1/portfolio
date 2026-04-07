@@ -63,16 +63,26 @@ function handleAuthResponse(data: {
 }
 
 export function GoAuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<GoAuthUser | null>(() => {
-    if (typeof window === "undefined" || !checkIsLoggedIn()) return null;
-    const stored = localStorage.getItem("go_user");
-    return stored ? JSON.parse(stored) : null;
-  });
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () => typeof window !== "undefined" && checkIsLoggedIn(),
-  );
+  // Always start logged-out so the server-rendered HTML matches the client's
+  // first render. The real state is hydrated from localStorage in useEffect.
+  const [user, setUser] = useState<GoAuthUser | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
+    if (checkIsLoggedIn()) {
+      const stored = localStorage.getItem("go_user");
+      if (stored) {
+        try {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setUser(JSON.parse(stored));
+        } catch {
+          /* corrupt entry — ignore */
+        }
+      }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsAuthenticated(true);
+    }
+
     const handler = () => {
       setUser(null);
       setIsAuthenticated(false);
