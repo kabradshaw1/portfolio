@@ -34,7 +34,7 @@ func (m *mockUserRepo) Create(_ context.Context, email, passwordHash, name strin
 	u := &model.User{
 		ID:           uuid.New(),
 		Email:        email,
-		PasswordHash: passwordHash,
+		PasswordHash: &passwordHash,
 		Name:         name,
 		CreatedAt:    time.Now(),
 	}

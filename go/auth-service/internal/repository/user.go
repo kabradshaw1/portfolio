@@ -25,9 +25,9 @@ func (r *UserRepository) Create(ctx context.Context, email, passwordHash, name s
 	user := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3)
-		 RETURNING id, email, password_hash, name, created_at`,
+		 RETURNING id, email, password_hash, name, avatar_url, created_at`,
 		email, passwordHash, name,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
 			return nil, ErrEmailExists
@@ -40,9 +40,9 @@ func (r *UserRepository) Create(ctx context.Context, email, passwordHash, name s
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	user := &model.User{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, email, password_hash, name, created_at FROM users WHERE email = $1`,
+		`SELECT id, email, password_hash, name, avatar_url, created_at FROM users WHERE email = $1`,
 		email,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -55,13 +55,32 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*model.User, error) {
 	user := &model.User{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, email, password_hash, name, created_at FROM users WHERE id = $1`,
+		`SELECT id, email, password_hash, name, avatar_url, created_at FROM users WHERE id = $1`,
 		id,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
 		}
+		return nil, err
+	}
+	return user, nil
+}
+
+// UpsertGoogleUser creates a new Google-authenticated user, or updates an
+// existing user's name and avatar. password_hash is never modified.
+func (r *UserRepository) UpsertGoogleUser(ctx context.Context, email, name, avatarURL string) (*model.User, error) {
+	user := &model.User{}
+	err := r.pool.QueryRow(ctx,
+		`INSERT INTO users (email, name, avatar_url, password_hash)
+		 VALUES ($1, $2, $3, NULL)
+		 ON CONFLICT (email) DO UPDATE
+		   SET name = EXCLUDED.name,
+		       avatar_url = EXCLUDED.avatar_url
+		 RETURNING id, email, password_hash, name, avatar_url, created_at`,
+		email, name, avatarURL,
+	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt)
+	if err != nil {
 		return nil, err
 	}
 	return user, nil
