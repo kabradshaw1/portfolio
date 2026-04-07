@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { useGoCart } from "@/components/go/GoCartProvider";
 import { goApiFetch } from "@/lib/go-api";
 
@@ -83,7 +85,14 @@ export default function CartPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
-      <h1 className="text-2xl font-bold">Shopping Cart</h1>
+      <Link
+        href="/go/ecommerce"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="size-4" />
+        Back to store
+      </Link>
+      <h1 className="mt-6 text-2xl font-bold">Shopping Cart</h1>
 
       {items.length === 0 ? (
         <p className="mt-8 text-muted-foreground">

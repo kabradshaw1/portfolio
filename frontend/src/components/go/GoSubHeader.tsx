@@ -7,17 +7,18 @@ import { useGoStore } from "@/components/go/GoStoreProvider";
 
 export function GoSubHeader() {
   const pathname = usePathname();
-  const onStore = pathname === "/go/ecommerce";
+  const inStore = pathname.startsWith("/go/ecommerce");
+  const onStoreRoot = pathname === "/go/ecommerce";
   const { categories, activeCategory, setActiveCategory } = useGoStore();
 
   return (
     <div className="border-b border-foreground/10 bg-background">
       <div className="mx-auto grid h-12 max-w-5xl grid-cols-[1fr_auto_1fr] items-center gap-4 px-6">
         <div className="flex items-center">
-          {onStore && <h1 className="text-lg font-semibold">Store</h1>}
+          {inStore && <h1 className="text-lg font-semibold">Store</h1>}
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
-          {onStore && (
+          {onStoreRoot && (
             <>
               <button
                 onClick={() => setActiveCategory(null)}
