@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,14 @@ import { GoGoogleLoginButton } from "@/components/go/GoGoogleLoginButton";
 import { useGoAuth } from "@/components/go/GoAuthProvider";
 
 export default function GoLoginPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-sm px-6 py-12">Loading…</div>}>
+      <GoLoginPageInner />
+    </Suspense>
+  );
+}
+
+function GoLoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login, loginWithGoogle } = useGoAuth();
