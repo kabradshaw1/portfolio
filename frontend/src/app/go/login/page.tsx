@@ -25,7 +25,9 @@ export default function GoLoginPage() {
       try {
         const redirectUri = `${window.location.origin}/go/login`;
         await loginWithGoogle(code, redirectUri);
-        if (!cancelled) router.replace("/go/ecommerce");
+        const stored = sessionStorage.getItem("go_login_next");
+        sessionStorage.removeItem("go_login_next");
+        if (!cancelled) router.replace(stored || searchParams.get("next") || "/go/ecommerce");
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Google sign-in failed");
@@ -47,7 +49,7 @@ export default function GoLoginPage() {
       setBusy(true);
       try {
         await login(email, password);
-        router.push("/go/ecommerce");
+        router.push(searchParams.get("next") || "/go/ecommerce");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Login failed");
       } finally {

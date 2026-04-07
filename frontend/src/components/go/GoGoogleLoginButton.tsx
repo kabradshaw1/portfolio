@@ -6,6 +6,8 @@ import { GOOGLE_CLIENT_ID } from "@/lib/auth";
 
 export function GoGoogleLoginButton() {
   const handleLogin = useCallback(() => {
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next) sessionStorage.setItem("go_login_next", next);
     const redirectUri = `${window.location.origin}/go/login`;
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useGoAuth } from "@/components/go/GoAuthProvider";
+import { useGoCart } from "@/components/go/GoCartProvider";
 import { goApiFetch } from "@/lib/go-api";
 import { GO_ECOMMERCE_URL } from "@/lib/go-auth";
 
@@ -22,7 +23,9 @@ function formatPrice(cents: number): string {
 
 export default function ProductDetailPage() {
   const params = useParams<{ productId: string }>();
+  const router = useRouter();
   const { isLoggedIn } = useGoAuth();
+  const { refresh } = useGoCart();
   const [product, setProduct] = useState<Product | null>(null);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
@@ -39,6 +42,10 @@ export default function ProductDetailPage() {
 
   async function addToCart() {
     if (!product) return;
+    if (!isLoggedIn) {
+      router.push(`/go/login?next=/go/ecommerce/${product.id}`);
+      return;
+    }
     setAdding(true);
     try {
       const res = await goApiFetch("/cart/items", {
@@ -47,6 +54,7 @@ export default function ProductDetailPage() {
       });
       if (res.ok) {
         setAdded(true);
+        await refresh();
         setTimeout(() => setAdded(false), 2000);
       }
     } finally {
@@ -94,7 +102,7 @@ export default function ProductDetailPage() {
               : "Out of stock"}
           </p>
 
-          {isLoggedIn && product.stock > 0 && (
+          {product.stock > 0 && (
             <button
               onClick={addToCart}
               disabled={adding}
