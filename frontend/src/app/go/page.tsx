@@ -5,22 +5,25 @@ export default function GoPage() {
     <div className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="mt-8 text-3xl font-bold">Go Backend Developer</h1>
 
+      {/* Bio Section */}
       <section className="mt-8">
         <p className="text-muted-foreground leading-relaxed">
-          Microservices ecommerce platform built with Go, demonstrating
-          RESTful API design, JWT authentication, PostgreSQL, Redis caching,
-          and asynchronous order processing with RabbitMQ — deployed on
-          Kubernetes.
+          Go is my preferred language due to its readability, simplicity, and
+          strong performance. It’s my first choice for many backend tasks, and
+          I’ve used it to build microservices, automation scripts, and
+          command-line tools with a focus on clean, efficient design.
         </p>
       </section>
 
+      {/* Project Section */}
       <section className="mt-12">
         <h2 className="text-2xl font-semibold">Ecommerce Platform</h2>
+
         <p className="mt-4 text-muted-foreground leading-relaxed">
-          A full-stack ecommerce storefront with product browsing, shopping
-          cart, and order management. Two Go microservices handle
-          authentication and core ecommerce operations, backed by PostgreSQL,
-          Redis, and RabbitMQ.
+          Microservices ecommerce platform built with Go, demonstrating
+          RESTful API design, JWT authentication, PostgreSQL, Redis caching,
+          and asynchronous order processing with RabbitMQ. Deployed using
+          Docker and Kubernetes.
         </p>
 
         <h3 className="mt-6 text-lg font-medium">Tech Stack</h3>
@@ -34,15 +37,15 @@ export default function GoPage() {
           <li>Next.js + TypeScript frontend</li>
           <li>Docker Compose (local dev), Kubernetes (production)</li>
         </ul>
-      </section>
 
-      <section className="mt-12">
-        <Link
-          href="/go/ecommerce"
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Open Store &rarr;
-        </Link>
+        <div className="mt-6">
+          <Link
+            href="/go/ecommerce"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            View Project &rarr;
+          </Link>
+        </div>
       </section>
     </div>
   );
