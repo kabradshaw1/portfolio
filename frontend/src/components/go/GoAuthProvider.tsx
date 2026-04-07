@@ -17,6 +17,7 @@ interface GoAuthUser {
   userId: string;
   email: string;
   name: string;
+  avatarUrl?: string;
 }
 
 interface GoAuthContextType {
@@ -24,6 +25,7 @@ interface GoAuthContextType {
   isLoggedIn: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
+  loginWithGoogle: (code: string, redirectUri: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -32,6 +34,7 @@ const GoAuthContext = createContext<GoAuthContextType>({
   isLoggedIn: false,
   login: async () => {},
   register: async () => {},
+  loginWithGoogle: async () => {},
   logout: () => {},
 });
 
@@ -45,12 +48,14 @@ function handleAuthResponse(data: {
   userId: string;
   email: string;
   name: string;
+  avatarUrl?: string;
 }): GoAuthUser {
   setGoTokens(data.accessToken, data.refreshToken);
   const authUser: GoAuthUser = {
     userId: data.userId,
     email: data.email,
     name: data.name,
+    avatarUrl: data.avatarUrl,
   };
   localStorage.setItem("go_user", JSON.stringify(authUser));
   return authUser;
@@ -98,6 +103,22 @@ export function GoAuthProvider({ children }: { children: React.ReactNode }) {
     setIsAuthenticated(true);
   }, []);
 
+  const loginWithGoogle = useCallback(async (code: string, redirectUri: string) => {
+    const res = await fetch(`${GO_AUTH_URL}/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, redirectUri }),
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || "Google sign-in failed");
+    }
+    const data = await res.json();
+    const authUser = handleAuthResponse(data);
+    setUser(authUser);
+    setIsAuthenticated(true);
+  }, []);
+
   const logout = useCallback(() => {
     clearGoTokens();
     localStorage.removeItem("go_user");
@@ -107,7 +128,7 @@ export function GoAuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <GoAuthContext.Provider
-      value={{ user, isLoggedIn: isAuthenticated, login, register, logout }}
+      value={{ user, isLoggedIn: isAuthenticated, login, register, loginWithGoogle, logout }}
     >
       {children}
     </GoAuthContext.Provider>
