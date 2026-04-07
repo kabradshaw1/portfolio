@@ -18,6 +18,10 @@ env/
 .env
 .env.local
 
+# Kubernetes secrets (never commit)
+**/k8s/secrets/*.yml
+!**/k8s/secrets/*.yml.template
+
 # IDE
 .vscode/
 .idea/

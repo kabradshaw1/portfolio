@@ -16,7 +16,7 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 
 ## Infrastructure
 
-- **Mac (dev machine):** Code editing, frontend dev server, no GPU
+- **Mac (dev machine):** Code editing, frontend dev server, no GPU. Docker runtime is Colima (start with `colima start` before `docker compose`).
 - **Windows (PC@100.79.113.84 via Tailscale):** Ollama (RTX 3090), Minikube (all backend services)
 - **SSH:** `ssh PC@100.79.113.84` — key-based auth configured
 - **Minikube:** All backend services run in Kubernetes on the Windows PC
