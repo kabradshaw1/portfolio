@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useState,
 } from "react";
 import {
@@ -70,6 +71,16 @@ export function GoAuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(
     () => typeof window !== "undefined" && checkIsLoggedIn(),
   );
+
+  useEffect(() => {
+    const handler = () => {
+      setUser(null);
+      setIsAuthenticated(false);
+      localStorage.removeItem("go_user");
+    };
+    window.addEventListener("go-auth-cleared", handler);
+    return () => window.removeEventListener("go-auth-cleared", handler);
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await fetch(`${GO_AUTH_URL}/auth/login`, {

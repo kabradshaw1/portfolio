@@ -29,6 +29,7 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetch(`${GO_ECOMMERCE_URL}/products/${params.productId}`)
@@ -46,6 +47,7 @@ export default function ProductDetailPage() {
       router.push(`/go/login?next=/go/ecommerce/${product.id}`);
       return;
     }
+    setError("");
     setAdding(true);
     try {
       const res = await goApiFetch("/cart/items", {
@@ -56,6 +58,10 @@ export default function ProductDetailPage() {
         setAdded(true);
         await refresh();
         setTimeout(() => setAdded(false), 2000);
+      } else if (res.status === 401 || res.status === 403) {
+        router.push(`/go/login?next=/go/ecommerce/${product.id}`);
+      } else {
+        setError("Failed to add to cart. Please try again.");
       }
     } finally {
       setAdding(false);
@@ -111,6 +117,7 @@ export default function ProductDetailPage() {
               {added ? "Added!" : adding ? "Adding..." : "Add to Cart"}
             </button>
           )}
+          {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
         </div>
       </div>
     </div>

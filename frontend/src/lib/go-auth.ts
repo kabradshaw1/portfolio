@@ -48,6 +48,9 @@ export async function refreshGoAccessToken(): Promise<string | null> {
       });
       if (!res.ok) {
         clearGoTokens();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("go-auth-cleared"));
+        }
         return null;
       }
       const data = await res.json();
@@ -55,6 +58,9 @@ export async function refreshGoAccessToken(): Promise<string | null> {
       return data.accessToken as string;
     } catch {
       clearGoTokens();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("go-auth-cleared"));
+      }
       return null;
     } finally {
       refreshPromise = null;
