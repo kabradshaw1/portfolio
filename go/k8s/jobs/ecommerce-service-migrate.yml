@@ -21,7 +21,7 @@ spec:
             - |
               set -e
               echo "Running migrations..."
-              /usr/local/bin/migrate -path=/migrations -database="$DATABASE_URL" up
+              /usr/local/bin/migrate -path=/migrations -database="${DATABASE_URL}&x-migrations-table=ecommerce_schema_migrations" up
               echo "Applying seed data..."
               psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /seed.sql
               echo "Done."

@@ -16,11 +16,11 @@ spec:
         - name: migrate
           image: ghcr.io/kabradshaw1/portfolio/go-auth-service:latest
           imagePullPolicy: Always
-          command: ["/usr/local/bin/migrate"]
+          command: ["/bin/sh", "-c"]
           args:
-            - "-path=/migrations"
-            - "-database=$(DATABASE_URL)"
-            - "up"
+            - |
+              set -e
+              /usr/local/bin/migrate -path=/migrations -database="${DATABASE_URL}&x-migrations-table=auth_schema_migrations" up
           env:
             - name: DATABASE_URL
               valueFrom:
