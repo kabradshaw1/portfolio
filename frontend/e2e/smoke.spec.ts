@@ -221,7 +221,7 @@ test.describe("Go ecommerce smoke tests", () => {
 
   test("products endpoint returns a non-empty catalog", async ({ request }) => {
     const res = await request.get(`${API_URL}/go-api/products`);
-    expect(res.ok()).toBeTruthy();
+    expect(res.status()).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.products)).toBe(true);
     expect(body.products.length).toBeGreaterThan(0);
@@ -229,7 +229,7 @@ test.describe("Go ecommerce smoke tests", () => {
 
   test("categories endpoint returns a non-empty list", async ({ request }) => {
     const res = await request.get(`${API_URL}/go-api/categories`);
-    expect(res.ok()).toBeTruthy();
+    expect(res.status()).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.categories)).toBe(true);
     expect(body.categories.length).toBeGreaterThan(0);
@@ -244,7 +244,7 @@ test.describe("Go ecommerce smoke tests", () => {
     const res = await request.post(`${API_URL}/go-auth/auth/login`, {
       data: { email: SMOKE_EMAIL, password: SMOKE_PASSWORD },
     });
-    expect(res.ok()).toBeTruthy();
+    expect(res.status()).toBe(200);
     const body = await res.json();
     expect(typeof body.accessToken).toBe("string");
     expect(body.accessToken.length).toBeGreaterThan(0);

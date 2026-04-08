@@ -522,11 +522,14 @@ jobs:
             $SSH "kubectl apply -f -" < go/k8s/jobs/auth-service-migrate.yml
             $SSH "kubectl apply -f -" < go/k8s/jobs/ecommerce-service-migrate.yml
 
-            # Wait for both Jobs to complete. If either fails, dump logs and fail the deploy.
-            if ! $SSH "kubectl wait --for=condition=complete --timeout=120s job/go-auth-migrate job/go-ecommerce-migrate -n go-ecommerce"; then
+            # Wait for both Jobs to complete. Timeout is intentionally longer than
+            # the Jobs' own activeDeadlineSeconds (120s) so a Job that hits its own
+            # deadline surfaces as a Job failure with logs, not as a racing
+            # kubectl-wait timeout. If either fails, dump logs and fail the deploy.
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate job/go-ecommerce-migrate -n go-ecommerce"; then
               echo "Migration Job failed. Logs follow:"
-              $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce" || true
-              $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce" || true
+              $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce --tail=200" || true
+              $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
 
