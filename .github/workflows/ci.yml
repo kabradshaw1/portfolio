@@ -569,4 +569,5 @@ jobs:
           SMOKE_FRONTEND_URL: https://kylebradshaw.dev
           SMOKE_API_URL: https://api.kylebradshaw.dev
           SMOKE_GRAPHQL_URL: https://api.kylebradshaw.dev/graphql
+          SMOKE_GO_PASSWORD: ${{ secrets.SMOKE_GO_PASSWORD }}
         run: npx playwright test e2e/smoke.spec.ts --config=playwright.smoke.config.ts
