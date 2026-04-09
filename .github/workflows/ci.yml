@@ -35,6 +35,29 @@ jobs:
               - 'java/k8s/**'
               - 'go/k8s/**'
 
+  grafana-dashboard-sync:
+    name: Grafana Dashboard Sync Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify dashboard source JSON and K8s ConfigMap are in sync
+        run: |
+          python3 - <<'PY'
+          import json, yaml, sys
+          src = json.load(open('monitoring/grafana/dashboards/system-overview.json'))
+          cm = yaml.safe_load(open('k8s/monitoring/configmaps/grafana-dashboards.yml'))
+          embedded = json.loads(cm['data']['system-overview.json'])
+          if src != embedded:
+              print("ERROR: grafana dashboard drift detected", file=sys.stderr)
+              print("  monitoring/grafana/dashboards/system-overview.json and", file=sys.stderr)
+              print("  k8s/monitoring/configmaps/grafana-dashboards.yml embed different JSON.", file=sys.stderr)
+              print("  Regenerate the ConfigMap from the source JSON", file=sys.stderr)
+              print("  (see docs/superpowers/plans/2026-04-09-grafana-hardening.md Task 4).", file=sys.stderr)
+              sys.exit(1)
+          print("grafana dashboards in sync")
+          PY
+
   backend-lint:
     name: Backend Lint
     runs-on: ubuntu-latest
