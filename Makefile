@@ -1,4 +1,4 @@
-.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-security preflight-ai-service
+.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-security preflight-ai-service preflight-ai-service-evals
 
 # Run all CI checks locally before pushing
 preflight: preflight-python preflight-frontend preflight-security preflight-java preflight-go
@@ -59,6 +59,10 @@ preflight-ai-service:
 	cd go/ai-service && go vet ./...
 	@echo "\n=== ai-service: tests ==="
 	cd go/ai-service && go test ./... -count=1
+
+preflight-ai-service-evals:
+	@echo "\n=== ai-service: mocked-LLM evals ==="
+	cd go/ai-service && go test -tags=eval ./internal/evals/... -count=1
 
 # --- Security scans ---
 preflight-security:
