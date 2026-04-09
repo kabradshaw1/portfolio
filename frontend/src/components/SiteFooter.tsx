@@ -5,6 +5,12 @@ export function SiteFooter() {
         <p>© {new Date().getFullYear()} Kyle Bradshaw</p>
         <nav className="flex items-center gap-5">
           <a
+            href="mailto:kylebradshaw.dev@gmail.com"
+            className="hover:text-foreground transition-colors"
+          >
+            Email
+          </a>
+          <a
             href="https://github.com/kabradshaw1"
             target="_blank"
             rel="noopener noreferrer"
