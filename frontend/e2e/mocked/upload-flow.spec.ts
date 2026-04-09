@@ -40,7 +40,7 @@ test.describe("Upload flow", () => {
     // The file input is hidden — set files directly on it
     const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles(
-      path.join(__dirname, "fixtures", "test.pdf")
+      path.join(__dirname, "..", "fixtures", "test.pdf")
     );
 
     // FileUpload sets status to "{filename} ({chunks_created} chunks)"
