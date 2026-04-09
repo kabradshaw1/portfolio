@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MermaidDiagram } from "@/components/MermaidDiagram";
 
 export default function JavaPage() {
   return (
@@ -35,6 +36,78 @@ export default function JavaPage() {
           <li>CI/CD with GitHub Actions, Testcontainers, security scanning</li>
         </ul>
       </section>
+
+      <section className="mt-12">
+  <h2 className="text-2xl font-semibold">Architecture</h2>
+  <p className="mt-4 text-muted-foreground leading-relaxed">
+    Four Spring Boot services fronted by a GraphQL gateway. Writes land in
+    Postgres; events fan out through RabbitMQ to the activity and
+    notification services, which persist into MongoDB.
+  </p>
+  <div className="mt-6">
+    <MermaidDiagram
+      chart={`flowchart LR
+  FE[Next.js Frontend]
+  GW[gateway-service<br/>GraphQL]
+  TS[task-service<br/>Spring Boot]
+  AS[activity-service<br/>Spring Boot]
+  NS[notification-service<br/>Spring Boot]
+  PG[(PostgreSQL)]
+  MG[(MongoDB)]
+  RD[(Redis cache)]
+  MQ{{RabbitMQ}}
+  FE -->|GraphQL| GW
+  GW -->|REST| TS
+  GW -->|REST| AS
+  GW -->|REST| NS
+  TS --> PG
+  TS -->|publish task.events| MQ
+  MQ -->|consume| AS
+  MQ -->|consume| NS
+  AS --> MG
+  AS --> RD
+  NS --> MG`}
+    />
+  </div>
+
+  <h3 className="mt-10 text-xl font-semibold">Request flow: Create a task</h3>
+  <p className="mt-4 text-muted-foreground leading-relaxed">
+    One click traces through the gateway, into task-service, onto RabbitMQ,
+    and fans out to activity and notification consumers in parallel.
+  </p>
+  <div className="mt-6">
+    <MermaidDiagram
+      chart={`sequenceDiagram
+  participant U as User
+  participant FE as Frontend
+  participant GW as gateway
+  participant TS as task-service
+  participant PG as Postgres
+  participant MQ as RabbitMQ
+  participant AS as activity-service
+  participant NS as notification-service
+  participant MG as MongoDB
+  U->>FE: Click "Create task"
+  FE->>GW: mutation createTask
+  GW->>TS: POST /tasks
+  TS->>PG: INSERT task
+  PG-->>TS: ok
+  TS->>MQ: publish task.created
+  TS-->>GW: 201 task
+  GW-->>FE: task payload
+  par fan-out
+    MQ->>AS: task.created
+    AS->>MG: insert activity
+  and
+    MQ->>NS: task.created
+    NS->>MG: insert notification
+  end
+  FE->>GW: poll myNotifications (30s)
+  GW->>NS: GET /notifications
+  NS-->>FE: unread badge updates`}
+    />
+  </div>
+</section>
 
       <section className="mt-12">
         <Link
