@@ -64,7 +64,7 @@ func main() {
 			return nil
 		},
 	})
-	apphttp.RegisterChatRoutes(router, a)
+	apphttp.RegisterChatRoutes(router, a, "") // TODO(plan-2-task-10): load JWT_SECRET from env
 
 	srv := &http.Server{Addr: ":" + port, Handler: router}
 

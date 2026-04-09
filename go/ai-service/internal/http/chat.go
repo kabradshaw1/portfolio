@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/agent"
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/auth"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
 )
 
@@ -25,7 +27,7 @@ type chatRequest struct {
 const maxUserMessageBytes = 4000
 
 // RegisterChatRoutes wires POST /chat onto r.
-func RegisterChatRoutes(r *gin.Engine, runner Runner) {
+func RegisterChatRoutes(r *gin.Engine, runner Runner, jwtSecret string) {
 	r.POST("/chat", func(c *gin.Context) {
 		var req chatRequest
 		body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxUserMessageBytes*4))
@@ -48,6 +50,17 @@ func RegisterChatRoutes(r *gin.Engine, runner Runner) {
 			}
 		}
 
+		var userID string
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			uid, err := auth.ParseBearer(authHeader, jwtSecret)
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+				return
+			}
+			userID = uid
+		}
+
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
@@ -65,8 +78,13 @@ func RegisterChatRoutes(r *gin.Engine, runner Runner) {
 			}
 		}
 
-		turn := agent.Turn{UserID: "", Messages: req.Messages}
-		if err := runner.Run(c.Request.Context(), turn, emit); err != nil {
+		ctx := c.Request.Context()
+		if authHeader != "" {
+			ctx = ContextWithJWT(ctx, strings.TrimPrefix(authHeader, "Bearer "))
+		}
+
+		turn := agent.Turn{UserID: userID, Messages: req.Messages}
+		if err := runner.Run(ctx, turn, emit); err != nil {
 			emit(agent.Event{Error: &agent.ErrorEvent{Reason: err.Error()}})
 		}
 	})
