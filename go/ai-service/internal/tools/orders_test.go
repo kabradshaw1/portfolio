@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/jwtctx"
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
 )
 
@@ -97,5 +98,66 @@ func TestGetOrderTool_RequiresUserID(t *testing.T) {
 	_, err := tool.Call(ctxWithJWT("tok"), json.RawMessage(`{"order_id":"x"}`), "")
 	if err == nil {
 		t.Fatal("expected error for empty userID")
+	}
+}
+
+type summarizerLLM struct {
+	reply   string
+	err     error
+	seenMsg []llm.Message
+}
+
+func (f *summarizerLLM) Chat(ctx context.Context, msgs []llm.Message, tools []llm.ToolSchema) (llm.ChatResponse, error) {
+	f.seenMsg = msgs
+	if f.err != nil {
+		return llm.ChatResponse{}, f.err
+	}
+	return llm.ChatResponse{Content: f.reply}, nil
+}
+
+func TestSummarizeOrdersTool_Success(t *testing.T) {
+	fakeAPI := &fakeOrdersAPI{listOut: []clients.Order{
+		{ID: "o1", Status: "paid", Total: 12999, CreatedAt: time.Now().Add(-48 * time.Hour)},
+		{ID: "o2", Status: "paid", Total: 8900, CreatedAt: time.Now().Add(-24 * time.Hour)},
+	}}
+	fakeLLM := &summarizerLLM{reply: "You placed 2 orders totaling $218.99."}
+	tool := NewSummarizeOrdersTool(fakeAPI, fakeLLM)
+
+	res, err := tool.Call(ctxWithJWT("tok"), json.RawMessage(`{}`), "user-1")
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	m := res.Content.(map[string]any)
+	if m["summary"] != "You placed 2 orders totaling $218.99." {
+		t.Errorf("summary = %+v", m)
+	}
+	if len(fakeLLM.seenMsg) == 0 {
+		t.Error("expected at least one message sent to sub-LLM")
+	}
+}
+
+func TestSummarizeOrdersTool_NoOrders(t *testing.T) {
+	fakeAPI := &fakeOrdersAPI{listOut: nil}
+	fakeLLM := &summarizerLLM{reply: "should not be called"}
+	tool := NewSummarizeOrdersTool(fakeAPI, fakeLLM)
+
+	res, err := tool.Call(ctxWithJWT("tok"), json.RawMessage(`{}`), "user-1")
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	m := res.Content.(map[string]any)
+	if m["summary"] != "You have no orders yet." {
+		t.Errorf("summary = %+v", m)
+	}
+	if fakeLLM.seenMsg != nil {
+		t.Error("expected sub-LLM to be skipped on empty order list")
+	}
+}
+
+func TestSummarizeOrdersTool_RequiresUserID(t *testing.T) {
+	tool := NewSummarizeOrdersTool(&fakeOrdersAPI{}, &summarizerLLM{})
+	_, err := tool.Call(ctxWithJWT("tok"), json.RawMessage(`{}`), "")
+	if err == nil {
+		t.Fatal("expected error")
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/jwtctx"
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
 )
 
@@ -125,4 +126,71 @@ func (t *getOrderTool) Call(ctx context.Context, args json.RawMessage, userID st
 		Content: content,
 		Display: map[string]any{"kind": "order_card", "order": o},
 	}, nil
+}
+
+// ---------- summarize_orders ----------
+
+type summarizeOrdersTool struct {
+	api ordersAPI
+	llm llm.Client
+}
+
+// NewSummarizeOrdersTool builds a tool that lists the user's recent orders and
+// asks a small sub-LLM call to summarize them. It reuses the parent turn's
+// context so the agent's wall-clock timeout still covers the sub-call.
+func NewSummarizeOrdersTool(api ordersAPI, llmc llm.Client) Tool {
+	return &summarizeOrdersTool{api: api, llm: llmc}
+}
+
+func (t *summarizeOrdersTool) Name() string { return "summarize_orders" }
+func (t *summarizeOrdersTool) Description() string {
+	return "Summarize the current user's recent orders in plain English."
+}
+func (t *summarizeOrdersTool) Schema() json.RawMessage {
+	return json.RawMessage(`{
+		"type":"object",
+		"properties":{
+			"period":{"type":"string","enum":["week","month","all"]}
+		}
+	}`)
+}
+
+type summarizeArgs struct {
+	Period string `json:"period"`
+}
+
+func (t *summarizeOrdersTool) Call(ctx context.Context, args json.RawMessage, userID string) (Result, error) {
+	if userID == "" {
+		return Result{}, errors.New("summarize_orders: authenticated user required")
+	}
+	var a summarizeArgs
+	_ = json.Unmarshal(args, &a)
+
+	orders, err := t.api.ListOrders(ctx, jwtctx.FromContext(ctx))
+	if err != nil {
+		return Result{}, fmt.Errorf("summarize_orders: %w", err)
+	}
+	if len(orders) > maxListedOrders {
+		orders = orders[:maxListedOrders]
+	}
+	if len(orders) == 0 {
+		out := map[string]any{"summary": "You have no orders yet."}
+		return Result{Content: out, Display: out}, nil
+	}
+
+	orderJSON, _ := json.Marshal(orders)
+	prompt := fmt.Sprintf(
+		"Summarize these %d orders for the user in two or three sentences. "+
+			"Totals are in cents — convert to dollars. Period requested: %q. Orders JSON: %s",
+		len(orders), a.Period, string(orderJSON),
+	)
+
+	resp, err := t.llm.Chat(ctx, []llm.Message{
+		{Role: llm.RoleUser, Content: prompt},
+	}, nil)
+	if err != nil {
+		return Result{}, fmt.Errorf("summarize_orders: sub-llm: %w", err)
+	}
+	out := map[string]any{"summary": resp.Content, "order_count": len(orders)}
+	return Result{Content: out, Display: out}, nil
 }
