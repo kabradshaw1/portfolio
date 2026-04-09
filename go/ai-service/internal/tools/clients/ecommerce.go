@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -95,4 +96,136 @@ func (c *EcommerceClient) ListProducts(ctx context.Context, query string, limit 
 		return nil, fmt.Errorf("decode product list: %w", err)
 	}
 	return out.Products, nil
+}
+
+// ---------- user-scoped types ----------
+
+type Order struct {
+	ID        string    `json:"id"`
+	Status    string    `json:"status"`
+	Total     int       `json:"total"` // cents
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type ordersResponse struct {
+	Orders []Order `json:"orders"`
+}
+
+type CartItem struct {
+	ID           string `json:"id"`
+	ProductID    string `json:"productId"`
+	ProductName  string `json:"productName"`
+	ProductPrice int    `json:"productPrice"` // cents
+	Quantity     int    `json:"quantity"`
+}
+
+type Cart struct {
+	Items []CartItem `json:"items"`
+	Total int        `json:"total"` // cents
+}
+
+type Return struct {
+	ID      string `json:"id"`
+	OrderID string `json:"orderId"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason"`
+}
+
+// ---------- authenticated helpers ----------
+
+func (c *EcommerceClient) authedRequest(ctx context.Context, method, path string, body io.Reader, jwt string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if jwt != "" {
+		req.Header.Set("Authorization", "Bearer "+jwt)
+	}
+	return req, nil
+}
+
+func (c *EcommerceClient) doJSON(req *http.Request, out any) error {
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		payload, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("%s %s: status %d: %s", req.Method, req.URL.Path, resp.StatusCode, string(payload))
+	}
+	if out == nil {
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// ---------- user-scoped methods ----------
+
+func (c *EcommerceClient) ListOrders(ctx context.Context, jwt string) ([]Order, error) {
+	req, err := c.authedRequest(ctx, http.MethodGet, "/orders", nil, jwt)
+	if err != nil {
+		return nil, err
+	}
+	var envelope ordersResponse
+	if err := c.doJSON(req, &envelope); err != nil {
+		return nil, fmt.Errorf("list orders: %w", err)
+	}
+	return envelope.Orders, nil
+}
+
+func (c *EcommerceClient) GetOrder(ctx context.Context, jwt, orderID string) (Order, error) {
+	req, err := c.authedRequest(ctx, http.MethodGet, "/orders/"+url.PathEscape(orderID), nil, jwt)
+	if err != nil {
+		return Order{}, err
+	}
+	var o Order
+	if err := c.doJSON(req, &o); err != nil {
+		return Order{}, fmt.Errorf("get order: %w", err)
+	}
+	return o, nil
+}
+
+func (c *EcommerceClient) GetCart(ctx context.Context, jwt string) (Cart, error) {
+	req, err := c.authedRequest(ctx, http.MethodGet, "/cart", nil, jwt)
+	if err != nil {
+		return Cart{}, err
+	}
+	var cart Cart
+	if err := c.doJSON(req, &cart); err != nil {
+		return Cart{}, fmt.Errorf("get cart: %w", err)
+	}
+	return cart, nil
+}
+
+func (c *EcommerceClient) AddToCart(ctx context.Context, jwt, productID string, qty int) (CartItem, error) {
+	body, _ := json.Marshal(map[string]any{"productId": productID, "quantity": qty})
+	req, err := c.authedRequest(ctx, http.MethodPost, "/cart", bytes.NewReader(body), jwt)
+	if err != nil {
+		return CartItem{}, err
+	}
+	var item CartItem
+	if err := c.doJSON(req, &item); err != nil {
+		return CartItem{}, fmt.Errorf("add to cart: %w", err)
+	}
+	return item, nil
+}
+
+func (c *EcommerceClient) InitiateReturn(ctx context.Context, jwt, orderID string, itemIDs []string, reason string) (Return, error) {
+	body, _ := json.Marshal(map[string]any{
+		"itemIds": itemIDs,
+		"reason":  reason,
+	})
+	req, err := c.authedRequest(ctx, http.MethodPost, "/orders/"+url.PathEscape(orderID)+"/returns", bytes.NewReader(body), jwt)
+	if err != nil {
+		return Return{}, err
+	}
+	var ret Return
+	if err := c.doJSON(req, &ret); err != nil {
+		return Return{}, fmt.Errorf("initiate return: %w", err)
+	}
+	return ret, nil
 }
