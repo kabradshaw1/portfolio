@@ -289,6 +289,60 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  k8s-manifest-validation:
+    name: K8s Manifest Validation
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.k8s == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -L -o kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+          kubeconform -v
+
+      - name: Install yq
+        run: |
+          sudo curl -L -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      # Stage A: static schema validation (fast fail, <5s).
+      - name: Stage A — kubeconform
+        run: |
+          kubeconform -strict -summary -schema-location default \
+            -ignore-missing-schemas \
+            k8s/ java/k8s/ go/k8s/
+
+      # Stage B: spin up a throwaway kind cluster and run server-side dry-run.
+      - name: Stage B — kind cluster (create)
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: manifest-validation
+          wait: 60s
+
+      - name: Stage B — create namespaces
+        run: |
+          for ns in ai-services java-tasks go-ecommerce monitoring; do
+            kubectl create namespace "$ns"
+          done
+
+      - name: Stage B — server-side dry-run
+        run: |
+          # Apply every manifest directory recursively. --dry-run=server
+          # exercises the real API server's validation and admission.
+          for dir in k8s java/k8s go/k8s; do
+            find "$dir" -type f \( -name '*.yml' -o -name '*.yaml' \) \
+              -print0 | xargs -0 -I{} kubectl apply --dry-run=server -f {}
+          done
+
+      # Stage C: portfolio-specific policy rules.
+      - name: Stage C — policy check
+        run: scripts/k8s-policy-check.sh
+
   security-bandit:
     name: Security - Bandit (Python SAST)
     runs-on: ubuntu-latest
