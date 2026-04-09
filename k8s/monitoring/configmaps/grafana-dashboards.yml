@@ -387,6 +387,68 @@ data:
               "instant": true
             }
           ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+          "id": 103,
+          "title": "Scrape Targets",
+          "type": "row"
+        },
+        {
+          "title": "Prometheus Scrape Targets",
+          "type": "table",
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 24 },
+          "id": 11,
+          "datasource": { "type": "prometheus", "uid": "" },
+          "description": "Live health of every service and exporter Prometheus scrapes.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "align": "left", "displayMode": "color-background" },
+              "mappings": [
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } },
+                { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Time" },
+                "properties": [{ "id": "custom.hidden", "value": true }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "instance" },
+                "properties": [{ "id": "custom.hidden", "value": true }]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [{ "displayName": "job", "desc": false }]
+          },
+          "targets": [
+            {
+              "expr": "up",
+              "format": "table",
+              "refId": "A",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": { "Time": true, "instance": true, "__name__": true },
+                "renameByName": { "job": "Job", "Value": "Status" }
+              }
+            }
+          ]
         }
       ],
       "schemaVersion": 39,
