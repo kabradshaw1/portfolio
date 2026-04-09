@@ -13,7 +13,7 @@ func TestEcommerceClient_GetProduct(t *testing.T) {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"abc-123","name":"Waterproof Jacket","price":129.99,"stock":4}`))
+		_, _ = w.Write([]byte(`{"id":"abc-123","name":"Waterproof Jacket","price":12999,"stock":4}`))
 	}))
 	defer server.Close()
 
@@ -22,7 +22,7 @@ func TestEcommerceClient_GetProduct(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetProduct: %v", err)
 	}
-	if p.ID != "abc-123" || p.Name != "Waterproof Jacket" || p.Price != 129.99 || p.Stock != 4 {
+	if p.ID != "abc-123" || p.Name != "Waterproof Jacket" || p.Price != 12999 || p.Stock != 4 {
 		t.Errorf("unexpected product: %+v", p)
 	}
 }
@@ -44,10 +44,16 @@ func TestEcommerceClient_ListProducts_TextSearch(t *testing.T) {
 		if r.URL.Query().Get("q") != "jacket" {
 			t.Fatalf("expected q=jacket, got %q", r.URL.Query().Get("q"))
 		}
-		_, _ = w.Write([]byte(`[
-			{"id":"p1","name":"Waterproof Jacket","price":129.99,"stock":4},
-			{"id":"p2","name":"Rain Jacket","price":89.00,"stock":10}
-		]`))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"products":[
+				{"id":"p1","name":"Waterproof Jacket","price":12999,"stock":4},
+				{"id":"p2","name":"Rain Jacket","price":8900,"stock":10}
+			],
+			"total":2,
+			"page":1,
+			"limit":10
+		}`))
 	}))
 	defer server.Close()
 

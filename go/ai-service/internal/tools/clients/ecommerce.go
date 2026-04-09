@@ -12,14 +12,22 @@ import (
 )
 
 // Product is the subset of ecommerce-service's product representation that ai-service needs.
+// Price is in cents (matches ecommerce-service's model.Product).
 type Product struct {
-	ID    string  `json:"id"`
-	Name  string  `json:"name"`
-	Price float64 `json:"price"`
-	Stock int     `json:"stock"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Price int    `json:"price"`
+	Stock int    `json:"stock"`
 }
 
-// EcommerceClient is a typed HTTP client for ecommerce-service.
+// listResponse mirrors ecommerce-service's model.ProductListResponse envelope.
+type listResponse struct {
+	Products []Product `json:"products"`
+	Total    int       `json:"total"`
+	Page     int       `json:"page"`
+	Limit    int       `json:"limit"`
+}
+
 type EcommerceClient struct {
 	baseURL string
 	http    *http.Client
@@ -53,7 +61,8 @@ func (c *EcommerceClient) GetProduct(ctx context.Context, id string) (Product, e
 	return p, nil
 }
 
-// ListProducts does a text search via ecommerce-service. Limit is capped by the caller.
+// ListProducts does a text search via ecommerce-service's /products endpoint.
+// The endpoint returns a ProductListResponse envelope; we unwrap to []Product.
 func (c *EcommerceClient) ListProducts(ctx context.Context, query string, limit int) ([]Product, error) {
 	u, err := url.Parse(c.baseURL + "/products")
 	if err != nil {
@@ -81,9 +90,9 @@ func (c *EcommerceClient) ListProducts(ctx context.Context, query string, limit 
 		payload, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("list products: status %d: %s", resp.StatusCode, string(payload))
 	}
-	var out []Product
+	var out listResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, fmt.Errorf("decode product list: %w", err)
 	}
-	return out, nil
+	return out.Products, nil
 }

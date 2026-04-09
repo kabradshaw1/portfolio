@@ -68,7 +68,7 @@ func NewSearchProductsTool(api ecommerceAPI) Tool { return &searchProductsTool{a
 
 func (t *searchProductsTool) Name() string { return "search_products" }
 func (t *searchProductsTool) Description() string {
-	return "Search the product catalog by free-text query. Optional max_price filter. Returns at most 10 results."
+	return "Search the product catalog by free-text query. Optional max_price in dollars (e.g. 150 for $150). Returns at most 10 results."
 }
 func (t *searchProductsTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
@@ -110,7 +110,7 @@ func (t *searchProductsTool) Call(ctx context.Context, args json.RawMessage, use
 
 	out := make([]map[string]any, 0, len(prods))
 	for _, p := range prods {
-		if a.MaxPrice > 0 && p.Price > a.MaxPrice {
+		if a.MaxPrice > 0 && p.Price > int(a.MaxPrice*100) {
 			continue
 		}
 		out = append(out, map[string]any{

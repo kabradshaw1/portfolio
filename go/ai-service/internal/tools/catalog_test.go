@@ -30,7 +30,7 @@ func (f *fakeEcommerce) ListProducts(ctx context.Context, query string, limit in
 
 func TestGetProductTool_Success(t *testing.T) {
 	fake := &fakeEcommerce{products: map[string]clients.Product{
-		"p1": {ID: "p1", Name: "Waterproof Jacket", Price: 129.99, Stock: 4},
+		"p1": {ID: "p1", Name: "Waterproof Jacket", Price: 12999, Stock: 4},
 	}}
 	tool := NewGetProductTool(fake)
 
@@ -58,9 +58,9 @@ func TestGetProductTool_MissingArg(t *testing.T) {
 
 func TestSearchProductsTool_BoundsAndFilters(t *testing.T) {
 	fake := &fakeEcommerce{listOut: []clients.Product{
-		{ID: "p1", Name: "Waterproof Jacket", Price: 129.99, Stock: 4},
-		{ID: "p2", Name: "Rain Jacket", Price: 89.00, Stock: 10},
-		{ID: "p3", Name: "Expensive Jacket", Price: 500.00, Stock: 1},
+		{ID: "p1", Name: "Waterproof Jacket", Price: 12999, Stock: 4},
+		{ID: "p2", Name: "Rain Jacket", Price: 8900, Stock: 10},
+		{ID: "p3", Name: "Expensive Jacket", Price: 50000, Stock: 1},
 	}}
 	tool := NewSearchProductsTool(fake)
 
@@ -77,9 +77,9 @@ func TestSearchProductsTool_BoundsAndFilters(t *testing.T) {
 		t.Errorf("expected 2 filtered results, got %d", len(items))
 	}
 	for _, it := range items {
-		price := it["price"].(float64)
-		if price > 150 {
-			t.Errorf("result above max_price: %+v", it)
+		price := it["price"].(int)
+		if price > 15000 {
+			t.Errorf("result above max_price in cents: %+v", it)
 		}
 	}
 }
@@ -94,8 +94,8 @@ func TestSearchProductsTool_MissingQuery(t *testing.T) {
 
 func TestCheckInventoryTool(t *testing.T) {
 	fake := &fakeEcommerce{products: map[string]clients.Product{
-		"p1": {ID: "p1", Name: "Waterproof Jacket", Price: 129.99, Stock: 4},
-		"p2": {ID: "p2", Name: "Rain Jacket", Price: 89.00, Stock: 0},
+		"p1": {ID: "p1", Name: "Waterproof Jacket", Price: 12999, Stock: 4},
+		"p2": {ID: "p2", Name: "Rain Jacket", Price: 8900, Stock: 0},
 	}}
 	tool := NewCheckInventoryTool(fake)
 
