@@ -5,6 +5,7 @@ import { useQuery } from "@apollo/client/react";
 import { gql } from "@apollo/client";
 import Link from "next/link";
 import { KanbanBoard } from "@/components/java/KanbanBoard";
+import { AnalyticsStrip } from "@/components/java/analytics/analytics-strip";
 import { GATEWAY_URL, getAccessToken, refreshAccessToken } from "@/lib/auth";
 import { useEffect, useState, useCallback } from "react";
 
@@ -102,6 +103,7 @@ export default function ProjectPage() {
       {project?.description && (
         <p className="mt-1 text-muted-foreground">{project.description}</p>
       )}
+      <AnalyticsStrip projectId={projectId} />
       <div className="mt-8">
         <KanbanBoard
           projectId={projectId}
