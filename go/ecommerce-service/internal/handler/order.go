@@ -63,6 +63,12 @@ func (h *OrderHandler) List(c *gin.Context) {
 }
 
 func (h *OrderHandler) GetByID(c *gin.Context) {
+	userID, err := uuid.Parse(c.GetString("userId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order ID"})
@@ -71,6 +77,12 @@ func (h *OrderHandler) GetByID(c *gin.Context) {
 
 	order, err := h.svc.GetOrder(c.Request.Context(), id)
 	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+		return
+	}
+
+	// Ownership check: 404 (not 403) to avoid leaking existence of other users' orders.
+	if order.UserID != userID {
 		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
 		return
 	}
