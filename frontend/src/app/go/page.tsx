@@ -14,6 +14,18 @@ export default function GoPage() {
           I’ve used it to build microservices, automation scripts, and
           command-line tools with a focus on clean, efficient design.
         </p>
+        <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
+          Both Go services expose Prometheus metrics to a live{" "}
+          <a
+            href="https://api.kylebradshaw.dev/grafana/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-foreground transition-colors"
+          >
+            Grafana dashboard
+          </a>
+          .
+        </p>
       </section>
 
       {/* Project Section */}

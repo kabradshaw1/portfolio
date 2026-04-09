@@ -21,6 +21,18 @@ export default function Home() {
           specialization — agentic AI systems, Go backend services, and
           full-stack Java development.
         </p>
+        <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
+          Every service in this portfolio ships Prometheus metrics to a live{" "}
+          <a
+            href="https://api.kylebradshaw.dev/grafana/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-foreground transition-colors"
+          >
+            Grafana dashboard
+          </a>
+          .
+        </p>
 
         {/* Sections */}
         <h2 className="mt-16 text-2xl font-semibold">Portfolio</h2>

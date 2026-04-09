@@ -34,13 +34,23 @@ export function SiteHeader() {
             </Link>
           </nav>
         </div>
-        <a
-          href="/resume.pdf"
-          aria-label="Resume"
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <FileText className="size-5" />
-        </a>
+        <div className="flex items-center gap-5">
+          <a
+            href="https://api.kylebradshaw.dev/grafana/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Grafana
+          </a>
+          <a
+            href="/resume.pdf"
+            aria-label="Resume"
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <FileText className="size-5" />
+          </a>
+        </div>
       </div>
     </header>
   );

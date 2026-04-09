@@ -13,6 +13,18 @@ export default function JavaPage() {
           management platform built with four Java services, PostgreSQL,
           MongoDB, Redis, and RabbitMQ — deployed on Kubernetes.
         </p>
+        <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
+          Every Java service exposes Prometheus metrics to a live{" "}
+          <a
+            href="https://api.kylebradshaw.dev/grafana/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-foreground transition-colors"
+          >
+            Grafana dashboard
+          </a>
+          .
+        </p>
       </section>
 
       <section className="mt-12">

@@ -53,6 +53,18 @@ export default function AISection() {
             vector search, LLM orchestration, and tool-using agents — built with
             FastAPI, Qdrant, and Ollama, deployed on Kubernetes.
           </p>
+          <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
+            Prometheus scrapes every AI service and streams metrics to a live{" "}
+            <a
+              href="https://api.kylebradshaw.dev/grafana/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground transition-colors"
+            >
+              Grafana dashboard
+            </a>
+            .
+          </p>
         </section>
 
         {/* Project Explanation */}
