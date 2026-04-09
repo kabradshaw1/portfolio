@@ -62,6 +62,7 @@ Frontend env vars currently set in Vercel production:
 - `NEXT_PUBLIC_INGESTION_API_URL`, `NEXT_PUBLIC_CHAT_API_URL` — Python AI services
 - `NEXT_PUBLIC_GO_AUTH_URL=https://api.kylebradshaw.dev/go-auth`
 - `NEXT_PUBLIC_GO_ECOMMERCE_URL=https://api.kylebradshaw.dev/go-api`
+- `NEXT_PUBLIC_AI_SERVICE_URL=https://api.kylebradshaw.dev/ai-api` (add in Vercel before merge — localhost fallback will otherwise bake into the production bundle)
 
 If frontend code adds a new `NEXT_PUBLIC_*` env var with a `localhost` fallback, **Vercel will silently bake the localhost fallback into the production bundle** unless the env var is added in Vercel and a redeploy is triggered. Always add the var to Vercel before merging.
 
