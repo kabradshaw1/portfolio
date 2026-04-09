@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // ReadyCheck is a single dependency probe. Returns nil when healthy.
@@ -31,4 +32,9 @@ func RegisterHealthRoutes(r *gin.Engine, checks map[string]ReadyCheck) {
 		}
 		c.JSON(status, gin.H{"checks": results})
 	})
+}
+
+// RegisterMetricsRoute wires GET /metrics using the Prometheus default handler.
+func RegisterMetricsRoute(r *gin.Engine) {
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 )
 
@@ -55,7 +56,7 @@ func collect(events *[]Event) func(Event) {
 func TestAgent_FinalOnFirstTurn(t *testing.T) {
 	llmc := &fakeLLM{responses: []llm.ChatResponse{{Content: "hi there"}}}
 	reg := tools.NewMemRegistry()
-	a := New(llmc, reg, 8, 5*time.Second)
+	a := New(llmc, reg, metrics.NopRecorder{}, 8, 5*time.Second)
 
 	var events []Event
 	err := a.Run(context.Background(), Turn{Messages: []llm.Message{{Role: llm.RoleUser, Content: "hi"}}}, collect(&events))
@@ -76,7 +77,7 @@ func TestAgent_ToolCallThenFinal(t *testing.T) {
 	reg := tools.NewMemRegistry()
 	reg.Register(tool)
 
-	a := New(llmc, reg, 8, 5*time.Second)
+	a := New(llmc, reg, metrics.NopRecorder{}, 8, 5*time.Second)
 	var events []Event
 	err := a.Run(context.Background(), Turn{Messages: []llm.Message{{Role: llm.RoleUser, Content: "go"}}}, collect(&events))
 	if err != nil {
@@ -105,7 +106,7 @@ func TestAgent_UnknownToolRecoversAndContinues(t *testing.T) {
 		{ToolCalls: []llm.ToolCall{{ID: "c1", Name: "missing", Args: json.RawMessage(`{}`)}}},
 		{Content: "ok"},
 	}}
-	a := New(llmc, tools.NewMemRegistry(), 8, 5*time.Second)
+	a := New(llmc, tools.NewMemRegistry(), metrics.NopRecorder{}, 8, 5*time.Second)
 	var events []Event
 	err := a.Run(context.Background(), Turn{Messages: []llm.Message{{Role: llm.RoleUser, Content: "go"}}}, collect(&events))
 	if err != nil {
@@ -133,7 +134,7 @@ func TestAgent_ToolErrorIsFedBackNotBubbled(t *testing.T) {
 	}}
 	reg := tools.NewMemRegistry()
 	reg.Register(&scriptedTool{name: "flaky", err: errors.New("boom")})
-	a := New(llmc, reg, 8, 5*time.Second)
+	a := New(llmc, reg, metrics.NopRecorder{}, 8, 5*time.Second)
 	var events []Event
 	if err := a.Run(context.Background(), Turn{Messages: []llm.Message{{Role: llm.RoleUser, Content: "go"}}}, collect(&events)); err != nil {
 		t.Fatalf("Run error (should not bubble tool error): %v", err)
@@ -153,7 +154,7 @@ func TestAgent_MaxStepsCap(t *testing.T) {
 	}}
 	reg := tools.NewMemRegistry()
 	reg.Register(&scriptedTool{name: "echo", result: tools.Result{Content: map[string]any{"ok": true}}})
-	a := New(llmc, reg, 3, 5*time.Second)
+	a := New(llmc, reg, metrics.NopRecorder{}, 3, 5*time.Second)
 	var events []Event
 	err := a.Run(context.Background(), Turn{Messages: []llm.Message{{Role: llm.RoleUser, Content: "go"}}}, collect(&events))
 	if !errors.Is(err, ErrMaxSteps) {
@@ -166,7 +167,7 @@ func TestAgent_MaxStepsCap(t *testing.T) {
 
 func TestAgent_LLMErrorBubbles(t *testing.T) {
 	llmc := &fakeLLM{err: errors.New("ollama down")}
-	a := New(llmc, tools.NewMemRegistry(), 8, 5*time.Second)
+	a := New(llmc, tools.NewMemRegistry(), metrics.NopRecorder{}, 8, 5*time.Second)
 	err := a.Run(context.Background(), Turn{Messages: []llm.Message{{Role: llm.RoleUser, Content: "hi"}}}, func(Event) {})
 	if err == nil {
 		t.Fatal("expected error from LLM failure")

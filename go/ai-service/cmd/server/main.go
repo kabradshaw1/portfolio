@@ -15,6 +15,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/agent"
 	apphttp "github.com/kabradshaw1/portfolio/go/ai-service/internal/http"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
 )
@@ -47,7 +48,7 @@ func main() {
 	registry.Register(tools.NewInitiateReturnTool(ecomClient))
 
 	// Agent
-	a := agent.New(llmc, registry, 8, 30*time.Second)
+	a := agent.New(llmc, registry, metrics.PromRecorder{}, 8, 30*time.Second)
 
 	// HTTP
 	router := gin.New()
@@ -76,6 +77,7 @@ func main() {
 		},
 	})
 	apphttp.RegisterChatRoutes(router, a, jwtSecret)
+	apphttp.RegisterMetricsRoute(router)
 
 	srv := &http.Server{Addr: ":" + port, Handler: router}
 

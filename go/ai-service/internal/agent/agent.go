@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 )
 
@@ -24,13 +25,17 @@ type Turn struct {
 type Agent struct {
 	llm      llm.Client
 	registry tools.Registry
+	rec      metrics.Recorder
 	maxSteps int
 	timeout  time.Duration
 }
 
 // New constructs an Agent.
-func New(client llm.Client, registry tools.Registry, maxSteps int, timeout time.Duration) *Agent {
-	return &Agent{llm: client, registry: registry, maxSteps: maxSteps, timeout: timeout}
+func New(client llm.Client, registry tools.Registry, rec metrics.Recorder, maxSteps int, timeout time.Duration) *Agent {
+	if rec == nil {
+		rec = metrics.NopRecorder{}
+	}
+	return &Agent{llm: client, registry: registry, rec: rec, maxSteps: maxSteps, timeout: timeout}
 }
 
 // Run executes the loop. The emit callback receives every event in order.
@@ -40,19 +45,26 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 	ctx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
 
+	startTime := time.Now()
+	stepsCompleted := 0
+
 	messages := append([]llm.Message(nil), turn.Messages...)
 
 	for step := 0; step < a.maxSteps; step++ {
 		resp, err := a.llm.Chat(ctx, messages, a.registry.Schemas())
 		if err != nil {
 			emit(Event{Error: &ErrorEvent{Reason: err.Error()}})
+			a.rec.RecordTurn("error", stepsCompleted, time.Since(startTime))
 			return fmt.Errorf("llm chat: %w", err)
 		}
 
 		if len(resp.ToolCalls) == 0 {
 			emit(Event{Final: &FinalEvent{Text: resp.Content}})
+			a.rec.RecordTurn("final", stepsCompleted+1, time.Since(startTime))
 			return nil
 		}
+
+		stepsCompleted++
 
 		// Record the assistant's tool-call message in history.
 		messages = append(messages, llm.Message{
@@ -70,10 +82,18 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 				emit(Event{ToolError: &ToolErrorEvent{Name: call.Name, Error: errMsg}})
 				msg, _ := llm.ToolResultMessage(call.ID, call.Name, map[string]string{"error": errMsg})
 				messages = append(messages, msg)
+				a.rec.RecordTool(call.Name, "unknown", 0)
 				continue
 			}
 
+			toolStart := time.Now()
 			result, toolErr := safeCall(ctx, tool, call.Args, turn.UserID)
+			outcome := "success"
+			if toolErr != nil {
+				outcome = "error"
+			}
+			a.rec.RecordTool(call.Name, outcome, time.Since(toolStart))
+
 			if toolErr != nil {
 				emit(Event{ToolError: &ToolErrorEvent{Name: call.Name, Error: toolErr.Error()}})
 				msg, _ := llm.ToolResultMessage(call.ID, call.Name, map[string]string{"error": toolErr.Error()})
@@ -95,6 +115,7 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 	}
 
 	emit(Event{Error: &ErrorEvent{Reason: ErrMaxSteps.Error()}})
+	a.rec.RecordTurn("max_steps", a.maxSteps, time.Since(startTime))
 	return ErrMaxSteps
 }
 
