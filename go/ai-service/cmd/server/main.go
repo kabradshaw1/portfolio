@@ -25,6 +25,11 @@ func main() {
 	ollamaModel := getenv("OLLAMA_MODEL", "qwen2.5:14b")
 	ecommerceURL := getenv("ECOMMERCE_URL", "http://ecommerce-service:8092")
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET is required")
+	}
+
 	// LLM client
 	llmc := llm.NewOllamaClient(ollamaURL, ollamaModel)
 
@@ -34,6 +39,12 @@ func main() {
 	registry.Register(tools.NewSearchProductsTool(ecomClient))
 	registry.Register(tools.NewGetProductTool(ecomClient))
 	registry.Register(tools.NewCheckInventoryTool(ecomClient))
+	registry.Register(tools.NewListOrdersTool(ecomClient))
+	registry.Register(tools.NewGetOrderTool(ecomClient))
+	registry.Register(tools.NewSummarizeOrdersTool(ecomClient, llmc))
+	registry.Register(tools.NewViewCartTool(ecomClient))
+	registry.Register(tools.NewAddToCartTool(ecomClient))
+	registry.Register(tools.NewInitiateReturnTool(ecomClient))
 
 	// Agent
 	a := agent.New(llmc, registry, 8, 30*time.Second)
@@ -64,7 +75,7 @@ func main() {
 			return nil
 		},
 	})
-	apphttp.RegisterChatRoutes(router, a, "") // TODO(plan-2-task-10): load JWT_SECRET from env
+	apphttp.RegisterChatRoutes(router, a, jwtSecret)
 
 	srv := &http.Server{Addr: ":" + port, Handler: router}
 

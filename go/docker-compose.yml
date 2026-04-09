@@ -79,6 +79,7 @@ services:
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: "qwen2.5:14b"
       ECOMMERCE_URL: http://ecommerce-service:8092
+      JWT_SECRET: dev-secret-key-at-least-32-characters-long
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
