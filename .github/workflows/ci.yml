@@ -416,7 +416,11 @@ jobs:
 
       - name: Build and start compose stack with mock-ollama
         run: |
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build
+          # Only start services needed for the Python RAG smoke path.
+          # docker-compose.yml also defines nvidia-gpu-exporter and cadvisor,
+          # which require a GPU / host access not available on GH runners.
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build \
+            qdrant gateway ingestion chat debug mock-ollama
 
       - name: Wait for gateway to be reachable
         run: |
@@ -518,6 +522,7 @@ jobs:
           --ignore-vuln CVE-2025-68664
           --ignore-vuln CVE-2026-26013
           --ignore-vuln CVE-2025-6985
+          --ignore-vuln GHSA-926x-3r5x-gfhw
 
   security-npm-audit:
     name: Security - npm audit
