@@ -48,6 +48,9 @@ docker-compose.override.yml
 # Superpowers
 .superpowers/
 
+# Locally bootstrapped tool binaries (golangci-lint, etc.)
+.bin/
+
 # Frontend
 frontend/.env.local
 frontend/node_modules/

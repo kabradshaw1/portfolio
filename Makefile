@@ -54,9 +54,20 @@ preflight-go:
 	cd go/ecommerce-service && go test ./... -v -race
 	cd go/ai-service && go test ./... -v -race
 
-preflight-ai-service:
-	@echo "\n=== ai-service: lint ==="
+# Bootstrap golangci-lint into .bin/ pinned to the version CI uses,
+# so local preflight catches the same lint issues that gate CI.
+GOLANGCI_LINT_VERSION := v1.64.8
+GOLANGCI_LINT := $(CURDIR)/.bin/golangci-lint
+
+$(GOLANGCI_LINT):
+	@echo "\n=== Installing golangci-lint $(GOLANGCI_LINT_VERSION) into .bin/ ==="
+	GOBIN=$(CURDIR)/.bin go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+preflight-ai-service: $(GOLANGCI_LINT)
+	@echo "\n=== ai-service: vet ==="
 	cd go/ai-service && go vet ./...
+	@echo "\n=== ai-service: lint ==="
+	cd go/ai-service && $(GOLANGCI_LINT) run ./...
 	@echo "\n=== ai-service: tests ==="
 	cd go/ai-service && go test ./... -count=1
 

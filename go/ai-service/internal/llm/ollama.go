@@ -68,12 +68,8 @@ func (c *OllamaClient) Chat(ctx context.Context, messages []Message, tools []Too
 	}
 	for _, t := range tools {
 		reqBody.Tools = append(reqBody.Tools, ollamaTool{
-			Type: "function",
-			Function: ollamaToolF{
-				Name:        t.Name,
-				Description: t.Description,
-				Parameters:  t.Parameters,
-			},
+			Type:     "function",
+			Function: ollamaToolF(t),
 		})
 	}
 
