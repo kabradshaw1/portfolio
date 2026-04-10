@@ -401,11 +401,16 @@ jobs:
           yq --version
 
       # Stage A: static schema validation (fast fail, <5s).
+      # Exclude overlays/ dirs — they contain Kustomize patch fragments,
+      # not standalone manifests (e.g. $patch: delete directives).
       - name: Stage A — kubeconform
         run: |
-          kubeconform -strict -summary -schema-location default \
-            -ignore-missing-schemas \
-            k8s/ java/k8s/ go/k8s/
+          find k8s/ java/k8s/ go/k8s/ \
+            -type f \( -name '*.yml' -o -name '*.yaml' \) \
+            -not -path '*/overlays/*' \
+            -not -name 'kustomization.yaml' \
+            -print0 | xargs -0 kubeconform -strict -summary \
+              -schema-location default -ignore-missing-schemas
 
       # Stage B: spin up a throwaway kind cluster and run server-side dry-run.
       - name: Stage B — kind cluster (create)
@@ -424,8 +429,11 @@ jobs:
         run: |
           # Apply every manifest directory recursively. --dry-run=server
           # exercises the real API server's validation and admission.
+          # Skip overlays/ and kustomization.yaml — those are Kustomize fragments.
           for dir in k8s java/k8s go/k8s; do
             find "$dir" -type f \( -name '*.yml' -o -name '*.yaml' \) \
+              -not -path '*/overlays/*' \
+              -not -name 'kustomization.yaml' \
               -print0 | xargs -0 -I{} kubectl apply --dry-run=server -f {}
           done
 
