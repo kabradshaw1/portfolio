@@ -75,9 +75,9 @@ def test_chunk_code_files_skips_empty_files():
 
 @pytest.mark.asyncio
 @patch("app.indexer.QdrantClient")
-@patch("app.indexer.embed_texts", new_callable=AsyncMock)
-async def test_index_project_returns_stats(mock_embed, mock_qdrant_cls):
-    mock_embed.return_value = [[0.1] * 768]
+async def test_index_project_returns_stats(mock_qdrant_cls):
+    mock_embedding_provider = AsyncMock()
+    mock_embedding_provider.embed.return_value = [[0.1] * 768]
     mock_qdrant = MagicMock()
     mock_qdrant_cls.return_value = mock_qdrant
 
@@ -86,8 +86,7 @@ async def test_index_project_returns_stats(mock_embed, mock_qdrant_cls):
 
         result = await index_project(
             project_path=tmpdir,
-            ollama_base_url="http://localhost:11434",
-            embedding_model="nomic-embed-text",
+            embedding_provider=mock_embedding_provider,
             qdrant_host="localhost",
             qdrant_port=6333,
         )

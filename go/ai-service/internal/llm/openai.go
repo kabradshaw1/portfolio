@@ -109,12 +109,8 @@ func (c *OpenAIClient) Chat(ctx context.Context, messages []Message, tools []Too
 	}
 	for _, t := range tools {
 		reqBody.Tools = append(reqBody.Tools, openaiTool{
-			Type: "function",
-			Function: openaiToolF{
-				Name:        t.Name,
-				Description: t.Description,
-				Parameters:  t.Parameters,
-			},
+			Type:     "function",
+			Function: openaiToolF(t),
 		})
 	}
 

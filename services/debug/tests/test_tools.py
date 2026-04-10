@@ -149,9 +149,9 @@ def test_run_tests_failure():
 
 @pytest.mark.asyncio
 @patch("app.tools.QdrantClient")
-@patch("app.tools.embed_texts", new_callable=AsyncMock)
-async def test_search_code_returns_results(mock_embed, mock_qdrant_cls):
-    mock_embed.return_value = [[0.1] * 768]
+async def test_search_code_returns_results(mock_qdrant_cls):
+    mock_embedding_provider = AsyncMock()
+    mock_embedding_provider.embed.return_value = [[0.1] * 768]
 
     mock_hit = MagicMock()
     mock_hit.score = 0.95
@@ -171,8 +171,7 @@ async def test_search_code_returns_results(mock_embed, mock_qdrant_cls):
     result = await tool_search_code(
         query="hello function",
         collection="debug-myproject",
-        ollama_base_url="http://localhost:11434",
-        embedding_model="nomic-embed-text",
+        embedding_provider=mock_embedding_provider,
         qdrant_host="localhost",
         qdrant_port=6333,
     )
@@ -189,6 +188,8 @@ async def test_search_code_returns_results(mock_embed, mock_qdrant_cls):
 
 @pytest.mark.asyncio
 async def test_execute_tool_dispatches_correctly():
+    mock_embedding_provider = AsyncMock()
+
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, "sample.py")
         with open(filepath, "w") as f:
@@ -199,8 +200,7 @@ async def test_execute_tool_dispatches_correctly():
             arguments={"path": "sample.py"},
             project_path=tmpdir,
             collection="debug-test",
-            ollama_base_url="http://localhost:11434",
-            embedding_model="nomic-embed-text",
+            embedding_provider=mock_embedding_provider,
             qdrant_host="localhost",
             qdrant_port=6333,
         )
@@ -210,13 +210,14 @@ async def test_execute_tool_dispatches_correctly():
 
 @pytest.mark.asyncio
 async def test_execute_tool_unknown_tool():
+    mock_embedding_provider = AsyncMock()
+
     result = await execute_tool(
         tool_name="unknown_tool",
         arguments={},
         project_path="/mock/project",
         collection="debug-test",
-        ollama_base_url="http://localhost:11434",
-        embedding_model="nomic-embed-text",
+        embedding_provider=mock_embedding_provider,
         qdrant_host="localhost",
         qdrant_port=6333,
     )

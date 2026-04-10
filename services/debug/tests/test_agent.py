@@ -6,14 +6,17 @@ from app.agent import run_agent_loop
 
 @pytest.mark.asyncio
 @patch("app.agent.execute_tool", new_callable=AsyncMock)
-@patch("app.agent.call_ollama", new_callable=AsyncMock)
-async def test_agent_returns_diagnosis_on_text_response(mock_ollama, mock_tool):
-    mock_ollama.return_value = {
+@patch("app.agent.call_llm", new_callable=AsyncMock)
+async def test_agent_returns_diagnosis_on_text_response(mock_llm, mock_tool):
+    mock_llm.return_value = {
         "message": {
             "role": "assistant",
             "content": "Root cause: missing null check in parser.py line 42",
         }
     }
+
+    mock_provider = AsyncMock()
+    mock_embedding_provider = AsyncMock()
 
     events = []
     async for event in run_agent_loop(
@@ -21,9 +24,9 @@ async def test_agent_returns_diagnosis_on_text_response(mock_ollama, mock_tool):
         error_output=None,
         collection="debug-test",
         project_path="/mock/project",
-        ollama_base_url="http://localhost:11434",
+        llm_provider=mock_provider,
+        embedding_provider=mock_embedding_provider,
         chat_model="qwen2.5:14b",
-        embedding_model="nomic-embed-text",
         qdrant_host="localhost",
         qdrant_port=6333,
         max_steps=10,
@@ -39,9 +42,9 @@ async def test_agent_returns_diagnosis_on_text_response(mock_ollama, mock_tool):
 
 @pytest.mark.asyncio
 @patch("app.agent.execute_tool", new_callable=AsyncMock)
-@patch("app.agent.call_ollama", new_callable=AsyncMock)
-async def test_agent_executes_tool_calls(mock_ollama, mock_tool):
-    mock_ollama.side_effect = [
+@patch("app.agent.call_llm", new_callable=AsyncMock)
+async def test_agent_executes_tool_calls(mock_llm, mock_tool):
+    mock_llm.side_effect = [
         {
             "message": {
                 "role": "assistant",
@@ -67,15 +70,18 @@ async def test_agent_executes_tool_calls(mock_ollama, mock_tool):
     ]
     mock_tool.return_value = "Found: app/upload.py def handle_upload()..."
 
+    mock_provider = AsyncMock()
+    mock_embedding_provider = AsyncMock()
+
     events = []
     async for event in run_agent_loop(
         description="upload fails",
         error_output=None,
         collection="debug-test",
         project_path="/mock/project",
-        ollama_base_url="http://localhost:11434",
+        llm_provider=mock_provider,
+        embedding_provider=mock_embedding_provider,
         chat_model="qwen2.5:14b",
-        embedding_model="nomic-embed-text",
         qdrant_host="localhost",
         qdrant_port=6333,
         max_steps=10,
@@ -91,9 +97,9 @@ async def test_agent_executes_tool_calls(mock_ollama, mock_tool):
 
 @pytest.mark.asyncio
 @patch("app.agent.execute_tool", new_callable=AsyncMock)
-@patch("app.agent.call_ollama", new_callable=AsyncMock)
-async def test_agent_stops_at_max_steps(mock_ollama, mock_tool):
-    mock_ollama.return_value = {
+@patch("app.agent.call_llm", new_callable=AsyncMock)
+async def test_agent_stops_at_max_steps(mock_llm, mock_tool):
+    mock_llm.return_value = {
         "message": {
             "role": "assistant",
             "content": "",
@@ -104,15 +110,18 @@ async def test_agent_stops_at_max_steps(mock_ollama, mock_tool):
     }
     mock_tool.return_value = "app.py:10: raise ValueError('error')"
 
+    mock_provider = AsyncMock()
+    mock_embedding_provider = AsyncMock()
+
     events = []
     async for event in run_agent_loop(
         description="bug",
         error_output=None,
         collection="debug-test",
         project_path="/mock/project",
-        ollama_base_url="http://localhost:11434",
+        llm_provider=mock_provider,
+        embedding_provider=mock_embedding_provider,
         chat_model="qwen2.5:14b",
-        embedding_model="nomic-embed-text",
         qdrant_host="localhost",
         qdrant_port=6333,
         max_steps=3,
@@ -127,9 +136,9 @@ async def test_agent_stops_at_max_steps(mock_ollama, mock_tool):
 
 @pytest.mark.asyncio
 @patch("app.agent.execute_tool", new_callable=AsyncMock)
-@patch("app.agent.call_ollama", new_callable=AsyncMock)
-async def test_agent_detects_duplicate_tool_calls(mock_ollama, mock_tool):
-    mock_ollama.side_effect = [
+@patch("app.agent.call_llm", new_callable=AsyncMock)
+async def test_agent_detects_duplicate_tool_calls(mock_llm, mock_tool):
+    mock_llm.side_effect = [
         {
             "message": {
                 "role": "assistant",
@@ -152,15 +161,18 @@ async def test_agent_detects_duplicate_tool_calls(mock_ollama, mock_tool):
     ]
     mock_tool.return_value = "app.py:10: raise ValueError"
 
+    mock_provider = AsyncMock()
+    mock_embedding_provider = AsyncMock()
+
     events = []
     async for event in run_agent_loop(
         description="bug",
         error_output=None,
         collection="debug-test",
         project_path="/mock/project",
-        ollama_base_url="http://localhost:11434",
+        llm_provider=mock_provider,
+        embedding_provider=mock_embedding_provider,
         chat_model="qwen2.5:14b",
-        embedding_model="nomic-embed-text",
         qdrant_host="localhost",
         qdrant_port=6333,
         max_steps=10,

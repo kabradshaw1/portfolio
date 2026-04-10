@@ -5,7 +5,7 @@ from app.chain import rag_query
 
 
 @pytest.mark.asyncio
-@patch("app.chain.stream_ollama_response")
+@patch("app.chain.stream_response")
 @patch("app.chain.embed_texts", new_callable=AsyncMock)
 @patch("app.chain.QdrantRetriever")
 async def test_rag_query_returns_generator(MockRetriever, mock_embed, mock_stream):
@@ -22,7 +22,10 @@ async def test_rag_query_returns_generator(MockRetriever, mock_embed, mock_strea
     ]
     MockRetriever.return_value = retriever_instance
 
-    async def fake_stream(prompt, model, base_url):
+    mock_llm_provider = AsyncMock()
+    mock_embedding_provider = AsyncMock()
+
+    async def fake_stream(prompt, model, provider):
         yield {"token": "The"}
         yield {"token": " answer"}
         yield {"token": " is 42."}
@@ -33,7 +36,8 @@ async def test_rag_query_returns_generator(MockRetriever, mock_embed, mock_strea
     sources = None
     async for event in rag_query(
         question="What is the answer?",
-        ollama_base_url="http://localhost:11434",
+        llm_provider=mock_llm_provider,
+        embedding_provider=mock_embedding_provider,
         chat_model="mistral",
         embedding_model="nomic-embed-text",
         qdrant_host="localhost",
@@ -52,7 +56,7 @@ async def test_rag_query_returns_generator(MockRetriever, mock_embed, mock_strea
 
 
 @pytest.mark.asyncio
-@patch("app.chain.stream_ollama_response")
+@patch("app.chain.stream_response")
 @patch("app.chain.embed_texts", new_callable=AsyncMock)
 @patch("app.chain.QdrantRetriever")
 async def test_rag_query_no_results_still_responds(
@@ -63,7 +67,10 @@ async def test_rag_query_no_results_still_responds(
     retriever_instance.search.return_value = []
     MockRetriever.return_value = retriever_instance
 
-    async def fake_stream(prompt, model, base_url):
+    mock_llm_provider = AsyncMock()
+    mock_embedding_provider = AsyncMock()
+
+    async def fake_stream(prompt, model, provider):
         yield {"token": "I don't have any relevant context."}
 
     mock_stream.side_effect = fake_stream
@@ -71,7 +78,8 @@ async def test_rag_query_no_results_still_responds(
     events = []
     async for event in rag_query(
         question="Unknown topic?",
-        ollama_base_url="http://localhost:11434",
+        llm_provider=mock_llm_provider,
+        embedding_provider=mock_embedding_provider,
         chat_model="mistral",
         embedding_model="nomic-embed-text",
         qdrant_host="localhost",
