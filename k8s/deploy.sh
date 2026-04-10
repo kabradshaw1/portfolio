@@ -85,11 +85,19 @@ kubectl apply -f "$REPO_DIR/java/k8s/services/activity-service.yml"
 kubectl apply -f "$REPO_DIR/java/k8s/services/notification-service.yml"
 kubectl apply -f "$REPO_DIR/java/k8s/services/gateway-service.yml"
 
+echo "==> Running go-ecommerce migration jobs..."
+kubectl apply -f "$REPO_DIR/go/k8s/jobs/auth-service-migrate.yml"
+kubectl apply -f "$REPO_DIR/go/k8s/jobs/ecommerce-service-migrate.yml"
+
 echo "==> Deploying go-ecommerce services..."
 kubectl apply -f "$REPO_DIR/go/k8s/deployments/auth-service.yml"
 kubectl apply -f "$REPO_DIR/go/k8s/deployments/ecommerce-service.yml"
+kubectl apply -f "$REPO_DIR/go/k8s/deployments/ai-service.yml"
 kubectl apply -f "$REPO_DIR/go/k8s/services/auth-service.yml"
 kubectl apply -f "$REPO_DIR/go/k8s/services/ecommerce-service.yml"
+kubectl apply -f "$REPO_DIR/go/k8s/services/ai-service.yml"
+kubectl apply -f "$REPO_DIR/go/k8s/hpa/auth-hpa.yml"
+kubectl apply -f "$REPO_DIR/go/k8s/hpa/ecommerce-hpa.yml"
 
 echo "==> Deploying monitoring..."
 kubectl apply -f "$SCRIPT_DIR/monitoring/deployments/prometheus.yml"
@@ -118,6 +126,7 @@ kubectl wait --for=condition=available --timeout=180s deployment/notification-se
 kubectl wait --for=condition=available --timeout=180s deployment/gateway-service -n java-tasks
 kubectl wait --for=condition=available --timeout=180s deployment/go-auth-service -n go-ecommerce
 kubectl wait --for=condition=available --timeout=180s deployment/go-ecommerce-service -n go-ecommerce
+kubectl wait --for=condition=available --timeout=180s deployment/go-ai-service -n go-ecommerce
 kubectl wait --for=condition=available --timeout=120s deployment/prometheus -n monitoring
 kubectl wait --for=condition=available --timeout=120s deployment/kube-state-metrics -n monitoring
 kubectl wait --for=condition=available --timeout=120s deployment/grafana -n monitoring
@@ -144,6 +153,7 @@ echo "      /graphiql       — GraphQL IDE"
 echo "      /auth/*         — OAuth authentication"
 echo "      /go-auth/*      — Go auth API"
 echo "      /go-api/*       — Go ecommerce API"
+echo "      /ai-api/*       — Go AI agent API"
 echo "      /grafana/       — Monitoring dashboards"
 echo "      /rabbitmq/      — Message broker UI"
 echo ""
