@@ -37,6 +37,26 @@ All CI workflows (`go-ci.yml`, `ci.yml`, `aws-deploy.yml`) and `go/docker-compos
 
 **Tracing:** OpenTelemetry with OTLP gRPC to Jaeger. `otelgin` auto-instruments HTTP handlers. `otelhttp` transport on ai-service HTTP clients propagates `traceparent`. Agent loop has parent/child spans. RabbitMQ messages carry trace context in headers. Redis operations get manual spans. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to enable; empty disables tracing (no-op).
 
+## Server Configuration
+
+Every `http.Server` must set `ReadTimeout`, `WriteTimeout`, and `IdleTimeout`. Standard values: `ReadTimeout: 10s`, `WriteTimeout: 30s`, `IdleTimeout: 60s`. Services with streaming responses (ai-service) use `WriteTimeout: 120s`.
+
+PostgreSQL connection pools must be explicitly tuned via `pgxpool.ParseConfig` + `pgxpool.NewWithConfig` — never use bare `pgxpool.New()` with defaults. Standard pool settings: `MaxConns`, `MinConns`, `MaxConnIdleTime`, `MaxConnLifetime`, `HealthCheckPeriod`.
+
+Avoid magic numbers for durations and configuration values. Use named constants with comments explaining the value (e.g., `accessTokenTTLMs = 900_000 // 15 minutes`).
+
+## K8s Deployment Requirements
+
+Every deployment must include:
+
+- **Security context** on each container: `runAsNonRoot: true`, `runAsUser: 1001`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`
+- **Readiness probe** — lightweight health check (e.g., `/health`)
+- **Liveness probe** — detects deadlocked processes (same `/health` path, longer intervals)
+- **Startup probe** for slow-starting services (ai-service uses `failureThreshold: 30` for Ollama connection time)
+- **Pod Disruption Budget** in `go/k8s/pdb/` with `maxUnavailable: 1` (not `minAvailable`, which blocks node drains at 1 replica)
+
+When the ai-service has a `/ready` endpoint that checks dependencies, use it for the readiness probe instead of `/health`.
+
 ## Adding a New Dependency to a Service
 
 1. `cd go/<service> && go get <package>`
