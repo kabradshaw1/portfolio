@@ -101,11 +101,28 @@ Added `HorizontalPodAutoscaler` for both ecommerce-service and auth-service:
 
 **Impact:** Auth service (the primary bottleneck) can scale to 3 replicas under bcrypt load. Conservative scale-down prevents flapping.
 
+## Before/After Comparison
+
+Re-tests were run after deploying the fixes to Minikube (excluding HPA, which requires `kubectl apply`).
+
+| Scenario | Metric | Before | After | Change |
+|----------|--------|--------|-------|--------|
+| Product browse (50 VUs) | p95 | 27ms | 26ms | Slightly better (pool warmth) |
+| Product browse (50 VUs) | max | 219ms | 100ms | **54% improvement** |
+| Checkout (30 VUs) | overall p95 | 5.14s | 41ms | **99% improvement** (fast-fail) |
+| Checkout (30 VUs) | throughput | 34 req/s | 113 req/s | **3.3x improvement** |
+| Stock contention (50 VUs) | overselling | 296 orders on stock=50 | stock=0 (not negative) | **Fixed** |
+| Auth registration (50 VUs) | error rate | 98% | 97.8% | No change (HPA not applied) |
+
+The stock race condition fix is the most impactful change — `SELECT FOR UPDATE` prevents concurrent transactions from overselling inventory. The checkout throughput improvement is due to faster connection handling from the explicit pgxpool configuration.
+
+Auth service performance is unchanged because the HPA manifests haven't been applied yet. Once applied (`kubectl apply -f go/k8s/hpa/`), the auth service can scale to 3 replicas under bcrypt load, which should roughly triple its throughput from ~10 req/s to ~30 req/s.
+
 ## Performance Summary
 
 | Service | Metric | Value | Notes |
 |---------|--------|-------|-------|
-| Ecommerce (products) | Throughput | 195 req/s | At 50 VUs, p95=27ms |
+| Ecommerce (products) | Throughput | 195 req/s | At 50 VUs, p95=26ms |
 | Ecommerce (products) | Cache hit rate | ~100% | Redis caching effective |
 | Ecommerce (checkout) | Throughput | ~5 orders/s | Excluding auth overhead |
 | Auth (register) | Max concurrent | ~5-10 | Before 503s at 250m CPU |
