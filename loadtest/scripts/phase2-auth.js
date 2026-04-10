@@ -47,8 +47,6 @@ export const options = {
 
 // Pre-create a pool of users during setup for login and refresh scenarios.
 // Each VU gets its own credentials to avoid auth conflicts.
-const userPool = [];
-
 export function setup() {
   // Create 100 users for login and refresh tests
   const users = [];

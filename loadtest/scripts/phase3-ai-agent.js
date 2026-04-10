@@ -1,7 +1,7 @@
 import http from "k6/http";
 import { check, group, sleep } from "k6";
 import { Counter, Trend } from "k6/metrics";
-import { AI_URL, AUTH_URL, jsonHeaders, registerUser } from "../lib/helpers.js";
+import { AI_URL, jsonHeaders, registerUser } from "../lib/helpers.js";
 
 // Custom metrics
 const rateLimited = new Counter("rate_limited_total");
