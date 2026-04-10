@@ -2,12 +2,11 @@ FROM migrate/migrate:v4.17.0 AS migrate
 
 FROM golang:1.26-alpine AS builder
 
-WORKDIR /app
-COPY pkg/ ./pkg/
-COPY auth-service/go.mod auth-service/go.sum ./auth-service/
 WORKDIR /app/auth-service
+COPY pkg/ /app/pkg/
+COPY auth-service/go.mod auth-service/go.sum ./
 RUN go mod download
-COPY auth-service/ /app/auth-service/
+COPY auth-service/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /auth-service ./cmd/server
 
 FROM alpine:3.19

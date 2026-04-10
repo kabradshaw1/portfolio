@@ -2,12 +2,11 @@ FROM migrate/migrate:v4.17.0 AS migrate
 
 FROM golang:1.26-alpine AS builder
 
-WORKDIR /app
-COPY pkg/ ./pkg/
-COPY ecommerce-service/go.mod ecommerce-service/go.sum ./ecommerce-service/
 WORKDIR /app/ecommerce-service
+COPY pkg/ /app/pkg/
+COPY ecommerce-service/go.mod ecommerce-service/go.sum ./
 RUN go mod download
-COPY ecommerce-service/ /app/ecommerce-service/
+COPY ecommerce-service/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /ecommerce-service ./cmd/server
 
 FROM alpine:3.19
