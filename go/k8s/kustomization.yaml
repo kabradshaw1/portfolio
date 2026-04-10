@@ -16,4 +16,7 @@ resources:
   - services/ai-service.yml
   - services/auth-service.yml
   - services/ecommerce-service.yml
+  - pdb/auth-pdb.yml
+  - pdb/ecommerce-pdb.yml
+  - pdb/ai-pdb.yml
   - ingress.yml

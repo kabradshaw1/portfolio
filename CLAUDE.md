@@ -8,7 +8,7 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 
 - **Python:** FastAPI microservices (ingestion, chat, debug), LangChain text splitters, Qdrant vector DB
 - **Java:** Spring Boot microservices (task, activity, notification, gateway), PostgreSQL, MongoDB, Redis, RabbitMQ, GraphQL
-- **Go:** Auth service + ecommerce service, PostgreSQL, Redis, RabbitMQ
+- **Go:** Auth, ecommerce, and AI agent services, PostgreSQL, Redis, RabbitMQ, shared `go/pkg/` module (see `go/CLAUDE.md`)
 - **AI/ML:** Ollama (Qwen 2.5 14B for chat/debug, nomic-embed-text for embeddings)
 - **Frontend:** Next.js + TypeScript + shadcn/ui, Apollo Client (GraphQL)
 - **Testing:** pytest, JUnit, Go test/benchmarks, Playwright (E2E)

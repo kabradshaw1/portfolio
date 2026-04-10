@@ -34,6 +34,14 @@ spec:
                 secretKeyRef:
                   name: go-secrets
                   key: jwt-secret
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           resources:
             requests:
               memory: "64Mi"
@@ -41,12 +49,19 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
-          readinessProbe:
+          startupProbe:
             httpGet:
               path: /health
               port: 8093
             initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8093
             periodSeconds: 10
+            timeoutSeconds: 5
           livenessProbe:
             httpGet:
               path: /health

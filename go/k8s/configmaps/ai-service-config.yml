@@ -9,3 +9,4 @@ data:
   OLLAMA_MODEL: "qwen2.5:14b"
   ECOMMERCE_URL: "http://go-ecommerce-service:8092"
   REDIS_URL: "redis://redis.java-tasks.svc.cluster.local:6379"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"

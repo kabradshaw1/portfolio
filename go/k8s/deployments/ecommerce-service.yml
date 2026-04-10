@@ -34,6 +34,14 @@ spec:
                 secretKeyRef:
                   name: go-secrets
                   key: jwt-secret
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           resources:
             requests:
               memory: "64Mi"
@@ -47,3 +55,9 @@ spec:
               port: 8092
             initialDelaySeconds: 5
             periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8092
+            initialDelaySeconds: 15
+            periodSeconds: 30

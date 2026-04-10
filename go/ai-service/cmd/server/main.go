@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/agent"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/cache"
@@ -22,6 +23,8 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
+	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
 func main() {
@@ -36,6 +39,28 @@ func main() {
 		log.Fatal("JWT_SECRET is required")
 	}
 
+	// Tracing
+	ctx := context.Background()
+	shutdownTracer, err := tracing.Init(ctx, "ai-service", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+	if err != nil {
+		log.Fatalf("tracing init: %v", err)
+	}
+	defer func() { _ = shutdownTracer(ctx) }()
+
+	// Circuit breakers
+	ollamaBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "ai-ollama",
+		OnStateChange: resilience.ObserveStateChange,
+	})
+	ecomBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "ai-ecommerce",
+		OnStateChange: resilience.ObserveStateChange,
+	})
+	redisBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "ai-redis",
+		OnStateChange: resilience.ObserveStateChange,
+	})
+
 	// LLM client
 	llmProvider := getenv("LLM_PROVIDER", "ollama")
 	llmAPIKey := os.Getenv("LLM_API_KEY")
@@ -45,13 +70,13 @@ func main() {
 	} else {
 		llmBaseURL = getenv("LLM_BASE_URL", "")
 	}
-	llmc, err := llm.NewClient(llmProvider, llmBaseURL, ollamaModel, llmAPIKey)
+	llmc, err := llm.NewClient(llmProvider, llmBaseURL, ollamaModel, llmAPIKey, ollamaBreaker)
 	if err != nil {
 		log.Fatalf("LLM client: %v", err)
 	}
 
 	// Tool registry
-	ecomClient := clients.NewEcommerceClient(ecommerceURL)
+	ecomClient := clients.NewEcommerceClient(ecommerceURL, ecomBreaker)
 
 	var toolCache cache.Cache = cache.NopCache{}
 	var limiter *guardrails.Limiter
@@ -66,8 +91,8 @@ func main() {
 		if err := rc.Ping(pingCtx).Err(); err != nil {
 			slog.Warn("redis unreachable, caching + rate limit disabled", "error", err)
 		} else {
-			toolCache = cache.NewRedisCache(rc, "ai")
-			limiter = guardrails.NewLimiter(rc, 20, time.Minute)
+			toolCache = cache.NewRedisCache(rc, "ai", redisBreaker)
+			limiter = guardrails.NewLimiter(rc, 20, time.Minute, redisBreaker)
 			slog.Info("redis connected, caching + rate limit enabled")
 		}
 	}
@@ -89,6 +114,7 @@ func main() {
 	// HTTP
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(otelgin.Middleware("ai-service"))
 	router.Use(apperror.ErrorHandler())
 
 	apphttp.RegisterHealthRoutes(router, map[string]apphttp.ReadyCheck{
@@ -123,7 +149,13 @@ func main() {
 	apphttp.RegisterChatRoutes(router, a, jwtSecret, limiter)
 	apphttp.RegisterMetricsRoute(router)
 
-	srv := &http.Server{Addr: ":" + port, Handler: router}
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      router,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 120 * time.Second, // longer for LLM streaming responses
+		IdleTimeout:  60 * time.Second,
+	}
 
 	go func() {
 		slog.Info("ai-service starting",

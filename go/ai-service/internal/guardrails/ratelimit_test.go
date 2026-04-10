@@ -9,6 +9,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -19,7 +20,7 @@ func newRedisLimiter(t *testing.T, max int, window time.Duration) (*Limiter, *mi
 		t.Fatalf("miniredis: %v", err)
 	}
 	t.Cleanup(mr.Close)
-	return NewLimiter(redis.NewClient(&redis.Options{Addr: mr.Addr()}), max, window), mr
+	return NewLimiter(redis.NewClient(&redis.Options{Addr: mr.Addr()}), max, window, resilience.NewBreaker(resilience.BreakerConfig{Name: "test"})), mr
 }
 
 func TestLimiter_AllowsUpToMax(t *testing.T) {

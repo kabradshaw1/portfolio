@@ -44,6 +44,14 @@ spec:
                 secretKeyRef:
                   name: go-secrets
                   key: google-client-secret
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           resources:
             requests:
               memory: "64Mi"
@@ -57,3 +65,9 @@ spec:
               port: 8091
             initialDelaySeconds: 5
             periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8091
+            initialDelaySeconds: 15
+            periodSeconds: 30
