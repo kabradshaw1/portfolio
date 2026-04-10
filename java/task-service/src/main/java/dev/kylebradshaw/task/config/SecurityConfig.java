@@ -44,7 +44,7 @@ public class SecurityConfig {
                                 .maxAgeInSeconds(31536000)))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
                         .requestMatchers("/projects/**").permitAll()
                         .requestMatchers("/tasks/**").permitAll()
                         .requestMatchers("/analytics/**").permitAll()
