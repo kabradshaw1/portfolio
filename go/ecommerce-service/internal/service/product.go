@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 )
 
@@ -36,9 +37,11 @@ func (s *ProductService) List(ctx context.Context, params model.ProductListParam
 		if err == nil {
 			var resp model.ProductListResponse
 			if json.Unmarshal([]byte(cached), &resp) == nil {
+				metrics.CacheOps.WithLabelValues("get", "hit").Inc()
 				return resp.Products, resp.Total, nil
 			}
 		}
+		metrics.CacheOps.WithLabelValues("get", "miss").Inc()
 	}
 
 	products, total, err := s.repo.List(ctx, params)
@@ -50,6 +53,7 @@ func (s *ProductService) List(ctx context.Context, params model.ProductListParam
 		resp := model.ProductListResponse{Products: products, Total: total, Page: params.Page, Limit: params.Limit}
 		if data, err := json.Marshal(resp); err == nil {
 			s.redis.Set(ctx, cacheKey, data, 5*time.Minute)
+			metrics.CacheOps.WithLabelValues("set", "success").Inc()
 		}
 	}
 
@@ -64,9 +68,11 @@ func (s *ProductService) GetByID(ctx context.Context, id uuid.UUID) (*model.Prod
 		if err == nil {
 			var p model.Product
 			if json.Unmarshal([]byte(cached), &p) == nil {
+				metrics.CacheOps.WithLabelValues("get", "hit").Inc()
 				return &p, nil
 			}
 		}
+		metrics.CacheOps.WithLabelValues("get", "miss").Inc()
 	}
 
 	product, err := s.repo.FindByID(ctx, id)
@@ -77,6 +83,7 @@ func (s *ProductService) GetByID(ctx context.Context, id uuid.UUID) (*model.Prod
 	if s.redis != nil {
 		if data, err := json.Marshal(product); err == nil {
 			s.redis.Set(ctx, cacheKey, data, 5*time.Minute)
+			metrics.CacheOps.WithLabelValues("set", "success").Inc()
 		}
 	}
 
@@ -91,9 +98,11 @@ func (s *ProductService) Categories(ctx context.Context) ([]string, error) {
 		if err == nil {
 			var cats []string
 			if json.Unmarshal([]byte(cached), &cats) == nil {
+				metrics.CacheOps.WithLabelValues("get", "hit").Inc()
 				return cats, nil
 			}
 		}
+		metrics.CacheOps.WithLabelValues("get", "miss").Inc()
 	}
 
 	cats, err := s.repo.Categories(ctx)
@@ -104,6 +113,7 @@ func (s *ProductService) Categories(ctx context.Context) ([]string, error) {
 	if s.redis != nil {
 		if data, err := json.Marshal(cats); err == nil {
 			s.redis.Set(ctx, cacheKey, data, 30*time.Minute)
+			metrics.CacheOps.WithLabelValues("set", "success").Inc()
 		}
 	}
 

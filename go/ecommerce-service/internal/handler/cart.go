@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 )
 
@@ -74,6 +75,7 @@ func (h *CartHandler) AddItem(c *gin.Context) {
 		return
 	}
 
+	metrics.CartItemsAdded.Inc()
 	c.JSON(http.StatusCreated, item)
 }
 

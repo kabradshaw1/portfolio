@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 )
 
@@ -74,6 +75,7 @@ func (h *ProductHandler) GetByID(c *gin.Context) {
 		return
 	}
 
+	metrics.ProductViews.Inc()
 	c.JSON(http.StatusOK, product)
 }
 

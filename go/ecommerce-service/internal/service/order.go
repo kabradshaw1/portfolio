@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 )
 
@@ -65,8 +66,14 @@ func (s *OrderService) Checkout(ctx context.Context, userID uuid.UUID) (*model.O
 		return nil, err
 	}
 
+	metrics.OrdersPlaced.WithLabelValues("created").Inc()
+	metrics.OrderValue.Observe(float64(total) / 100) // cents → dollars
+
 	if err := s.publisher.PublishOrderCreated(order.ID.String()); err != nil {
 		log.Printf("WARN: failed to publish order created event for %s: %v", order.ID, err)
+		metrics.RabbitMQPublish.WithLabelValues("order.created", "error").Inc()
+	} else {
+		metrics.RabbitMQPublish.WithLabelValues("order.created", "success").Inc()
 	}
 
 	return order, nil
