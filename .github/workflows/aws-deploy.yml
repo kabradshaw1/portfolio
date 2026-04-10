@@ -1,0 +1,220 @@
+name: AWS Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Deploy action"
+        required: true
+        default: "deploy"
+        type: choice
+        options:
+          - deploy
+          - destroy
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: gen-ai-portfolio-eks
+
+jobs:
+  build-and-push:
+    name: Build & Push to ECR
+    runs-on: ubuntu-latest
+    if: inputs.action == 'deploy'
+    strategy:
+      matrix:
+        include:
+          # Python services
+          - service: ingestion
+            context: services
+            dockerfile: services/ingestion/Dockerfile
+            ecr_repo: gen-ai-portfolio/ingestion
+          - service: chat
+            context: services
+            dockerfile: services/chat/Dockerfile
+            ecr_repo: gen-ai-portfolio/chat
+          - service: debug
+            context: services
+            dockerfile: services/debug/Dockerfile
+            ecr_repo: gen-ai-portfolio/debug
+          # Java services
+          - service: task-service
+            context: java/task-service
+            dockerfile: java/task-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/java-task-service
+            java: true
+          - service: activity-service
+            context: java/activity-service
+            dockerfile: java/activity-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/java-activity-service
+            java: true
+          - service: notification-service
+            context: java/notification-service
+            dockerfile: java/notification-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/java-notification-service
+            java: true
+          - service: gateway-service
+            context: java/gateway-service
+            dockerfile: java/gateway-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/java-gateway-service
+            java: true
+          # Go services
+          - service: auth-service
+            context: go/auth-service
+            dockerfile: go/auth-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-auth-service
+          - service: ecommerce-service
+            context: go/ecommerce-service
+            dockerfile: go/ecommerce-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-ecommerce-service
+          - service: ai-service
+            context: go/ai-service
+            dockerfile: go/ai-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-ai-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up JDK 21
+        if: matrix.java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Build JAR
+        if: matrix.java
+        working-directory: java
+        run: ./gradlew :${{ matrix.service }}:bootJar --no-daemon
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push to ECR
+        uses: docker/build-push-action@v6
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.ecr-login.outputs.registry }}/${{ matrix.ecr_repo }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to EKS
+    runs-on: ubuntu-latest
+    if: inputs.action == 'deploy'
+    needs: [build-and-push]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Create namespaces
+        run: |
+          for ns in ai-services java-tasks go-ecommerce monitoring; do
+            kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
+          done
+
+      - name: Create K8s secrets from GitHub secrets
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+          DB_PASSWORD: ${{ secrets.AWS_DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MQ_PASSWORD: ${{ secrets.AWS_MQ_PASSWORD }}
+        run: |
+          # AI services secrets
+          kubectl create secret generic llm-secrets \
+            --namespace=ai-services \
+            --from-literal=LLM_API_KEY="$LLM_API_KEY" \
+            --from-literal=EMBEDDING_API_KEY="$EMBEDDING_API_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # Java secrets
+          kubectl create secret generic java-secrets \
+            --namespace=java-tasks \
+            --from-literal=postgres-password="$DB_PASSWORD" \
+            --from-literal=jwt-secret="$JWT_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # Go secrets
+          kubectl create secret generic go-secrets \
+            --namespace=go-ecommerce \
+            --from-literal=jwt-secret="$JWT_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy ai-services
+        run: kubectl apply -k k8s/overlays/aws
+
+      - name: Deploy monitoring
+        run: kubectl apply -k k8s/monitoring
+
+      - name: Deploy java-tasks
+        run: kubectl apply -k java/k8s/overlays/aws
+
+      - name: Deploy go-ecommerce
+        run: kubectl apply -k go/k8s/overlays/aws
+
+      - name: Run Go migrations
+        run: |
+          kubectl delete job go-auth-migrate go-ecommerce-migrate \
+            -n go-ecommerce --ignore-not-found --wait=true
+
+          kubectl apply -f go/k8s/jobs/auth-service-migrate.yml
+          kubectl wait --for=condition=complete --timeout=180s \
+            job/go-auth-migrate -n go-ecommerce
+
+          kubectl apply -f go/k8s/jobs/ecommerce-service-migrate.yml
+          kubectl wait --for=condition=complete --timeout=180s \
+            job/go-ecommerce-migrate -n go-ecommerce
+
+      - name: Wait for deployments
+        run: |
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment -n ai-services --all
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment -n java-tasks --all
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment -n go-ecommerce --all
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment -n monitoring --all
+
+      - name: Smoke test
+        run: |
+          echo "Checking service health endpoints..."
+          ALB=$(kubectl get ingress -n ai-services \
+            -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+          if [ -n "$ALB" ]; then
+            echo "ALB: $ALB"
+            for path in ingestion/health chat/health debug/health; do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$ALB/$path" || echo "000")
+              echo "  /$path -> $STATUS"
+            done
+          else
+            echo "ALB not yet available - skipping HTTP smoke tests"
+          fi
+          echo "All deployments are ready."
