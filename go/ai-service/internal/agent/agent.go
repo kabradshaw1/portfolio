@@ -31,6 +31,7 @@ type Agent struct {
 	rec      metrics.Recorder
 	maxSteps int
 	timeout  time.Duration
+	model    string
 }
 
 // New constructs an Agent.
@@ -39,6 +40,12 @@ func New(client llm.Client, registry tools.Registry, rec metrics.Recorder, maxSt
 		rec = metrics.NopRecorder{}
 	}
 	return &Agent{llm: client, registry: registry, rec: rec, maxSteps: maxSteps, timeout: timeout}
+}
+
+// WithModel sets the model name for Ollama metrics labeling.
+func (a *Agent) WithModel(model string) *Agent {
+	a.model = model
+	return a
 }
 
 // Run executes the loop. The emit callback receives every event in order.
@@ -57,6 +64,13 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 
 	for step := 0; step < a.maxSteps; step++ {
 		resp, err := a.llm.Chat(ctx, messages, a.registry.Schemas())
+		if err == nil {
+			operation := "chat"
+			if step == a.maxSteps-1 {
+				operation = "chat_final"
+			}
+			a.rec.RecordOllamaCall(a.model, operation, resp.RequestDuration, resp.PromptEvalCount, resp.EvalCount, resp.EvalDurationNs)
+		}
 		if err != nil {
 			emit(Event{Error: &ErrorEvent{Reason: err.Error()}})
 			a.rec.RecordTurn("error", stepsCompleted, time.Since(startTime))

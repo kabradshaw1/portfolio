@@ -72,7 +72,7 @@ func main() {
 	registry.Register(tools.NewInitiateReturnTool(ecomClient))
 
 	// Agent
-	a := agent.New(llmc, registry, metrics.PromRecorder{}, 8, 30*time.Second)
+	a := agent.New(llmc, registry, metrics.PromRecorder{}, 8, 30*time.Second).WithModel(ollamaModel)
 
 	// HTTP
 	router := gin.New()

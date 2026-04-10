@@ -40,6 +40,23 @@ var (
 		Name: "ai_cache_events_total",
 		Help: "Cache events by cache and event type.",
 	}, []string{"cache", "event"})
+
+	OllamaRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "ollama_request_duration_seconds",
+		Help:    "Wall-clock time for Ollama API calls.",
+		Buckets: prometheus.ExponentialBuckets(0.1, 2, 12),
+	}, []string{"service", "model", "operation"})
+
+	OllamaTokens = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "ollama_tokens_total",
+		Help: "Total tokens processed by Ollama.",
+	}, []string{"service", "model", "kind"})
+
+	OllamaEvalDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "ollama_eval_duration_seconds",
+		Help:    "Ollama model evaluation duration (from response metadata).",
+		Buckets: prometheus.ExponentialBuckets(0.1, 2, 10),
+	}, []string{"service", "model"})
 )
 
 // Recorder is the interface the agent loop uses to emit metrics. It keeps the
@@ -47,6 +64,7 @@ var (
 type Recorder interface {
 	RecordTurn(outcome string, steps int, dur time.Duration)
 	RecordTool(name, outcome string, dur time.Duration)
+	RecordOllamaCall(model, operation string, dur time.Duration, promptTokens, completionTokens int, evalDurNs int)
 }
 
 // PromRecorder writes to the package-level Prometheus collectors.
@@ -63,8 +81,23 @@ func (PromRecorder) RecordTool(name, outcome string, dur time.Duration) {
 	ToolDuration.WithLabelValues(name).Observe(dur.Seconds())
 }
 
+func (PromRecorder) RecordOllamaCall(model, operation string, dur time.Duration, promptTokens, completionTokens int, evalDurNs int) {
+	svc := "ai-service"
+	OllamaRequestDuration.WithLabelValues(svc, model, operation).Observe(dur.Seconds())
+	if promptTokens > 0 {
+		OllamaTokens.WithLabelValues(svc, model, "prompt").Add(float64(promptTokens))
+	}
+	if completionTokens > 0 {
+		OllamaTokens.WithLabelValues(svc, model, "completion").Add(float64(completionTokens))
+	}
+	if evalDurNs > 0 {
+		OllamaEvalDuration.WithLabelValues(svc, model).Observe(float64(evalDurNs) / 1e9)
+	}
+}
+
 // NopRecorder is the zero-value substitute for tests that don't care about metrics.
 type NopRecorder struct{}
 
 func (NopRecorder) RecordTurn(string, int, time.Duration)    {}
 func (NopRecorder) RecordTool(string, string, time.Duration) {}
+func (NopRecorder) RecordOllamaCall(string, string, time.Duration, int, int, int) {}

@@ -57,7 +57,10 @@ type ollamaResp struct {
 			} `json:"function"`
 		} `json:"tool_calls"`
 	} `json:"message"`
-	Done bool `json:"done"`
+	Done            bool `json:"done"`
+	PromptEvalCount int  `json:"prompt_eval_count"`
+	EvalCount       int  `json:"eval_count"`
+	EvalDuration    int  `json:"eval_duration"` // nanoseconds
 }
 
 func (c *OllamaClient) Chat(ctx context.Context, messages []Message, tools []ToolSchema) (ChatResponse, error) {
@@ -84,6 +87,7 @@ func (c *OllamaClient) Chat(ctx context.Context, messages []Message, tools []Too
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	start := time.Now()
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return ChatResponse{}, fmt.Errorf("ollama request: %w", err)
@@ -100,7 +104,13 @@ func (c *OllamaClient) Chat(ctx context.Context, messages []Message, tools []Too
 		return ChatResponse{}, fmt.Errorf("decode response: %w", err)
 	}
 
-	out := ChatResponse{Content: parsed.Message.Content}
+	out := ChatResponse{
+		Content:         parsed.Message.Content,
+		PromptEvalCount: parsed.PromptEvalCount,
+		EvalCount:       parsed.EvalCount,
+		EvalDurationNs:  parsed.EvalDuration,
+		RequestDuration: time.Since(start),
+	}
 	for _, tc := range parsed.Message.ToolCalls {
 		out.ToolCalls = append(out.ToolCalls, ToolCall{
 			ID:   newCallID(),

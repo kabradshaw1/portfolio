@@ -1,6 +1,9 @@
 package llm
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Role is the sender of a chat message.
 type Role string
@@ -30,8 +33,12 @@ type ToolCall struct {
 
 // ChatResponse is what the model returns for one Chat call.
 type ChatResponse struct {
-	Content   string     // final text if no tool calls
-	ToolCalls []ToolCall // non-empty when the model wants to call tools
+	Content          string     // final text if no tool calls
+	ToolCalls        []ToolCall // non-empty when the model wants to call tools
+	PromptEvalCount  int        // prompt tokens (from Ollama metadata)
+	EvalCount        int        // completion tokens (from Ollama metadata)
+	EvalDurationNs   int        // model eval duration in nanoseconds
+	RequestDuration  time.Duration // wall-clock request time
 }
 
 // ToolSchema is the JSON-Schema-shaped description of a tool we advertise
