@@ -22,6 +22,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 )
 
 func main() {
@@ -36,6 +37,20 @@ func main() {
 		log.Fatal("JWT_SECRET is required")
 	}
 
+	// Circuit breakers
+	ollamaBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "ai-ollama",
+		OnStateChange: resilience.ObserveStateChange,
+	})
+	ecomBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "ai-ecommerce",
+		OnStateChange: resilience.ObserveStateChange,
+	})
+	redisBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "ai-redis",
+		OnStateChange: resilience.ObserveStateChange,
+	})
+
 	// LLM client
 	llmProvider := getenv("LLM_PROVIDER", "ollama")
 	llmAPIKey := os.Getenv("LLM_API_KEY")
@@ -45,13 +60,13 @@ func main() {
 	} else {
 		llmBaseURL = getenv("LLM_BASE_URL", "")
 	}
-	llmc, err := llm.NewClient(llmProvider, llmBaseURL, ollamaModel, llmAPIKey)
+	llmc, err := llm.NewClient(llmProvider, llmBaseURL, ollamaModel, llmAPIKey, ollamaBreaker)
 	if err != nil {
 		log.Fatalf("LLM client: %v", err)
 	}
 
 	// Tool registry
-	ecomClient := clients.NewEcommerceClient(ecommerceURL)
+	ecomClient := clients.NewEcommerceClient(ecommerceURL, ecomBreaker)
 
 	var toolCache cache.Cache = cache.NopCache{}
 	var limiter *guardrails.Limiter
@@ -66,8 +81,8 @@ func main() {
 		if err := rc.Ping(pingCtx).Err(); err != nil {
 			slog.Warn("redis unreachable, caching + rate limit disabled", "error", err)
 		} else {
-			toolCache = cache.NewRedisCache(rc, "ai")
-			limiter = guardrails.NewLimiter(rc, 20, time.Minute)
+			toolCache = cache.NewRedisCache(rc, "ai", redisBreaker)
+			limiter = guardrails.NewLimiter(rc, 20, time.Minute, redisBreaker)
 			slog.Info("redis connected, caching + rate limit enabled")
 		}
 	}

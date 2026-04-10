@@ -9,23 +9,45 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
+
+	gobreaker "github.com/sony/gobreaker/v2"
+
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 )
 
 // OllamaClient talks to an Ollama server's /api/chat endpoint using
 // the OpenAI-compatible tool-calling shape that Qwen 2.5 supports.
 type OllamaClient struct {
-	baseURL string
-	model   string
-	http    *http.Client
+	baseURL  string
+	model    string
+	http     *http.Client
+	breaker  *gobreaker.CircuitBreaker[any]
+	retryCfg resilience.RetryConfig
 }
 
 // NewOllamaClient returns a Client pointed at baseURL (e.g. "http://ollama:11434").
-func NewOllamaClient(baseURL, model string) *OllamaClient {
+func NewOllamaClient(baseURL, model string, breaker *gobreaker.CircuitBreaker[any]) *OllamaClient {
+	cfg := resilience.RetryConfig{
+		MaxAttempts: 3,
+		BaseDelay:   500 * time.Millisecond,
+		MaxDelay:    5 * time.Second,
+		IsRetryable: func(err error) bool {
+			if err == nil {
+				return false
+			}
+			msg := err.Error()
+			// Don't retry 4xx.
+			return !strings.Contains(msg, "status 4")
+		},
+	}
 	return &OllamaClient{
-		baseURL: baseURL,
-		model:   model,
-		http:    &http.Client{Timeout: 60 * time.Second},
+		baseURL:  baseURL,
+		model:    model,
+		http:     &http.Client{Timeout: 60 * time.Second},
+		breaker:  breaker,
+		retryCfg: cfg,
 	}
 }
 
@@ -64,61 +86,63 @@ type ollamaResp struct {
 }
 
 func (c *OllamaClient) Chat(ctx context.Context, messages []Message, tools []ToolSchema) (ChatResponse, error) {
-	reqBody := ollamaReq{
-		Model:    c.model,
-		Messages: messages,
-		Stream:   false,
-	}
-	for _, t := range tools {
-		reqBody.Tools = append(reqBody.Tools, ollamaTool{
-			Type:     "function",
-			Function: ollamaToolF(t),
-		})
-	}
+	return resilience.Call(ctx, c.breaker, c.retryCfg, func(ctx context.Context) (ChatResponse, error) {
+		reqBody := ollamaReq{
+			Model:    c.model,
+			Messages: messages,
+			Stream:   false,
+		}
+		for _, t := range tools {
+			reqBody.Tools = append(reqBody.Tools, ollamaTool{
+				Type:     "function",
+				Function: ollamaToolF(t),
+			})
+		}
 
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return ChatResponse{}, fmt.Errorf("marshal request: %w", err)
-	}
+		body, err := json.Marshal(reqBody)
+		if err != nil {
+			return ChatResponse{}, fmt.Errorf("marshal request: %w", err)
+		}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(body))
-	if err != nil {
-		return ChatResponse{}, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(body))
+		if err != nil {
+			return ChatResponse{}, fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
 
-	start := time.Now()
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return ChatResponse{}, fmt.Errorf("ollama request: %w", err)
-	}
-	defer resp.Body.Close()
+		start := time.Now()
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return ChatResponse{}, fmt.Errorf("ollama request: %w", err)
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		payload, _ := io.ReadAll(resp.Body)
-		return ChatResponse{}, fmt.Errorf("ollama status %d: %s", resp.StatusCode, string(payload))
-	}
+		if resp.StatusCode >= 400 {
+			payload, _ := io.ReadAll(resp.Body)
+			return ChatResponse{}, fmt.Errorf("ollama status %d: %s", resp.StatusCode, string(payload))
+		}
 
-	var parsed ollamaResp
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return ChatResponse{}, fmt.Errorf("decode response: %w", err)
-	}
+		var parsed ollamaResp
+		if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+			return ChatResponse{}, fmt.Errorf("decode response: %w", err)
+		}
 
-	out := ChatResponse{
-		Content:         parsed.Message.Content,
-		PromptEvalCount: parsed.PromptEvalCount,
-		EvalCount:       parsed.EvalCount,
-		EvalDurationNs:  parsed.EvalDuration,
-		RequestDuration: time.Since(start),
-	}
-	for _, tc := range parsed.Message.ToolCalls {
-		out.ToolCalls = append(out.ToolCalls, ToolCall{
-			ID:   newCallID(),
-			Name: tc.Function.Name,
-			Args: tc.Function.Arguments,
-		})
-	}
-	return out, nil
+		out := ChatResponse{
+			Content:         parsed.Message.Content,
+			PromptEvalCount: parsed.PromptEvalCount,
+			EvalCount:       parsed.EvalCount,
+			EvalDurationNs:  parsed.EvalDuration,
+			RequestDuration: time.Since(start),
+		}
+		for _, tc := range parsed.Message.ToolCalls {
+			out.ToolCalls = append(out.ToolCalls, ToolCall{
+				ID:   newCallID(),
+				Name: tc.Function.Name,
+				Args: tc.Function.Arguments,
+			})
+		}
+		return out, nil
+	})
 }
 
 func newCallID() string {

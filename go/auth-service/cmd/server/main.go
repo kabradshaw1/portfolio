@@ -20,6 +20,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 )
 
 func main() {
@@ -70,7 +71,11 @@ func main() {
 	slog.Info("connected to database")
 
 	// Wire dependencies
-	userRepo := repository.NewUserRepository(pool)
+	pgBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "auth-postgres",
+		OnStateChange: resilience.ObserveStateChange,
+	})
+	userRepo := repository.NewUserRepository(pool, pgBreaker)
 	authSvc := service.NewAuthService(userRepo, jwtSecret, 900000, 604800000)
 	googleClient := google.NewClient(googleClientID, googleClientSecret, googleTokenURL, googleUserinfoURL)
 	authHandler := handler.NewAuthHandler(authSvc, googleClient)

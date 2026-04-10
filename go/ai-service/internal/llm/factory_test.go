@@ -1,9 +1,13 @@
 package llm
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
+)
 
 func TestNewClient_Ollama(t *testing.T) {
-	client, err := NewClient("ollama", "http://localhost:11434", "qwen2.5", "")
+	client, err := NewClient("ollama", "http://localhost:11434", "qwen2.5", "", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -13,7 +17,7 @@ func TestNewClient_Ollama(t *testing.T) {
 }
 
 func TestNewClient_OpenAI(t *testing.T) {
-	client, err := NewClient("openai", "https://api.groq.com/openai/v1", "llama-3.1-70b", "key")
+	client, err := NewClient("openai", "https://api.groq.com/openai/v1", "llama-3.1-70b", "key", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -23,7 +27,7 @@ func TestNewClient_OpenAI(t *testing.T) {
 }
 
 func TestNewClient_Anthropic(t *testing.T) {
-	client, err := NewClient("anthropic", "", "claude-sonnet-4-20250514", "key")
+	client, err := NewClient("anthropic", "", "claude-sonnet-4-20250514", "key", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -33,7 +37,7 @@ func TestNewClient_Anthropic(t *testing.T) {
 }
 
 func TestNewClient_Unknown(t *testing.T) {
-	_, err := NewClient("unknown", "", "", "")
+	_, err := NewClient("unknown", "", "", "", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	if err == nil {
 		t.Fatal("expected error for unknown provider, got nil")
 	}

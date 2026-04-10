@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -21,7 +22,7 @@ func newRedis(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
 
 func TestRedisCache_SetGet(t *testing.T) {
 	client, _ := newRedis(t)
-	c := NewRedisCache(client, "ai")
+	c := NewRedisCache(client, "ai", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 
 	if err := c.Set(context.Background(), "k", []byte("v"), time.Minute); err != nil {
 		t.Fatalf("Set: %v", err)
@@ -34,7 +35,7 @@ func TestRedisCache_SetGet(t *testing.T) {
 
 func TestRedisCache_MissReturnsOKFalse(t *testing.T) {
 	client, _ := newRedis(t)
-	c := NewRedisCache(client, "ai")
+	c := NewRedisCache(client, "ai", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	_, ok, err := c.Get(context.Background(), "missing")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -46,7 +47,7 @@ func TestRedisCache_MissReturnsOKFalse(t *testing.T) {
 
 func TestRedisCache_Expiry(t *testing.T) {
 	client, mr := newRedis(t)
-	c := NewRedisCache(client, "ai")
+	c := NewRedisCache(client, "ai", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 
 	_ = c.Set(context.Background(), "k", []byte("v"), time.Second)
 	mr.FastForward(2 * time.Second)

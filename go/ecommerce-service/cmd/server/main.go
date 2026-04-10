@@ -25,6 +25,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/worker"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 )
 
 type rabbitPublisher struct {
@@ -122,9 +123,13 @@ func main() {
 	slog.Info("connected to RabbitMQ")
 
 	// Wire dependencies
-	productRepo := repository.NewProductRepository(pool)
-	cartRepo := repository.NewCartRepository(pool)
-	orderRepo := repository.NewOrderRepository(pool)
+	pgBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "ecommerce-postgres",
+		OnStateChange: resilience.ObserveStateChange,
+	})
+	productRepo := repository.NewProductRepository(pool, pgBreaker)
+	cartRepo := repository.NewCartRepository(pool, pgBreaker)
+	orderRepo := repository.NewOrderRepository(pool, pgBreaker)
 
 	publisher := &rabbitPublisher{ch: ch}
 
@@ -132,7 +137,7 @@ func main() {
 	cartSvc := service.NewCartService(cartRepo)
 	orderSvc := service.NewOrderService(orderRepo, cartRepo, publisher)
 
-	returnRepo := repository.NewReturnRepository(pool)
+	returnRepo := repository.NewReturnRepository(pool, pgBreaker)
 	returnSvc := service.NewReturnService(returnRepo, orderSvc)
 	returnHandler := handler.NewReturnHandler(returnSvc)
 
