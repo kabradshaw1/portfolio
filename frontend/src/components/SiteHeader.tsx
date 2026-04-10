@@ -32,6 +32,9 @@ export function SiteHeader() {
             <Link href="/go" className={navLinkClass("/go")}>
               Go
             </Link>
+            <Link href="/aws" className={navLinkClass("/aws")}>
+              AWS
+            </Link>
           </nav>
         </div>
         <div className="flex items-center gap-5">
