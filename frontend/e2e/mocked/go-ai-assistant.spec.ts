@@ -15,7 +15,6 @@ test.describe("Go ecommerce AI assistant drawer", () => {
         "event: final",
         'data: {"text":"I found a waterproof jacket under $150."}',
         "",
-        "",
       ].join("\n");
 
       return route.fulfill({

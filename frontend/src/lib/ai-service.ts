@@ -64,7 +64,16 @@ export async function* sendChat(args: SendChatArgs): AsyncGenerator<AiEvent> {
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      // Flush any final chunk that wasn't terminated by a blank line.
+      buffer += decoder.decode(); // flush decoder state
+      const tail = buffer.trim();
+      if (tail.length > 0) {
+        const parsed = parseSseChunk(tail);
+        if (parsed) yield parsed;
+      }
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
 
     // SSE events are separated by a blank line (\n\n).
