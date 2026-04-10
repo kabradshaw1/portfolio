@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-service-config
+  namespace: go-ecommerce
+data:
+  PORT: "8093"
+  OLLAMA_URL: "http://ollama.ai-services.svc.cluster.local:11434"
+  OLLAMA_MODEL: "qwen2.5:14b"
+  ECOMMERCE_URL: "http://go-ecommerce-service:8092"
+  REDIS_URL: "redis://redis.java-tasks.svc.cluster.local:6379"
