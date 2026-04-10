@@ -13,6 +13,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.agent import run_agent_loop
 from app.config import settings
 from app.indexer import index_project
+from app.metrics import instrumentator
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,8 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 _project_paths: dict[str, str] = {}
 

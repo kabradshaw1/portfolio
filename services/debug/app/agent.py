@@ -5,10 +5,19 @@ the model produces a final text diagnosis.
 """
 
 import json
+import time
 from collections.abc import AsyncGenerator
 
 import httpx
 
+from app.metrics import (
+    AGENT_LOOP_ITERATIONS,
+    AGENT_TOOL_CALLS,
+    AGENT_TOOL_DURATION,
+    OLLAMA_EVAL_DURATION,
+    OLLAMA_REQUEST_DURATION,
+    OLLAMA_TOKENS,
+)
 from app.prompts import SYSTEM_PROMPT, build_duplicate_nudge, build_user_prompt
 from app.tools import TOOL_DEFINITIONS, execute_tool
 
@@ -32,10 +41,34 @@ async def call_ollama(
     if tools is not None:
         payload["tools"] = tools
 
+    start = time.perf_counter()
     async with httpx.AsyncClient(timeout=300.0) as client:
         response = await client.post(f"{base_url}/api/chat", json=payload)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+    duration = time.perf_counter() - start
+
+    operation = "chat" if tools else "chat_final"
+    OLLAMA_REQUEST_DURATION.labels(
+        service="debug", model=model, operation=operation
+    ).observe(duration)
+
+    # Record token metrics from response
+    prompt_tokens = data.get("prompt_eval_count", 0)
+    completion_tokens = data.get("eval_count", 0)
+    if prompt_tokens:
+        OLLAMA_TOKENS.labels(service="debug", model=model, kind="prompt").inc(
+            prompt_tokens
+        )
+    if completion_tokens:
+        OLLAMA_TOKENS.labels(service="debug", model=model, kind="completion").inc(
+            completion_tokens
+        )
+    eval_ns = data.get("eval_duration", 0)
+    if eval_ns:
+        OLLAMA_EVAL_DURATION.labels(service="debug", model=model).observe(eval_ns / 1e9)
+
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +111,7 @@ async def run_agent_loop(
                 tools=TOOL_DEFINITIONS,
             )
         except Exception as exc:  # noqa: BLE001
+            AGENT_LOOP_ITERATIONS.labels(service="debug").observe(step)
             yield {
                 "event": "diagnosis",
                 "data": {"step": step, "content": f"Agent error: {exc}"},
@@ -91,6 +125,7 @@ async def run_agent_loop(
         # --- no tool calls → final diagnosis ---
         if not tool_calls:
             content = message.get("content", "")
+            AGENT_LOOP_ITERATIONS.labels(service="debug").observe(step)
             yield {"event": "diagnosis", "data": {"step": step, "content": content}}
             yield {"event": "done", "data": {}}
             return
@@ -129,6 +164,7 @@ async def run_agent_loop(
         }
 
         # Execute the tool
+        tool_start = time.perf_counter()
         result: str = await execute_tool(
             tool_name=tool_name,
             arguments=arguments,
@@ -139,6 +175,10 @@ async def run_agent_loop(
             qdrant_host=qdrant_host,
             qdrant_port=qdrant_port,
         )
+        AGENT_TOOL_DURATION.labels(tool=tool_name).observe(
+            time.perf_counter() - tool_start
+        )
+        AGENT_TOOL_CALLS.labels(tool=tool_name, result="success").inc()
 
         # Emit tool_result event (truncate for display)
         truncated = len(result) > 2000
@@ -187,6 +227,7 @@ async def run_agent_loop(
             tools=None,
         )
     except Exception as exc:  # noqa: BLE001
+        AGENT_LOOP_ITERATIONS.labels(service="debug").observe(max_steps)
         yield {
             "event": "diagnosis",
             "data": {"step": max_steps, "content": f"Agent error: {exc}"},
@@ -195,5 +236,6 @@ async def run_agent_loop(
         return
 
     content = response.get("message", {}).get("content", "")
+    AGENT_LOOP_ITERATIONS.labels(service="debug").observe(max_steps)
     yield {"event": "diagnosis", "data": {"step": max_steps, "content": content}}
     yield {"event": "done", "data": {}}
