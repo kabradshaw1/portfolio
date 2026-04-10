@@ -15,10 +15,12 @@ resources:
   - configmaps/grafana-datasource.yml
   - configmaps/prometheus-config.yml
   - deployments/grafana.yml
+  - deployments/jaeger.yml
   - deployments/kube-state-metrics.yml
   - deployments/prometheus.yml
   - daemonsets/node-exporter.yml
   - services/grafana.yml
+  - services/jaeger.yml
   - services/kube-state-metrics.yml
   - services/node-exporter.yml
   - services/prometheus.yml

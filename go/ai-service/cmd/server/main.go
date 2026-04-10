@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/agent"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/cache"
@@ -23,6 +24,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
+	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
 func main() {
@@ -36,6 +38,14 @@ func main() {
 	if jwtSecret == "" {
 		log.Fatal("JWT_SECRET is required")
 	}
+
+	// Tracing
+	ctx := context.Background()
+	shutdownTracer, err := tracing.Init(ctx, "ai-service", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+	if err != nil {
+		log.Fatalf("tracing init: %v", err)
+	}
+	defer func() { _ = shutdownTracer(ctx) }()
 
 	// Circuit breakers
 	ollamaBreaker := resilience.NewBreaker(resilience.BreakerConfig{
@@ -104,6 +114,7 @@ func main() {
 	// HTTP
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(otelgin.Middleware("ai-service"))
 	router.Use(apperror.ErrorHandler())
 
 	apphttp.RegisterHealthRoutes(router, map[string]apphttp.ReadyCheck{

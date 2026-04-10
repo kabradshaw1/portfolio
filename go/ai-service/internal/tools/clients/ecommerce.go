@@ -13,6 +13,7 @@ import (
 	"time"
 
 	gobreaker "github.com/sony/gobreaker/v2"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 )
@@ -53,7 +54,7 @@ func NewEcommerceClient(baseURL string, breaker *gobreaker.CircuitBreaker[any]) 
 	}
 	return &EcommerceClient{
 		baseURL:  baseURL,
-		http:     &http.Client{Timeout: 5 * time.Second},
+		http:     &http.Client{Timeout: 5 * time.Second, Transport: otelhttp.NewTransport(http.DefaultTransport)},
 		breaker:  breaker,
 		retryCfg: cfg,
 	}
