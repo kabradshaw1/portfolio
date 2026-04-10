@@ -8,6 +8,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/guardrails"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
@@ -56,6 +60,14 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 	defer cancel()
 
 	turnID := uuid.NewString()
+
+	ctx, turnSpan := otel.Tracer("agent").Start(ctx, "agent.turn",
+		trace.WithAttributes(
+			attribute.String("agent.turn_id", turnID),
+			attribute.String("agent.user_id", turn.UserID),
+		),
+	)
+	defer turnSpan.End()
 	startTime := time.Now()
 	stepsCompleted := 0
 	turn.Messages = guardrails.TruncateHistory(turn.Messages, guardrails.DefaultMaxHistory)
@@ -63,7 +75,11 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 	var toolsCalled []string
 
 	for step := 0; step < a.maxSteps; step++ {
-		resp, err := a.llm.Chat(ctx, messages, a.registry.Schemas())
+		llmCtx, llmSpan := otel.Tracer("agent").Start(ctx, "agent.llm_call",
+			trace.WithAttributes(attribute.Int("agent.step", step)),
+		)
+		resp, err := a.llm.Chat(llmCtx, messages, a.registry.Schemas())
+		llmSpan.End()
 		if err == nil {
 			operation := "chat"
 			if step == a.maxSteps-1 {
@@ -115,6 +131,10 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 		for _, call := range resp.ToolCalls {
 			emit(Event{ToolCall: &ToolCallEvent{Name: call.Name, Args: call.Args}})
 
+			_, toolSpan := otel.Tracer("agent").Start(ctx, "agent.tool_call",
+				trace.WithAttributes(attribute.String("tool.name", call.Name)),
+			)
+
 			tool, ok := a.registry.Get(call.Name)
 			if !ok {
 				errMsg := "unknown tool: " + call.Name
@@ -122,6 +142,7 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 				msg, _ := llm.ToolResultMessage(call.ID, call.Name, map[string]string{"error": errMsg})
 				messages = append(messages, msg)
 				a.rec.RecordTool(call.Name, "unknown", 0)
+				toolSpan.End()
 				continue
 			}
 
@@ -138,6 +159,7 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 				emit(Event{ToolError: &ToolErrorEvent{Name: call.Name, Error: toolErr.Error()}})
 				msg, _ := llm.ToolResultMessage(call.ID, call.Name, map[string]string{"error": toolErr.Error()})
 				messages = append(messages, msg)
+				toolSpan.End()
 				continue
 			}
 
@@ -148,9 +170,11 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 				emit(Event{ToolError: &ToolErrorEvent{Name: call.Name, Error: errMsg}})
 				msg2, _ := llm.ToolResultMessage(call.ID, call.Name, map[string]string{"error": errMsg})
 				messages = append(messages, msg2)
+				toolSpan.End()
 				continue
 			}
 			messages = append(messages, msg)
+			toolSpan.End()
 		}
 	}
 

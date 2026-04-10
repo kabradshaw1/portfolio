@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 )
 
 func TestEcommerceClient_GetProduct(t *testing.T) {
@@ -18,7 +20,7 @@ func TestEcommerceClient_GetProduct(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewEcommerceClient(server.URL)
+	c := NewEcommerceClient(server.URL, resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	p, err := c.GetProduct(context.Background(), "abc-123")
 	if err != nil {
 		t.Fatalf("GetProduct: %v", err)
@@ -34,7 +36,7 @@ func TestEcommerceClient_GetProduct_NotFound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := NewEcommerceClient(server.URL).GetProduct(context.Background(), "missing")
+	_, err := NewEcommerceClient(server.URL, resilience.NewBreaker(resilience.BreakerConfig{Name: "test"})).GetProduct(context.Background(), "missing")
 	if err == nil {
 		t.Fatal("expected error on 404")
 	}
@@ -58,7 +60,7 @@ func TestEcommerceClient_ListProducts_TextSearch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewEcommerceClient(server.URL)
+	c := NewEcommerceClient(server.URL, resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	ps, err := c.ListProducts(context.Background(), "jacket", 10)
 	if err != nil {
 		t.Fatalf("ListProducts: %v", err)
@@ -86,7 +88,7 @@ func TestEcommerceClient_ListOrders_ForwardsJWT(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewEcommerceClient(server.URL)
+	c := NewEcommerceClient(server.URL, resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	orders, err := c.ListOrders(context.Background(), "test-token")
 	if err != nil {
 		t.Fatalf("ListOrders: %v", err)
@@ -102,7 +104,7 @@ func TestEcommerceClient_GetOrder_404(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := NewEcommerceClient(server.URL).GetOrder(context.Background(), "t", "id-x")
+	_, err := NewEcommerceClient(server.URL, resilience.NewBreaker(resilience.BreakerConfig{Name: "test"})).GetOrder(context.Background(), "t", "id-x")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -125,7 +127,7 @@ func TestEcommerceClient_GetCart(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cart, err := NewEcommerceClient(server.URL).GetCart(context.Background(), "t")
+	cart, err := NewEcommerceClient(server.URL, resilience.NewBreaker(resilience.BreakerConfig{Name: "test"})).GetCart(context.Background(), "t")
 	if err != nil {
 		t.Fatalf("GetCart: %v", err)
 	}
@@ -152,7 +154,7 @@ func TestEcommerceClient_AddToCart_BodyShape(t *testing.T) {
 	}))
 	defer server.Close()
 
-	item, err := NewEcommerceClient(server.URL).AddToCart(context.Background(), "t", "p1", 2)
+	item, err := NewEcommerceClient(server.URL, resilience.NewBreaker(resilience.BreakerConfig{Name: "test"})).AddToCart(context.Background(), "t", "p1", 2)
 	if err != nil {
 		t.Fatalf("AddToCart: %v", err)
 	}
@@ -182,7 +184,7 @@ func TestEcommerceClient_InitiateReturn(t *testing.T) {
 	}))
 	defer server.Close()
 
-	ret, err := NewEcommerceClient(server.URL).InitiateReturn(context.Background(), "t", "order-1", []string{"i1"}, "doesn't fit")
+	ret, err := NewEcommerceClient(server.URL, resilience.NewBreaker(resilience.BreakerConfig{Name: "test"})).InitiateReturn(context.Background(), "t", "order-1", []string{"i1"}, "doesn't fit")
 	if err != nil {
 		t.Fatalf("InitiateReturn: %v", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/cache"
@@ -35,7 +36,7 @@ func newCache(t *testing.T) cache.Cache {
 		t.Fatalf("miniredis: %v", err)
 	}
 	t.Cleanup(mr.Close)
-	return cache.NewRedisCache(redis.NewClient(&redis.Options{Addr: mr.Addr()}), "ai-test")
+	return cache.NewRedisCache(redis.NewClient(&redis.Options{Addr: mr.Addr()}), "ai-test", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 }
 
 func TestCached_MissThenHit(t *testing.T) {

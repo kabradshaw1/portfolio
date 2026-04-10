@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 )
 
 func TestOllamaClient_Chat_FinalText(t *testing.T) {
@@ -28,7 +30,7 @@ func TestOllamaClient_Chat_FinalText(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOllamaClient(server.URL, "qwen2.5")
+	client := NewOllamaClient(server.URL, "qwen2.5", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	resp, err := client.Chat(context.Background(),
 		[]Message{{Role: RoleUser, Content: "hi"}},
 		nil,
@@ -66,7 +68,7 @@ func TestOllamaClient_Chat_ToolCalls(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOllamaClient(server.URL, "qwen2.5")
+	client := NewOllamaClient(server.URL, "qwen2.5", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	resp, err := client.Chat(context.Background(),
 		[]Message{{Role: RoleUser, Content: "find a jacket"}},
 		[]ToolSchema{{Name: "search_products", Description: "", Parameters: json.RawMessage(`{}`)}},
@@ -94,7 +96,7 @@ func TestOllamaClient_Chat_HTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOllamaClient(server.URL, "qwen2.5")
+	client := NewOllamaClient(server.URL, "qwen2.5", resilience.NewBreaker(resilience.BreakerConfig{Name: "test"}))
 	_, err := client.Chat(context.Background(), []Message{{Role: RoleUser, Content: "hi"}}, nil)
 	if err == nil {
 		t.Fatal("expected error on 500, got nil")

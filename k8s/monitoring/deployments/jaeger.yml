@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: monitoring
+  labels:
+    app: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      containers:
+        - name: jaeger
+          image: jaegertracing/all-in-one:1.68
+          ports:
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 16686
+              name: query
+          env:
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
+            - name: QUERY_BASE_PATH
+              value: /jaeger
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 500m
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 14269

@@ -10,8 +10,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
 var (
@@ -118,22 +122,39 @@ func (p *OrderProcessor) StartConsumer(ctx context.Context, ch *amqp.Channel, co
 					if !ok {
 						return
 					}
+
+					// Extract trace context from AMQP headers.
+					headers := make(map[string]interface{})
+					for k, v := range msg.Headers {
+						headers[k] = v
+					}
+					msgCtx := tracing.ExtractAMQP(ctx, headers)
+					msgCtx, span := otel.Tracer("rabbitmq").Start(msgCtx, "rabbitmq.consume",
+						trace.WithAttributes(
+							attribute.String("messaging.system", "rabbitmq"),
+							attribute.String("messaging.destination", "ecommerce.orders"),
+						),
+					)
+
 					var orderMsg model.OrderMessage
 					if err := json.Unmarshal(msg.Body, &orderMsg); err != nil {
 						log.Printf("ERROR: unmarshal message: %v", err)
 						messagesProcessed.WithLabelValues("error").Inc()
+						span.End()
 						_ = msg.Nack(false, false)
 						continue
 					}
 
-					if err := p.ProcessOrder(ctx, orderMsg.OrderID); err != nil {
+					if err := p.ProcessOrder(msgCtx, orderMsg.OrderID); err != nil {
 						log.Printf("ERROR: process order %s: %v", orderMsg.OrderID, err)
 						messagesProcessed.WithLabelValues("error").Inc()
+						span.End()
 						_ = msg.Nack(false, false)
 						continue
 					}
 
 					messagesProcessed.WithLabelValues("success").Inc()
+					span.End()
 					_ = msg.Ack(false)
 				}
 			}

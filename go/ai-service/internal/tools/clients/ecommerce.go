@@ -9,7 +9,13 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
+
+	gobreaker "github.com/sony/gobreaker/v2"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 )
 
 // Product is the subset of ecommerce-service's product representation that ai-service needs.
@@ -30,72 +36,89 @@ type listResponse struct {
 }
 
 type EcommerceClient struct {
-	baseURL string
-	http    *http.Client
+	baseURL  string
+	http     *http.Client
+	breaker  *gobreaker.CircuitBreaker[any]
+	retryCfg resilience.RetryConfig
 }
 
-func NewEcommerceClient(baseURL string) *EcommerceClient {
+func NewEcommerceClient(baseURL string, breaker *gobreaker.CircuitBreaker[any]) *EcommerceClient {
+	cfg := resilience.DefaultRetryConfig()
+	cfg.IsRetryable = func(err error) bool {
+		if err == nil {
+			return false
+		}
+		// Don't retry 4xx (client errors).
+		msg := err.Error()
+		return !strings.Contains(msg, "status 4")
+	}
 	return &EcommerceClient{
-		baseURL: baseURL,
-		http:    &http.Client{Timeout: 5 * time.Second},
+		baseURL:  baseURL,
+		http:     &http.Client{Timeout: 5 * time.Second, Transport: otelhttp.NewTransport(http.DefaultTransport)},
+		breaker:  breaker,
+		retryCfg: cfg,
 	}
 }
 
 func (c *EcommerceClient) GetProduct(ctx context.Context, id string) (Product, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/products/"+url.PathEscape(id), nil)
-	if err != nil {
-		return Product{}, err
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return Product{}, fmt.Errorf("get product: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		payload, _ := io.ReadAll(resp.Body)
-		return Product{}, fmt.Errorf("get product %s: status %d: %s", id, resp.StatusCode, string(payload))
-	}
-	var p Product
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
-		return Product{}, fmt.Errorf("decode product: %w", err)
-	}
-	return p, nil
+	return resilience.Call(ctx, c.breaker, c.retryCfg, func(ctx context.Context) (Product, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/products/"+url.PathEscape(id), nil)
+		if err != nil {
+			return Product{}, err
+		}
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return Product{}, fmt.Errorf("get product: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			payload, _ := io.ReadAll(resp.Body)
+			return Product{}, fmt.Errorf("get product %s: status %d: %s", id, resp.StatusCode, string(payload))
+		}
+		var p Product
+		if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+			return Product{}, fmt.Errorf("decode product: %w", err)
+		}
+		return p, nil
+	})
 }
 
 // ListProducts does a text search via ecommerce-service's /products endpoint.
 // The endpoint returns a ProductListResponse envelope; we unwrap to []Product.
 func (c *EcommerceClient) ListProducts(ctx context.Context, query string, limit int) ([]Product, error) {
-	u, err := url.Parse(c.baseURL + "/products")
-	if err != nil {
-		return nil, err
-	}
-	q := u.Query()
-	if query != "" {
-		q.Set("q", query)
-	}
-	if limit > 0 {
-		q.Set("limit", strconv.Itoa(limit))
-	}
-	u.RawQuery = q.Encode()
+	return resilience.Call(ctx, c.breaker, c.retryCfg, func(ctx context.Context) ([]Product, error) {
+		u, err := url.Parse(c.baseURL + "/products")
+		if err != nil {
+			return nil, err
+		}
+		q := u.Query()
+		if query != "" {
+			q.Set("q", query)
+		}
+		if limit > 0 {
+			q.Set("limit", strconv.Itoa(limit))
+		}
+		u.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("list products: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		payload, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("list products: status %d: %s", resp.StatusCode, string(payload))
-	}
-	var out listResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("decode product list: %w", err)
-	}
-	return out.Products, nil
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("list products: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			payload, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("list products: status %d: %s", resp.StatusCode, string(payload))
+		}
+		var out listResponse
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			return nil, fmt.Errorf("decode product list: %w", err)
+		}
+		return out.Products, nil
+	})
 }
 
 // ---------- user-scoped types ----------
@@ -147,20 +170,22 @@ func (c *EcommerceClient) authedRequest(ctx context.Context, method, path string
 	return req, nil
 }
 
-func (c *EcommerceClient) doJSON(req *http.Request, out any) error {
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		payload, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("%s %s: status %d: %s", req.Method, req.URL.Path, resp.StatusCode, string(payload))
-	}
-	if out == nil {
-		return nil
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
+func (c *EcommerceClient) doJSON(ctx context.Context, req *http.Request, out any) error {
+	return resilience.Do(ctx, c.breaker, c.retryCfg, func(ctx context.Context) error {
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			payload, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("%s %s: status %d: %s", req.Method, req.URL.Path, resp.StatusCode, string(payload))
+		}
+		if out == nil {
+			return nil
+		}
+		return json.NewDecoder(resp.Body).Decode(out)
+	})
 }
 
 // ---------- user-scoped methods ----------
@@ -171,7 +196,7 @@ func (c *EcommerceClient) ListOrders(ctx context.Context, jwt string) ([]Order, 
 		return nil, err
 	}
 	var envelope ordersResponse
-	if err := c.doJSON(req, &envelope); err != nil {
+	if err := c.doJSON(ctx, req, &envelope); err != nil {
 		return nil, fmt.Errorf("list orders: %w", err)
 	}
 	return envelope.Orders, nil
@@ -183,7 +208,7 @@ func (c *EcommerceClient) GetOrder(ctx context.Context, jwt, orderID string) (Or
 		return Order{}, err
 	}
 	var o Order
-	if err := c.doJSON(req, &o); err != nil {
+	if err := c.doJSON(ctx, req, &o); err != nil {
 		return Order{}, fmt.Errorf("get order: %w", err)
 	}
 	return o, nil
@@ -195,7 +220,7 @@ func (c *EcommerceClient) GetCart(ctx context.Context, jwt string) (Cart, error)
 		return Cart{}, err
 	}
 	var cart Cart
-	if err := c.doJSON(req, &cart); err != nil {
+	if err := c.doJSON(ctx, req, &cart); err != nil {
 		return Cart{}, fmt.Errorf("get cart: %w", err)
 	}
 	return cart, nil
@@ -208,7 +233,7 @@ func (c *EcommerceClient) AddToCart(ctx context.Context, jwt, productID string, 
 		return CartItem{}, err
 	}
 	var item CartItem
-	if err := c.doJSON(req, &item); err != nil {
+	if err := c.doJSON(ctx, req, &item); err != nil {
 		return CartItem{}, fmt.Errorf("add to cart: %w", err)
 	}
 	return item, nil
@@ -224,7 +249,7 @@ func (c *EcommerceClient) InitiateReturn(ctx context.Context, jwt, orderID strin
 		return Return{}, err
 	}
 	var ret Return
-	if err := c.doJSON(req, &ret); err != nil {
+	if err := c.doJSON(ctx, req, &ret); err != nil {
 		return Return{}, fmt.Errorf("initiate return: %w", err)
 	}
 	return ret, nil

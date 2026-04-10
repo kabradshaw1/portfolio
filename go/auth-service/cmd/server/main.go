@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/google"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/handler"
@@ -20,6 +21,8 @@ import (
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
+	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
 func main() {
@@ -56,8 +59,15 @@ func main() {
 		port = "8091"
 	}
 
-	// Connect to Postgres
+	// Tracing
 	ctx := context.Background()
+	shutdownTracer, err := tracing.Init(ctx, "auth-service", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+	if err != nil {
+		log.Fatalf("tracing init: %v", err)
+	}
+	defer func() { _ = shutdownTracer(ctx) }()
+
+	// Connect to Postgres
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
@@ -70,7 +80,11 @@ func main() {
 	slog.Info("connected to database")
 
 	// Wire dependencies
-	userRepo := repository.NewUserRepository(pool)
+	pgBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "auth-postgres",
+		OnStateChange: resilience.ObserveStateChange,
+	})
+	userRepo := repository.NewUserRepository(pool, pgBreaker)
 	authSvc := service.NewAuthService(userRepo, jwtSecret, 900000, 604800000)
 	googleClient := google.NewClient(googleClientID, googleClientSecret, googleTokenURL, googleUserinfoURL)
 	authHandler := handler.NewAuthHandler(authSvc, googleClient)
@@ -79,6 +93,7 @@ func main() {
 	// Set up Gin
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(otelgin.Middleware("auth-service"))
 	router.Use(middleware.Logging())
 	router.Use(apperror.ErrorHandler())
 	router.Use(middleware.Metrics())
