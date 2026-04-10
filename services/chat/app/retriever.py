@@ -1,4 +1,8 @@
+import time
+
 from qdrant_client import QdrantClient
+
+from app.metrics import QDRANT_SEARCH_DURATION, QDRANT_SEARCH_RESULTS
 
 
 class QdrantRetriever:
@@ -7,10 +11,17 @@ class QdrantRetriever:
         self.collection_name = collection_name
 
     def search(self, query_vector: list[float], top_k: int = 5) -> list[dict]:
+        start = time.perf_counter()
         results = self.client.search(
             collection_name=self.collection_name,
             query_vector=query_vector,
             limit=top_k,
+        )
+        QDRANT_SEARCH_DURATION.labels(collection=self.collection_name).observe(
+            time.perf_counter() - start
+        )
+        QDRANT_SEARCH_RESULTS.labels(collection=self.collection_name).observe(
+            len(results)
         )
 
         return [

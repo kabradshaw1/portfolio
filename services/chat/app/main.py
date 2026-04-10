@@ -10,6 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.chain import rag_query
 from app.config import settings
+from app.metrics import instrumentator
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,8 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 
 class ChatRequest(BaseModel):
