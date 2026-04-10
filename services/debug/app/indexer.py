@@ -1,8 +1,8 @@
 import os
 import uuid
 
-import httpx
 from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
+from llm.base import EmbeddingProvider
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
@@ -113,33 +113,9 @@ def _find_start_line(split_text: str, source_lines: list[str]) -> int:
     return 1
 
 
-async def embed_texts(
-    texts: list[str],
-    ollama_base_url: str,
-    model: str,
-) -> list[list[float]]:
-    """Embed a list of texts using Ollama's /api/embed endpoint.
-
-    Returns a list of embedding vectors (list of floats).
-    """
-    if not texts:
-        return []
-
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            f"{ollama_base_url}/api/embed",
-            json={"model": model, "input": texts},
-        )
-        response.raise_for_status()
-        data = response.json()
-
-    return data["embeddings"]
-
-
 async def index_project(
     project_path: str,
-    ollama_base_url: str,
-    embedding_model: str,
+    embedding_provider: EmbeddingProvider,
     qdrant_host: str,
     qdrant_port: int,
 ) -> dict:
@@ -155,7 +131,7 @@ async def index_project(
     chunks = chunk_code_files(file_paths, project_root=project_path)
 
     texts = [chunk["text"] for chunk in chunks]
-    vectors = await embed_texts(texts, ollama_base_url, embedding_model)
+    vectors = await embedding_provider.embed(texts)
 
     client = QdrantClient(host=qdrant_host, port=qdrant_port)
 

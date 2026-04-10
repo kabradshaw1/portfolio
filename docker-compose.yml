@@ -27,7 +27,8 @@ services:
   ingestion:
     image: ghcr.io/kabradshaw1/portfolio/ingestion:latest
     build:
-      context: ./services/ingestion
+      context: ./services
+      dockerfile: ingestion/Dockerfile
     env_file: .env
     depends_on:
       qdrant:
@@ -38,7 +39,8 @@ services:
   chat:
     image: ghcr.io/kabradshaw1/portfolio/chat:latest
     build:
-      context: ./services/chat
+      context: ./services
+      dockerfile: chat/Dockerfile
     env_file: .env
     depends_on:
       qdrant:
@@ -49,7 +51,8 @@ services:
   debug:
     image: ghcr.io/kabradshaw1/portfolio/debug:latest
     build:
-      context: ./services/debug
+      context: ./services
+      dockerfile: debug/Dockerfile
     env_file: .env
     depends_on:
       qdrant:

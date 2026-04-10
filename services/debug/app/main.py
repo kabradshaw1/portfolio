@@ -2,10 +2,10 @@ import json
 import logging
 import os
 
-import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from llm.factory import get_embedding_provider, get_llm_provider
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
 from sse_starlette.sse import EventSourceResponse
@@ -28,6 +28,20 @@ app.add_middleware(
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
 
+_llm_provider = get_llm_provider(
+    provider=settings.llm_provider,
+    base_url=settings.get_llm_base_url(),
+    api_key=settings.llm_api_key,
+    model=settings.get_llm_model(),
+)
+
+_embedding_provider = get_embedding_provider(
+    provider=settings.embedding_provider,
+    base_url=settings.get_embedding_base_url(),
+    api_key=settings.embedding_api_key,
+    model=settings.embedding_model,
+)
+
 _project_paths: dict[str, str] = {}
 
 
@@ -44,7 +58,7 @@ class DebugRequest(BaseModel):
 @app.get("/health")
 async def health():
     qdrant_ok = False
-    ollama_ok = False
+    llm_ok = False
 
     try:
         qd = QdrantClient(
@@ -56,22 +70,19 @@ async def health():
         pass
 
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(f"{settings.ollama_base_url}/api/tags", timeout=3.0)
-            if resp.status_code == 200:
-                ollama_ok = True
+        llm_ok = await _llm_provider.check_health()
     except Exception:
         pass
 
-    status = "healthy" if (qdrant_ok and ollama_ok) else "degraded"
-    status_code = 200 if (qdrant_ok and ollama_ok) else 503
+    status = "healthy" if (qdrant_ok and llm_ok) else "degraded"
+    status_code = 200 if (qdrant_ok and llm_ok) else 503
 
     return JSONResponse(
         status_code=status_code,
         content={
             "status": status,
             "qdrant": "connected" if qdrant_ok else "disconnected",
-            "ollama": "connected" if ollama_ok else "disconnected",
+            "llm": "connected" if llm_ok else "disconnected",
         },
     )
 
@@ -86,8 +97,7 @@ async def index(request: IndexRequest):
     try:
         result = await index_project(
             project_path=request.path,
-            ollama_base_url=settings.ollama_base_url,
-            embedding_model=settings.embedding_model,
+            embedding_provider=_embedding_provider,
             qdrant_host=settings.qdrant_host,
             qdrant_port=settings.qdrant_port,
         )
@@ -115,9 +125,9 @@ async def debug(request: DebugRequest):
                 error_output=request.error_output,
                 collection=request.collection,
                 project_path=project_path,
-                ollama_base_url=settings.ollama_base_url,
-                chat_model=settings.chat_model,
-                embedding_model=settings.embedding_model,
+                llm_provider=_llm_provider,
+                embedding_provider=_embedding_provider,
+                chat_model=settings.get_llm_model(),
                 qdrant_host=settings.qdrant_host,
                 qdrant_port=settings.qdrant_port,
                 max_steps=settings.max_agent_steps,

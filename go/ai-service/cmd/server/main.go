@@ -36,7 +36,18 @@ func main() {
 	}
 
 	// LLM client
-	llmc := llm.NewOllamaClient(ollamaURL, ollamaModel)
+	llmProvider := getenv("LLM_PROVIDER", "ollama")
+	llmAPIKey := os.Getenv("LLM_API_KEY")
+	var llmBaseURL string
+	if llmProvider == "ollama" {
+		llmBaseURL = ollamaURL
+	} else {
+		llmBaseURL = getenv("LLM_BASE_URL", "")
+	}
+	llmc, err := llm.NewClient(llmProvider, llmBaseURL, ollamaModel, llmAPIKey)
+	if err != nil {
+		log.Fatalf("LLM client: %v", err)
+	}
 
 	// Tool registry
 	ecomClient := clients.NewEcommerceClient(ecommerceURL)
@@ -79,15 +90,22 @@ func main() {
 	router.Use(gin.Recovery())
 
 	apphttp.RegisterHealthRoutes(router, map[string]apphttp.ReadyCheck{
-		"ollama": func() error {
-			req, _ := http.NewRequest(http.MethodGet, ollamaURL+"/api/tags", nil)
-			client := &http.Client{Timeout: 2 * time.Second}
-			resp, err := client.Do(req)
-			if err != nil {
-				return err
+		"llm": func() error {
+			if llmProvider == "ollama" {
+				req, _ := http.NewRequest(http.MethodGet, ollamaURL+"/api/tags", nil)
+				client := &http.Client{Timeout: 2 * time.Second}
+				resp, err := client.Do(req)
+				if err != nil {
+					return err
+				}
+				defer resp.Body.Close()
+				return nil
 			}
-			defer resp.Body.Close()
-			return nil
+			// For API-based providers, do a lightweight chat call
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, err := llmc.Chat(ctx, []llm.Message{{Role: llm.RoleUser, Content: "ping"}}, nil)
+			return err
 		},
 		"ecommerce": func() error {
 			req, _ := http.NewRequest(http.MethodGet, ecommerceURL+"/health", nil)

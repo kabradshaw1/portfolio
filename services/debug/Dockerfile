@@ -5,10 +5,14 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Install shared LLM package first (changes less frequently)
+COPY shared/ /shared/
+RUN pip install --no-cache-dir /shared
+
+COPY debug/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app/ ./app/
+COPY debug/app/ ./app/
 
 RUN useradd --create-home appuser
 USER appuser

@@ -94,7 +94,9 @@ jobs:
           cache-dependency-path: services/${{ matrix.service }}/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r services/${{ matrix.service }}/requirements.txt
+        run: |
+          pip install services/shared/
+          pip install -r services/${{ matrix.service }}/requirements.txt
 
       - name: Run tests with coverage
         run: >
@@ -231,7 +233,8 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
-          context: services/${{ matrix.service }}
+          context: services
+          file: services/${{ matrix.service }}/Dockerfile
           push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
           tags: ghcr.io/${{ github.repository }}/${{ matrix.service }}:latest
           cache-from: type=gha
@@ -536,7 +539,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r services/${{ matrix.service }}/requirements.txt
+        run: |
+          pip install services/shared/
+          pip install -r services/${{ matrix.service }}/requirements.txt
 
       - name: Install pip-audit
         run: pip install pip-audit

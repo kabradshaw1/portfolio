@@ -1,6 +1,6 @@
 """Agent loop for the debug service.
 
-Calls Ollama repeatedly, dispatching tool calls and collecting results until
+Calls the LLM repeatedly, dispatching tool calls and collecting results until
 the model produces a final text diagnosis.
 """
 
@@ -8,7 +8,7 @@ import json
 import time
 from collections.abc import AsyncGenerator
 
-import httpx
+from llm.base import EmbeddingProvider, LLMProvider
 
 from app.metrics import (
     AGENT_LOOP_ITERATIONS,
@@ -22,30 +22,19 @@ from app.prompts import SYSTEM_PROMPT, build_duplicate_nudge, build_user_prompt
 from app.tools import TOOL_DEFINITIONS, execute_tool
 
 # ---------------------------------------------------------------------------
-# Ollama HTTP client
+# LLM call wrapper with metrics
 # ---------------------------------------------------------------------------
 
 
-async def call_ollama(
+async def call_llm(
     messages: list[dict],
     model: str,
-    base_url: str,
+    provider: LLMProvider,
     tools: list[dict] | None = None,
 ) -> dict:
-    """POST to Ollama /api/chat and return the parsed JSON response."""
-    payload: dict = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-    }
-    if tools is not None:
-        payload["tools"] = tools
-
+    """Call the LLM provider and return the parsed response with metrics."""
     start = time.perf_counter()
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        response = await client.post(f"{base_url}/api/chat", json=payload)
-        response.raise_for_status()
-        data = response.json()
+    data = await provider.chat(messages=messages, tools=tools)
     duration = time.perf_counter() - start
 
     operation = "chat" if tools else "chat_final"
@@ -81,16 +70,16 @@ async def run_agent_loop(
     error_output: str | None,
     collection: str,
     project_path: str,
-    ollama_base_url: str,
+    llm_provider: LLMProvider,
+    embedding_provider: EmbeddingProvider,
     chat_model: str,
-    embedding_model: str,
     qdrant_host: str,
     qdrant_port: int,
     max_steps: int = 10,
 ) -> AsyncGenerator[dict, None]:
     """Run the debug agent loop, yielding SSE-style event dicts.
 
-    The loop calls Ollama with tool definitions, dispatches any tool calls,
+    The loop calls the LLM with tool definitions, dispatches any tool calls,
     appends results to the message history, and repeats until the model
     responds with plain text (a diagnosis) or max_steps is exhausted.
     """
@@ -102,12 +91,12 @@ async def run_agent_loop(
     seen_calls: set[str] = set()
 
     for step in range(1, max_steps + 1):
-        # --- call Ollama ---
+        # --- call LLM ---
         try:
-            response = await call_ollama(
+            response = await call_llm(
                 messages=messages,
                 model=chat_model,
-                base_url=ollama_base_url,
+                provider=llm_provider,
                 tools=TOOL_DEFINITIONS,
             )
         except Exception as exc:  # noqa: BLE001
@@ -170,8 +159,7 @@ async def run_agent_loop(
             arguments=arguments,
             project_path=project_path,
             collection=collection,
-            ollama_base_url=ollama_base_url,
-            embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
             qdrant_host=qdrant_host,
             qdrant_port=qdrant_port,
         )
@@ -220,10 +208,10 @@ async def run_agent_loop(
     )
 
     try:
-        response = await call_ollama(
+        response = await call_llm(
             messages=messages,
             model=chat_model,
-            base_url=ollama_base_url,
+            provider=llm_provider,
             tools=None,
         )
     except Exception as exc:  # noqa: BLE001

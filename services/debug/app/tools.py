@@ -10,7 +10,7 @@ import os
 import re
 import subprocess
 
-import httpx
+from llm.base import EmbeddingProvider
 from qdrant_client import QdrantClient
 from qdrant_client.models import ScoredPoint
 
@@ -172,31 +172,6 @@ _SKIP_DIRS = {
 }
 
 # ---------------------------------------------------------------------------
-# embed_texts — duplicated from indexer.py (each service owns its own copy)
-# ---------------------------------------------------------------------------
-
-
-async def embed_texts(
-    texts: list[str],
-    ollama_base_url: str,
-    model: str,
-) -> list[list[float]]:
-    """Embed a list of texts using Ollama's /api/embed endpoint."""
-    if not texts:
-        return []
-
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            f"{ollama_base_url}/api/embed",
-            json={"model": model, "input": texts},
-        )
-        response.raise_for_status()
-        data = response.json()
-
-    return data["embeddings"]
-
-
-# ---------------------------------------------------------------------------
 # Tool implementations
 # ---------------------------------------------------------------------------
 
@@ -204,14 +179,13 @@ async def embed_texts(
 async def tool_search_code(
     query: str,
     collection: str,
-    ollama_base_url: str,
-    embedding_model: str,
+    embedding_provider: EmbeddingProvider,
     qdrant_host: str,
     qdrant_port: int,
     top_k: int = 5,
 ) -> str:
     """Embed query, search Qdrant, return formatted results."""
-    vectors = await embed_texts([query], ollama_base_url, embedding_model)
+    vectors = await embedding_provider.embed([query])
     if not vectors:
         return "No matching code found."
 
@@ -386,8 +360,7 @@ async def execute_tool(
     arguments: dict,
     project_path: str,
     collection: str,
-    ollama_base_url: str,
-    embedding_model: str,
+    embedding_provider: EmbeddingProvider,
     qdrant_host: str,
     qdrant_port: int,
 ) -> str:
@@ -399,8 +372,7 @@ async def execute_tool(
         return await tool_search_code(
             query=arguments.get("query", ""),
             collection=collection,
-            ollama_base_url=ollama_base_url,
-            embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
             qdrant_host=qdrant_host,
             qdrant_port=qdrant_port,
             top_k=arguments.get("top_k", 5),

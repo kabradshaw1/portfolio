@@ -6,6 +6,7 @@ from io import BytesIO
 import httpx
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from llm.factory import get_embedding_provider
 from qdrant_client import QdrantClient
 
 from app.chunker import chunk_pages
@@ -30,6 +31,13 @@ app.add_middleware(
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
 
+_embedding_provider = get_embedding_provider(
+    provider=settings.embedding_provider,
+    base_url=settings.get_embedding_base_url(),
+    api_key=settings.embedding_api_key,
+    model=settings.embedding_model,
+)
+
 _store: QdrantStore | None = None
 
 
@@ -47,7 +55,7 @@ def get_store() -> QdrantStore:
 @app.get("/health")
 async def health():
     qdrant_ok = False
-    ollama_ok = False
+    llm_ok = False
 
     try:
         qclient = QdrantClient(
@@ -59,15 +67,12 @@ async def health():
         pass
 
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(f"{settings.ollama_base_url}/api/tags", timeout=3.0)
-            if resp.status_code == 200:
-                ollama_ok = True
+        llm_ok = await _embedding_provider.check_health()
     except Exception:
         pass
 
-    status = "healthy" if (qdrant_ok and ollama_ok) else "degraded"
-    status_code = 200 if (qdrant_ok and ollama_ok) else 503
+    status = "healthy" if (qdrant_ok and llm_ok) else "degraded"
+    status_code = 200 if (qdrant_ok and llm_ok) else 503
 
     from fastapi.responses import JSONResponse
 
@@ -76,7 +81,7 @@ async def health():
         content={
             "status": status,
             "qdrant": "connected" if qdrant_ok else "disconnected",
-            "ollama": "connected" if ollama_ok else "disconnected",
+            "llm": "connected" if llm_ok else "disconnected",
         },
     )
 
@@ -119,7 +124,7 @@ async def ingest(
     try:
         vectors = await embed_texts(
             texts=texts,
-            ollama_base_url=settings.ollama_base_url,
+            provider=_embedding_provider,
             model=settings.embedding_model,
         )
     except (httpx.ConnectError, httpx.TimeoutException) as e:
