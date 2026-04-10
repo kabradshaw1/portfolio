@@ -5,9 +5,10 @@ FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY pkg/ ./pkg/
 COPY auth-service/go.mod auth-service/go.sum ./auth-service/
-RUN cd auth-service && go mod download
-COPY auth-service/ ./auth-service/
-RUN cd auth-service && CGO_ENABLED=0 GOOS=linux go build -o /auth-service ./cmd/server
+WORKDIR /app/auth-service
+RUN go mod download
+COPY auth-service/ /app/auth-service/
+RUN CGO_ENABLED=0 GOOS=linux go build -o /auth-service ./cmd/server
 
 FROM alpine:3.19
 

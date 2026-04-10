@@ -62,17 +62,17 @@ jobs:
             dockerfile: java/gateway-service/Dockerfile
             ecr_repo: gen-ai-portfolio/java-gateway-service
             java: true
-          # Go services
+          # Go services (context is go/ so shared pkg/ module is available)
           - service: auth-service
-            context: go/auth-service
+            context: go
             dockerfile: go/auth-service/Dockerfile
             ecr_repo: gen-ai-portfolio/go-auth-service
           - service: ecommerce-service
-            context: go/ecommerce-service
+            context: go
             dockerfile: go/ecommerce-service/Dockerfile
             ecr_repo: gen-ai-portfolio/go-ecommerce-service
           - service: ai-service
-            context: go/ai-service
+            context: go
             dockerfile: go/ai-service/Dockerfile
             ecr_repo: gen-ai-portfolio/go-ai-service
     steps:

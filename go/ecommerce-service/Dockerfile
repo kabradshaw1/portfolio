@@ -5,9 +5,10 @@ FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY pkg/ ./pkg/
 COPY ecommerce-service/go.mod ecommerce-service/go.sum ./ecommerce-service/
-RUN cd ecommerce-service && go mod download
-COPY ecommerce-service/ ./ecommerce-service/
-RUN cd ecommerce-service && CGO_ENABLED=0 GOOS=linux go build -o /ecommerce-service ./cmd/server
+WORKDIR /app/ecommerce-service
+RUN go mod download
+COPY ecommerce-service/ /app/ecommerce-service/
+RUN CGO_ENABLED=0 GOOS=linux go build -o /ecommerce-service ./cmd/server
 
 FROM alpine:3.19
 
