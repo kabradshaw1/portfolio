@@ -12,6 +12,10 @@ spec:
     metadata:
       labels:
         app: activity-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/actuator/prometheus"
     spec:
       imagePullSecrets:
         - name: ghcr-secret
