@@ -114,8 +114,20 @@ Alternatively, edit in the Grafana UI (login as admin), then export the JSON and
 - For windows_exporter: verify the Windows service is running with `Get-Service windows_exporter`
 
 **GPU metrics missing:**
-- Ensure Docker has NVIDIA GPU support: `docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi`
-- Check exporter logs: `docker compose logs nvidia-gpu-exporter`
+
+The `nvidia_gpu_exporter` runs as a Windows service on the PC (not in Docker or Minikube) because it needs direct `nvidia-smi` access on the host. To diagnose:
+
+1. SSH to the PC and check the service: `Get-Service nvidia_gpu_exporter` — expected `Running`.
+2. Check the port: `Get-NetTCPConnection -LocalPort 9835 -State Listen` — expected one row.
+3. Curl metrics on the host: `(Invoke-WebRequest -UseBasicParsing http://localhost:9835/metrics).Content | Select-String nvidia_smi_memory_used_bytes`.
+4. Tail the log: `Get-Content C:\tools\nvidia_gpu_exporter\logs\stderr.log -Tail 50`.
+5. Verify Prometheus can reach it: PromQL `up{job="nvidia-gpu"}` in Grafana Explore — expected `1`.
+
+### Reinstalling nvidia_gpu_exporter on the Windows host
+
+The exporter is installed at `C:\tools\nvidia_gpu_exporter\nvidia_gpu_exporter.exe` and wrapped as a Windows service via NSSM (installed via `winget install NSSM.NSSM`). It runs as `nvidia_gpu_exporter`, listens on `:9835`, and auto-starts on boot. Logs are in `C:\tools\nvidia_gpu_exporter\logs\`. The exporter wraps `nvidia-smi` directly and does **not** require GeForce Experience or the NVIDIA Display Container LS service.
+
+To reinstall after a wipe, follow the Stage A plan in `docs/superpowers/plans/2026-04-09-stage-a-gpu-exporter.md`.
 
 **Dashboard shows "No data":**
 - Wait 30 seconds for the first scrape to complete
