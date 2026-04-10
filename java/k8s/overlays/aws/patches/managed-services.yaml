@@ -1,0 +1,38 @@
+# Patch ConfigMaps to point at AWS managed service endpoints.
+# Placeholder values — replaced by Terraform outputs at deploy time.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: task-service-config
+  namespace: java-tasks
+data:
+  POSTGRES_HOST: "${RDS_ENDPOINT}"
+  REDIS_HOST: "${ELASTICACHE_ENDPOINT}"
+  RABBITMQ_HOST: "${AMAZON_MQ_ENDPOINT}"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: activity-service-config
+  namespace: java-tasks
+data:
+  MONGODB_URI: "${MONGODB_ATLAS_URI}"
+  REDIS_HOST: "${ELASTICACHE_ENDPOINT}"
+  RABBITMQ_HOST: "${AMAZON_MQ_ENDPOINT}"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notification-service-config
+  namespace: java-tasks
+data:
+  RABBITMQ_HOST: "${AMAZON_MQ_ENDPOINT}"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-service-config
+  namespace: java-tasks
+data:
+  RABBITMQ_HOST: "${AMAZON_MQ_ENDPOINT}"

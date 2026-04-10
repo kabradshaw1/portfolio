@@ -1,26 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deploy all services to Minikube
-# Prerequisites: minikube running, kubectl configured
-# Usage: ./k8s/deploy.sh
-#
-# Manifest discovery is directory-based: kubectl apply -f <dir>/
-# applies every .yml in the directory. Adding a new manifest file
-# to an existing directory is all that's needed — no script changes.
+# Deploy all services to Kubernetes
+# Usage: ./k8s/deploy.sh [minikube|aws]
+#   minikube (default) — deploy to local Minikube cluster
+#   aws               — deploy to AWS EKS cluster
+
+ENV="${1:-minikube}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "==> Enabling NGINX Ingress Controller..."
-minikube addons enable ingress 2>/dev/null || true
+if [ "$ENV" != "minikube" ] && [ "$ENV" != "aws" ]; then
+  echo "Usage: $0 [minikube|aws]"
+  exit 1
+fi
 
-echo "==> Creating namespaces..."
-kubectl apply -f "$SCRIPT_DIR/ai-services/namespace.yml"
-kubectl apply -f "$REPO_DIR/java/k8s/namespace.yml"
-kubectl apply -f "$SCRIPT_DIR/monitoring/namespace.yml"
-kubectl apply -f "$REPO_DIR/go/k8s/namespace.yml"
+echo "==> Deploying to: $ENV"
 
+# --- Minikube-specific setup ---
+if [ "$ENV" = "minikube" ]; then
+  echo "==> Enabling NGINX Ingress Controller..."
+  minikube addons enable ingress 2>/dev/null || true
+fi
+
+# --- Secrets (applied directly — not managed by kustomize) ---
 echo "==> Applying secrets..."
 if [ -f "$REPO_DIR/java/k8s/secrets/java-secrets.yml" ]; then
   kubectl apply -f "$REPO_DIR/java/k8s/secrets/java-secrets.yml"
@@ -34,55 +38,32 @@ else
   echo "    WARN: go-secrets.yml not found — create go/k8s/secrets/go-secrets.yml with jwt-secret"
 fi
 
-echo "==> Applying monitoring RBAC..."
-kubectl apply -f "$SCRIPT_DIR/monitoring/rbac/"
-
-echo "==> Applying PVCs..."
-kubectl apply -f "$SCRIPT_DIR/monitoring/pvc/"
-kubectl apply -f "$REPO_DIR/java/k8s/volumes/"
-
-echo "==> Applying ConfigMaps..."
-kubectl apply -f "$SCRIPT_DIR/ai-services/configmaps/"
-kubectl apply -f "$REPO_DIR/java/k8s/configmaps/"
-kubectl apply -f "$SCRIPT_DIR/monitoring/configmaps/"
-kubectl apply -f "$REPO_DIR/go/k8s/configmaps/"
-
+# --- Deploy ai-services ---
 echo "==> Deploying ai-services (Python)..."
-kubectl apply -f "$SCRIPT_DIR/ai-services/deployments/"
-kubectl apply -f "$SCRIPT_DIR/ai-services/services/"
+kubectl apply -k "$SCRIPT_DIR/overlays/$ENV"
 
 echo "==> Waiting for Qdrant..."
 kubectl wait --for=condition=available --timeout=120s deployment/qdrant -n ai-services
 
-echo "==> Deploying java-tasks..."
-kubectl apply -f "$REPO_DIR/java/k8s/deployments/"
-kubectl apply -f "$REPO_DIR/java/k8s/services/"
-
-echo "==> Waiting for java-tasks infrastructure..."
-kubectl wait --for=condition=available --timeout=120s deployment/postgres -n java-tasks
-kubectl wait --for=condition=available --timeout=120s deployment/mongodb -n java-tasks
-kubectl wait --for=condition=available --timeout=120s deployment/redis -n java-tasks
-kubectl wait --for=condition=available --timeout=120s deployment/rabbitmq -n java-tasks
-
-echo "==> Running go-ecommerce migration jobs..."
-kubectl apply -f "$REPO_DIR/go/k8s/jobs/"
-
-echo "==> Deploying go-ecommerce services..."
-kubectl apply -f "$REPO_DIR/go/k8s/deployments/"
-kubectl apply -f "$REPO_DIR/go/k8s/services/"
-kubectl apply -f "$REPO_DIR/go/k8s/hpa/"
-
+# --- Deploy monitoring (same for both environments) ---
 echo "==> Deploying monitoring..."
-kubectl apply -f "$SCRIPT_DIR/monitoring/deployments/"
-kubectl apply -f "$SCRIPT_DIR/monitoring/services/"
-kubectl apply -f "$SCRIPT_DIR/monitoring/daemonsets/"
+kubectl apply -k "$SCRIPT_DIR/monitoring"
 
-echo "==> Applying Ingress resources..."
-kubectl apply -f "$SCRIPT_DIR/ai-services/ingress.yml"
-kubectl apply -f "$REPO_DIR/java/k8s/ingress.yml"
-kubectl apply -f "$REPO_DIR/java/k8s/ingress-rabbitmq.yml"
-kubectl apply -f "$SCRIPT_DIR/monitoring/ingress.yml"
-kubectl apply -f "$REPO_DIR/go/k8s/ingress.yml"
+# --- Deploy java-tasks ---
+echo "==> Deploying java-tasks..."
+kubectl apply -k "$REPO_DIR/java/k8s/overlays/$ENV"
+
+if [ "$ENV" = "minikube" ]; then
+  echo "==> Waiting for java-tasks infrastructure..."
+  kubectl wait --for=condition=available --timeout=120s deployment/postgres -n java-tasks
+  kubectl wait --for=condition=available --timeout=120s deployment/mongodb -n java-tasks
+  kubectl wait --for=condition=available --timeout=120s deployment/redis -n java-tasks
+  kubectl wait --for=condition=available --timeout=120s deployment/rabbitmq -n java-tasks
+fi
+
+# --- Deploy go-ecommerce ---
+echo "==> Deploying go-ecommerce..."
+kubectl apply -k "$REPO_DIR/go/k8s/overlays/$ENV"
 
 echo "==> Waiting for all application services..."
 kubectl wait --for=condition=available --timeout=180s deployment/ingestion -n ai-services
@@ -100,7 +81,7 @@ kubectl wait --for=condition=available --timeout=120s deployment/kube-state-metr
 kubectl wait --for=condition=available --timeout=120s deployment/grafana -n monitoring
 
 echo ""
-echo "==> All services deployed!"
+echo "==> All services deployed! (env: $ENV)"
 echo ""
 echo "    Namespaces:"
 echo "      ai-services    — Python AI services + Qdrant"
@@ -108,9 +89,15 @@ echo "      java-tasks     — Java microservices + databases"
 echo "      go-ecommerce   — Go auth + ecommerce + AI agent services"
 echo "      monitoring     — Prometheus + Grafana"
 echo ""
-echo "    Next steps:"
-echo "      1. Run 'minikube tunnel' in a separate terminal (requires sudo)"
-echo "      2. Access services at http://localhost/"
+if [ "$ENV" = "minikube" ]; then
+  echo "    Next steps:"
+  echo "      1. Run 'minikube tunnel' in a separate terminal (requires sudo)"
+  echo "      2. Access services at http://localhost/"
+else
+  echo "    Next steps:"
+  echo "      1. Point api.kylebradshaw.dev to the ALB hostname"
+  echo "      2. Access services at https://api.kylebradshaw.dev/"
+fi
 echo ""
 echo "    Endpoints (via Ingress):"
 echo "      /ingestion/*    — Document ingestion API"

@@ -1,0 +1,73 @@
+# Remove in-cluster database deployments and services — replaced by AWS managed services
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: java-tasks
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: java-tasks
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: java-tasks
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: java-tasks
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: java-tasks
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: java-tasks
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: java-tasks
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: java-tasks
+$patch: delete
+---
+# Remove postgres PVC — RDS handles storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: java-tasks
+$patch: delete
+---
+# Remove postgres-initdb ConfigMap — RDS handles initialization
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+  namespace: java-tasks
+$patch: delete

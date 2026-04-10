@@ -1,0 +1,10 @@
+# Patch AI service ConfigMap to use API-based LLM provider on AWS
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-service-config
+  namespace: go-ecommerce
+data:
+  LLM_PROVIDER: openai
+  LLM_BASE_URL: https://api.groq.com/openai/v1
+  OLLAMA_MODEL: llama-3.1-70b-versatile
