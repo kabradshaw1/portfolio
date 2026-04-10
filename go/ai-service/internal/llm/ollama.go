@@ -13,6 +13,10 @@ import (
 	"time"
 
 	gobreaker "github.com/sony/gobreaker/v2"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 )
@@ -45,7 +49,7 @@ func NewOllamaClient(baseURL, model string, breaker *gobreaker.CircuitBreaker[an
 	return &OllamaClient{
 		baseURL:  baseURL,
 		model:    model,
-		http:     &http.Client{Timeout: 60 * time.Second},
+		http:     &http.Client{Timeout: 60 * time.Second, Transport: otelhttp.NewTransport(http.DefaultTransport)},
 		breaker:  breaker,
 		retryCfg: cfg,
 	}
@@ -87,6 +91,10 @@ type ollamaResp struct {
 
 func (c *OllamaClient) Chat(ctx context.Context, messages []Message, tools []ToolSchema) (ChatResponse, error) {
 	return resilience.Call(ctx, c.breaker, c.retryCfg, func(ctx context.Context) (ChatResponse, error) {
+		ctx, span := otel.Tracer("llm").Start(ctx, "ollama.chat",
+			trace.WithAttributes(attribute.String("llm.model", c.model)),
+		)
+		defer span.End()
 		reqBody := ollamaReq{
 			Model:    c.model,
 			Messages: messages,
@@ -126,6 +134,11 @@ func (c *OllamaClient) Chat(ctx context.Context, messages []Message, tools []Too
 		if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 			return ChatResponse{}, fmt.Errorf("decode response: %w", err)
 		}
+
+		span.SetAttributes(
+			attribute.Int("llm.prompt_eval_count", parsed.PromptEvalCount),
+			attribute.Int("llm.eval_count", parsed.EvalCount),
+		)
 
 		out := ChatResponse{
 			Content:         parsed.Message.Content,

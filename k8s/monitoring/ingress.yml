@@ -16,3 +16,13 @@ spec:
                 name: grafana
                 port:
                   number: 3000
+    - host: jaeger.kylebradshaw.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger
+                port:
+                  number: 16686

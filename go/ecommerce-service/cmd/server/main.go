@@ -17,6 +17,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/middleware"
@@ -26,6 +30,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/worker"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
+	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
 type rabbitPublisher struct {
@@ -34,8 +39,23 @@ type rabbitPublisher struct {
 
 func (p *rabbitPublisher) PublishOrderCreated(orderID string) error {
 	body, _ := json.Marshal(model.OrderMessage{OrderID: orderID})
+
+	// Start a span and inject trace context into AMQP headers.
+	ctx, span := otel.Tracer("rabbitmq").Start(context.Background(), "rabbitmq.publish",
+		trace.WithAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination", "ecommerce"),
+			attribute.String("messaging.routing_key", "order.created"),
+		),
+	)
+	defer span.End()
+
+	headers := make(amqp.Table)
+	tracing.InjectAMQP(ctx, headers)
+
 	return p.ch.Publish("ecommerce", "order.created", false, false, amqp.Publishing{
 		ContentType: "application/json",
+		Headers:     headers,
 		Body:        body,
 	})
 }
@@ -64,6 +84,13 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Tracing
+	shutdownTracer, err := tracing.Init(ctx, "ecommerce-service", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+	if err != nil {
+		log.Fatalf("tracing init: %v", err)
+	}
+	defer func() { _ = shutdownTracer(ctx) }()
 
 	// Connect to Postgres
 	poolConfig, err := pgxpool.ParseConfig(databaseURL)
@@ -163,6 +190,7 @@ func main() {
 	// Set up Gin
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(otelgin.Middleware("ecommerce-service"))
 	router.Use(middleware.Logging())
 	router.Use(apperror.ErrorHandler())
 	router.Use(middleware.Metrics())

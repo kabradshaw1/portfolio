@@ -7,6 +7,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	gobreaker "github.com/sony/gobreaker/v2"
+
+	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
 // Cache is a tiny key/value interface. Bytes in, bytes out.
@@ -37,6 +39,8 @@ func NewRedisCache(client *redis.Client, prefix string, breaker *gobreaker.Circu
 func (c *RedisCache) key(k string) string { return c.prefix + ":" + k }
 
 func (c *RedisCache) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	ctx, span := tracing.RedisSpan(ctx, "GET", c.key(key))
+	defer span.End()
 	result, err := c.breaker.Execute(func() (any, error) {
 		val, err := c.client.Get(ctx, c.key(key)).Bytes()
 		if errors.Is(err, redis.Nil) {
@@ -58,6 +62,8 @@ func (c *RedisCache) Get(ctx context.Context, key string) ([]byte, bool, error) 
 }
 
 func (c *RedisCache) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	ctx, span := tracing.RedisSpan(ctx, "SET", c.key(key))
+	defer span.End()
 	_, err := c.breaker.Execute(func() (any, error) {
 		return nil, c.client.Set(ctx, c.key(key), value, ttl).Err()
 	})
