@@ -11,8 +11,8 @@ ENV="${1:-minikube}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-if [ "$ENV" != "minikube" ] && [ "$ENV" != "aws" ]; then
-  echo "Usage: $0 [minikube|aws]"
+if [ "$ENV" != "minikube" ] && [ "$ENV" != "aws" ] && [ "$ENV" != "qa" ]; then
+  echo "Usage: $0 [minikube|aws|qa]"
   exit 1
 fi
 
@@ -22,6 +22,42 @@ echo "==> Deploying to: $ENV"
 if [ "$ENV" = "minikube" ]; then
   echo "==> Enabling NGINX Ingress Controller..."
   minikube addons enable ingress 2>/dev/null || true
+fi
+
+# --- QA-specific deploy ---
+if [ "$ENV" = "qa" ]; then
+  echo "==> Creating QA database (ecommercedb_qa) if not exists..."
+  kubectl exec deployment/postgres -n java-tasks -- \
+    psql -U taskuser -d taskdb -c "SELECT 1 FROM pg_database WHERE datname='ecommercedb_qa'" | grep -q 1 || \
+    kubectl exec deployment/postgres -n java-tasks -- \
+      psql -U taskuser -d taskdb -c "CREATE DATABASE ecommercedb_qa;"
+
+  echo "==> Deploying ai-services-qa..."
+  kubectl apply -k "$SCRIPT_DIR/overlays/qa"
+
+  echo "==> Deploying java-tasks-qa..."
+  kubectl apply -k "$REPO_DIR/java/k8s/overlays/qa"
+
+  echo "==> Deploying go-ecommerce-qa..."
+  kubectl apply -k "$REPO_DIR/go/k8s/overlays/qa"
+
+  echo "==> Waiting for QA application services..."
+  kubectl wait --for=condition=available --timeout=180s deployment/ingestion -n ai-services-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/chat -n ai-services-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/debug -n ai-services-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/task-service -n java-tasks-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/activity-service -n java-tasks-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/notification-service -n java-tasks-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/gateway-service -n java-tasks-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/go-auth-service -n go-ecommerce-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/go-ecommerce-service -n go-ecommerce-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/go-ai-service -n go-ecommerce-qa
+
+  echo ""
+  echo "==> QA environment deployed!"
+  echo "    Backend: qa-api.kylebradshaw.dev"
+  echo "    Frontend: qa.kylebradshaw.dev"
+  exit 0
 fi
 
 # --- Secrets (applied directly — not managed by kustomize) ---

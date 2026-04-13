@@ -1,5 +1,7 @@
 # CI/CD Pipeline
 
+> **Superseded** by [CI/CD Pipeline Rebuild and QA Environment](cicd-rebuild-qa-environment.md) (2026-04-13)
+
 How code gets from a git push to production.
 
 ## Overview

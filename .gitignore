@@ -48,6 +48,9 @@ docker-compose.override.yml
 # Superpowers
 .superpowers/
 
+# Agent worktrees
+.claude/worktrees/
+
 # Locally bootstrapped tool binaries (golangci-lint, etc.)
 .bin/
 

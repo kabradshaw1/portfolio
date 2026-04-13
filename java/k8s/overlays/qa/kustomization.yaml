@@ -1,0 +1,159 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../
+  - namespace.yml
+
+namespace: java-tasks-qa
+
+patches:
+  # --- CORS ---
+  - target:
+      kind: ConfigMap
+      name: gateway-service-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/REDIS_HOST
+        value: "redis.java-tasks.svc.cluster.local"
+  - target:
+      kind: ConfigMap
+      name: task-service-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/POSTGRES_HOST
+        value: "postgres.java-tasks.svc.cluster.local"
+      - op: replace
+        path: /data/RABBITMQ_HOST
+        value: "rabbitmq.java-tasks.svc.cluster.local"
+      - op: replace
+        path: /data/REDIS_HOST
+        value: "redis.java-tasks.svc.cluster.local"
+  - target:
+      kind: ConfigMap
+      name: activity-service-config
+    patch: |
+      - op: replace
+        path: /data/MONGODB_HOST
+        value: "mongodb.java-tasks.svc.cluster.local"
+      - op: replace
+        path: /data/RABBITMQ_HOST
+        value: "rabbitmq.java-tasks.svc.cluster.local"
+  - target:
+      kind: ConfigMap
+      name: notification-service-config
+    patch: |
+      - op: replace
+        path: /data/REDIS_HOST
+        value: "redis.java-tasks.svc.cluster.local"
+      - op: replace
+        path: /data/RABBITMQ_HOST
+        value: "rabbitmq.java-tasks.svc.cluster.local"
+  # --- Ingress: QA host ---
+  - target:
+      kind: Ingress
+      name: java-tasks-ingress
+    patch: |
+      - op: add
+        path: /spec/rules/0/host
+        value: "qa-api.kylebradshaw.dev"
+  # --- Remove infrastructure deployments (shared with prod) ---
+  - target:
+      kind: Deployment
+      name: postgres
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: postgres
+  - target:
+      kind: Deployment
+      name: mongodb
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mongodb
+  - target:
+      kind: Deployment
+      name: redis
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: redis
+  - target:
+      kind: Deployment
+      name: rabbitmq
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: rabbitmq
+  # --- Replace infrastructure services with ExternalName ---
+  - target:
+      kind: Service
+      name: postgres
+    patch: |
+      - op: replace
+        path: /spec
+        value:
+          type: ExternalName
+          externalName: postgres.java-tasks.svc.cluster.local
+  - target:
+      kind: Service
+      name: mongodb
+    patch: |
+      - op: replace
+        path: /spec
+        value:
+          type: ExternalName
+          externalName: mongodb.java-tasks.svc.cluster.local
+  - target:
+      kind: Service
+      name: redis
+    patch: |
+      - op: replace
+        path: /spec
+        value:
+          type: ExternalName
+          externalName: redis.java-tasks.svc.cluster.local
+  - target:
+      kind: Service
+      name: rabbitmq
+    patch: |
+      - op: replace
+        path: /spec
+        value:
+          type: ExternalName
+          externalName: rabbitmq.java-tasks.svc.cluster.local
+  # --- Remove PVC (no local storage needed) ---
+  - target:
+      kind: PersistentVolumeClaim
+      name: postgres-pvc
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: postgres-pvc
+  # --- Remove rabbitmq ingress (not needed for QA) ---
+  - target:
+      kind: Ingress
+      name: rabbitmq-ingress
+    patch: |
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: rabbitmq-ingress
