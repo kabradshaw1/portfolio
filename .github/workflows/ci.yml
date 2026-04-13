@@ -1,40 +1,12 @@
 name: CI/CD
 
 on:
-  push:
-    branches: ["**"]
   pull_request:
-    branches: [main]
+    branches: [qa]
+  push:
+    branches: [qa, main]
 
 jobs:
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      python: ${{ steps.filter.outputs.python }}
-      java: ${{ steps.filter.outputs.java }}
-      go: ${{ steps.filter.outputs.go }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-      k8s: ${{ steps.filter.outputs.k8s }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            python:
-              - 'services/**'
-            java:
-              - 'java/**'
-            go:
-              - 'go/**'
-            frontend:
-              - 'frontend/**'
-            k8s:
-              - 'k8s/**'
-              - 'java/k8s/**'
-              - 'go/k8s/**'
-
   grafana-dashboard-sync:
     name: Grafana Dashboard Sync Check
     runs-on: ubuntu-latest
@@ -58,11 +30,9 @@ jobs:
           print("grafana dashboards in sync")
           PY
 
-  backend-lint:
-    name: Backend Lint
+  python-lint:
+    name: Python Lint
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.python == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -75,11 +45,9 @@ jobs:
       - name: Ruff format check
         run: ruff format --check services/
 
-  backend-tests:
-    name: Backend Tests (${{ matrix.service }})
+  python-tests:
+    name: Python Tests (${{ matrix.service }})
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.python == 'true'
     strategy:
       matrix:
         service: [ingestion, chat, debug]
@@ -112,11 +80,120 @@ jobs:
           name: coverage-${{ matrix.service }}
           path: coverage-${{ matrix.service }}.xml
 
+  java-lint:
+    name: Java Lint (Checkstyle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Run Checkstyle
+        working-directory: java
+        run: ./gradlew checkstyleMain checkstyleTest --no-daemon
+
+  java-unit-tests:
+    name: Java Unit Tests (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - task-service
+          - activity-service
+          - notification-service
+          - gateway-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Run unit tests
+        working-directory: java
+        run: ./gradlew :${{ matrix.service }}:test --no-daemon --stacktrace
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-test-report-${{ matrix.service }}
+          path: java/${{ matrix.service }}/build/reports/tests/
+
+  java-integration-tests:
+    name: Java Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Run integration tests
+        working-directory: java
+        run: ./gradlew integrationTest --no-daemon --stacktrace
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-test-report-integration
+          path: java/task-service/build/reports/tests/
+
+  go-lint:
+    name: Go Lint (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [auth-service, ecommerce-service, ai-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/${{ matrix.service }}/go.mod
+      - name: Install golangci-lint
+        working-directory: go/${{ matrix.service }}
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Run linter
+        working-directory: go/${{ matrix.service }}
+        run: golangci-lint run ./...
+
+  go-tests:
+    name: Go Tests (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [auth-service, ecommerce-service, ai-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/${{ matrix.service }}/go.mod
+      - name: Run tests
+        working-directory: go/${{ matrix.service }}
+        run: go test ./... -v -race -coverprofile=coverage.out
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-go-${{ matrix.service }}
+          path: go/${{ matrix.service }}/coverage.out
+
   go-migration-test:
     name: Go Migration Pipeline Test
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.k8s == 'true'
     services:
       postgres:
         image: postgres:17-alpine
@@ -179,8 +256,6 @@ jobs:
   frontend-checks:
     name: Frontend Checks
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.go == 'true' || needs.changes.outputs.java == 'true'
     defaults:
       run:
         working-directory: frontend
@@ -206,185 +281,9 @@ jobs:
       - name: Build
         run: npm run build
 
-  docker-build:
-    name: Docker Build (${{ matrix.service }})
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.python == 'true'
-    permissions:
-      packages: write
-    strategy:
-      matrix:
-        service: [ingestion, chat, debug]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: services
-          file: services/${{ matrix.service }}/Dockerfile
-          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-          tags: ghcr.io/${{ github.repository }}/${{ matrix.service }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  java-lint:
-    name: Java Lint (Checkstyle)
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.java == 'true'
-    defaults:
-      run:
-        working-directory: java
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
-
-      - name: Run Checkstyle
-        run: ./gradlew checkstyleMain checkstyleTest --no-daemon
-
-  java-unit-tests:
-    name: Java Unit Tests (${{ matrix.service }})
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.java == 'true'
-    defaults:
-      run:
-        working-directory: java
-    strategy:
-      matrix:
-        service:
-          - task-service
-          - activity-service
-          - notification-service
-          - gateway-service
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
-
-      - name: Run unit tests
-        run: ./gradlew :${{ matrix.service }}:test --no-daemon --stacktrace
-
-      - name: Upload test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: java-test-report-${{ matrix.service }}
-          path: java/${{ matrix.service }}/build/reports/tests/
-
-  java-docker-build:
-    name: Java Docker Build (${{ matrix.service }})
-    runs-on: ubuntu-latest
-    needs: [changes, java-lint, java-unit-tests]
-    if: needs.changes.outputs.java == 'true'
-    permissions:
-      packages: write
-    defaults:
-      run:
-        working-directory: java
-    strategy:
-      matrix:
-        service:
-          - task-service
-          - activity-service
-          - notification-service
-          - gateway-service
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
-
-      - name: Build JAR
-        run: ./gradlew :${{ matrix.service }}:bootJar --no-daemon
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: java/${{ matrix.service }}
-          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-          tags: ghcr.io/${{ github.repository }}/java-${{ matrix.service }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  go-docker-build:
-    name: Go Docker Build (${{ matrix.service }})
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.go == 'true'
-    permissions:
-      packages: write
-    strategy:
-      matrix:
-        service: [auth-service, ecommerce-service]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: go
-          file: go/${{ matrix.service }}/Dockerfile
-          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-          tags: ghcr.io/${{ github.repository }}/go-${{ matrix.service }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   k8s-manifest-validation:
     name: K8s Manifest Validation
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.k8s == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -422,7 +321,7 @@ jobs:
 
       - name: Stage B — create namespaces
         run: |
-          for ns in ai-services java-tasks go-ecommerce monitoring; do
+          for ns in ai-services java-tasks go-ecommerce monitoring ai-services-qa java-tasks-qa go-ecommerce-qa; do
             kubectl create namespace "$ns"
           done
 
@@ -445,8 +344,6 @@ jobs:
   compose-smoke:
     name: Compose Smoke (Python stack)
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -504,8 +401,6 @@ jobs:
   security-bandit:
     name: Security - Bandit (Python SAST)
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.python == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -534,8 +429,6 @@ jobs:
   security-pip-audit:
     name: Security - pip-audit (${{ matrix.service }})
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.python == 'true'
     strategy:
       matrix:
         service: [ingestion, chat, debug]
@@ -568,8 +461,6 @@ jobs:
   security-npm-audit:
     name: Security - npm audit
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.frontend == 'true'
     defaults:
       run:
         working-directory: frontend
@@ -626,8 +517,6 @@ jobs:
   security-cors-check:
     name: Security - CORS Guardrail
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.python == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -639,48 +528,208 @@ jobs:
           fi
           echo "CORS check passed — no wildcard origins found."
 
-  e2e-staging:
-    name: E2E Tests (Staging)
+  # ---------- Build Images ----------
+
+  build-images:
+    name: Build Image (${{ matrix.service }})
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/staging'
-    needs: [frontend-checks]
-    defaults:
-      run:
-        working-directory: frontend
+    if: github.event_name == 'push'
+    needs:
+      - python-lint
+      - python-tests
+      - java-lint
+      - java-unit-tests
+      - go-lint
+      - go-tests
+      - frontend-checks
+      - security-gitleaks
+      - security-hadolint
+    permissions:
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - service: ingestion
+            context: services
+            file: services/ingestion/Dockerfile
+            image: ingestion
+          - service: chat
+            context: services
+            file: services/chat/Dockerfile
+            image: chat
+          - service: debug
+            context: services
+            file: services/debug/Dockerfile
+            image: debug
+          - service: java-task-service
+            context: java/task-service
+            file: java/task-service/Dockerfile
+            image: java-task-service
+            java-service: task-service
+          - service: java-activity-service
+            context: java/activity-service
+            file: java/activity-service/Dockerfile
+            image: java-activity-service
+            java-service: activity-service
+          - service: java-notification-service
+            context: java/notification-service
+            file: java/notification-service/Dockerfile
+            image: java-notification-service
+            java-service: notification-service
+          - service: java-gateway-service
+            context: java/gateway-service
+            file: java/gateway-service/Dockerfile
+            image: java-gateway-service
+            java-service: gateway-service
+          - service: go-auth-service
+            context: go
+            file: go/auth-service/Dockerfile
+            image: go-auth-service
+          - service: go-ecommerce-service
+            context: go
+            file: go/ecommerce-service/Dockerfile
+            image: go-ecommerce-service
+          - service: go-ai-service
+            context: go
+            file: go/ai-service/Dockerfile
+            image: go-ai-service
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - name: Set up JDK 21
+        if: matrix.java-service
+        uses: actions/setup-java@v4
         with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Build JAR
+        if: matrix.java-service
+        working-directory: java
+        run: ./gradlew :${{ matrix.java-service }}:bootJar --no-daemon
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Run E2E tests
-        run: npx playwright test
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          name: playwright-report
-          path: frontend/playwright-report/
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-  deploy:
-    name: Deploy
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "tag=qa-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------- Deploy QA ----------
+
+  deploy-qa:
+    name: Deploy QA
+    runs-on: ubuntu-latest
+    needs: [build-images]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/qa'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Deploy QA via SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH="ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key PC@100.79.113.84"
+
+          # Create QA database if not exists
+          $SSH "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"SELECT 1 FROM pg_database WHERE datname='ecommercedb_qa'\" | grep -q 1 || kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"CREATE DATABASE ecommercedb_qa;\""
+
+          # Apply QA Kustomize overlays
+          kubectl kustomize k8s/overlays/qa/ | $SSH "kubectl apply -f -"
+          kubectl kustomize java/k8s/overlays/qa/ | $SSH "kubectl apply -f -"
+          kubectl kustomize go/k8s/overlays/qa/ | $SSH "kubectl apply -f -"
+
+          # Run Go migration jobs in QA namespace
+          $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
+
+          kubectl kustomize go/k8s/overlays/qa/ | grep -A 100 'kind: Job' | $SSH "kubectl apply -f -"
+
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
+            $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce-qa --tail=200" || true
+            exit 1
+          fi
+
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce-qa"; then
+            $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce-qa --tail=200" || true
+            exit 1
+          fi
+
+          # Restart QA deployments
+          $SSH "kubectl rollout restart deployment -n ai-services-qa"
+          $SSH "kubectl rollout restart deployment -n java-tasks-qa"
+          $SSH "kubectl rollout restart deployment -n go-ecommerce-qa"
+
+          $SSH "kubectl rollout status deployment -n ai-services-qa --timeout=180s"
+          $SSH "kubectl rollout status deployment -n java-tasks-qa --timeout=180s"
+          $SSH "kubectl rollout status deployment -n go-ecommerce-qa --timeout=180s"
+
+          rm -f ~/.ssh/deploy_key
+
+  # ---------- Deploy Production ----------
+
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      java: ${{ steps.filter.outputs.java }}
+      go: ${{ steps.filter.outputs.go }}
+      k8s: ${{ steps.filter.outputs.k8s }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            python:
+              - 'services/**'
+            java:
+              - 'java/**'
+            go:
+              - 'go/**'
+            k8s:
+              - 'k8s/**'
+              - 'java/k8s/**'
+              - 'go/k8s/**'
+
+  deploy-prod:
+    name: Deploy Production
     runs-on: ubuntu-latest
     needs:
       - changes
-      - docker-build
-      - java-docker-build
-      - go-docker-build
+      - build-images
       - security-gitleaks
       - security-hadolint
     if: |
@@ -759,13 +808,39 @@ jobs:
 
           rm -f ~/.ssh/deploy_key
 
-  smoke-production:
+  # ---------- Smoke Tests ----------
+
+  smoke-qa:
+    name: QA Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-qa]
+    if: needs.deploy-qa.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for deployment to stabilize
+        run: sleep 30
+      - name: Check QA health endpoints
+        run: |
+          for endpoint in \
+            "https://qa-api.kylebradshaw.dev/ingestion/health" \
+            "https://qa-api.kylebradshaw.dev/chat/health" \
+            "https://qa-api.kylebradshaw.dev/debug/health" \
+            "https://qa-api.kylebradshaw.dev/actuator/health" \
+            "https://qa-api.kylebradshaw.dev/go-auth/health" \
+            "https://qa-api.kylebradshaw.dev/go-api/health" \
+            "https://qa-api.kylebradshaw.dev/ai-api/health"; do
+            echo "Checking $endpoint..."
+            curl -fsS --retry 3 --retry-delay 5 "$endpoint" || exit 1
+          done
+          echo "All QA health checks passed"
+
+  smoke-prod:
     name: Production Smoke Tests
     runs-on: ubuntu-latest
-    needs: [deploy]
+    needs: [deploy-prod]
     if: |
       always() &&
-      needs.deploy.result == 'success' &&
+      needs.deploy-prod.result == 'success' &&
       github.ref == 'refs/heads/main' && github.event_name == 'push'
     defaults:
       run:
