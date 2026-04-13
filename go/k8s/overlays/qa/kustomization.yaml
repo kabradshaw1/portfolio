@@ -1,0 +1,66 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../
+  - namespace.yml
+
+namespace: go-ecommerce-qa
+
+patches:
+  # --- CORS + QA database ---
+  - target:
+      kind: ConfigMap
+      name: auth-service-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/DATABASE_URL
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/ecommercedb_qa?sslmode=disable"
+  - target:
+      kind: ConfigMap
+      name: ecommerce-service-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/DATABASE_URL
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/ecommercedb_qa?sslmode=disable"
+      - op: replace
+        path: /data/REDIS_URL
+        value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
+      - op: replace
+        path: /data/RABBITMQ_URL
+        value: "amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672"
+  - target:
+      kind: ConfigMap
+      name: ai-service-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/OLLAMA_URL
+        value: "http://ollama.ai-services.svc.cluster.local:11434"
+      - op: replace
+        path: /data/ECOMMERCE_URL
+        value: "http://go-ecommerce-service:8092"
+      - op: replace
+        path: /data/REDIS_URL
+        value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
+  # --- Ingress: QA host ---
+  - target:
+      kind: Ingress
+      name: go-ecommerce-ingress
+    patch: |
+      - op: add
+        path: /spec/rules/0/host
+        value: "qa-api.kylebradshaw.dev"
+  # --- Migration jobs ---
+  # No Job patches needed: both go-auth-migrate and go-ecommerce-migrate read
+  # DATABASE_URL via configMapKeyRef from their respective ConfigMaps above.
+  # The ConfigMap patches above already repoint DATABASE_URL to ecommercedb_qa,
+  # so the jobs inherit the correct QA connection string automatically.
