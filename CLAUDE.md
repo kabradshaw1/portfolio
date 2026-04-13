@@ -24,6 +24,9 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
   - `java-tasks` namespace: Java microservices + databases
   - `go-ecommerce` namespace: Go auth + ecommerce services
   - `monitoring` namespace: Prometheus + Grafana
+  - `ai-services-qa` namespace: QA copies of Python AI services (shared Qdrant with prod)
+  - `java-tasks-qa` namespace: QA copies of Java services (shared infra with prod)
+  - `go-ecommerce-qa` namespace: QA copies of Go services (shared infra with prod)
   - NGINX Ingress Controller routes all traffic by path
   - `minikube tunnel` exposes Ingress on localhost:80
 - **Ollama:** Runs natively on Windows (GPU access), reached from K8s via ExternalName service
@@ -111,7 +114,7 @@ docs/adr/                   # Architecture Decision Records
 ├── java-task-management/   # 7 markdown lessons (Spring Boot, JPA, GraphQL, etc.)
 ├── go-ai-service/          # 1 markdown ADR (agent harness in Go, tool registry, evals)
 ├── *.md                    # Standalone ADRs (CI/CD, deployment, K8s migration, analytics, auth, RAG re-evaluation, etc.)
-.github/workflows/          # CI/CD: ci.yml (Python + frontend), java-ci.yml, go-ci.yml
+.github/workflows/          # CI/CD: ci.yml (unified), aws-deploy.yml (manual EKS)
 docker-compose.yml          # Python services + nginx + Qdrant
 ```
 
@@ -140,21 +143,19 @@ Current ADRs:
 ## Branching & Workflow
 
 - `main` — production. Pushes trigger deploy + post-deploy smoke tests.
-- `staging` — integration branch. Pushes trigger mocked Playwright E2E tests.
-- **Kyle handles all git push and merge operations.** Claude should commit locally but never push to remote.
+- `qa` — pre-production QA environment. PRs trigger quality checks. Pushes trigger build + deploy to QA + smoke tests.
+- Feature branches (`agent/feat-*`) — created by agents from `main`, short-lived, deleted after merge.
+- `staging` — retired. Replaced by `qa`.
 
-**New features and non-urgent changes happen on a feature branch:**
+**Per-branch rules for Claude Code:**
 
-1. Claude creates a feature branch from `main` (e.g., `fix-task-403`, `add-analytics`)
-2. Claude makes changes and commits on the feature branch
-3. Kyle reviews the diff, pushes the feature branch, and watches CI
-4. Kyle merges the feature branch into `staging` and pushes — watches CI (lint, tests, security, E2E)
-5. If all pass, Kyle merges `staging` into `main` and pushes — watches CI (deploy + smoke tests)
-6. Kyle deletes the feature branch after merge
+- **On a feature branch:** implement, commit, push, create PR to `qa`.
+- **On `qa`:** commit and push when Kyle asks. Watch CI after pushing and debug failures. For CI fixes: lint errors, formatting, type errors, and config issues are fine to fix autonomously. For anything that changes application behavior (logic, API contracts, data flow), stop and check with Kyle before fixing.
+- **On `main`:** never push autonomously. When Kyle explicitly says to merge/ship to main, handle the full flow: merge `qa` into `main`, push, watch CI, debug minor failures, clean up worktree, delete feature branch (local + remote).
 
-**Fixes for things already in production can go straight to `main`.**
+Claude Code determines the current branch via `git branch --show-current` and follows the rules for that branch. No special mode or prompt needed.
 
-**Do not use git worktrees or the EnterWorktree/ExitWorktree tools.**
+**Agent worktrees:** Agents create worktrees in `.claude/worktrees/<branch-name>/` for feature work. Worktrees are cleaned up as part of the "ship to main" flow.
 
 ## Pre-commit Requirements
 
@@ -171,13 +172,18 @@ If a check fails, fix it before committing. If you can't fix it, explain the fai
 
 ## CI/CD Pipeline
 
-All jobs run on every push. Security + E2E jobs gate deployment.
+Single unified workflow (`.github/workflows/ci.yml`) handles all CI/CD:
+
+| Trigger | What runs |
+|---------|-----------|
+| PR to `qa` | All quality checks (lint, test, security, k8s validation) |
+| Push to `qa` | Quality checks + build all images + deploy to QA + smoke QA |
+| Push to `main` | Quality checks + build all images + deploy to prod + smoke prod |
 
 **Quality:** ruff lint/format, pytest + coverage, tsc, Next.js build, checkstyle, golangci-lint, Go tests
 **Security:** Bandit (SAST), pip-audit, npm audit, gitleaks, Hadolint, CORS guardrail
-**E2E:** Playwright mocked tests (staging), production smoke tests (post-deploy)
-**Deploy:** GHCR images built in CI → SSH to Windows PC → `docker compose pull && up -d`
-**Separate CI workflows:** `ci.yml` (Python + frontend + security), `java-ci.yml`, `go-ci.yml`
+**Deploy:** GHCR images built in CI → SSH to Windows PC → kubectl apply Kustomize overlays
+**QA:** `qa-api.kylebradshaw.dev` (backend), `qa.kylebradshaw.dev` (frontend on Vercel)
 
 **Compose-smoke realism:** Job 3 (`compose-smoke`) runs the Python AI stack via `docker-compose.yml` with a mocked Ollama. Any change to Python service configuration (env vars, ports, depends_on, env_file references) must be reflected in BOTH `docker-compose.yml` and the corresponding k8s manifests under `k8s/ai-services/`, or compose-smoke will drift from prod and stop catching real regressions.
 
