@@ -1,0 +1,75 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../ai-services
+  - namespace.yml
+  - ollama.yml
+
+namespace: ai-services-qa
+
+patches:
+  # --- CORS: allow QA frontend ---
+  - target:
+      kind: ConfigMap
+      name: ingestion-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/COLLECTION_NAME
+        value: "documents_qa"
+      - op: replace
+        path: /data/QDRANT_HOST
+        value: "qdrant.ai-services.svc.cluster.local"
+  - target:
+      kind: ConfigMap
+      name: chat-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/COLLECTION_NAME
+        value: "documents_qa"
+      - op: replace
+        path: /data/QDRANT_HOST
+        value: "qdrant.ai-services.svc.cluster.local"
+  - target:
+      kind: ConfigMap
+      name: debug-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/QDRANT_HOST
+        value: "qdrant.ai-services.svc.cluster.local"
+  # --- Ingress: QA host ---
+  - target:
+      kind: Ingress
+      name: ai-services-ingress
+    patch: |
+      - op: add
+        path: /spec/rules/0/host
+        value: "qa-api.kylebradshaw.dev"
+  # --- Remove Qdrant deployment (shared with prod) ---
+  - target:
+      kind: Deployment
+      name: qdrant
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: qdrant
+  - target:
+      kind: Service
+      name: qdrant
+    patch: |
+      - op: replace
+        path: /spec
+        value:
+          type: ExternalName
+          externalName: qdrant.ai-services.svc.cluster.local
