@@ -1,4 +1,4 @@
-.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-security preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check
+.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-security preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup
 
 # Run all CI checks locally before pushing
 preflight: grafana-sync-check preflight-python preflight-frontend preflight-security preflight-java preflight-go
@@ -95,3 +95,16 @@ preflight-security:
 		echo "ERROR: Wildcard CORS found"; exit 1; \
 	fi
 	@echo "CORS check passed"
+
+# --- Worktree cleanup ---
+worktree-cleanup:
+	@echo "\n=== Cleaning up merged worktrees ==="
+	@for wt in $$(git worktree list --porcelain | grep '^worktree' | awk '{print $$2}' | grep '.claude/worktrees'); do \
+		branch=$$(git worktree list --porcelain | grep -A2 "$$wt" | grep '^branch' | sed 's|branch refs/heads/||'); \
+		if [ -n "$$branch" ] && ! git rev-parse --verify "$$branch" >/dev/null 2>&1; then \
+			echo "  Removing stale worktree: $$wt (branch $$branch deleted)"; \
+			git worktree remove "$$wt" --force; \
+		fi; \
+	done
+	@git worktree prune
+	@echo "Done"
