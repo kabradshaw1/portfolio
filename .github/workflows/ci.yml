@@ -506,6 +506,7 @@ jobs:
           - java/gateway-service/Dockerfile
           - go/auth-service/Dockerfile
           - go/ecommerce-service/Dockerfile
+          - go/ai-service/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
