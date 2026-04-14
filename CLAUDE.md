@@ -149,7 +149,15 @@ Current ADRs:
 
 **Per-branch rules for Claude Code:**
 
-- **On a feature branch:** implement, commit, push, and wait for all CI checks to pass before creating the PR to `qa`. Don't ask before pushing or creating the PR — just do it. If CI fails, fix it and push again. Only create the PR once all checks are green.
+- **On a feature branch:** The full autonomous flow is:
+  1. **Spec approved** — Kyle reviews and approves the spec. This is the human gate.
+  2. **Plan + execute** — Write the implementation plan and execute it. Don't ask to approve the plan — just do it.
+  3. **Push** — Commit and push. Don't ask before pushing.
+  4. **Watch CI** — Monitor the GitHub Actions run. Wait for all checks to complete.
+  5. **If CI passes** — Create the PR to `qa` and notify Kyle.
+  6. **If CI fails** — Debug the failure. Before fixing, check that the fix still complies with the spec that started this work. Push the fix and go back to step 4. Repeat until all checks are green, then create the PR.
+  
+  Don't ask for approval at any point in this flow. The spec review is the gate — everything after that is autonomous.
 - **On `qa`:** commit and push autonomously. Don't ask before pushing. Watch CI after pushing and debug failures. For CI fixes: lint errors, formatting, type errors, and config issues are fine to fix autonomously. For anything that changes application behavior (logic, API contracts, data flow), stop and check with Kyle before fixing.
 - **On `main`:** never push autonomously. When Kyle explicitly says to merge/ship to main, handle the full flow: merge `qa` into `main`, push, watch CI, debug minor failures, clean up worktree, delete feature branch (local + remote).
 
