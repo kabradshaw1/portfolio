@@ -149,7 +149,7 @@ Current ADRs:
 
 **Per-branch rules for Claude Code:**
 
-- **On a feature branch:** implement, commit, push, create PR to `qa`. Don't ask before pushing — just push. The CI pipeline catches problems.
+- **On a feature branch:** implement, commit, push, create PR to `qa`. Don't ask before pushing or creating the PR — just do it. The CI pipeline catches problems.
 - **On `qa`:** commit and push autonomously. Don't ask before pushing. Watch CI after pushing and debug failures. For CI fixes: lint errors, formatting, type errors, and config issues are fine to fix autonomously. For anything that changes application behavior (logic, API contracts, data flow), stop and check with Kyle before fixing.
 - **On `main`:** never push autonomously. When Kyle explicitly says to merge/ship to main, handle the full flow: merge `qa` into `main`, push, watch CI, debug minor failures, clean up worktree, delete feature branch (local + remote).
 
