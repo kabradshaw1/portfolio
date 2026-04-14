@@ -149,8 +149,16 @@ Current ADRs:
 
 **Per-branch rules for Claude Code:**
 
-- **On a feature branch:** implement, commit, push, create PR to `qa`.
-- **On `qa`:** commit and push when Kyle asks. Watch CI after pushing and debug failures. For CI fixes: lint errors, formatting, type errors, and config issues are fine to fix autonomously. For anything that changes application behavior (logic, API contracts, data flow), stop and check with Kyle before fixing.
+- **On a feature branch:** The full autonomous flow is:
+  1. **Spec approved** — Kyle reviews and approves the spec. This is the human gate.
+  2. **Plan + execute** — Write the implementation plan and execute it. Don't ask to approve the plan — just do it.
+  3. **Push** — Commit and push. Don't ask before pushing.
+  4. **Watch CI** — Monitor the GitHub Actions run. Wait for all checks to complete.
+  5. **If CI passes** — Create the PR to `qa` and notify Kyle.
+  6. **If CI fails** — Debug the failure. Before fixing, check that the fix still complies with the spec that started this work. Push the fix and go back to step 4. Repeat until all checks are green, then create the PR.
+  
+  Don't ask for approval at any point in this flow. The spec review is the gate — everything after that is autonomous.
+- **On `qa`:** commit and push autonomously. Don't ask before pushing. Watch CI after pushing and debug failures. For CI fixes: lint errors, formatting, type errors, and config issues are fine to fix autonomously. For anything that changes application behavior (logic, API contracts, data flow), stop and check with Kyle before fixing.
 - **On `main`:** never push autonomously. When Kyle explicitly says to merge/ship to main, handle the full flow: merge `qa` into `main`, push, watch CI, debug minor failures, clean up worktree, delete feature branch (local + remote).
 
 Claude Code determines the current branch via `git branch --show-current` and follows the rules for that branch. No special mode or prompt needed.
@@ -188,3 +196,6 @@ Single unified workflow (`.github/workflows/ci.yml`) handles all CI/CD:
 **Compose-smoke realism:** Job 3 (`compose-smoke`) runs the Python AI stack via `docker-compose.yml` with a mocked Ollama. Any change to Python service configuration (env vars, ports, depends_on, env_file references) must be reflected in BOTH `docker-compose.yml` and the corresponding k8s manifests under `k8s/ai-services/`, or compose-smoke will drift from prod and stop catching real regressions.
 
 **Tailscale authkey:** Expires every 90 days (free plan). Regenerate at Tailscale admin → Keys and update `TAILSCALE_AUTHKEY` in GitHub repo secrets.
+
+## Browser Console Configuration
+When I need to configure something in a console, first check to see if you can do it from the command line tool.  If not, then please give me a link to the exact pages I will need to visit, and as much details as you can about what I will need to do.  Consoles I have visited in c

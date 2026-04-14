@@ -23,17 +23,20 @@ export function SiteHeader() {
             Kyle Bradshaw
           </Link>
           <nav className="flex items-center gap-4">
-            <Link href="/ai" className={navLinkClass("/ai")}>
-              AI
-            </Link>
-            <Link href="/java" className={navLinkClass("/java")}>
-              Java
-            </Link>
             <Link href="/go" className={navLinkClass("/go")}>
               Go
             </Link>
             <Link href="/aws" className={navLinkClass("/aws")}>
               AWS
+            </Link>
+            <Link href="/java" className={navLinkClass("/java")}>
+              Java
+            </Link>
+            <Link href="/ai" className={navLinkClass("/ai")}>
+              AI
+            </Link>
+            <Link href="/cicd" className={navLinkClass("/cicd")}>
+              CI/CD
             </Link>
           </nav>
         </div>

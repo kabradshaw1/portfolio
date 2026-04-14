@@ -6,12 +6,22 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { GoGoogleLoginButton } from "@/components/go/GoGoogleLoginButton";
 import { useGoAuth } from "@/components/go/GoAuthProvider";
+import { HealthGate } from "@/components/HealthGate";
+
+const goAuthUrl =
+  process.env.NEXT_PUBLIC_GO_AUTH_URL || "http://localhost:8091";
 
 export default function GoLoginPage() {
   return (
-    <Suspense fallback={<div className="mx-auto max-w-sm px-6 py-12">Loading…</div>}>
-      <GoLoginPageInner />
-    </Suspense>
+    <HealthGate
+      endpoint={`${goAuthUrl}/health`}
+      stack="Go Ecommerce"
+      docsHref="/go"
+    >
+      <Suspense fallback={<div className="mx-auto max-w-sm px-6 py-12">Loading…</div>}>
+        <GoLoginPageInner />
+      </Suspense>
+    </HealthGate>
   );
 }
 
