@@ -150,7 +150,11 @@ Current ADRs:
 **Per-branch rules for Claude Code:**
 
 - **On a feature branch:** The full autonomous flow is:
-  1. **Spec approved** — Kyle reviews and approves the spec. This is the human gate.
+  1. **Spec approved** — Kyle reviews and approves the spec. This is the human gate. After writing the spec, update the status line marker so Kyle can see which spec is active:
+     ```bash
+     echo "spec-name-here" > ~/.claude/current-spec.txt
+     ```
+     Use the spec filename without the date prefix or `.md` extension (e.g., `restore-e2e-prestaging-design`).
   2. **Plan + execute** — Write the implementation plan and execute it. Don't ask to approve the plan — just do it.
   3. **Push** — Commit and push. Don't ask before pushing.
   4. **Watch CI** — Monitor the GitHub Actions run. Wait for all checks to complete.
