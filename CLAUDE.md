@@ -188,3 +188,6 @@ Single unified workflow (`.github/workflows/ci.yml`) handles all CI/CD:
 **Compose-smoke realism:** Job 3 (`compose-smoke`) runs the Python AI stack via `docker-compose.yml` with a mocked Ollama. Any change to Python service configuration (env vars, ports, depends_on, env_file references) must be reflected in BOTH `docker-compose.yml` and the corresponding k8s manifests under `k8s/ai-services/`, or compose-smoke will drift from prod and stop catching real regressions.
 
 **Tailscale authkey:** Expires every 90 days (free plan). Regenerate at Tailscale admin → Keys and update `TAILSCALE_AUTHKEY` in GitHub repo secrets.
+
+## Browser Console Configuration
+When I need to configure something in a console, first check to see if you can do it from the command line tool.  If not, then please give me a link to the exact pages I will need to visit, and as much details as you can about what I will need to do.  Consoles I have visited in c
