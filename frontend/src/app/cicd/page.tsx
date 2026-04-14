@@ -4,7 +4,8 @@ const pipelineFlowDiagram = `flowchart LR
   subgraph PR["Pull Request to qa"]
     direction LR
     A[PR Created] --> B[Quality Checks]
-    B --> C{All Pass?}
+    B --> B2[E2E Staging Checks]
+    B2 --> C{All Pass?}
     C -->|Yes| D[Ready for Review]
     C -->|No| E[Fix & Push]
     E --> B
@@ -13,7 +14,8 @@ const pipelineFlowDiagram = `flowchart LR
   subgraph QA["Push to qa"]
     direction LR
     F[PR Merged] --> G[Quality Checks]
-    G --> H[Build Images]
+    G --> G2[E2E Staging Checks]
+    G2 --> H[Build Images]
     H --> I[Deploy to QA]
     I --> J[Smoke Tests]
   end
@@ -83,19 +85,28 @@ export default function CICDPage() {
         <section className="mt-12">
           <h2 className="text-xl font-semibold">Why a Unified Workflow</h2>
           <p className="mt-2 text-muted-foreground leading-relaxed">
-            The project originally had three separate workflow files — one per
-            language stack. Each ran its own lint, test, and build jobs. For a
-            solo developer, this created unnecessary complexity: three files to
-            maintain, three sets of CI status checks to monitor, and path-based
-            filtering that occasionally skipped checks when cross-stack changes
-            were made.
+            I started with separate workflow files for each language stack —
+            Python, Java, and Go each had their own CI pipeline. That was
+            helpful early on for refining the specific checks I wanted per
+            stack. But as a solo developer, I found that I very rarely stopped
+            between stages. The separate workflows added maintenance overhead
+            without adding real decision points.
           </p>
           <p className="mt-4 text-muted-foreground leading-relaxed">
-            Consolidating into a single workflow simplified everything. All
-            quality gates run unconditionally on every trigger — no path
-            filtering, no change detection for quality checks. This is slower
-            (every push runs all checks regardless of what changed) but simpler
-            and catches cross-stack issues that path filtering would miss.
+            Consolidating into a single workflow made the pipeline easier to
+            reason about — both for me and for the Claude Code agents that drive
+            most of the development. One file to maintain, one set of status
+            checks to watch, and a single place to debug when something fails.
+            All quality gates run unconditionally on every trigger, which is
+            slower but catches cross-stack issues that path filtering would
+            miss.
+          </p>
+          <p className="mt-4 text-muted-foreground leading-relaxed">
+            Since I&apos;m the only one working on this project, there&apos;s no
+            need to rigorously defend the QA branch. I push minor tweaks
+            directly to <code>qa</code> without feature branches — there&apos;s
+            no one else to disrupt. The E2E staging checks still run on those
+            direct pushes, so regressions get caught before deploy.
           </p>
         </section>
 
@@ -124,6 +135,12 @@ export default function CICDPage() {
                   <td className="py-2 px-4 text-center">✓</td>
                   <td className="py-2 px-4 text-center">✓</td>
                   <td className="py-2 px-4 text-center">✓</td>
+                </tr>
+                <tr className="border-b border-border/50">
+                  <td className="py-2 pr-4">E2E staging checks</td>
+                  <td className="py-2 px-4 text-center">✓</td>
+                  <td className="py-2 px-4 text-center">✓</td>
+                  <td className="py-2 px-4 text-center">—</td>
                 </tr>
                 <tr className="border-b border-border/50">
                   <td className="py-2 pr-4">Build images</td>
@@ -298,34 +315,58 @@ ssh PC@100.79.113.84 \\
         <section className="mt-12">
           <h2 className="text-xl font-semibold">Agent Automation</h2>
           <p className="mt-2 text-muted-foreground leading-relaxed">
-            Claude Code agents drive the development workflow from spec to
-            production. The pipeline is designed so agents can operate
-            autonomously through the QA stage, with human review at two points:
-            PR approval and the &ldquo;ship it&rdquo; command.
+            Since I&apos;m the only developer on this project, there&apos;s no
+            risk to letting Claude Code agents drive the workflow from spec to
+            production. No one else&apos;s deployment gets disrupted, and I
+            review every spec thoroughly before any code gets written.
+          </p>
+          <p className="mt-4 text-muted-foreground leading-relaxed">
+            The agents use a{" "}
+            <a
+              href="https://github.com/nichochar/claude-plugins-official/tree/main/superpowers"
+              className="underline underline-offset-2"
+            >
+              superpowers
+            </a>{" "}
+            plugin that adds built-in quality gates throughout the workflow —
+            automated spec self-review, code review agents, and
+            verification-before-completion checks that require evidence before
+            claiming work is done.
           </p>
           <div className="mt-4 rounded-lg border border-border p-4">
             <ol className="space-y-2 text-sm text-muted-foreground">
               <li>
-                <strong className="text-foreground">1. Spec &rarr; Plan:</strong>{" "}
-                Agent brainstorms design, writes implementation plan
+                <strong className="text-foreground">1. Spec:</strong> Kyle and
+                Claude brainstorm the design together. Claude writes a spec,
+                then self-reviews it for placeholders, contradictions, and
+                ambiguity before presenting it. Kyle reviews the spec
+                thoroughly — this is the main human checkpoint.
+              </li>
+              <li>
+                <strong className="text-foreground">2. Plan:</strong> Once the
+                spec is approved, Claude writes a detailed implementation plan
+                to keep track of what it needs to do during execution.
               </li>
               <li>
                 <strong className="text-foreground">
-                  2. Implement &rarr; PR:
+                  3. Implement &rarr; PR:
                 </strong>{" "}
-                Agent creates feature branch, implements, pushes, creates PR to{" "}
-                <code>qa</code>
+                Agent creates a feature branch, implements the plan, and pushes
+                a PR to <code>qa</code>. A code-review agent examines the work
+                against the plan before the PR is created.
               </li>
               <li>
-                <strong className="text-foreground">3. CI Watch:</strong> Agent
-                monitors CI, fixes lint/format/config failures autonomously
+                <strong className="text-foreground">4. CI Watch:</strong> Agent
+                monitors CI, fixes lint/format/config failures autonomously.
+                Verification checks confirm the fix before claiming
+                it&apos;s resolved.
               </li>
               <li>
-                <strong className="text-foreground">4. QA Deploy:</strong> Kyle
+                <strong className="text-foreground">5. QA Deploy:</strong> Kyle
                 reviews PR, merges. QA deploys automatically.
               </li>
               <li>
-                <strong className="text-foreground">5. Ship It:</strong> Kyle
+                <strong className="text-foreground">6. Ship It:</strong> Kyle
                 inspects QA, tells agent to ship. Agent merges to main, watches
                 prod deploy, cleans up.
               </li>
