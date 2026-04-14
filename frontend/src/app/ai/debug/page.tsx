@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { DebugForm } from "@/components/DebugForm";
 import { AgentTimeline, AgentEvent } from "@/components/AgentTimeline";
+import { HealthGate } from "@/components/HealthGate";
 
 export default function DebugPage() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
@@ -13,6 +14,7 @@ export default function DebugPage() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   const debugApiUrl = `${apiUrl}/debug`;
+  const debugHealthUrl = `${apiUrl}/debug/health`;
 
   // Auto-scroll timeline as events arrive
   useEffect(() => {
@@ -107,50 +109,52 @@ export default function DebugPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-6xl px-6 py-12">
-        {/* Navigation */}
-        <Link
-          href="/ai"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          &larr; Back
-        </Link>
+    <HealthGate endpoint={debugHealthUrl} stack="Python AI Services" docsHref="/ai">
+      <div className="min-h-screen bg-background text-foreground">
+        <div className="mx-auto max-w-6xl px-6 py-12">
+          {/* Navigation */}
+          <Link
+            href="/ai"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            &larr; Back
+          </Link>
 
-        {/* Header */}
-        <h1 className="mt-8 text-3xl font-bold">Debug Assistant</h1>
-        <p className="mt-2 text-muted-foreground leading-relaxed">
-          Index a Python project, describe a bug, and let the agent search
-          through your code to diagnose the issue.
-        </p>
+          {/* Header */}
+          <h1 className="mt-8 text-3xl font-bold">Debug Assistant</h1>
+          <p className="mt-2 text-muted-foreground leading-relaxed">
+            Index a Python project, describe a bug, and let the agent search
+            through your code to diagnose the issue.
+          </p>
 
-        {/* Error Banner */}
-        {error && (
-          <div className="mt-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+          {/* Error Banner */}
+          {error && (
+            <div className="mt-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
 
-        {/* 2-column grid */}
-        <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2">
-          {/* Left: Form */}
-          <div>
-            <h2 className="mb-4 text-lg font-semibold">Configure Debug Session</h2>
-            <DebugForm onSubmit={handleSubmit} isLoading={isLoading} />
-          </div>
+          {/* 2-column grid */}
+          <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2">
+            {/* Left: Form */}
+            <div>
+              <h2 className="mb-4 text-lg font-semibold">Configure Debug Session</h2>
+              <DebugForm onSubmit={handleSubmit} isLoading={isLoading} />
+            </div>
 
-          {/* Right: Timeline */}
-          <div className="flex flex-col">
-            <h2 className="mb-4 text-lg font-semibold">Agent Timeline</h2>
-            <div
-              ref={timelineRef}
-              className="flex-1 overflow-y-auto rounded-xl border border-foreground/10 bg-card p-4 min-h-96 max-h-[60vh]"
-            >
-              <AgentTimeline events={events} />
+            {/* Right: Timeline */}
+            <div className="flex flex-col">
+              <h2 className="mb-4 text-lg font-semibold">Agent Timeline</h2>
+              <div
+                ref={timelineRef}
+                className="flex-1 overflow-y-auto rounded-xl border border-foreground/10 bg-card p-4 min-h-96 max-h-[60vh]"
+              >
+                <AgentTimeline events={events} />
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </HealthGate>
   );
 }

@@ -109,6 +109,24 @@ export default function Home() {
               </CardContent>
             </Card>
           </Link>
+          <Link href="/cicd" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>CI/CD Pipeline</CardTitle>
+                <CardDescription>
+                  Unified GitHub Actions workflow with QA environment and agent
+                  automation
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  A single workflow handles quality checks, image builds, and
+                  deployments for three service stacks — designed for a solo
+                  developer with automated spec-to-production delivery.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { ChatWindow, Message, Source } from "@/components/ChatWindow";
 import { MessageInput } from "@/components/MessageInput";
 import { FileUpload } from "@/components/FileUpload";
 import { DocumentList, Document } from "@/components/DocumentList";
+import { HealthGate } from "@/components/HealthGate";
 
 export default function RagDemo() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -14,6 +15,7 @@ export default function RagDemo() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   const ingestionBaseUrl = `${apiUrl}/ingestion`;
+  const chatHealthUrl = `${apiUrl}/chat/health`;
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -153,31 +155,33 @@ export default function RagDemo() {
   );
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground">
-      {/* Header */}
-      <header className="flex items-center justify-between border-b px-6 py-3">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/ai"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            &larr; Back
-          </Link>
-          <h1 className="text-lg font-semibold">Document Q&A Assistant</h1>
-        </div>
-        <div className="flex items-center gap-4">
-          {documents?.length > 0 && (
-            <DocumentList documents={documents} onDelete={handleDelete} />
-          )}
-          <FileUpload onUploaded={handleUploaded} />
-        </div>
-      </header>
+    <HealthGate endpoint={chatHealthUrl} stack="Python AI Services" docsHref="/ai">
+      <div className="flex h-screen flex-col bg-background text-foreground">
+        {/* Header */}
+        <header className="flex items-center justify-between border-b px-6 py-3">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/ai"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              &larr; Back
+            </Link>
+            <h1 className="text-lg font-semibold">Document Q&A Assistant</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            {documents?.length > 0 && (
+              <DocumentList documents={documents} onDelete={handleDelete} />
+            )}
+            <FileUpload onUploaded={handleUploaded} />
+          </div>
+        </header>
 
-      {/* Chat */}
-      <ChatWindow messages={messages} />
+        {/* Chat */}
+        <ChatWindow messages={messages} />
 
-      {/* Input */}
-      <MessageInput onSend={handleSend} disabled={isStreaming} />
-    </div>
+        {/* Input */}
+        <MessageInput onSend={handleSend} disabled={isStreaming} />
+      </div>
+    </HealthGate>
   );
 }
