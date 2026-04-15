@@ -7,13 +7,16 @@ import dev.kylebradshaw.task.dto.LoginRequest;
 import dev.kylebradshaw.task.dto.RegisterRequest;
 import dev.kylebradshaw.task.dto.ResetPasswordRequest;
 import dev.kylebradshaw.task.service.AuthService;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -50,12 +53,70 @@ public class AuthController {
         this.restClient = RestClient.create();
     }
 
+    private void setAuthCookies(HttpServletResponse response, String accessToken, String refreshToken) {
+        boolean secure = Boolean.parseBoolean(
+                System.getenv().getOrDefault("COOKIE_SECURE", "false"));
+        String domain = System.getenv().getOrDefault("COOKIE_DOMAIN", "");
+
+        Cookie accessCookie = new Cookie("access_token", accessToken);
+        accessCookie.setHttpOnly(true);
+        accessCookie.setSecure(secure);
+        accessCookie.setPath("/");
+        accessCookie.setMaxAge(900); // 15 min
+        accessCookie.setAttribute("SameSite", "Lax");
+        if (!domain.isEmpty()) {
+            accessCookie.setDomain(domain);
+        }
+        response.addCookie(accessCookie);
+
+        Cookie refreshCookie = new Cookie("refresh_token", refreshToken);
+        refreshCookie.setHttpOnly(true);
+        refreshCookie.setSecure(secure);
+        refreshCookie.setPath("/auth");
+        refreshCookie.setMaxAge(604800); // 7 days
+        refreshCookie.setAttribute("SameSite", "Lax");
+        if (!domain.isEmpty()) {
+            refreshCookie.setDomain(domain);
+        }
+        response.addCookie(refreshCookie);
+    }
+
+    private void clearAuthCookies(HttpServletResponse response) {
+        boolean secure = Boolean.parseBoolean(
+                System.getenv().getOrDefault("COOKIE_SECURE", "false"));
+        String domain = System.getenv().getOrDefault("COOKIE_DOMAIN", "");
+
+        Cookie accessCookie = new Cookie("access_token", "");
+        accessCookie.setHttpOnly(true);
+        accessCookie.setSecure(secure);
+        accessCookie.setPath("/");
+        accessCookie.setMaxAge(0);
+        accessCookie.setAttribute("SameSite", "Lax");
+        if (!domain.isEmpty()) {
+            accessCookie.setDomain(domain);
+        }
+        response.addCookie(accessCookie);
+
+        Cookie refreshCookie = new Cookie("refresh_token", "");
+        refreshCookie.setHttpOnly(true);
+        refreshCookie.setSecure(secure);
+        refreshCookie.setPath("/auth");
+        refreshCookie.setMaxAge(0);
+        refreshCookie.setAttribute("SameSite", "Lax");
+        if (!domain.isEmpty()) {
+            refreshCookie.setDomain(domain);
+        }
+        response.addCookie(refreshCookie);
+    }
+
     /**
      * Exchange Google authorization code for user info and issue tokens.
      * POST /auth/google
      */
     @PostMapping("/google")
-    public AuthResponse googleLogin(@Valid @RequestBody AuthRequest request) {
+    public Map<String, Object> googleLogin(
+            @Valid @RequestBody AuthRequest request,
+            HttpServletResponse response) {
         if (request.state() == null || request.state().isBlank()) {
             throw new IllegalArgumentException("OAuth state parameter required");
         }
@@ -89,27 +150,81 @@ public class AuthController {
         String name = (String) userInfo.get("name");
         String avatarUrl = (String) userInfo.get("picture");
 
-        return authService.authenticateGoogleUser(email, name, avatarUrl);
+        AuthResponse authResponse = authService.authenticateGoogleUser(email, name, avatarUrl);
+        setAuthCookies(response, authResponse.accessToken(), authResponse.refreshToken());
+
+        return Map.of(
+                "userId", authResponse.userId(),
+                "email", authResponse.email(),
+                "name", authResponse.name(),
+                "avatarUrl", authResponse.avatarUrl() != null ? authResponse.avatarUrl() : ""
+        );
     }
 
     /**
-     * Refresh access token using a valid refresh token.
+     * Refresh access token using a valid refresh token (from cookie or JSON body).
      * POST /auth/refresh
      */
     @PostMapping("/refresh")
-    public AuthResponse refresh(@RequestBody Map<String, String> body) {
-        String refreshToken = body.get("refreshToken");
-        return authService.refreshAccessToken(refreshToken);
+    public Map<String, Object> refresh(HttpServletRequest request, HttpServletResponse response) {
+        String refreshToken = null;
+        if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if ("refresh_token".equals(cookie.getName())) {
+                    refreshToken = cookie.getValue();
+                    break;
+                }
+            }
+        }
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new IllegalArgumentException("Refresh token not found");
+        }
+
+        AuthResponse authResponse = authService.refreshAccessToken(refreshToken);
+        setAuthCookies(response, authResponse.accessToken(), authResponse.refreshToken());
+
+        return Map.of(
+                "userId", authResponse.userId(),
+                "email", authResponse.email(),
+                "name", authResponse.name(),
+                "avatarUrl", authResponse.avatarUrl() != null ? authResponse.avatarUrl() : ""
+        );
     }
 
     @PostMapping("/register")
-    public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
-        return authService.register(request.email(), request.password(), request.name());
+    public Map<String, Object> register(
+            @Valid @RequestBody RegisterRequest request,
+            HttpServletResponse response) {
+        AuthResponse authResponse = authService.register(request.email(), request.password(), request.name());
+        setAuthCookies(response, authResponse.accessToken(), authResponse.refreshToken());
+
+        return Map.of(
+                "userId", authResponse.userId(),
+                "email", authResponse.email(),
+                "name", authResponse.name(),
+                "avatarUrl", authResponse.avatarUrl() != null ? authResponse.avatarUrl() : ""
+        );
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-        return authService.login(request.email(), request.password());
+    public Map<String, Object> login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletResponse response) {
+        AuthResponse authResponse = authService.login(request.email(), request.password());
+        setAuthCookies(response, authResponse.accessToken(), authResponse.refreshToken());
+
+        return Map.of(
+                "userId", authResponse.userId(),
+                "email", authResponse.email(),
+                "name", authResponse.name(),
+                "avatarUrl", authResponse.avatarUrl() != null ? authResponse.avatarUrl() : ""
+        );
+    }
+
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(HttpServletResponse response) {
+        clearAuthCookies(response);
     }
 
     @PostMapping("/forgot-password")
