@@ -21,7 +21,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
