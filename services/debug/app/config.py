@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     max_grep_matches: int = 20
     test_timeout_seconds: int = 30
     allowed_origins: str = "https://kylebradshaw.dev"
+    allowed_project_paths: str = ""  # Comma-separated list; empty = deny all
 
     def get_llm_base_url(self) -> str:
         if self.llm_provider == "ollama":

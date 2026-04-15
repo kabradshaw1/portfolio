@@ -94,6 +94,22 @@ async def index(request: IndexRequest):
             status_code=400, detail=f"Directory not found: {request.path}"
         )
 
+    # Validate path is in allowlist
+    allowed = [
+        p.strip() for p in settings.allowed_project_paths.split(",") if p.strip()
+    ]
+    if not allowed:
+        raise HTTPException(
+            status_code=403, detail="No project paths configured for indexing"
+        )
+    abs_path = os.path.realpath(request.path)
+    if not any(
+        abs_path.startswith(os.path.realpath(a) + os.sep)
+        or abs_path == os.path.realpath(a)
+        for a in allowed
+    ):
+        raise HTTPException(status_code=403, detail="Path not allowed for indexing")
+
     try:
         result = await index_project(
             project_path=request.path,
