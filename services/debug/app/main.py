@@ -2,12 +2,13 @@ import json
 import logging
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider, get_llm_provider
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
+from shared.auth import create_auth_dependency
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -34,6 +35,8 @@ instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
+
+require_auth = create_auth_dependency(settings.jwt_secret)
 
 
 @app.exception_handler(RateLimitExceeded)
@@ -102,7 +105,9 @@ async def health():
 
 @app.post("/index")
 @limiter.limit("5/minute")
-async def index(request: Request, body: IndexRequest):
+async def index(
+    request: Request, body: IndexRequest, user_id: str = Depends(require_auth)
+):
     if not os.path.isdir(body.path):
         raise HTTPException(status_code=400, detail=f"Directory not found: {body.path}")
 
@@ -139,7 +144,9 @@ async def index(request: Request, body: IndexRequest):
 
 @app.post("/debug")
 @limiter.limit("10/minute")
-async def debug(request: Request, body: DebugRequest):
+async def debug(
+    request: Request, body: DebugRequest, user_id: str = Depends(require_auth)
+):
     project_path = _project_paths.get(body.collection)
     if not project_path:
         raise HTTPException(

@@ -2,12 +2,13 @@ import json
 import logging
 
 import httpx
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider, get_llm_provider
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
+from shared.auth import create_auth_dependency
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -33,6 +34,8 @@ instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
+
+require_auth = create_auth_dependency(settings.jwt_secret)
 
 
 @app.exception_handler(RateLimitExceeded)
@@ -94,7 +97,9 @@ async def health():
 
 @app.post("/chat")
 @limiter.limit("20/minute")
-async def chat(request: Request, body: ChatRequest):
+async def chat(
+    request: Request, body: ChatRequest, user_id: str = Depends(require_auth)
+):
     async def event_generator():
         try:
             async for event in rag_query(

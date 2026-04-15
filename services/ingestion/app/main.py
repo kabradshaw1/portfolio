@@ -4,11 +4,12 @@ import uuid
 from io import BytesIO
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider
 from qdrant_client import QdrantClient
+from shared.auth import create_auth_dependency
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -38,6 +39,8 @@ instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
+
+require_auth = create_auth_dependency(settings.jwt_secret)
 
 
 @app.exception_handler(RateLimitExceeded)
@@ -104,6 +107,7 @@ async def ingest(
     request: Request,
     file: UploadFile = File(...),
     collection: str | None = Query(default=None),
+    user_id: str = Depends(require_auth),
 ):
     if collection is not None and not _COLLECTION_NAME_RE.match(collection):
         raise HTTPException(status_code=422, detail="Invalid collection name")
@@ -180,14 +184,16 @@ async def ingest(
 
 @app.get("/documents")
 @limiter.limit("30/minute")
-async def list_documents(request: Request):
+async def list_documents(request: Request, user_id: str = Depends(require_auth)):
     store = get_store()
     return {"documents": store.list_documents()}
 
 
 @app.delete("/documents/{document_id}")
 @limiter.limit("30/minute")
-async def delete_document(request: Request, document_id: str):
+async def delete_document(
+    request: Request, document_id: str, user_id: str = Depends(require_auth)
+):
     store = get_store()
     chunks_deleted = store.delete_document(document_id)
     if chunks_deleted == 0:
@@ -203,7 +209,9 @@ async def delete_document(request: Request, document_id: str):
 
 @app.delete("/collections/{collection_name}")
 @limiter.limit("30/minute")
-async def delete_collection(request: Request, collection_name: str):
+async def delete_collection(
+    request: Request, collection_name: str, user_id: str = Depends(require_auth)
+):
     if not _COLLECTION_NAME_RE.match(collection_name):
         raise HTTPException(status_code=422, detail="Invalid collection name")
     store = get_store()
