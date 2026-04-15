@@ -114,6 +114,8 @@ func main() {
 		}
 	}
 
+	authLimiter := middleware.NewRateLimiter(redisClient, "auth:ratelimit", 10, time.Minute)
+
 	// Wire dependencies
 	pgBreaker := resilience.NewBreaker(resilience.BreakerConfig{
 		Name:          "auth-postgres",
@@ -137,10 +139,10 @@ func main() {
 	router.Use(middleware.CORS(allowedOrigins))
 
 	// Routes
-	router.POST("/auth/register", authHandler.Register)
-	router.POST("/auth/login", authHandler.Login)
+	router.POST("/auth/register", authLimiter.Middleware(), authHandler.Register)
+	router.POST("/auth/login", authLimiter.Middleware(), authHandler.Login)
 	router.POST("/auth/refresh", authHandler.Refresh)
-	router.POST("/auth/google", authHandler.GoogleLogin)
+	router.POST("/auth/google", authLimiter.Middleware(), authHandler.GoogleLogin)
 	router.POST("/auth/logout", authHandler.Logout)
 	router.GET("/health", healthHandler.Health)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
