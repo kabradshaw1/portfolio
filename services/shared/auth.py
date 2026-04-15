@@ -4,16 +4,30 @@ import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-_bearer_scheme = HTTPBearer()
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def create_auth_dependency(secret: str):
-    """Create a FastAPI dependency that validates JWT Bearer tokens."""
+    """Create a FastAPI dependency that validates JWT Bearer tokens.
+
+    When secret is empty, auth is disabled (all requests pass as anonymous).
+    This allows compose-smoke CI tests to run without token generation.
+    """
+    if not secret:
+
+        async def no_auth(
+            credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+        ) -> str:
+            return "anonymous"
+
+        return no_auth
 
     async def require_auth(
-        credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+        credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     ) -> str:
         """Validate JWT and return userId."""
+        if credentials is None:
+            raise HTTPException(status_code=401, detail="Missing authorization")
         token = credentials.credentials
         try:
             payload = jwt.decode(

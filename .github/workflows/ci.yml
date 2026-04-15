@@ -67,6 +67,8 @@ jobs:
           pip install -r services/${{ matrix.service }}/requirements.txt
 
       - name: Run tests with coverage
+        env:
+          PYTHONPATH: services
         run: >
           pytest services/${{ matrix.service }}/tests/ -v
           --cov=services/${{ matrix.service }}/app
