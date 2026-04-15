@@ -10,9 +10,6 @@ import {
 import { ApolloProvider } from "@apollo/client/react";
 import { apolloClient } from "@/lib/apollo-client";
 import {
-  clearTokens,
-  isLoggedIn as checkIsLoggedIn,
-  setTokens,
   GATEWAY_URL,
 } from "@/lib/auth";
 
@@ -29,7 +26,7 @@ interface AuthContextType {
   login: (code: string, redirectUri: string) => Promise<void>;
   loginWithPassword: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -38,7 +35,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   loginWithPassword: async () => {},
   register: async () => {},
-  logout: () => {},
+  logout: async () => {},
 });
 
 export function useAuth() {
@@ -46,14 +43,11 @@ export function useAuth() {
 }
 
 function handleAuthResponse(data: {
-  accessToken: string;
-  refreshToken: string;
   userId: string;
   email: string;
   name: string;
   avatarUrl: string | null;
 }): AuthUser {
-  setTokens(data.accessToken, data.refreshToken);
   const authUser: AuthUser = {
     userId: data.userId,
     email: data.email,
@@ -71,18 +65,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    if (checkIsLoggedIn()) {
-      const stored = localStorage.getItem("java_user");
-      if (stored) {
-        try {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          setUser(JSON.parse(stored));
-        } catch {
-          /* corrupt entry — ignore */
-        }
+    const stored = localStorage.getItem("java_user");
+    if (stored) {
+      try {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setUser(JSON.parse(stored));
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setIsAuthenticated(true);
+      } catch {
+        /* corrupt entry — ignore */
       }
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsAuthenticated(true);
     }
 
     const handler = () => {
@@ -99,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, redirectUri }),
+      credentials: "include",
     });
     if (!res.ok) throw new Error("Login failed");
     const data = await res.json();
@@ -112,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
+      credentials: "include",
     });
     if (!res.ok) {
       const errorText = await res.text();
@@ -128,6 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, name }),
+      credentials: "include",
     });
     if (!res.ok) {
       const errorText = await res.text();
@@ -139,8 +134,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsAuthenticated(true);
   }, []);
 
-  const logout = useCallback(() => {
-    clearTokens();
+  const logout = useCallback(async () => {
+    await fetch(`${GATEWAY_URL}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {});
     localStorage.removeItem("java_user");
     setUser(null);
     setIsAuthenticated(false);

@@ -1,5 +1,4 @@
 import {
-  getGoAccessToken,
   refreshGoAccessToken,
   GO_ECOMMERCE_URL,
 } from "@/lib/go-auth";
@@ -9,10 +8,6 @@ export async function goApiFetch(
   options: RequestInit = {},
 ): Promise<Response> {
   const headers = new Headers(options.headers);
-  const token = getGoAccessToken();
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
   if (!headers.has("Content-Type") && options.body) {
     headers.set("Content-Type", "application/json");
   }
@@ -20,16 +15,17 @@ export async function goApiFetch(
   const res = await fetch(`${GO_ECOMMERCE_URL}${path}`, {
     ...options,
     headers,
+    credentials: "include",
   });
 
-  // Retry once on 401/403 with a refreshed token
+  // Retry once on 401/403 after refreshing the httpOnly cookie
   if (res.status === 401 || res.status === 403) {
-    const newToken = await refreshGoAccessToken();
-    if (newToken) {
-      headers.set("Authorization", `Bearer ${newToken}`);
+    const success = await refreshGoAccessToken();
+    if (success) {
       return fetch(`${GO_ECOMMERCE_URL}${path}`, {
         ...options,
         headers,
+        credentials: "include",
       });
     }
   }

@@ -9,7 +9,6 @@ import {
 } from "react";
 import { useGoAuth } from "@/components/go/GoAuthProvider";
 import { goApiFetch } from "@/lib/go-api";
-import { getGoAccessToken } from "@/lib/go-auth";
 
 export interface GoCartItem {
   id: string;
@@ -43,7 +42,7 @@ export function GoCartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<GoCartItem[]>([]);
 
   const refresh = useCallback(async () => {
-    if (!getGoAccessToken()) {
+    if (!isLoggedIn) {
       setItems([]);
       return;
     }
@@ -55,7 +54,7 @@ export function GoCartProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* swallow — badge stays stale on network failure */
     }
-  }, []);
+  }, [isLoggedIn]);
 
   useEffect(() => {
     if (isLoggedIn) {
