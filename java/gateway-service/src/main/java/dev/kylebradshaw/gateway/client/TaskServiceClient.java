@@ -21,91 +21,94 @@ public class TaskServiceClient {
         this.client = client;
     }
 
-    public List<ProjectDto> getMyProjects(String userId) {
+    public List<ProjectDto> getMyProjects(String authHeader) {
         return client.get()
                 .uri("/projects")
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
     }
 
-    public ProjectDto getProject(String id) {
+    public ProjectDto getProject(String id, String authHeader) {
         return client.get()
                 .uri("/projects/{id}", id)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .body(ProjectDto.class);
     }
 
-    public ProjectDto createProject(String userId, Map<String, Object> input) {
+    public ProjectDto createProject(String authHeader, Map<String, Object> input) {
         return client.post()
                 .uri("/projects")
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .body(input)
                 .retrieve()
                 .body(ProjectDto.class);
     }
 
-    public ProjectDto updateProject(String id, String userId, Map<String, Object> input) {
+    public ProjectDto updateProject(String id, String authHeader, Map<String, Object> input) {
         return client.put()
                 .uri("/projects/{id}", id)
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .body(input)
                 .retrieve()
                 .body(ProjectDto.class);
     }
 
-    public void deleteProject(String id, String userId) {
+    public void deleteProject(String id, String authHeader) {
         client.delete()
                 .uri("/projects/{id}", id)
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .toBodilessEntity();
     }
 
-    public TaskDto getTask(String id) {
+    public TaskDto getTask(String id, String authHeader) {
         return client.get()
                 .uri("/tasks/{id}", id)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .body(TaskDto.class);
     }
 
-    public List<TaskDto> getTasksByProject(String projectId) {
+    public List<TaskDto> getTasksByProject(String projectId, String authHeader) {
         return client.get()
                 .uri("/tasks?projectId={projectId}", projectId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
     }
 
-    public TaskDto createTask(String userId, Map<String, Object> input) {
+    public TaskDto createTask(String authHeader, Map<String, Object> input) {
         return client.post()
                 .uri("/tasks")
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .body(input)
                 .retrieve()
                 .body(TaskDto.class);
     }
 
-    public TaskDto updateTask(String id, String userId, Map<String, Object> input) {
+    public TaskDto updateTask(String id, String authHeader, Map<String, Object> input) {
         return client.put()
                 .uri("/tasks/{id}", id)
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .body(input)
                 .retrieve()
                 .body(TaskDto.class);
     }
 
-    public TaskDto assignTask(String taskId, String assigneeId, String userId) {
+    public TaskDto assignTask(String taskId, String assigneeId, String authHeader) {
         return client.put()
                 .uri("/tasks/{taskId}/assign/{assigneeId}", taskId, assigneeId)
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .body(TaskDto.class);
     }
 
-    public void deleteTask(String id, String userId) {
+    public void deleteTask(String id, String authHeader) {
         client.delete()
                 .uri("/tasks/{id}", id)
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .toBodilessEntity();
     }
@@ -125,10 +128,10 @@ public class TaskServiceClient {
                 .body(VelocityDto.class);
     }
 
-    public void deleteUser(String userId) {
+    public void deleteUser(String authHeader) {
         client.delete()
                 .uri("/auth/user")
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .toBodilessEntity();
     }

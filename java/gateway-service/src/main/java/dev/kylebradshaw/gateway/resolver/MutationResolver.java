@@ -30,72 +30,72 @@ public class MutationResolver {
 
     @MutationMapping
     public ProjectDto createProject(@Argument Map<String, Object> input, DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        return taskClient.createProject(userId, input);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return taskClient.createProject(authHeader, input);
     }
 
     @MutationMapping
     public ProjectDto updateProject(@Argument String id, @Argument Map<String, Object> input, DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        return taskClient.updateProject(id, userId, input);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return taskClient.updateProject(id, authHeader, input);
     }
 
     @MutationMapping
     public Boolean deleteProject(@Argument String id, DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        taskClient.deleteProject(id, userId);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        taskClient.deleteProject(id, authHeader);
         return true;
     }
 
     @MutationMapping
     public TaskDto createTask(@Argument Map<String, Object> input, DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        return taskClient.createTask(userId, input);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return taskClient.createTask(authHeader, input);
     }
 
     @MutationMapping
     public TaskDto updateTask(@Argument String id, @Argument Map<String, Object> input, DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        return taskClient.updateTask(id, userId, input);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return taskClient.updateTask(id, authHeader, input);
     }
 
     @MutationMapping
     public Boolean deleteTask(@Argument String id, DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        taskClient.deleteTask(id, userId);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        taskClient.deleteTask(id, authHeader);
         return true;
     }
 
     @MutationMapping
     public TaskDto assignTask(@Argument String taskId, @Argument String userId, DataFetchingEnvironment env) {
-        String requestingUserId = env.getGraphQlContext().get("userId");
-        return taskClient.assignTask(taskId, userId, requestingUserId);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return taskClient.assignTask(taskId, userId, authHeader);
     }
 
     @MutationMapping
     public CommentDto addComment(@Argument String taskId, @Argument String body, DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        return activityClient.addComment(taskId, userId, body);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return activityClient.addComment(taskId, authHeader, body);
     }
 
     @MutationMapping
     public Boolean markNotificationRead(@Argument String id, DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        notificationClient.markRead(userId, id);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        notificationClient.markRead(authHeader, id);
         return true;
     }
 
     @MutationMapping
     public Boolean markAllNotificationsRead(DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        notificationClient.markAllRead(userId);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        notificationClient.markAllRead(authHeader);
         return true;
     }
 
     @MutationMapping
     public Boolean deleteAccount(DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        taskClient.deleteUser(userId);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        taskClient.deleteUser(authHeader);
         return true;
     }
 }

@@ -14,29 +14,29 @@ public class NotificationServiceClient {
         this.client = client;
     }
 
-    public NotificationDto getNotifications(String userId, Boolean unreadOnly) {
+    public NotificationDto getNotifications(String authHeader, Boolean unreadOnly) {
         String uri = unreadOnly != null && unreadOnly
                 ? "/notifications?unreadOnly=true"
                 : "/notifications";
         return client.get()
                 .uri(uri)
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .body(NotificationDto.class);
     }
 
-    public void markRead(String userId, String notificationId) {
+    public void markRead(String authHeader, String notificationId) {
         client.put()
                 .uri("/notifications/{id}/read", notificationId)
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .toBodilessEntity();
     }
 
-    public void markAllRead(String userId) {
+    public void markAllRead(String authHeader) {
         client.put()
                 .uri("/notifications/read-all")
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .toBodilessEntity();
     }
