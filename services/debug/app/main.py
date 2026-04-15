@@ -8,7 +8,11 @@ from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider, get_llm_provider
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sse_starlette.sse import EventSourceResponse
+from starlette.requests import Request
 
 from app.agent import run_agent_loop
 from app.config import settings
@@ -27,6 +31,15 @@ app.add_middleware(
 )
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"error": "Rate limit exceeded"})
+
 
 _llm_provider = get_llm_provider(
     provider=settings.llm_provider,
@@ -88,11 +101,10 @@ async def health():
 
 
 @app.post("/index")
-async def index(request: IndexRequest):
-    if not os.path.isdir(request.path):
-        raise HTTPException(
-            status_code=400, detail=f"Directory not found: {request.path}"
-        )
+@limiter.limit("5/minute")
+async def index(request: Request, body: IndexRequest):
+    if not os.path.isdir(body.path):
+        raise HTTPException(status_code=400, detail=f"Directory not found: {body.path}")
 
     # Validate path is in allowlist
     allowed = [
@@ -102,7 +114,7 @@ async def index(request: IndexRequest):
         raise HTTPException(
             status_code=403, detail="No project paths configured for indexing"
         )
-    abs_path = os.path.realpath(request.path)
+    abs_path = os.path.realpath(body.path)
     if not any(
         abs_path.startswith(os.path.realpath(a) + os.sep)
         or abs_path == os.path.realpath(a)
@@ -112,7 +124,7 @@ async def index(request: IndexRequest):
 
     try:
         result = await index_project(
-            project_path=request.path,
+            project_path=body.path,
             embedding_provider=_embedding_provider,
             qdrant_host=settings.qdrant_host,
             qdrant_port=settings.qdrant_port,
@@ -121,25 +133,26 @@ async def index(request: IndexRequest):
         logger.error("Indexing failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Indexing failed")
 
-    _project_paths[result["collection"]] = request.path
+    _project_paths[result["collection"]] = body.path
     return result
 
 
 @app.post("/debug")
-async def debug(request: DebugRequest):
-    project_path = _project_paths.get(request.collection)
+@limiter.limit("10/minute")
+async def debug(request: Request, body: DebugRequest):
+    project_path = _project_paths.get(body.collection)
     if not project_path:
         raise HTTPException(
             status_code=400,
-            detail=f"Collection '{request.collection}' not indexed. Call /index first.",
+            detail=f"Collection '{body.collection}' not indexed. Call /index first.",
         )
 
     async def event_generator():
         try:
             async for event in run_agent_loop(
-                description=request.description,
-                error_output=request.error_output,
-                collection=request.collection,
+                description=body.description,
+                error_output=body.error_output,
+                collection=body.collection,
                 project_path=project_path,
                 llm_provider=_llm_provider,
                 embedding_provider=_embedding_provider,
