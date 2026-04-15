@@ -3,7 +3,6 @@ kind: Kustomization
 
 resources:
   - ../../ai-services
-  - namespace.yml
   - ollama.yml
 
 namespace: ai-services-qa
