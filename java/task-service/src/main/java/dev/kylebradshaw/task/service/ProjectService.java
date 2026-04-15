@@ -43,8 +43,13 @@ public class ProjectService {
         return projectRepo.findAllByIdWithOwner(projectIds);
     }
 
-    public Project getProject(UUID projectId) {
-        return projectRepo.findByIdWithOwner(projectId).orElseThrow(() -> new IllegalArgumentException("Project not found"));
+    public Project getProject(UUID projectId, UUID userId) {
+        Project project = projectRepo.findByIdWithOwner(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Project not found"));
+        if (!memberRepo.existsByProjectIdAndUserId(projectId, userId)) {
+            throw new IllegalArgumentException("Project not found");
+        }
+        return project;
     }
 
     @Transactional
@@ -52,7 +57,8 @@ public class ProjectService {
         if (!memberRepo.existsByProjectIdAndUserIdAndRole(projectId, userId, ProjectRole.OWNER)) {
             throw new IllegalStateException("Only the owner can update the project");
         }
-        Project project = getProject(projectId);
+        Project project = projectRepo.findByIdWithOwner(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Project not found"));
         if (name != null) {
             project.setName(name);
         }

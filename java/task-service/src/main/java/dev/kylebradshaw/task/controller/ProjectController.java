@@ -8,13 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,16 +29,24 @@ public class ProjectController {
         this.projectService = projectService;
     }
 
+    private UUID getAuthenticatedUserId() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getPrincipal() == null) {
+            throw new IllegalStateException("No authenticated user");
+        }
+        return UUID.fromString(auth.getPrincipal().toString());
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ProjectResponse createProject(
-            @Valid @RequestBody CreateProjectRequest request,
-            @RequestHeader("X-User-Id") UUID userId) {
+    public ProjectResponse createProject(@Valid @RequestBody CreateProjectRequest request) {
+        UUID userId = getAuthenticatedUserId();
         return ProjectResponse.from(projectService.createProject(request, userId));
     }
 
     @GetMapping
-    public List<ProjectResponse> getMyProjects(@RequestHeader("X-User-Id") UUID userId) {
+    public List<ProjectResponse> getMyProjects() {
+        UUID userId = getAuthenticatedUserId();
         return projectService.getProjectsForUser(userId).stream()
                 .map(ProjectResponse::from)
                 .toList();
@@ -46,23 +54,23 @@ public class ProjectController {
 
     @GetMapping("/{id}")
     public ProjectResponse getProject(@PathVariable UUID id) {
-        return ProjectResponse.from(projectService.getProject(id));
+        UUID userId = getAuthenticatedUserId();
+        return ProjectResponse.from(projectService.getProject(id, userId));
     }
 
     @PutMapping("/{id}")
     public ProjectResponse updateProject(
             @PathVariable UUID id,
-            @RequestHeader("X-User-Id") UUID userId,
             @RequestBody Map<String, String> body) {
+        UUID userId = getAuthenticatedUserId();
         return ProjectResponse.from(
                 projectService.updateProject(id, userId, body.get("name"), body.get("description")));
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteProject(
-            @PathVariable UUID id,
-            @RequestHeader("X-User-Id") UUID userId) {
+    public void deleteProject(@PathVariable UUID id) {
+        UUID userId = getAuthenticatedUserId();
         projectService.deleteProject(id, userId);
     }
 }
