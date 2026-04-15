@@ -52,6 +52,18 @@ For smaller, self-contained decisions. Use `template-adr.md` as a starting point
 
 Example topics: "Why Qdrant over Pinecone", "Why RecursiveCharacterTextSplitter over other strategies", "CORS policy design".
 
+**Current standalone ADRs:**
+- [Deployment Architecture](deployment-architecture.md) — how the portfolio is deployed, networked, and served
+- [Debian Server Migration](debian-server-migration.md) — migration from Windows to Debian 13 as deployment host
+- [CI/CD Pipeline](cicd-pipeline.md) — how code gets from git push to production
+- [Docker Compose to Kubernetes](docker-compose-to-kubernetes.md) — why we migrated to K8s
+- [Go Ecommerce Architecture](go-ecommerce-architecture.md) — Go services design
+- [Go AI Service MCP](go-ai-service-mcp.md) — MCP integration for the Go AI agent
+- [Go Stress Testing](go-stress-testing.md) — load testing approach
+- [Java Analytics and Database Optimization](java-analytics-and-database-optimization.md) — analytics layer design
+- [Password Authentication](password-authentication.md) — auth design decisions
+- [RAG Re-evaluation](rag-reevaluation-2026-04.md) — revisiting RAG pipeline choices
+
 ## Creating ADRs with Claude
 
 ### Automatic
