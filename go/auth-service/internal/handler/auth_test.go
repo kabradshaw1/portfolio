@@ -88,7 +88,7 @@ func TestRegisterHandler(t *testing.T) {
 
 	body, _ := json.Marshal(model.RegisterRequest{
 		Email:    "alice@example.com",
-		Password: "password123",
+		Password: "password123456", // 14 chars, meets min=12 requirement
 		Name:     "Alice",
 	})
 
@@ -126,7 +126,7 @@ func TestRegisterHandler_InvalidEmail(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{
 		"email":    "not-an-email",
-		"password": "password123",
+		"password": "password123456", // 14 chars, meets min=12 requirement
 		"name":     "Bob",
 	})
 
