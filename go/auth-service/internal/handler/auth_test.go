@@ -81,7 +81,7 @@ func TestRegisterHandler(t *testing.T) {
 
 	repo := newMockUserRepo()
 	svc := service.NewAuthService(repo, "test-secret", 900000, 604800000)
-	h := handler.NewAuthHandler(svc, nil)
+	h := handler.NewAuthHandler(svc, nil, service.NewTokenDenylist(nil), 15*time.Minute)
 
 	router := testRouter()
 	router.POST("/auth/register", h.Register)
@@ -119,7 +119,7 @@ func TestRegisterHandler_InvalidEmail(t *testing.T) {
 
 	repo := newMockUserRepo()
 	svc := service.NewAuthService(repo, "test-secret", 900000, 604800000)
-	h := handler.NewAuthHandler(svc, nil)
+	h := handler.NewAuthHandler(svc, nil, service.NewTokenDenylist(nil), 15*time.Minute)
 
 	router := testRouter()
 	router.POST("/auth/register", h.Register)
@@ -198,7 +198,7 @@ func TestGoogleLogin_Success(t *testing.T) {
 		},
 	}
 	gc := &fakeGoogleClient{info: &google.UserInfo{Email: "a@example.com", Name: "A", Picture: "http://pic"}}
-	h := handler.NewAuthHandler(svc, gc)
+	h := handler.NewAuthHandler(svc, gc, service.NewTokenDenylist(nil), 15*time.Minute)
 
 	router := testRouter()
 	router.POST("/auth/google", h.GoogleLogin)
@@ -223,7 +223,7 @@ func TestGoogleLogin_Success(t *testing.T) {
 
 func TestGoogleLogin_BadRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := handler.NewAuthHandler(&fakeAuthService{}, &fakeGoogleClient{})
+	h := handler.NewAuthHandler(&fakeAuthService{}, &fakeGoogleClient{}, service.NewTokenDenylist(nil), 15*time.Minute)
 	router := testRouter()
 	router.POST("/auth/google", h.GoogleLogin)
 
@@ -240,7 +240,7 @@ func TestGoogleLogin_BadRequest(t *testing.T) {
 func TestGoogleLogin_GoogleError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	gc := &fakeGoogleClient{err: errors.New("bad code")}
-	h := handler.NewAuthHandler(&fakeAuthService{}, gc)
+	h := handler.NewAuthHandler(&fakeAuthService{}, gc, service.NewTokenDenylist(nil), 15*time.Minute)
 	router := testRouter()
 	router.POST("/auth/google", h.GoogleLogin)
 
@@ -263,7 +263,7 @@ func TestGoogleLogin_ServiceError(t *testing.T) {
 		},
 	}
 	gc := &fakeGoogleClient{info: &google.UserInfo{Email: "a@example.com"}}
-	h := handler.NewAuthHandler(svc, gc)
+	h := handler.NewAuthHandler(svc, gc, service.NewTokenDenylist(nil), 15*time.Minute)
 	router := testRouter()
 	router.POST("/auth/google", h.GoogleLogin)
 
@@ -274,6 +274,39 @@ func TestGoogleLogin_ServiceError(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+// --- Logout handler tests ---
+
+func TestLogout_WithToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := handler.NewAuthHandler(&fakeAuthService{}, nil, service.NewTokenDenylist(nil), 15*time.Minute)
+	router := testRouter()
+	router.POST("/auth/logout", h.Logout)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	req.Header.Set("Authorization", "Bearer some.jwt.token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+func TestLogout_NoToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := handler.NewAuthHandler(&fakeAuthService{}, nil, service.NewTokenDenylist(nil), 15*time.Minute)
+	router := testRouter()
+	router.POST("/auth/logout", h.Logout)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d", w.Code)
 	}
 }

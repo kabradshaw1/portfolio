@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/google"
@@ -21,6 +22,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
+	pkgmw "github.com/kabradshaw1/portfolio/go/pkg/middleware"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
@@ -94,6 +96,24 @@ func main() {
 	}
 	slog.Info("connected to database")
 
+	// Connect to Redis (optional — for token revocation)
+	var redisClient *redis.Client
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL != "" {
+		opts, err := redis.ParseURL(redisURL)
+		if err != nil {
+			slog.Warn("failed to parse REDIS_URL, token revocation disabled", "error", err)
+		} else {
+			redisClient = redis.NewClient(opts)
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				slog.Warn("redis not available, token revocation disabled", "error", err)
+				redisClient = nil
+			} else {
+				slog.Info("connected to redis")
+			}
+		}
+	}
+
 	// Wire dependencies
 	pgBreaker := resilience.NewBreaker(resilience.BreakerConfig{
 		Name:          "auth-postgres",
@@ -102,12 +122,14 @@ func main() {
 	userRepo := repository.NewUserRepository(pool, pgBreaker)
 	authSvc := service.NewAuthService(userRepo, jwtSecret, accessTokenTTLMs, refreshTokenTTLMs)
 	googleClient := google.NewClient(googleClientID, googleClientSecret, googleTokenURL, googleUserinfoURL)
-	authHandler := handler.NewAuthHandler(authSvc, googleClient)
+	denylist := service.NewTokenDenylist(redisClient)
+	authHandler := handler.NewAuthHandler(authSvc, googleClient, denylist, time.Duration(accessTokenTTLMs)*time.Millisecond)
 	healthHandler := handler.NewHealthHandler(pool)
 
 	// Set up Gin
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(pkgmw.SecurityHeaders())
 	router.Use(otelgin.Middleware("auth-service"))
 	router.Use(middleware.Logging())
 	router.Use(apperror.ErrorHandler())
@@ -119,6 +141,7 @@ func main() {
 	router.POST("/auth/login", authHandler.Login)
 	router.POST("/auth/refresh", authHandler.Refresh)
 	router.POST("/auth/google", authHandler.GoogleLogin)
+	router.POST("/auth/logout", authHandler.Logout)
 	router.GET("/health", healthHandler.Health)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 

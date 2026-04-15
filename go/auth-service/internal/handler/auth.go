@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/google"
@@ -21,13 +23,19 @@ type GoogleClientInterface interface {
 	ExchangeCode(ctx context.Context, code, redirectURI string) (*google.UserInfo, error)
 }
 
+type TokenDenylistInterface interface {
+	Revoke(ctx context.Context, token string, ttl time.Duration) error
+}
+
 type AuthHandler struct {
 	svc          AuthServiceInterface
 	googleClient GoogleClientInterface
+	denylist     TokenDenylistInterface
+	accessTTL    time.Duration
 }
 
-func NewAuthHandler(svc AuthServiceInterface, googleClient GoogleClientInterface) *AuthHandler {
-	return &AuthHandler{svc: svc, googleClient: googleClient}
+func NewAuthHandler(svc AuthServiceInterface, googleClient GoogleClientInterface, denylist TokenDenylistInterface, accessTTL time.Duration) *AuthHandler {
+	return &AuthHandler{svc: svc, googleClient: googleClient, denylist: denylist, accessTTL: accessTTL}
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -89,4 +97,13 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+func (h *AuthHandler) Logout(c *gin.Context) {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		_ = h.denylist.Revoke(c.Request.Context(), token, h.accessTTL)
+	}
+	c.Status(http.StatusNoContent)
 }
