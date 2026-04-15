@@ -98,6 +98,9 @@ async def ingest(
         raise HTTPException(status_code=422, detail="Only PDF files are accepted")
 
     content = await file.read()
+    # Validate PDF magic bytes
+    if not content[:5] == b"%PDF-":
+        raise HTTPException(status_code=422, detail="File is not a valid PDF")
     max_bytes = settings.max_file_size_mb * 1024 * 1024
     if len(content) > max_bytes:
         raise HTTPException(
