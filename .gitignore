@@ -20,7 +20,9 @@ env/
 
 # Kubernetes secrets (never commit)
 **/k8s/secrets/*.yml
+**/k8s/base/secrets/*.yml
 !**/k8s/secrets/*.yml.template
+!**/k8s/base/secrets/*.yml.template
 
 # IDE
 .vscode/
