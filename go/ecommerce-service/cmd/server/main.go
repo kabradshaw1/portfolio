@@ -205,9 +205,12 @@ func main() {
 	router.GET("/health", healthHandler.Health)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+	ecomLimiter := middleware.NewRateLimiter(redisClient, "ecom:ratelimit", 60, time.Minute)
+
 	// Authenticated routes
 	auth := router.Group("/")
 	auth.Use(middleware.Auth(jwtSecret))
+	auth.Use(ecomLimiter.Middleware())
 	{
 		auth.GET("/cart", cartHandler.GetCart)
 		auth.POST("/cart", cartHandler.AddItem)
