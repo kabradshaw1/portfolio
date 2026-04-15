@@ -74,6 +74,25 @@ func testRouter() *gin.Engine {
 	return r
 }
 
+// defaultCookieCfg returns a CookieConfig suitable for tests (non-secure, no domain).
+func defaultCookieCfg() handler.CookieConfig {
+	return handler.CookieConfig{
+		Secure:   false,
+		Domain:   "",
+		SameSite: http.SameSiteLaxMode,
+	}
+}
+
+// hasCookie checks whether the response contains a Set-Cookie header for the given name.
+func hasCookie(w *httptest.ResponseRecorder, name string) bool {
+	for _, h := range w.Result().Cookies() {
+		if h.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // --- tests ---
 
 func TestRegisterHandler(t *testing.T) {
@@ -81,7 +100,7 @@ func TestRegisterHandler(t *testing.T) {
 
 	repo := newMockUserRepo()
 	svc := service.NewAuthService(repo, "test-secret", 900000, 604800000)
-	h := handler.NewAuthHandler(svc, nil)
+	h := handler.NewAuthHandler(svc, nil, nil, 15*time.Minute, 7*24*time.Hour, defaultCookieCfg())
 
 	router := testRouter()
 	router.POST("/auth/register", h.Register)
@@ -102,15 +121,22 @@ func TestRegisterHandler(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp model.AuthResponse
+	var resp map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
-	if resp.AccessToken == "" || resp.RefreshToken == "" {
-		t.Error("expected non-empty tokens")
+	if resp["email"] != "alice@example.com" {
+		t.Errorf("expected email alice@example.com, got %v", resp["email"])
 	}
-	if resp.Email != "alice@example.com" {
-		t.Errorf("expected email alice@example.com, got %s", resp.Email)
+	// tokens must be in cookies, not in body
+	if _, ok := resp["accessToken"]; ok {
+		t.Error("accessToken must not appear in response body")
+	}
+	if !hasCookie(w, "access_token") {
+		t.Error("expected access_token cookie to be set")
+	}
+	if !hasCookie(w, "refresh_token") {
+		t.Error("expected refresh_token cookie to be set")
 	}
 }
 
@@ -119,7 +145,7 @@ func TestRegisterHandler_InvalidEmail(t *testing.T) {
 
 	repo := newMockUserRepo()
 	svc := service.NewAuthService(repo, "test-secret", 900000, 604800000)
-	h := handler.NewAuthHandler(svc, nil)
+	h := handler.NewAuthHandler(svc, nil, nil, 15*time.Minute, 7*24*time.Hour, defaultCookieCfg())
 
 	router := testRouter()
 	router.POST("/auth/register", h.Register)
@@ -198,7 +224,7 @@ func TestGoogleLogin_Success(t *testing.T) {
 		},
 	}
 	gc := &fakeGoogleClient{info: &google.UserInfo{Email: "a@example.com", Name: "A", Picture: "http://pic"}}
-	h := handler.NewAuthHandler(svc, gc)
+	h := handler.NewAuthHandler(svc, gc, nil, 15*time.Minute, 7*24*time.Hour, defaultCookieCfg())
 
 	router := testRouter()
 	router.POST("/auth/google", h.GoogleLogin)
@@ -212,18 +238,25 @@ func TestGoogleLogin_Success(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
 	}
-	var resp model.AuthResponse
+	var resp map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp.AccessToken != "access" || resp.AvatarURL != "http://pic" {
-		t.Errorf("unexpected response: %+v", resp)
+	if resp["email"] != "a@example.com" {
+		t.Errorf("unexpected email in response: %v", resp["email"])
+	}
+	// tokens must be in cookies, not in body
+	if _, ok := resp["accessToken"]; ok {
+		t.Error("accessToken must not appear in response body")
+	}
+	if !hasCookie(w, "access_token") {
+		t.Error("expected access_token cookie to be set")
 	}
 }
 
 func TestGoogleLogin_BadRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := handler.NewAuthHandler(&fakeAuthService{}, &fakeGoogleClient{})
+	h := handler.NewAuthHandler(&fakeAuthService{}, &fakeGoogleClient{}, nil, 15*time.Minute, 7*24*time.Hour, defaultCookieCfg())
 	router := testRouter()
 	router.POST("/auth/google", h.GoogleLogin)
 
@@ -240,7 +273,7 @@ func TestGoogleLogin_BadRequest(t *testing.T) {
 func TestGoogleLogin_GoogleError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	gc := &fakeGoogleClient{err: errors.New("bad code")}
-	h := handler.NewAuthHandler(&fakeAuthService{}, gc)
+	h := handler.NewAuthHandler(&fakeAuthService{}, gc, nil, 15*time.Minute, 7*24*time.Hour, defaultCookieCfg())
 	router := testRouter()
 	router.POST("/auth/google", h.GoogleLogin)
 
@@ -263,7 +296,7 @@ func TestGoogleLogin_ServiceError(t *testing.T) {
 		},
 	}
 	gc := &fakeGoogleClient{info: &google.UserInfo{Email: "a@example.com"}}
-	h := handler.NewAuthHandler(svc, gc)
+	h := handler.NewAuthHandler(svc, gc, nil, 15*time.Minute, 7*24*time.Hour, defaultCookieCfg())
 	router := testRouter()
 	router.POST("/auth/google", h.GoogleLogin)
 

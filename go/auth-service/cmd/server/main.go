@@ -102,7 +102,16 @@ func main() {
 	userRepo := repository.NewUserRepository(pool, pgBreaker)
 	authSvc := service.NewAuthService(userRepo, jwtSecret, accessTokenTTLMs, refreshTokenTTLMs)
 	googleClient := google.NewClient(googleClientID, googleClientSecret, googleTokenURL, googleUserinfoURL)
-	authHandler := handler.NewAuthHandler(authSvc, googleClient)
+	accessTTL := time.Duration(accessTokenTTLMs) * time.Millisecond
+	refreshTTL := time.Duration(refreshTokenTTLMs) * time.Millisecond
+	cookieSecure := os.Getenv("COOKIE_SECURE") == "true"
+	cookieDomain := os.Getenv("COOKIE_DOMAIN")
+	cookieCfg := handler.CookieConfig{
+		Secure:   cookieSecure,
+		Domain:   cookieDomain,
+		SameSite: http.SameSiteLaxMode,
+	}
+	authHandler := handler.NewAuthHandler(authSvc, googleClient, nil, accessTTL, refreshTTL, cookieCfg)
 	healthHandler := handler.NewHealthHandler(pool)
 
 	// Set up Gin
@@ -119,6 +128,7 @@ func main() {
 	router.POST("/auth/login", authHandler.Login)
 	router.POST("/auth/refresh", authHandler.Refresh)
 	router.POST("/auth/google", authHandler.GoogleLogin)
+	router.POST("/auth/logout", authHandler.Logout)
 	router.GET("/health", healthHandler.Health)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
