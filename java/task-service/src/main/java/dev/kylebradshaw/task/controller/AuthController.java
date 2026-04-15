@@ -56,6 +56,9 @@ public class AuthController {
      */
     @PostMapping("/google")
     public AuthResponse googleLogin(@Valid @RequestBody AuthRequest request) {
+        if (request.state() == null || request.state().isBlank()) {
+            throw new IllegalArgumentException("OAuth state parameter required");
+        }
         // Exchange authorization code for tokens at Google's token endpoint
         MultiValueMap<String, String> tokenParams = new LinkedMultiValueMap<>();
         tokenParams.add("code", request.code());
