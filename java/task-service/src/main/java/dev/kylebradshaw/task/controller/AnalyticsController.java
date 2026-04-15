@@ -26,10 +26,10 @@ public class AnalyticsController {
 
     private UUID getAuthenticatedUserId() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getPrincipal() == null) {
+        if (auth == null) {
             throw new IllegalStateException("No authenticated user");
         }
-        return UUID.fromString(auth.getPrincipal().toString());
+        return UUID.fromString(auth.getName());
     }
 
     @GetMapping("/projects/{id}/stats")

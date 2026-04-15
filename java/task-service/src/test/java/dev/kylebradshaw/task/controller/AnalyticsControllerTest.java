@@ -11,6 +11,7 @@ import dev.kylebradshaw.task.dto.ProjectStatsResponse;
 import dev.kylebradshaw.task.dto.VelocityResponse;
 import dev.kylebradshaw.task.dto.WeeklyThroughputRow;
 import dev.kylebradshaw.task.service.AnalyticsService;
+import dev.kylebradshaw.task.service.ProjectService;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -20,6 +21,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -39,8 +41,10 @@ class AnalyticsControllerTest {
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private AnalyticsService analyticsService;
+    @MockitoBean private ProjectService projectService;
 
     @Test
+    @WithMockUser(username = "00000000-0000-0000-0000-000000000001")
     void getProjectStats_returns200() throws Exception {
         UUID projectId = UUID.randomUUID();
         var stats = new ProjectStatsResponse(
@@ -58,6 +62,7 @@ class AnalyticsControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "00000000-0000-0000-0000-000000000001")
     void getVelocityMetrics_returns200() throws Exception {
         UUID projectId = UUID.randomUUID();
         var velocity = new VelocityResponse(
@@ -74,6 +79,7 @@ class AnalyticsControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "00000000-0000-0000-0000-000000000001")
     void getVelocityMetrics_customWeeks() throws Exception {
         UUID projectId = UUID.randomUUID();
         var velocity = new VelocityResponse(List.of(), null, new PercentilesRow(0, 0, 0));
