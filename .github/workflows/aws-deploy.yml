@@ -184,11 +184,11 @@ jobs:
           kubectl delete job go-auth-migrate go-ecommerce-migrate \
             -n go-ecommerce --ignore-not-found --wait=true
 
-          kubectl apply -f go/k8s/jobs/auth-service-migrate.yml
+          kubectl apply -f go/k8s/base/jobs/auth-service-migrate.yml
           kubectl wait --for=condition=complete --timeout=180s \
             job/go-auth-migrate -n go-ecommerce
 
-          kubectl apply -f go/k8s/jobs/ecommerce-service-migrate.yml
+          kubectl apply -f go/k8s/base/jobs/ecommerce-service-migrate.yml
           kubectl wait --for=condition=complete --timeout=180s \
             job/go-ecommerce-migrate -n go-ecommerce
 

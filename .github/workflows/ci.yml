@@ -230,7 +230,7 @@ jobs:
         run: |
           psql -h localhost -U taskuser -d taskdb -c "CREATE DATABASE ecommercedb;"
 
-      # Per-service x-migrations-table matches go/k8s/jobs/*.yml exactly.
+      # Per-service x-migrations-table matches go/k8s/base/jobs/*.yml exactly.
       # Without this, both services share the default schema_migrations table
       # and whichever runs first claims the version counter, causing the other
       # to skip migrations and fail on table references. See commit 25054f5.
@@ -339,7 +339,7 @@ jobs:
       # not standalone manifests (e.g. $patch: delete directives).
       - name: Stage A — kubeconform
         run: |
-          find k8s/ java/k8s/ go/k8s/ \
+          find k8s/ java/k8s/base/ go/k8s/base/ \
             -type f \( -name '*.yml' -o -name '*.yaml' \) \
             -not -path '*/overlays/*' \
             -not -name 'kustomization.yaml' \
@@ -364,7 +364,7 @@ jobs:
           # Apply every manifest directory recursively. --dry-run=server
           # exercises the real API server's validation and admission.
           # Skip overlays/ and kustomization.yaml — those are Kustomize fragments.
-          for dir in k8s java/k8s go/k8s; do
+          for dir in k8s java/k8s/base go/k8s/base; do
             find "$dir" -type f \( -name '*.yml' -o -name '*.yaml' \) \
               -not -path '*/overlays/*' \
               -not -name 'kustomization.yaml' \
@@ -796,11 +796,11 @@ jobs:
           SSH="ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key kyle@100.82.52.82"
 
           # Always apply namespaces and manifests (cheap, idempotent)
-          for f in $(find k8s go/k8s java/k8s -name 'namespace.yml' 2>/dev/null); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          for f in $(find k8s go/k8s/base java/k8s/base -name 'namespace.yml' 2>/dev/null); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/ai-services -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
-          for f in $(find java/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          for f in $(find java/k8s/base -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/monitoring -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
-          for f in $(find go/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*' -not -path '*/jobs/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          for f in $(find go/k8s/base -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*' -not -path '*/jobs/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 
           # Only restart deployments that have new images
           if [ "$PYTHON_CHANGED" = "true" ] || [ "$K8S_CHANGED" = "true" ]; then
@@ -823,14 +823,14 @@ jobs:
             # auth-migrate MUST run before ecommerce-migrate: both services share
             # ecommercedb, and the ecommerce seed inserts into the users table
             # which is created by auth-service's migrations.
-            $SSH "kubectl apply -f -" < go/k8s/jobs/auth-service-migrate.yml
+            $SSH "kubectl apply -f -" < go/k8s/base/jobs/auth-service-migrate.yml
             if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce"; then
               echo "go-auth-migrate failed. Logs follow:"
               $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
 
-            $SSH "kubectl apply -f -" < go/k8s/jobs/ecommerce-service-migrate.yml
+            $SSH "kubectl apply -f -" < go/k8s/base/jobs/ecommerce-service-migrate.yml
             if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce"; then
               echo "go-ecommerce-migrate failed. Logs follow:"
               $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce --tail=200" || true

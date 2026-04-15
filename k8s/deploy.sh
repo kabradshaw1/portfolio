@@ -62,16 +62,16 @@ fi
 
 # --- Secrets (applied directly — not managed by kustomize) ---
 echo "==> Applying secrets..."
-if [ -f "$REPO_DIR/java/k8s/secrets/java-secrets.yml" ]; then
-  kubectl apply -f "$REPO_DIR/java/k8s/secrets/java-secrets.yml"
+if [ -f "$REPO_DIR/java/k8s/base/secrets/java-secrets.yml" ]; then
+  kubectl apply -f "$REPO_DIR/java/k8s/base/secrets/java-secrets.yml"
 else
   echo "    WARN: java-secrets.yml not found — copy java-secrets.yml.template and fill in values"
 fi
 
-if [ -f "$REPO_DIR/go/k8s/secrets/go-secrets.yml" ]; then
-  kubectl apply -f "$REPO_DIR/go/k8s/secrets/go-secrets.yml"
+if [ -f "$REPO_DIR/go/k8s/base/secrets/go-secrets.yml" ]; then
+  kubectl apply -f "$REPO_DIR/go/k8s/base/secrets/go-secrets.yml"
 else
-  echo "    WARN: go-secrets.yml not found — create go/k8s/secrets/go-secrets.yml with jwt-secret"
+  echo "    WARN: go-secrets.yml not found — create go/k8s/base/secrets/go-secrets.yml with jwt-secret"
 fi
 
 # --- Deploy ai-services ---
