@@ -114,15 +114,17 @@ export default function Home() {
               <CardHeader>
                 <CardTitle>CI/CD Pipeline</CardTitle>
                 <CardDescription>
-                  Unified GitHub Actions workflow with QA environment and agent
-                  automation
+                  Unified GitHub Actions workflow with a live QA environment at
+                  qa.kylebradshaw.dev for pre-prod review
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground text-sm">
                   A single workflow handles quality checks, image builds, and
                   deployments for three service stacks — designed for a solo
-                  developer with automated spec-to-production delivery.
+                  developer with automated spec-to-production delivery. See
+                  what&apos;s currently staged for production review on the
+                  CI/CD page.
                 </p>
               </CardContent>
             </Card>
