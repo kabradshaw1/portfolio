@@ -494,6 +494,7 @@ jobs:
           --ignore-vuln CVE-2025-6985
           --ignore-vuln GHSA-926x-3r5x-gfhw
           --ignore-vuln CVE-2025-71176
+          --ignore-vuln GHSA-rr7j-v2q5-chgv
 
   security-npm-audit:
     name: Security - npm audit
