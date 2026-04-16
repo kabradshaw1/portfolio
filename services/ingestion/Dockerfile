@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir /shared
 COPY ingestion/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY shared/ ./shared/
 COPY ingestion/app/ ./app/
 
 RUN useradd --create-home appuser

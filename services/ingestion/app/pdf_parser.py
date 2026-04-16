@@ -1,6 +1,6 @@
 from io import BytesIO
 
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 
 def extract_pages(pdf_file: BytesIO) -> list[dict]:

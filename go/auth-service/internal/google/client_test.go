@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -73,8 +72,8 @@ func TestExchangeCode_TokenEndpointError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "token") {
-		t.Errorf("error should mention token: %v", err)
+	if err.Error() != "google authentication failed" {
+		t.Errorf("expected generic error, got: %v", err)
 	}
 }
 
@@ -94,8 +93,8 @@ func TestExchangeCode_UserinfoEndpointError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "userinfo") {
-		t.Errorf("error should mention userinfo: %v", err)
+	if err.Error() != "google authentication failed" {
+		t.Errorf("expected generic error, got: %v", err)
 	}
 }
 

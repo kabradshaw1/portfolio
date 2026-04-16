@@ -5,6 +5,8 @@ metadata:
   namespace: ai-services
 data:
   OLLAMA_BASE_URL: http://ollama:11434
+  LLM_BASE_URL: http://ollama:11434
+  EMBEDDING_BASE_URL: http://ollama:11434
   CHAT_MODEL: qwen2.5:14b
   EMBEDDING_MODEL: nomic-embed-text
   QDRANT_HOST: qdrant
@@ -13,3 +15,4 @@ data:
   MAX_GREP_MATCHES: "20"
   TEST_TIMEOUT_SECONDS: "30"
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
+  ALLOWED_PROJECT_PATHS: ""

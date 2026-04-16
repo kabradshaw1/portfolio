@@ -17,9 +17,9 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 ## Infrastructure
 
 - **Mac (dev machine):** Code editing, frontend dev server, no GPU. Docker runtime is Colima (start with `colima start` before `docker compose`).
-- **Windows (PC@100.79.113.84 via Tailscale):** Ollama (RTX 3090), Minikube (all backend services)
-- **SSH:** `ssh PC@100.79.113.84` — key-based auth configured
-- **Minikube:** All backend services run in Kubernetes on the Windows PC
+- **Debian 13 (kyle@100.82.52.82 via Tailscale):** Ollama (RTX 3090), Minikube (all backend services)
+- **SSH:** `ssh debian` (configured in `~/.ssh/config`, key-based auth)
+- **Minikube:** All backend services run in Kubernetes on the Debian server
   - `ai-services` namespace: Python AI services + Qdrant
   - `java-tasks` namespace: Java microservices + databases
   - `go-ecommerce` namespace: Go auth + ecommerce services
@@ -28,19 +28,19 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
   - `java-tasks-qa` namespace: QA copies of Java services (shared infra with prod)
   - `go-ecommerce-qa` namespace: QA copies of Go services (shared infra with prod)
   - NGINX Ingress Controller routes all traffic by path
-  - `minikube tunnel` exposes Ingress on localhost:80
-- **Ollama:** Runs natively on Windows (GPU access), reached from K8s via ExternalName service
+  - `minikube tunnel` runs as systemd service (auto-starts on boot)
+- **Ollama:** Runs natively on Debian (GPU access), reached from K8s via ExternalName service (`host.minikube.internal`)
 - **Local dev:** Docker Compose for both stacks (no Minikube needed for development)
-  - SSH tunnel forwards `localhost:8000` to Windows nginx gateway
+  - SSH tunnel forwards `localhost:8000` to Debian nginx gateway
   ```bash
-  ssh -f -N -L 8000:localhost:8000 PC@100.79.113.84
+  ssh -f -N -L 8000:localhost:8000 debian
   ```
 - **Frontend:** `npm run dev` in `frontend/`, points to `localhost:8000` via tunnel
 - **Production:** Frontend on Vercel (`https://kylebradshaw.dev`), backend via Cloudflare Tunnel:
-  - `https://api.kylebradshaw.dev` → Windows PC localhost:80 (Minikube Ingress)
+  - `https://api.kylebradshaw.dev` → Debian Minikube Ingress (192.168.49.2:80)
   - Ingress routes by path: `/ingestion/*`, `/chat/*`, `/debug/*` → Python services; `/graphql`, `/api/auth/*` → Java services; `/go-api/*`, `/go-auth/*` → Go services; `/grafana/*` → monitoring
-  - Cloudflared installed as Windows service (auto-starts on boot)
-  - `minikube tunnel` must be running as background process
+  - Cloudflared runs as systemd service (auto-starts on boot)
+  - `minikube tunnel` runs as systemd service (auto-starts on boot)
 
 ### Vercel CLI
 
@@ -150,7 +150,11 @@ Current ADRs:
 **Per-branch rules for Claude Code:**
 
 - **On a feature branch:** The full autonomous flow is:
-  1. **Spec approved** — Kyle reviews and approves the spec. This is the human gate.
+  1. **Spec approved** — Kyle reviews and approves the spec. This is the human gate. After writing the spec, update the status line marker so Kyle can see which spec is active:
+     ```bash
+     echo "spec-name-here" > ~/.claude/current-spec.txt
+     ```
+     Use the spec filename without the date prefix or `.md` extension (e.g., `restore-e2e-prestaging-design`).
   2. **Plan + execute** — Write the implementation plan and execute it. Don't ask to approve the plan — just do it.
   3. **Push** — Commit and push. Don't ask before pushing.
   4. **Watch CI** — Monitor the GitHub Actions run. Wait for all checks to complete.
@@ -172,7 +176,7 @@ Before every commit, run the relevant preflight checks and fix any failures. Onl
 - **Python changes:** `make preflight-python` and `make preflight-security`
 - **Frontend changes:** `make preflight-frontend` and `make preflight-e2e`
 - **Java changes:** `make preflight-java` (checkstyle + unit tests, runs locally)
-- **Java integration tests:** `make preflight-java-integration` (runs over SSH on Windows PC, on-demand)
+- **Java integration tests:** `make preflight-java-integration` (runs over SSH on Debian server, on-demand)
 - **Go changes:** `make preflight-go` (lint + tests)
 - **Full sweep:** `make preflight` (runs Python + frontend + security + Java + Go locally)
 
@@ -190,7 +194,7 @@ Single unified workflow (`.github/workflows/ci.yml`) handles all CI/CD:
 
 **Quality:** ruff lint/format, pytest + coverage, tsc, Next.js build, checkstyle, golangci-lint, Go tests
 **Security:** Bandit (SAST), pip-audit, npm audit, gitleaks, Hadolint, CORS guardrail
-**Deploy:** GHCR images built in CI → SSH to Windows PC → kubectl apply Kustomize overlays
+**Deploy:** GHCR images built in CI → SSH to Debian server → kubectl apply Kustomize overlays
 **QA:** `qa-api.kylebradshaw.dev` (backend), `qa.kylebradshaw.dev` (frontend on Vercel)
 
 **Compose-smoke realism:** Job 3 (`compose-smoke`) runs the Python AI stack via `docker-compose.yml` with a mocked Ollama. Any change to Python service configuration (env vars, ports, depends_on, env_file references) must be reflected in BOTH `docker-compose.yml` and the corresponding k8s manifests under `k8s/ai-services/`, or compose-smoke will drift from prod and stop catching real regressions.

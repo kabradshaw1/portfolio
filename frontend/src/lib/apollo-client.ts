@@ -1,21 +1,11 @@
 import { ApolloClient, InMemoryCache, HttpLink, from, Observable } from "@apollo/client";
-import { setContext } from "@apollo/client/link/context";
 import { ErrorLink } from "@apollo/client/link/error";
 import { ServerError } from "@apollo/client/errors";
-import { getAccessToken, refreshAccessToken, clearTokens, GATEWAY_URL } from "./auth";
+import { refreshAccessToken, GATEWAY_URL } from "./auth";
 
 const httpLink = new HttpLink({
   uri: `${GATEWAY_URL}/graphql`,
-});
-
-const authLink = setContext((_, { headers }) => {
-  const token = getAccessToken();
-  return {
-    headers: {
-      ...headers,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  };
+  credentials: "include",
 });
 
 const errorLink = new ErrorLink(({ error, operation, forward }) => {
@@ -25,30 +15,20 @@ const errorLink = new ErrorLink(({ error, operation, forward }) => {
   ) {
     return new Observable((observer) => {
       refreshAccessToken()
-        .then((newToken) => {
-          if (!newToken) {
-            clearTokens();
+        .then((success) => {
+          if (!success) {
             window.location.href = "/java/tasks";
             observer.error(error);
             return;
           }
-          const oldHeaders = operation.getContext().headers;
-          operation.setContext({
-            headers: {
-              ...oldHeaders,
-              Authorization: `Bearer ${newToken}`,
-            },
-          });
           forward(operation).subscribe(observer);
         })
-        .catch((err) => {
-          observer.error(err);
-        });
+        .catch((err) => observer.error(err));
     });
   }
 });
 
 export const apolloClient = new ApolloClient({
-  link: from([errorLink, authLink, httpLink]),
+  link: from([errorLink, httpLink]),
   cache: new InMemoryCache(),
 });

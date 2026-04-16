@@ -54,8 +54,16 @@ func RegisterChatRoutes(r *gin.Engine, runner Runner, jwtSecret string, limiter 
 
 		var userID string
 		authHeader := c.GetHeader("Authorization")
+		cookieToken, cookieErr := c.Cookie("access_token")
 		if authHeader != "" {
 			uid, err := auth.ParseBearer(authHeader, jwtSecret)
+			if err != nil {
+				_ = c.Error(apperror.Unauthorized("INVALID_TOKEN", err.Error()))
+				return
+			}
+			userID = uid
+		} else if cookieErr == nil && cookieToken != "" {
+			uid, err := auth.ParseBearer("Bearer "+cookieToken, jwtSecret)
 			if err != nil {
 				_ = c.Error(apperror.Unauthorized("INVALID_TOKEN", err.Error()))
 				return
@@ -84,6 +92,8 @@ func RegisterChatRoutes(r *gin.Engine, runner Runner, jwtSecret string, limiter 
 		ctx := c.Request.Context()
 		if authHeader != "" {
 			ctx = ContextWithJWT(ctx, strings.TrimPrefix(authHeader, "Bearer "))
+		} else if cookieErr == nil && cookieToken != "" {
+			ctx = ContextWithJWT(ctx, cookieToken)
 		}
 
 		turn := agent.Turn{UserID: userID, Messages: req.Messages}

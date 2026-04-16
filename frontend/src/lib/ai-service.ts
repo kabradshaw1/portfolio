@@ -29,7 +29,6 @@ export type AiEvent =
 
 export type SendChatArgs = {
   messages: ChatMessage[];
-  jwt?: string | null;
   signal?: AbortSignal;
 };
 
@@ -42,15 +41,13 @@ export async function* sendChat(args: SendChatArgs): AsyncGenerator<AiEvent> {
     "Content-Type": "application/json",
     Accept: "text/event-stream",
   };
-  if (args.jwt) {
-    headers["Authorization"] = `Bearer ${args.jwt}`;
-  }
 
   const res = await fetch(`${AI_SERVICE_URL}/chat`, {
     method: "POST",
     headers,
     body: JSON.stringify({ messages: args.messages }),
     signal: args.signal,
+    credentials: "include",
   });
 
   if (!res.ok || !res.body) {

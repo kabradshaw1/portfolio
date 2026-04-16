@@ -83,15 +83,13 @@ class TaskServiceIntegrationTest {
         var request = new CreateProjectRequest("Integration Project", "Testing");
         mockMvc.perform(post("/projects")
                         .header("Authorization", "Bearer " + accessToken)
-                        .header("X-User-Id", testUser.getId().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("Integration Project"));
 
         mockMvc.perform(get("/projects")
-                        .header("Authorization", "Bearer " + accessToken)
-                        .header("X-User-Id", testUser.getId().toString()))
+                        .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.name == 'Integration Project')]").exists());
     }
@@ -101,7 +99,6 @@ class TaskServiceIntegrationTest {
         var projectReq = new CreateProjectRequest("Task Test Project", "For tasks");
         String projectJson = mockMvc.perform(post("/projects")
                         .header("Authorization", "Bearer " + accessToken)
-                        .header("X-User-Id", testUser.getId().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(projectReq)))
                 .andExpect(status().isCreated())
@@ -111,7 +108,6 @@ class TaskServiceIntegrationTest {
 
         mockMvc.perform(post("/tasks")
                         .header("Authorization", "Bearer " + accessToken)
-                        .header("X-User-Id", testUser.getId().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "projectId", projectId, "title", "Integration Task",
@@ -127,7 +123,6 @@ class TaskServiceIntegrationTest {
         var projectReq = new CreateProjectRequest("Analytics Project", "For analytics");
         String projectJson = mockMvc.perform(post("/projects")
                         .header("Authorization", "Bearer " + accessToken)
-                        .header("X-User-Id", testUser.getId().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(projectReq)))
                 .andExpect(status().isCreated())
@@ -139,7 +134,6 @@ class TaskServiceIntegrationTest {
         for (String title : List.of("Task 1", "Task 2", "Task 3")) {
             mockMvc.perform(post("/tasks")
                             .header("Authorization", "Bearer " + accessToken)
-                            .header("X-User-Id", testUser.getId().toString())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of(
                                     "projectId", projectId, "title", title,

@@ -4,10 +4,16 @@ import uuid
 from io import BytesIO
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider
 from qdrant_client import QdrantClient
+from shared.auth import create_auth_dependency
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from starlette.requests import Request
 
 from app.chunker import chunk_pages
 from app.config import settings
@@ -26,10 +32,21 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+require_auth = create_auth_dependency(settings.jwt_secret)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"error": "Rate limit exceeded"})
+
 
 _embedding_provider = get_embedding_provider(
     provider=settings.embedding_provider,
@@ -74,8 +91,6 @@ async def health():
     status = "healthy" if (qdrant_ok and llm_ok) else "degraded"
     status_code = 200 if (qdrant_ok and llm_ok) else 503
 
-    from fastapi.responses import JSONResponse
-
     return JSONResponse(
         status_code=status_code,
         content={
@@ -87,9 +102,12 @@ async def health():
 
 
 @app.post("/ingest")
+@limiter.limit("5/minute")
 async def ingest(
+    request: Request,
     file: UploadFile = File(...),
     collection: str | None = Query(default=None),
+    user_id: str = Depends(require_auth),
 ):
     if collection is not None and not _COLLECTION_NAME_RE.match(collection):
         raise HTTPException(status_code=422, detail="Invalid collection name")
@@ -98,6 +116,9 @@ async def ingest(
         raise HTTPException(status_code=422, detail="Only PDF files are accepted")
 
     content = await file.read()
+    # Validate PDF magic bytes
+    if not content[:5] == b"%PDF-":
+        raise HTTPException(status_code=422, detail="File is not a valid PDF")
     max_bytes = settings.max_file_size_mb * 1024 * 1024
     if len(content) > max_bytes:
         raise HTTPException(
@@ -162,13 +183,17 @@ async def ingest(
 
 
 @app.get("/documents")
-async def list_documents():
+@limiter.limit("30/minute")
+async def list_documents(request: Request, user_id: str = Depends(require_auth)):
     store = get_store()
     return {"documents": store.list_documents()}
 
 
 @app.delete("/documents/{document_id}")
-async def delete_document(document_id: str):
+@limiter.limit("30/minute")
+async def delete_document(
+    request: Request, document_id: str, user_id: str = Depends(require_auth)
+):
     store = get_store()
     chunks_deleted = store.delete_document(document_id)
     if chunks_deleted == 0:
@@ -183,7 +208,10 @@ async def delete_document(document_id: str):
 
 
 @app.delete("/collections/{collection_name}")
-async def delete_collection(collection_name: str):
+@limiter.limit("30/minute")
+async def delete_collection(
+    request: Request, collection_name: str, user_id: str = Depends(require_auth)
+):
     if not _COLLECTION_NAME_RE.match(collection_name):
         raise HTTPException(status_code=422, detail="Invalid collection name")
     store = get_store()

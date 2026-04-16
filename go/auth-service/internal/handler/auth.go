@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/google"
@@ -21,13 +23,40 @@ type GoogleClientInterface interface {
 	ExchangeCode(ctx context.Context, code, redirectURI string) (*google.UserInfo, error)
 }
 
+type TokenDenylistInterface interface {
+	Revoke(ctx context.Context, token string, ttl time.Duration) error
+}
+
+// CookieConfig controls cookie attributes per environment.
+type CookieConfig struct {
+	Secure   bool
+	Domain   string
+	SameSite http.SameSite
+}
+
 type AuthHandler struct {
 	svc          AuthServiceInterface
 	googleClient GoogleClientInterface
+	denylist     TokenDenylistInterface
+	accessTTL    time.Duration
+	refreshTTL   time.Duration
+	cookieCfg    CookieConfig
 }
 
-func NewAuthHandler(svc AuthServiceInterface, googleClient GoogleClientInterface) *AuthHandler {
-	return &AuthHandler{svc: svc, googleClient: googleClient}
+func NewAuthHandler(svc AuthServiceInterface, googleClient GoogleClientInterface, denylist TokenDenylistInterface, accessTTL, refreshTTL time.Duration, cookieCfg CookieConfig) *AuthHandler {
+	return &AuthHandler{svc: svc, googleClient: googleClient, denylist: denylist, accessTTL: accessTTL, refreshTTL: refreshTTL, cookieCfg: cookieCfg}
+}
+
+func (h *AuthHandler) setAuthCookies(c *gin.Context, resp *model.AuthResponse) {
+	c.SetSameSite(h.cookieCfg.SameSite)
+	c.SetCookie("access_token", resp.AccessToken, int(h.accessTTL.Seconds()), "/", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
+	c.SetCookie("refresh_token", resp.RefreshToken, int(h.refreshTTL.Seconds()), "/auth", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
+}
+
+func (h *AuthHandler) clearAuthCookies(c *gin.Context) {
+	c.SetSameSite(h.cookieCfg.SameSite)
+	c.SetCookie("access_token", "", -1, "/", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
+	c.SetCookie("refresh_token", "", -1, "/auth", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -41,7 +70,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	c.JSON(http.StatusOK, resp)
+	h.setAuthCookies(c, resp)
+	c.JSON(http.StatusOK, gin.H{
+		"userId":    resp.UserID,
+		"email":     resp.Email,
+		"name":      resp.Name,
+		"avatarUrl": resp.AvatarURL,
+	})
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -55,21 +90,38 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	c.JSON(http.StatusOK, resp)
+	h.setAuthCookies(c, resp)
+	c.JSON(http.StatusOK, gin.H{
+		"userId":    resp.UserID,
+		"email":     resp.Email,
+		"name":      resp.Name,
+		"avatarUrl": resp.AvatarURL,
+	})
 }
 
 func (h *AuthHandler) Refresh(c *gin.Context) {
-	var req model.RefreshRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		_ = c.Error(apperror.BadRequest("VALIDATION_ERROR", err.Error()))
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil || refreshToken == "" {
+		// Fallback to JSON body for backward compatibility
+		var req model.RefreshRequest
+		if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
+			_ = c.Error(apperror.Unauthorized("MISSING_TOKEN", "missing refresh token"))
+			return
+		}
+		refreshToken = req.RefreshToken
+	}
+	resp, errSvc := h.svc.Refresh(c.Request.Context(), refreshToken)
+	if errSvc != nil {
+		_ = c.Error(errSvc)
 		return
 	}
-	resp, err := h.svc.Refresh(c.Request.Context(), req.RefreshToken)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-	c.JSON(http.StatusOK, resp)
+	h.setAuthCookies(c, resp)
+	c.JSON(http.StatusOK, gin.H{
+		"userId":    resp.UserID,
+		"email":     resp.Email,
+		"name":      resp.Name,
+		"avatarUrl": resp.AvatarURL,
+	})
 }
 
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {
@@ -88,5 +140,26 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	c.JSON(http.StatusOK, resp)
+	h.setAuthCookies(c, resp)
+	c.JSON(http.StatusOK, gin.H{
+		"userId":    resp.UserID,
+		"email":     resp.Email,
+		"name":      resp.Name,
+		"avatarUrl": resp.AvatarURL,
+	})
+}
+
+func (h *AuthHandler) Logout(c *gin.Context) {
+	token, _ := c.Cookie("access_token")
+	if token == "" {
+		authHeader := c.GetHeader("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			token = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+	}
+	if token != "" && h.denylist != nil {
+		_ = h.denylist.Revoke(c.Request.Context(), token, h.accessTTL)
+	}
+	h.clearAuthCookies(c)
+	c.Status(http.StatusNoContent)
 }

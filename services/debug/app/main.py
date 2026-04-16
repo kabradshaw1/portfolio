@@ -2,13 +2,18 @@ import json
 import logging
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider, get_llm_provider
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
+from shared.auth import create_auth_dependency
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sse_starlette.sse import EventSourceResponse
+from starlette.requests import Request
 
 from app.agent import run_agent_loop
 from app.config import settings
@@ -23,10 +28,21 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+require_auth = create_auth_dependency(settings.jwt_secret)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"error": "Rate limit exceeded"})
+
 
 _llm_provider = get_llm_provider(
     provider=settings.llm_provider,
@@ -88,15 +104,32 @@ async def health():
 
 
 @app.post("/index")
-async def index(request: IndexRequest):
-    if not os.path.isdir(request.path):
+@limiter.limit("5/minute")
+async def index(
+    request: Request, body: IndexRequest, user_id: str = Depends(require_auth)
+):
+    if not os.path.isdir(body.path):
+        raise HTTPException(status_code=400, detail=f"Directory not found: {body.path}")
+
+    # Validate path is in allowlist
+    allowed = [
+        p.strip() for p in settings.allowed_project_paths.split(",") if p.strip()
+    ]
+    if not allowed:
         raise HTTPException(
-            status_code=400, detail=f"Directory not found: {request.path}"
+            status_code=403, detail="No project paths configured for indexing"
         )
+    abs_path = os.path.realpath(body.path)
+    if not any(
+        abs_path.startswith(os.path.realpath(a) + os.sep)
+        or abs_path == os.path.realpath(a)
+        for a in allowed
+    ):
+        raise HTTPException(status_code=403, detail="Path not allowed for indexing")
 
     try:
         result = await index_project(
-            project_path=request.path,
+            project_path=body.path,
             embedding_provider=_embedding_provider,
             qdrant_host=settings.qdrant_host,
             qdrant_port=settings.qdrant_port,
@@ -105,25 +138,28 @@ async def index(request: IndexRequest):
         logger.error("Indexing failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Indexing failed")
 
-    _project_paths[result["collection"]] = request.path
+    _project_paths[result["collection"]] = body.path
     return result
 
 
 @app.post("/debug")
-async def debug(request: DebugRequest):
-    project_path = _project_paths.get(request.collection)
+@limiter.limit("10/minute")
+async def debug(
+    request: Request, body: DebugRequest, user_id: str = Depends(require_auth)
+):
+    project_path = _project_paths.get(body.collection)
     if not project_path:
         raise HTTPException(
             status_code=400,
-            detail=f"Collection '{request.collection}' not indexed. Call /index first.",
+            detail=f"Collection '{body.collection}' not indexed. Call /index first.",
         )
 
     async def event_generator():
         try:
             async for event in run_agent_loop(
-                description=request.description,
-                error_output=request.error_output,
-                collection=request.collection,
+                description=body.description,
+                error_output=body.error_output,
+                collection=body.collection,
                 project_path=project_path,
                 llm_provider=_llm_provider,
                 embedding_provider=_embedding_provider,

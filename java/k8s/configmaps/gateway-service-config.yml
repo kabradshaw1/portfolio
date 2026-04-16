@@ -8,5 +8,5 @@ data:
   ACTIVITY_SERVICE_URL: http://activity-service:8082
   NOTIFICATION_SERVICE_URL: http://notification-service:8083
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
-  GRAPHIQL_ENABLED: "true"
+  GRAPHIQL_ENABLED: "false"
   REDIS_HOST: redis

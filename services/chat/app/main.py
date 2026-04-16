@@ -2,12 +2,18 @@ import json
 import logging
 
 import httpx
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider, get_llm_provider
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
+from shared.auth import create_auth_dependency
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sse_starlette.sse import EventSourceResponse
+from starlette.requests import Request
 
 from app.chain import rag_query
 from app.config import settings
@@ -21,10 +27,21 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+require_auth = create_auth_dependency(settings.jwt_secret)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"error": "Rate limit exceeded"})
+
 
 _llm_provider = get_llm_provider(
     provider=settings.llm_provider,
@@ -68,8 +85,6 @@ async def health():
     status = "healthy" if (qdrant_ok and llm_ok) else "degraded"
     status_code = 200 if (qdrant_ok and llm_ok) else 503
 
-    from fastapi.responses import JSONResponse
-
     return JSONResponse(
         status_code=status_code,
         content={
@@ -81,18 +96,21 @@ async def health():
 
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
+@limiter.limit("20/minute")
+async def chat(
+    request: Request, body: ChatRequest, user_id: str = Depends(require_auth)
+):
     async def event_generator():
         try:
             async for event in rag_query(
-                question=request.question,
+                question=body.question,
                 llm_provider=_llm_provider,
                 embedding_provider=_embedding_provider,
                 chat_model=settings.get_llm_model(),
                 embedding_model=settings.embedding_model,
                 qdrant_host=settings.qdrant_host,
                 qdrant_port=settings.qdrant_port,
-                collection_name=request.collection or settings.collection_name,
+                collection_name=body.collection or settings.collection_name,
             ):
                 yield {"data": json.dumps(event)}
         except (httpx.ConnectError, httpx.TimeoutException) as e:

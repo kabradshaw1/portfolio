@@ -51,7 +51,11 @@ def test_health_ollama_down(mock_qdrant_cls, mock_provider):
 
 @patch("app.main.os.path.isdir", return_value=True)
 @patch("app.main.index_project", new_callable=AsyncMock)
-def test_index_success(mock_index, mock_isdir):
+@patch("app.main.settings")
+def test_index_success(mock_settings, mock_index, mock_isdir):
+    mock_settings.allowed_project_paths = "/mock"
+    mock_settings.qdrant_host = "qdrant"
+    mock_settings.qdrant_port = 6333
     mock_index.return_value = {
         "collection": "debug-myproject",
         "files_indexed": 5,
@@ -75,6 +79,24 @@ def test_index_nonexistent_path(mock_index):
     mock_index.side_effect = FileNotFoundError("path not found")
     response = client.post("/index", json={"path": "/nonexistent"})
     assert response.status_code == 400
+
+
+@patch("app.main.os.path.isdir", return_value=True)
+@patch("app.main.settings")
+def test_index_no_allowlist_configured(mock_settings, mock_isdir):
+    mock_settings.allowed_project_paths = ""
+    response = client.post("/index", json={"path": "/mock/myproject"})
+    assert response.status_code == 403
+    assert "No project paths configured" in response.json()["detail"]
+
+
+@patch("app.main.os.path.isdir", return_value=True)
+@patch("app.main.settings")
+def test_index_path_not_in_allowlist(mock_settings, mock_isdir):
+    mock_settings.allowed_project_paths = "/allowed/projects"
+    response = client.post("/index", json={"path": "/mock/myproject"})
+    assert response.status_code == 403
+    assert "Path not allowed" in response.json()["detail"]
 
 
 @patch("app.main.run_agent_loop")

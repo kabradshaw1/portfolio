@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test.describe("Go ecommerce AI assistant drawer", () => {
   test("opens, streams a tool call and a final answer", async ({ page }) => {

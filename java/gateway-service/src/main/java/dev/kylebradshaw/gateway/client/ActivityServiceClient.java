@@ -20,16 +20,18 @@ public class ActivityServiceClient {
         this.client = client;
     }
 
-    public List<ActivityEventDto> getActivityByTask(String taskId) {
+    public List<ActivityEventDto> getActivityByTask(String taskId, String authHeader) {
         return client.get()
                 .uri("/activity/task/{taskId}", taskId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
     }
 
-    public List<CommentDto> getCommentsByTask(String taskId) {
+    public List<CommentDto> getCommentsByTask(String taskId, String authHeader) {
         return client.get()
                 .uri("/comments/{taskId}", taskId)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
     }
@@ -41,10 +43,10 @@ public class ActivityServiceClient {
                 .body(ActivityStatsDto.class);
     }
 
-    public CommentDto addComment(String taskId, String userId, String body) {
+    public CommentDto addComment(String taskId, String authHeader, String body) {
         return client.post()
                 .uri("/comments/{taskId}", taskId)
-                .header("X-User-Id", userId)
+                .header("Authorization", authHeader)
                 .body(Map.of("body", body))
                 .retrieve()
                 .body(CommentDto.class);

@@ -10,15 +10,23 @@ import (
 
 func Auth(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		tokenStr := ""
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-			_ = c.Error(apperror.Unauthorized("MISSING_AUTH", "missing authorization header"))
+		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+			tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
+		} else if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
+			tokenStr = cookie
+		}
+		if tokenStr == "" {
+			_ = c.Error(apperror.Unauthorized("MISSING_AUTH", "missing authorization"))
 			c.Abort()
 			return
 		}
-		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 		claims := jwt.MapClaims{}
 		_, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, apperror.Forbidden("INVALID_TOKEN", "unexpected signing method")
+			}
 			return []byte(jwtSecret), nil
 		})
 		if err != nil {

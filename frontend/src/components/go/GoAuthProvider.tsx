@@ -8,9 +8,6 @@ import {
   useState,
 } from "react";
 import {
-  clearGoTokens,
-  isGoLoggedIn as checkIsLoggedIn,
-  setGoTokens,
   GO_AUTH_URL,
 } from "@/lib/go-auth";
 
@@ -27,7 +24,7 @@ interface GoAuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   loginWithGoogle: (code: string, redirectUri: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const GoAuthContext = createContext<GoAuthContextType>({
@@ -36,7 +33,7 @@ const GoAuthContext = createContext<GoAuthContextType>({
   login: async () => {},
   register: async () => {},
   loginWithGoogle: async () => {},
-  logout: () => {},
+  logout: async () => {},
 });
 
 export function useGoAuth() {
@@ -44,14 +41,11 @@ export function useGoAuth() {
 }
 
 function handleAuthResponse(data: {
-  accessToken: string;
-  refreshToken: string;
   userId: string;
   email: string;
   name: string;
   avatarUrl?: string;
 }): GoAuthUser {
-  setGoTokens(data.accessToken, data.refreshToken);
   const authUser: GoAuthUser = {
     userId: data.userId,
     email: data.email,
@@ -69,18 +63,16 @@ export function GoAuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    if (checkIsLoggedIn()) {
-      const stored = localStorage.getItem("go_user");
-      if (stored) {
-        try {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          setUser(JSON.parse(stored));
-        } catch {
-          /* corrupt entry — ignore */
-        }
+    const stored = localStorage.getItem("go_user");
+    if (stored) {
+      try {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setUser(JSON.parse(stored));
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setIsAuthenticated(true);
+      } catch {
+        /* corrupt entry — ignore */
       }
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsAuthenticated(true);
     }
 
     const handler = () => {
@@ -97,6 +89,7 @@ export function GoAuthProvider({ children }: { children: React.ReactNode }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
+      credentials: "include",
     });
     if (!res.ok) {
       const errorText = await res.text();
@@ -113,6 +106,7 @@ export function GoAuthProvider({ children }: { children: React.ReactNode }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, name }),
+      credentials: "include",
     });
     if (!res.ok) {
       const errorText = await res.text();
@@ -129,6 +123,7 @@ export function GoAuthProvider({ children }: { children: React.ReactNode }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, redirectUri }),
+      credentials: "include",
     });
     if (!res.ok) {
       const errorText = await res.text();
@@ -140,8 +135,11 @@ export function GoAuthProvider({ children }: { children: React.ReactNode }) {
     setIsAuthenticated(true);
   }, []);
 
-  const logout = useCallback(() => {
-    clearGoTokens();
+  const logout = useCallback(async () => {
+    await fetch(`${GO_AUTH_URL}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {});
     localStorage.removeItem("go_user");
     setUser(null);
     setIsAuthenticated(false);

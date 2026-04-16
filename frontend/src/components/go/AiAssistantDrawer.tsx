@@ -5,7 +5,6 @@ import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { getGoAccessToken } from "@/lib/go-auth";
 import { sendChat, type AiEvent, type ChatMessage } from "@/lib/ai-service";
 
 import { AiToolCallCard, type ToolCallView } from "./AiToolCallCard";
@@ -61,13 +60,11 @@ export function AiAssistantDrawer() {
     abortRef.current = controller;
 
     try {
-      const jwt = getGoAccessToken();
       let idCounter = 0;
       let assistantText = "";
 
       for await (const ev of sendChat({
         messages: nextMessages,
-        jwt,
         signal: controller.signal,
       })) {
         handleEvent(

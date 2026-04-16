@@ -5,6 +5,8 @@ metadata:
   namespace: ai-services
 data:
   OLLAMA_BASE_URL: http://ollama:11434
+  LLM_BASE_URL: http://ollama:11434
+  EMBEDDING_BASE_URL: http://ollama:11434
   EMBEDDING_MODEL: nomic-embed-text
   QDRANT_HOST: qdrant
   QDRANT_PORT: "6333"
