@@ -709,16 +709,23 @@ jobs:
           kubectl kustomize k8s/overlays/qa-java/ | $SSH "kubectl apply -f -"
           kubectl kustomize k8s/overlays/qa-go/ | $SSH "kubectl apply -f -"
 
-          # Run Go migration jobs in QA namespace
+          # Run Go migration jobs in QA namespace.
+          # Jobs are immutable; delete before re-applying so they re-run on every deploy.
           $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
 
-          kubectl kustomize k8s/overlays/qa-go/ | grep -A 100 'kind: Job' | $SSH "kubectl apply -f -"
-
+          # auth-migrate MUST run before ecommerce-migrate: both services share
+          # the same Postgres, and ecommerce-service's migrations reference users(id)
+          # which is created by auth-service's migrations.
+          # Source job manifests target the prod namespace (`go-ecommerce`); rewrite
+          # to the QA namespace inline. ConfigMap lookups (DATABASE_URL) resolve
+          # within the same namespace, so the QA-patched ConfigMap is used automatically.
+          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
+          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/ecommerce-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
