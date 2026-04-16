@@ -38,6 +38,9 @@ export function SiteHeader() {
             <Link href="/cicd" className={navLinkClass("/cicd")}>
               CI/CD
             </Link>
+            <Link href="/security" className={navLinkClass("/security")}>
+              Security
+            </Link>
           </nav>
         </div>
         <div className="flex items-center gap-5">

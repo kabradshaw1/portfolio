@@ -121,7 +121,8 @@ If you're short on time:
 2. **`docs/adr/go-stress-testing.md`** — k6 load testing that found real bugs (stock overselling), with before/after metrics
 3. **`services/`** — FastAPI + RAG + agent implementation
 4. **`docs/adr/document-qa/`** and **`docs/adr/document-debugger/`** — how and why the AI services were built
-5. **`.github/workflows/`** — CI/CD, security scanning, and deployment
-6. **`k8s/`** — production Kubernetes topology
+5. **`docs/security/`** — security assessments for the application stack and the hardened Debian 13 host (lynis 77)
+6. **`.github/workflows/`** — CI/CD, security scanning, and deployment
+7. **`k8s/`** — production Kubernetes topology
 
 Thanks for taking a look. — Kyle
