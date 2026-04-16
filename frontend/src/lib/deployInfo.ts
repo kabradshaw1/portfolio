@@ -1,4 +1,4 @@
-const REPO = "kabradshaw1/gen_ai_engineer";
+export const REPO = "kabradshaw1/gen_ai_engineer";
 
 export interface Commit {
   sha: string;

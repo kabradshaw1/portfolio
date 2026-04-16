@@ -1,10 +1,10 @@
-import { getDeployInfo, timeAgo } from "@/lib/deployInfo";
+import { getDeployInfo, timeAgo, REPO } from "@/lib/deployInfo";
 
 export async function EnvironmentChip() {
   const info = await getDeployInfo();
 
   const commitUrl = info.fullSha
-    ? `https://github.com/kabradshaw1/gen_ai_engineer/commit/${info.fullSha}`
+    ? `https://github.com/${REPO}/commit/${info.fullSha}`
     : undefined;
 
   const age = timeAgo(info.commitDate);
