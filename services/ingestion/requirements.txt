@@ -7,8 +7,8 @@ langchain-community==0.2.19
 qdrant-client==1.9.0
 httpx==0.28.1
 pydantic-settings==2.3.0
-pytest==8.2.0
-pytest-asyncio==0.25.3
+pytest==8.4.2
+pytest-asyncio==0.26.0
 pytest-cov==7.1.0
 prometheus-fastapi-instrumentator==7.0.2
 slowapi==0.1.9
