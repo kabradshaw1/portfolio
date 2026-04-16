@@ -36,10 +36,10 @@ if [ "$ENV" = "qa" ]; then
   kubectl apply -k "$SCRIPT_DIR/overlays/qa"
 
   echo "==> Deploying java-tasks-qa..."
-  kubectl apply -k "$REPO_DIR/java/k8s/overlays/qa"
+  kubectl apply -k "$SCRIPT_DIR/overlays/qa-java"
 
   echo "==> Deploying go-ecommerce-qa..."
-  kubectl apply -k "$REPO_DIR/go/k8s/overlays/qa"
+  kubectl apply -k "$SCRIPT_DIR/overlays/qa-go"
 
   echo "==> Waiting for QA application services..."
   kubectl wait --for=condition=available --timeout=180s deployment/ingestion -n ai-services-qa

@@ -706,13 +706,13 @@ jobs:
 
           # Apply QA Kustomize overlays
           kubectl kustomize k8s/overlays/qa/ | $SSH "kubectl apply -f -"
-          kubectl kustomize java/k8s/overlays/qa/ | $SSH "kubectl apply -f -"
-          kubectl kustomize go/k8s/overlays/qa/ | $SSH "kubectl apply -f -"
+          kubectl kustomize k8s/overlays/qa-java/ | $SSH "kubectl apply -f -"
+          kubectl kustomize k8s/overlays/qa-go/ | $SSH "kubectl apply -f -"
 
           # Run Go migration jobs in QA namespace
           $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
 
-          kubectl kustomize go/k8s/overlays/qa/ | grep -A 100 'kind: Job' | $SSH "kubectl apply -f -"
+          kubectl kustomize k8s/overlays/qa-go/ | grep -A 100 'kind: Job' | $SSH "kubectl apply -f -"
 
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce-qa --tail=200" || true
