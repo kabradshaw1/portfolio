@@ -928,3 +928,14 @@ jobs:
           SMOKE_GRAPHQL_URL: https://api.kylebradshaw.dev/graphql
           SMOKE_GO_PASSWORD: ${{ secrets.SMOKE_GO_PASSWORD }}
         run: npx playwright test --config=playwright.smoke.config.ts
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-prod-playwright-report
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
