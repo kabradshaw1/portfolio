@@ -62,3 +62,6 @@ frontend/.next/
 .claude/settings.local.json
 .vercel
 .env*.local
+
+# Lynis machine-readable report data (we keep the human-readable .log)
+docs/security/*.dat
