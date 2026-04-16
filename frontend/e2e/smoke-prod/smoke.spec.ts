@@ -88,8 +88,11 @@ const GRAPHQL_URL =
   process.env.SMOKE_GRAPHQL_URL || "https://api.kylebradshaw.dev/graphql";
 
 test.describe("Java task management smoke tests", () => {
-  // Shared state for cleanup
-  let accessToken: string;
+  // Shared state for cleanup. authCookieHeader carries the httpOnly access_token
+  // cookie that the browser session received; we replay it via the Cookie header
+  // on cleanup mutations since Playwright's test-level `request` fixture doesn't
+  // share cookie jars with the `page` fixture.
+  let authCookieHeader: string = "";
   let projectId: string;
   let taskId: string;
   const testEmail = `smoke-${Date.now()}@test.com`;
@@ -137,8 +140,9 @@ test.describe("Java task management smoke tests", () => {
     await page.getByRole("button", { name: "Create" }).click();
 
     // Step 5: Verify project appears and click into it
+    // Timeout bumped from 5s to 10s to tolerate post-rollout prod latency.
     await expect(page.getByText("Smoke Test Project")).toBeVisible({
-      timeout: 5000,
+      timeout: 10000,
     });
     await page.getByText("Smoke Test Project").click();
 
@@ -161,13 +165,15 @@ test.describe("Java task management smoke tests", () => {
       timeout: 5000,
     });
 
-    // Step 9: Get access token and IDs for cleanup
-    const loginResponse = await request.post(`${API_URL}/auth/login`, {
-      data: { email: testEmail, password: testPassword },
-    });
-    expect(loginResponse.ok()).toBeTruthy();
-    const loginData = await loginResponse.json();
-    accessToken = loginData.accessToken;
+    // Step 9: Capture the httpOnly access_token cookie from the browser session
+    // and extract project/task IDs for cleanup. The backend moved access tokens
+    // to httpOnly cookies, so we replay the cookie on cleanup mutations instead
+    // of re-logging-in for a Bearer token.
+    const cookies = await page.context().cookies();
+    const accessCookie = cookies.find((c) => c.name === "access_token");
+    if (accessCookie) {
+      authCookieHeader = `access_token=${accessCookie.value}`;
+    }
 
     // Get project ID from the URL
     const url = page.url();
@@ -187,10 +193,10 @@ test.describe("Java task management smoke tests", () => {
   });
 
   test.afterAll(async ({ request }) => {
-    if (!accessToken) return;
+    if (!authCookieHeader) return;
 
     const headers = {
-      Authorization: `Bearer ${accessToken}`,
+      Cookie: authCookieHeader,
       "Content-Type": "application/json",
     };
 
@@ -244,7 +250,9 @@ test.describe("Go ecommerce smoke tests", () => {
     expect(body.categories.length).toBeGreaterThan(0);
   });
 
-  test("smoke user can log in to the Go auth service", async ({ request }) => {
+  test("login to Go auth service issues httpOnly access_token cookie", async ({
+    request,
+  }) => {
     expect(
       SMOKE_PASSWORD,
       "SMOKE_GO_PASSWORD env var must be set for this test"
@@ -254,8 +262,24 @@ test.describe("Go ecommerce smoke tests", () => {
       data: { email: SMOKE_EMAIL, password: SMOKE_PASSWORD },
     });
     expect(res.status()).toBe(200);
+
+    // Response body carries user profile only; the access token lives in an
+    // httpOnly cookie (security hardening: XSS can no longer read the token).
     const body = await res.json();
-    expect(typeof body.accessToken).toBe("string");
-    expect(body.accessToken.length).toBeGreaterThan(0);
+    expect(body.email).toBe(SMOKE_EMAIL);
+    expect(typeof body.userId).toBe("string");
+
+    // Verify the Set-Cookie header delivers access_token. Use headersArray so
+    // multiple Set-Cookie entries are distinguishable.
+    const setCookies = res
+      .headersArray()
+      .filter((h) => h.name.toLowerCase() === "set-cookie")
+      .map((h) => h.value);
+    const accessCookie = setCookies.find((v) => v.startsWith("access_token="));
+    expect(
+      accessCookie,
+      "access_token cookie must be present in Set-Cookie headers"
+    ).toBeDefined();
+    expect(accessCookie).toContain("HttpOnly");
   });
 });

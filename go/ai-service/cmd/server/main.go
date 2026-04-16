@@ -29,6 +29,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
+	pkgmw "github.com/kabradshaw1/portfolio/go/pkg/middleware"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
@@ -175,6 +176,7 @@ func runServe() {
 	// HTTP
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(pkgmw.SecurityHeaders())
 	router.Use(otelgin.Middleware("ai-service"))
 	router.Use(corsMiddleware(getenv("ALLOWED_ORIGINS", "http://localhost:3000")))
 	router.Use(apperror.ErrorHandler())

@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/kabradshaw1/portfolio/go/pkg v0.0.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/redis/go-redis/v9 v9.18.0
 	github.com/sony/gobreaker/v2 v2.4.0
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.68.0
 	golang.org/x/crypto v0.49.0
@@ -24,6 +25,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/gin-contrib/sse v1.1.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -61,6 +63,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/arch v0.25.0 // indirect
 	golang.org/x/net v0.52.0 // indirect

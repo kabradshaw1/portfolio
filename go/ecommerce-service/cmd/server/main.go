@@ -29,6 +29,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/worker"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
+	pkgmw "github.com/kabradshaw1/portfolio/go/pkg/middleware"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
@@ -190,6 +191,7 @@ func main() {
 	// Set up Gin
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(pkgmw.SecurityHeaders())
 	router.Use(otelgin.Middleware("ecommerce-service"))
 	router.Use(middleware.Logging())
 	router.Use(apperror.ErrorHandler())
@@ -203,9 +205,12 @@ func main() {
 	router.GET("/health", healthHandler.Health)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+	ecomLimiter := middleware.NewRateLimiter(redisClient, "ecom:ratelimit", 60, time.Minute)
+
 	// Authenticated routes
 	auth := router.Group("/")
 	auth.Use(middleware.Auth(jwtSecret))
+	auth.Use(ecomLimiter.Middleware())
 	{
 		auth.GET("/cart", cartHandler.GetCart)
 		auth.POST("/cart", cartHandler.AddItem)
