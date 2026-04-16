@@ -710,6 +710,16 @@ jobs:
           kubectl kustomize k8s/overlays/qa-java/ | $SSH "kubectl apply -f -"
           kubectl kustomize k8s/overlays/qa-go/ | $SSH "kubectl apply -f -"
 
+          # Seed placeholder go-secrets in QA so go-auth-service can start.
+          # The service rejects empty GOOGLE_CLIENT_ID at startup but accepts any
+          # non-empty string; QA doesn't run real Google OAuth, so we mirror prod's
+          # placeholder values. Idempotent via `create --dry-run | apply`.
+          $SSH "kubectl create secret generic go-secrets -n go-ecommerce-qa \
+            --from-literal=google-client-id=placeholder \
+            --from-literal=google-client-secret=placeholder \
+            --from-literal=jwt-secret='dev-secret-key-at-least-32-characters-long' \
+            --dry-run=client -o yaml | kubectl apply -f -"
+
           # Run Go migration jobs in QA namespace.
           # Jobs are immutable; delete before re-applying so they re-run on every deploy.
           $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
