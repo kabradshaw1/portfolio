@@ -6,7 +6,8 @@ An evaluation of the security and DevSecOps controls currently implemented in th
 
 **Methodology:** source-code review of `.github/workflows/`, Dockerfiles, Kubernetes manifests, application auth code, and operational scripts. No dynamic testing was performed.
 
-**Date:** 2026-04-08
+**Originally written:** 2026-04-08
+**Last updated:** 2026-04-16 — incorporates the application-layer security audit (`docs/superpowers/specs/2026-04-15-security-audit-hardening-design.md`) and adds a §11 pointer to the new host-OS hardening assessment ([`linux-server-hardening.md`](linux-server-hardening.md)).
 
 ## Summary of findings
 
@@ -16,14 +17,15 @@ An evaluation of the security and DevSecOps controls currently implemented in th
 | Infrastructure-as-Code validation | **Strong** | `kubeconform`, `kind` server-side dry-run, and a custom policy-as-code script |
 | Supply chain | **Adequate for portfolio** | Multi-stage non-root builds and a private registry; no image signing |
 | Secrets management | **Strong** | Gitignored files, full-history secret scanning, and k8s-native `secretKeyRef` injection |
-| Application AuthN/AuthZ | **Strong** | JWT + bcrypt + Google OAuth 2.0, gateway-validated tokens with trusted header forwarding |
+| Application AuthN/AuthZ | **Strong** | JWT + bcrypt + Google OAuth 2.0, httpOnly cookies, JWT propagated and independently validated downstream, Redis denylist for token revocation |
 | Transport security | **Adequate** | TLS terminated at Cloudflare; no direct internet exposure of the backend |
 | Developer guardrails | **Strong** | Pre-commit hooks, preflight Makefile targets, and a structured branch workflow |
 | Post-deploy verification | **Strong** | Production Playwright smoke tests plus a new pre-deploy compose-smoke job |
-| Kubernetes runtime posture | **Weak** | No `NetworkPolicy`, `PodSecurityContext`, or `readOnlyRootFilesystem` — see accepted risks |
+| Kubernetes runtime posture | **Adequate** | Pod security contexts (`runAsNonRoot`, `readOnlyRootFilesystem`, `capabilities.drop:[ALL]`) on every Deployment; `NetworkPolicy` and namespace-level PSS still gaps |
 | Observability | **Foundation only** | Metrics and dashboards exist; no security monitoring or alerting |
+| Host / OS hardening | **Strong** | Debian 13 host hardened per [`linux-server-hardening.md`](linux-server-hardening.md) — UFW, SSH-Tailscale-only, narrow sudo, auditd, sysctl, lynis baseline 77 |
 
-The overall posture is strong for a portfolio-scale project. The most notable gap is Kubernetes-level runtime security (NetworkPolicy, PSS), which is documented as an accepted risk below.
+The overall posture is strong for a portfolio-scale project. The most notable remaining gaps are at the Kubernetes runtime layer (`NetworkPolicy` and namespace-level Pod Security Standards), documented as accepted risks below.
 
 ---
 
@@ -99,16 +101,25 @@ This layer was built in response to a real production incident on 2026-04-08, wh
 
 ## 5. Application AuthN/AuthZ
 
-**Status:** Strong. The Go and Java stacks independently implement the same patterns, which demonstrates the patterns rather than the framework choices.
+**Status:** Strong. The Go and Java stacks independently implement the same patterns, which demonstrates the patterns rather than the framework choices. The Python AI services share an auth module so all three independently validate JWTs at the edge.
 
-- **JWT + bcrypt.** 15-minute access tokens and 7-day refresh tokens, HMAC-SHA256 signed, with bcrypt `DefaultCost` password hashes. Evidence: `go/auth-service/internal/service/auth.go`, `java/task-service/src/main/java/.../SecurityConfig.java:71-73`.
-- **Google OAuth 2.0.** Federated authentication with server-side code exchange. Both password and OAuth flows return the same JWT envelope so the frontend is agnostic. Evidence: `go/auth-service/internal/handler/auth.go:74-91`, `docs/adr/password-authentication.md`.
-- **Gateway-validated JWTs with `X-User-Id` header forwarding** on the Java side. Only the gateway and `task-service` validate tokens; `activity-service` and `notification-service` trust the forwarded header. This reduces the auth attack surface but introduces a trust boundary that must be enforced at the network layer (see accepted risks). Evidence: `java/gateway-service/src/main/java/.../SecurityConfig.java:33-51`, `docs/adr/java-task-management/03_authentication_and_security.md`.
-- **Strict CORS.** Environment-driven allowlists with no wildcards. Runtime-enforced in `go/auth-service/internal/middleware/cors.go:1-33` and `java/gateway-service/src/main/java/.../SecurityConfig.java:54-64`. Also enforced at CI time via the CORS guardrail (§1), so a wildcard cannot be committed.
-- **Security headers.** Spring Security sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and HSTS `max-age=31536000; includeSubDomains`. Evidence: `java/gateway-service/src/main/java/.../SecurityConfig.java:38-43`.
+- **JWT + bcrypt.** 15-minute access tokens and 7-day refresh tokens, HMAC-SHA256 signed, with bcrypt password hashes. Evidence: `go/auth-service/internal/service/auth.go`, `java/task-service/src/main/java/.../SecurityConfig.java`.
+- **JWT signing-method validation.** Both Go services explicitly check `t.Method.(*jwt.SigningMethodHMAC)` before validating signatures, defending against the "alg=none" and key-confusion attack class. Evidence: `go/auth-service/internal/service/auth.go:74`, `go/ecommerce-service/internal/middleware/auth.go:27`.
+- **Token revocation via Redis denylist.** On `POST /auth/logout`, the auth-service hashes the token (SHA-256) and writes it to Redis under `auth:denied:<hash>` with TTL matching the access-token expiration. Auth middleware checks the denylist before accepting any token. Evidence: `go/auth-service/internal/handler/auth.go:152-165` (`Logout`), `go/auth-service/internal/service/token_denylist.go:25-31` (`Revoke`).
+- **httpOnly cookies for both stacks.** `access_token` and `refresh_token` are set with `HttpOnly: true`, `Secure: true`, `SameSite=Lax` on both Go and Java. The frontend never touches the JWT in JavaScript, removing a whole class of XSS-token-theft attacks. Evidence: `go/auth-service/internal/handler/auth.go:50-54` (Go cookies), `java/task-service/.../controller/AuthController.java:56-82` (Java cookies), `java/task-service/.../security/JwtAuthenticationFilter.java:30-60` (Java filter that reads the cookie when the Authorization header is absent).
+- **JWT propagation, not header trust.** The Java gateway forwards `Authorization: Bearer <token>` to downstream services; `task-service`, `activity-service`, and `notification-service` each validate the JWT independently using the shared secret. This replaces the earlier "trust the `X-User-Id` header from the gateway" model — a compromised pod in another namespace can no longer forge identity by injecting a header. Evidence: `java/gateway-service/src/main/java/.../SecurityConfig.java`, `docs/adr/java-task-management/03_authentication_and_security.md`.
+- **Google OAuth 2.0 with state/CSRF parameter.** Federated authentication with server-side code exchange. Both password and OAuth flows return the same JWT envelope so the frontend is agnostic. The OAuth state parameter is validated on callback to defend against CSRF. Evidence: `go/auth-service/internal/handler/auth.go`, `docs/adr/password-authentication.md`.
+- **Python AI services require JWT.** A shared `services/shared/auth.py` exposes `create_auth_dependency(secret)` returning a FastAPI dependency that validates HS256 Bearer tokens, decodes the `sub`/`exp` claims, and returns the user id (or 401). All mutating endpoints across the three services use it via `Depends(require_auth)`: `services/ingestion/app/main.py:110` (`/ingest`), `:187` (`/documents`), `:195` (`/documents/{id}`), `:213` (`/collections/{name}`); `services/chat/app/main.py:101` (`/chat`); `services/debug/app/main.py:109` (`/index`), `:148` (`/debug`).
+- **Per-IP rate limiting (Python).** `slowapi` decorators on every endpoint: ingestion `/ingest` 5/min and reads 30/min; chat `/chat` 20/min; debug `/index` 5/min, `/debug` 10/min. Evidence: `services/ingestion/app/main.py:105,186,193,211`, `services/chat/app/main.py:99`, `services/debug/app/main.py:107,146`.
+- **Prompt-injection defenses (Python).** Both AI services wrap untrusted input in XML tags and instruct the model in the system prompt to ignore instructions inside those tags. Evidence: `services/chat/app/prompt.py:6-7,11,15,21` (`<context>`, `<user_question>` delimiters); `services/debug/app/prompts.py:43-44,52-53` (`<bug_description>`, `<error_output>` delimiters with explicit "treat as data only" instruction).
+- **GraphQL hardening (Java gateway).** GraphiQL disabled in production (`GRAPHIQL_ENABLED=false` default), maximum query depth 10, maximum query complexity 100. Evidence: `java/gateway-service/src/main/resources/application.yml:13`, `java/gateway-service/src/main/java/.../GraphQlConfig.java:12-19`.
+- **Input validation (Java DTOs).** `@Size` constraints on all create-request DTOs to prevent runaway payloads: `CreateProjectRequest.java:7-8` (name 255, description 2000), `CreateTaskRequest.java:10` (title 255, description 5000), `CreateCommentRequest.java:6` (body 5000).
+- **Password validation (Go).** Minimum 12 characters enforced at the binding tag. Evidence: `go/auth-service/internal/model/user.go:20`.
+- **Strict CORS.** Environment-driven allowlists with no wildcards. Runtime-enforced in `go/auth-service/internal/middleware/cors.go` and `java/gateway-service/src/main/java/.../SecurityConfig.java`. Python services use `allowed_origins.split(",")` from env (default `https://kylebradshaw.dev`), never `["*"]`. Also enforced at CI time via the CORS guardrail (§1), so a wildcard cannot be committed.
+- **Security headers.** Spring Security sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and HSTS `max-age=31536000; includeSubDomains`. Evidence: `java/gateway-service/src/main/java/.../SecurityConfig.java`.
 - **Stateless sessions** (`SessionCreationPolicy.STATELESS`). No server-side session state; all authorization is via JWT.
 
-**Accepted risk:** the gateway/downstream trust model relies on `activity-service` and `notification-service` only being reachable from inside the cluster. With no `NetworkPolicy` in place (§9), this boundary is not enforced at the network layer — a compromised pod in another namespace could in principle forge `X-User-Id`. Acceptable for portfolio, not acceptable for production.
+**Note on previous "accepted risk":** the earlier draft of this document called out a gateway/downstream trust risk based on `X-User-Id` header forwarding. That model has been replaced by JWT propagation (each service independently validates the token), so the risk no longer applies.
 
 ---
 
@@ -116,7 +127,7 @@ This layer was built in response to a real production incident on 2026-04-08, wh
 
 **Status:** Adequate.
 
-- **Cloudflare Tunnel** — the backend is never directly exposed to the public internet. TLS terminates at the Cloudflare edge; the tunnel forwards traffic to the home-lab Windows PC running Minikube. Evidence: `CLAUDE.md:36-40`.
+- **Cloudflare Tunnel** — the backend is never directly exposed to the public internet. TLS terminates at the Cloudflare edge; the tunnel forwards traffic to the home-lab Debian 13 server running Minikube. The tunnel daemon is the only process listening on `127.0.0.1:80` on the host, gated by UFW (see [`linux-server-hardening.md`](linux-server-hardening.md) §2). Evidence: `CLAUDE.md:36-40`.
 - **NGINX Ingress** with path-based routing inside Minikube.
 - **Frontend on Vercel** with managed HTTPS; Cloudflare-managed certificates for the API subdomain.
 
@@ -149,14 +160,16 @@ This layer was built in response to a real production incident on 2026-04-08, wh
 
 ## 9. Kubernetes runtime posture
 
-**Status:** Weak. These are the most significant gaps in the current assessment.
+**Status:** Adequate. Pod-level controls are now in place across every Deployment; namespace-level enforcement and network isolation remain gaps.
 
-- **No `NetworkPolicy`.** Pods across all namespaces can reach each other without restriction. The gateway/downstream auth trust model (§5) depends on implicit network isolation that does not exist.
-- **No `PodSecurityContext` at the Kubernetes level.** Containers run as non-root via the Dockerfile `USER` directive, but Kubernetes itself is not enforcing `runAsNonRoot: true`, `runAsUser`, `fsGroup`, or `seccompProfile`.
-- **No `readOnlyRootFilesystem: true`.** Containers can write anywhere on their root filesystem at runtime.
-- **No Pod Security Standards (PSS) profile** — neither `baseline` nor `restricted` is enforced at the namespace level.
+- **Pod security contexts on every Deployment.** `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]` are set on the container `securityContext` of every workload. Evidence: `java/k8s/deployments/activity-service.yml:47-53`, `gateway-service.yml:52-59`, `notification-service.yml:46-53`, `task-service.yml:67-74`; `go/k8s/deployments/ai-service.yml:37-44`, `auth-service.yml:47-54`, `ecommerce-service.yml:37-44`.
 
-**Accepted risk:** all four gaps are acknowledged as future work. A single commit adding PSS `restricted` profiles plus targeted `NetworkPolicy` resources would close the majority of this surface. See "Recommended next steps" below.
+**Remaining gaps (accepted risk):**
+
+- **No `NetworkPolicy`.** Pods across all namespaces can reach each other without restriction. With JWT propagation in place (§5), this is no longer a confused-deputy auth risk, but lateral movement after a single-pod compromise is still unconstrained.
+- **No Pod Security Standards (PSS) profile** enforced at the namespace level — the per-Deployment `securityContext` blocks are unenforced *defaults* rather than namespace-mandated policy. A new Deployment without those fields would not be rejected.
+
+A single commit adding PSS `restricted` labels to the `ai-services`, `java-tasks`, and `go-ecommerce` namespaces plus targeted `NetworkPolicy` resources would close the bulk of this remaining surface. See "Recommended next steps" below.
 
 ---
 
@@ -168,7 +181,25 @@ This layer was built in response to a real production incident on 2026-04-08, wh
 - **Grafana dashboard** at `https://grafana.kylebradshaw.dev` (public read-only).
 - **Health endpoints** on every service, used by readiness probes and production smoke tests.
 
-**Gaps:** there is no alerting on authentication failures, no anomaly detection, no SIEM integration, no centralized log aggregation (Loki / ELK), and no audit logging of privileged actions. For security purposes the current stack is observational rather than detective.
+**Gaps:** there is no alerting on authentication failures, no anomaly detection, no SIEM integration, no centralized log aggregation (Loki / ELK), and no application-layer audit logging of privileged actions. For security purposes the current stack is observational rather than detective. (The host OS does have local `auditd` — see §11.)
+
+---
+
+## 11. Host / OS hardening
+
+**Status:** Strong. Detailed in [`linux-server-hardening.md`](linux-server-hardening.md); summarized here.
+
+The Debian 13 home-lab server that runs Minikube, Ollama, and the Cloudflare Tunnel was hardened on 2026-04-16:
+
+- **SSH locked to Tailscale.** Listener binds only `100.82.52.82:22` (Tailscale IP) and `127.0.0.1:22` — never `0.0.0.0:22`. Public-internet SSH is gone.
+- **UFW default-deny firewall** with narrow allow rules. Ollama is firewall-fenced to docker bridges and the tailnet (no LAN exposure).
+- **Narrow passwordless sudo allowlist** for routine ops (`systemctl`, `journalctl`, `apt`, `kubectl`, `minikube`, `docker`, `ufw status`, `lynis audit system`). Privilege-changing actions still require password.
+- **`auditd`** with immutable baseline rules covering identity files, sudo/sshd configs, and privilege-escalation invocations. Persistent `journald` with retention caps.
+- **`sysctl` kernel hardening** drop-in (`kptr_restrict`, `ptrace_scope`, `unprivileged_bpf_disabled`, network-stack hygiene).
+- **Patch management fix.** Discovered that `unattended-upgrades` had been silently doing nothing since the migration because `/etc/apt/sources.list` was missing the `security.debian.org` entry. Fixed; 15 stale patches applied including kernel `6.12.73 → 6.12.74`.
+- **Lynis hardening index: 77** (target was ≥75).
+
+For implementation rationale and as-built decisions, see the engineering ADR at [`docs/adr/2026-04-16-debian-host-hardening.md`](../adr/2026-04-16-debian-host-hardening.md).
 
 ---
 
@@ -176,13 +207,14 @@ This layer was built in response to a real production incident on 2026-04-08, wh
 
 Ordered by impact-to-effort ratio:
 
-1. **Add a PSS `restricted` label** to the `ai-services`, `java-tasks`, and `go-ecommerce` namespaces and fix any resulting violations. High impact, low effort.
-2. **Add minimal `NetworkPolicy` resources** — default-deny ingress in each namespace, plus explicit allow rules for gateway→downstream and ingress-controller→gateway. Closes the §5 trust-model gap.
-3. **Pin production container images by digest** (`@sha256:…`) instead of `:latest`. Eliminates the mutable-tag supply chain risk.
-4. **Promote Java OWASP Dependency Check from reporting to gating.** One-line CI change.
-5. **Add Prometheus alert rules** for 4xx/5xx rate spikes and authentication failure bursts. Converts observability into detection.
-6. **Run a dedicated IaC scanner** (e.g. `kube-linter`, `checkov`) alongside the existing custom policy script. Catches the broader class of rules the homegrown script was intentionally narrow about.
-7. **Migrate to envelope-encrypted secrets** (SOPS with age, or external-secrets-operator with a cloud KMS) to remove dependence on Kubernetes Secrets' at-rest model.
+1. **Add a PSS `restricted` label** to the `ai-services`, `java-tasks`, and `go-ecommerce` namespaces and fix any resulting violations. The per-Deployment `securityContext` blocks (§9) already satisfy `restricted` — labeling the namespaces enforces it on future workloads.
+2. **Add minimal `NetworkPolicy` resources** — default-deny ingress in each namespace, plus explicit allow rules for gateway→downstream and ingress-controller→gateway. Limits lateral movement after a single-pod compromise.
+3. **Forward host audit logs to a remote sink.** §11's `auditd` and `journald` are local-only — a remote forwarder (Loki via `journald-remote`, or a SIEM) makes the audit trail survive a host compromise. Pairs naturally with §10 alerting work.
+4. **Pin production container images by digest** (`@sha256:…`) instead of `:latest`. Eliminates the mutable-tag supply chain risk.
+5. **Promote Java OWASP Dependency Check from reporting to gating.** One-line CI change.
+6. **Add Prometheus alert rules** for 4xx/5xx rate spikes and authentication failure bursts. Converts observability into detection.
+7. **Run a dedicated IaC scanner** (e.g. `kube-linter`, `checkov`) alongside the existing custom policy script. Catches the broader class of rules the homegrown script was intentionally narrow about.
+8. **Migrate to envelope-encrypted secrets** (SOPS with age, or external-secrets-operator with a cloud KMS) to remove dependence on Kubernetes Secrets' at-rest model.
 
 ---
 
@@ -204,11 +236,28 @@ Every file path cited in this assessment, for quick navigation:
 - `docker-compose.ci.yml` — compose overlay for CI smoke runs
 - `frontend/e2e/smoke.spec.ts` — post-deploy production smoke tests
 - `frontend/e2e/smoke-ci.spec.ts` — pre-deploy compose smoke tests
-- `go/auth-service/internal/service/auth.go` — JWT and bcrypt implementation
+- `go/auth-service/internal/service/auth.go` — JWT, bcrypt, and signing-method validation
+- `go/auth-service/internal/handler/auth.go` — login/refresh/logout handlers, httpOnly cookie setup
+- `go/auth-service/internal/service/token_denylist.go` — Redis token revocation
 - `go/auth-service/internal/middleware/cors.go` — Go CORS enforcement
+- `go/auth-service/internal/model/user.go` — password validation (min 12 chars)
+- `go/ecommerce-service/internal/middleware/auth.go` — JWT signing-method validation in ecommerce
 - `java/gateway-service/src/main/java/.../SecurityConfig.java` — Spring Security configuration
+- `java/gateway-service/src/main/java/.../config/GraphQlConfig.java` — GraphQL depth/complexity limits
+- `java/gateway-service/src/main/resources/application.yml` — GraphiQL disabled in prod
 - `java/task-service/src/main/java/.../SecurityConfig.java` — Spring Security configuration
-- `java/k8s/deployments/postgres.yml`, `mongodb.yml`, `redis.yml` — stateful service manifests with readiness probes
+- `java/task-service/src/main/java/.../controller/AuthController.java` — httpOnly cookie setup
+- `java/task-service/src/main/java/.../security/JwtAuthenticationFilter.java` — cookie-based JWT extraction
+- `java/k8s/deployments/*.yml` — Deployment manifests with `securityContext` (runAsNonRoot, readOnlyRootFilesystem, capabilities.drop)
+- `go/k8s/deployments/*.yml` — Deployment manifests with `securityContext`
 - `go/k8s/configmaps/*.yml` — Go service ConfigMaps with `sslmode=disable`
+- `services/shared/auth.py` — shared FastAPI JWT dependency (`create_auth_dependency`)
+- `services/ingestion/app/main.py`, `services/chat/app/main.py`, `services/debug/app/main.py` — `Depends(require_auth)` on every mutating endpoint, slowapi rate-limit decorators
+- `services/chat/app/prompt.py`, `services/debug/app/prompts.py` — XML-delimited prompt templates with injection-defense system instructions
 - `docs/adr/password-authentication.md` — auth architecture ADR
 - `docs/adr/java-task-management/03_authentication_and_security.md` — Java auth ADR
+- `docs/security/linux-server-hardening.md` — companion host-OS assessment
+- `docs/adr/2026-04-16-debian-host-hardening.md` — host-hardening engineering ADR
+- `docs/superpowers/specs/2026-04-15-security-audit-hardening-design.md` — application-layer audit spec
+- `docs/superpowers/specs/2026-04-16-debian-host-hardening-design.md` — host hardening spec
+- `docs/security/lynis-baseline-2026-04-16.log` — captured lynis baseline report

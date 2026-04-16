@@ -11,6 +11,7 @@ I'm a developer who primarily focuses on **backend and AI integration**. This re
 - **Backend engineering across three languages** — Go, Java (Spring Boot), and Python (FastAPI), each chosen where it fits best
 - **AI integration** — a full RAG pipeline and an agentic debugging assistant, both backed by locally-hosted LLMs
 - **Production infrastructure** — Kubernetes, NGINX Ingress, Cloudflare Tunnel, Prometheus/Grafana, and a full CI/CD pipeline deploying to a home-lab cluster
+- **Linux server administration** — hand-installed Debian 13 on the home-lab box, hardened the OS (firewall, SSH lockdown, sudo policy, auditd, kernel sysctls), wrote systemd units for service auto-start, and recovered cleanly from a power outage and a botched SSH config
 - **A working full-stack surface** — Next.js + TypeScript frontend on Vercel, talking to REST, GraphQL, and streaming AI endpoints
 
 ---
@@ -54,19 +55,20 @@ Next.js + TypeScript + shadcn/ui + Apollo Client, deployed on Vercel. Sections f
 
 ## Infrastructure & DevOps
 
-- **Kubernetes (Minikube)** on a Windows PC with an RTX 3090 running Ollama natively for GPU inference
+- **Kubernetes (Minikube)** on a self-installed **Debian 13 server** with an RTX 3090 running Ollama natively for GPU inference
 - **Namespaces:** `ai-services`, `java-tasks`, `go-ecommerce`, `monitoring`
 - **NGINX Ingress** with path-based routing across all stacks
 - **Cloudflare Tunnel** exposes the home-lab cluster publicly as `api.kylebradshaw.dev`
 - **Docker Compose** for local development
 - **Prometheus + Grafana** for metrics and dashboards
 - **GitHub Actions CI/CD** — ruff, pytest, tsc, Next.js build, checkstyle, golangci-lint, Bandit, pip-audit, npm audit, gitleaks, Hadolint, Playwright E2E, and auto-deploy to the cluster via SSH
+- **Hardened Linux host** — UFW default-deny firewall, SSH locked to Tailscale only, narrow passwordless sudo allowlist, auditd + persistent journald, sysctl kernel hardening, lynis baseline score 77. See [`docs/security/linux-server-hardening.md`](docs/security/linux-server-hardening.md).
 
 ---
 
 ## Security
 
-For a full security assessment of the controls implemented in this project — shift-left CI gates, Kubernetes policy-as-code, auth architecture, supply chain posture, and explicitly accepted risks — see **[`docs/security/security-assessment.md`](docs/security/security-assessment.md)**. Each finding cites the exact file(s) that implement it so the claims can be independently verified.
+For a full security assessment of the controls implemented in this project — shift-left CI gates, Kubernetes policy-as-code, auth architecture, supply chain posture, and explicitly accepted risks — see **[`docs/security/security-assessment.md`](docs/security/security-assessment.md)**. For host-level hardening of the Debian 13 server (firewall, SSH lockdown, sudo policy, auditd, kernel sysctls, patch hygiene, lynis baseline), see **[`docs/security/linux-server-hardening.md`](docs/security/linux-server-hardening.md)**. Each finding cites the exact file(s) that implement it so the claims can be independently verified.
 
 ---
 
@@ -119,7 +121,8 @@ If you're short on time:
 2. **`docs/adr/go-stress-testing.md`** — k6 load testing that found real bugs (stock overselling), with before/after metrics
 3. **`services/`** — FastAPI + RAG + agent implementation
 4. **`docs/adr/document-qa/`** and **`docs/adr/document-debugger/`** — how and why the AI services were built
-5. **`.github/workflows/`** — CI/CD, security scanning, and deployment
-6. **`k8s/`** — production Kubernetes topology
+5. **`docs/security/`** — security assessments for the application stack and the hardened Debian 13 host (lynis 77)
+6. **`.github/workflows/`** — CI/CD, security scanning, and deployment
+7. **`k8s/`** — production Kubernetes topology
 
 Thanks for taking a look. — Kyle
