@@ -99,6 +99,20 @@ patches:
       kind: Deployment
       metadata:
         name: rabbitmq
+  # --- Gateway service: ClusterIP in QA (prod holds cluster-wide NodePort 30080) ---
+  - target:
+      kind: Service
+      name: gateway-service
+    patch: |
+      - op: replace
+        path: /spec
+        value:
+          type: ClusterIP
+          selector:
+            app: gateway-service
+          ports:
+            - port: 8080
+              targetPort: 8080
   # --- Replace infrastructure services with ExternalName ---
   - target:
       kind: Service
