@@ -125,7 +125,16 @@ func main() {
 	authSvc := service.NewAuthService(userRepo, jwtSecret, accessTokenTTLMs, refreshTokenTTLMs)
 	googleClient := google.NewClient(googleClientID, googleClientSecret, googleTokenURL, googleUserinfoURL)
 	denylist := service.NewTokenDenylist(redisClient)
-	authHandler := handler.NewAuthHandler(authSvc, googleClient, denylist, time.Duration(accessTokenTTLMs)*time.Millisecond)
+	accessTTL := time.Duration(accessTokenTTLMs) * time.Millisecond
+	refreshTTL := time.Duration(refreshTokenTTLMs) * time.Millisecond
+	cookieSecure := os.Getenv("COOKIE_SECURE") == "true"
+	cookieDomain := os.Getenv("COOKIE_DOMAIN")
+	cookieCfg := handler.CookieConfig{
+		Secure:   cookieSecure,
+		Domain:   cookieDomain,
+		SameSite: http.SameSiteLaxMode,
+	}
+	authHandler := handler.NewAuthHandler(authSvc, googleClient, denylist, accessTTL, refreshTTL, cookieCfg)
 	healthHandler := handler.NewHealthHandler(pool)
 
 	// Set up Gin

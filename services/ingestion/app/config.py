@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = 200
     max_file_size_mb: int = 50
     allowed_origins: str = "https://kylebradshaw.dev"
+    jwt_secret: str = ""
 
     def get_embedding_base_url(self) -> str:
         if self.embedding_provider == "ollama":

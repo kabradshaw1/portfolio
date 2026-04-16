@@ -18,7 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.Map;
+import jakarta.servlet.http.Cookie;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.anyString;
@@ -68,13 +68,9 @@ class AuthControllerTest {
 
         when(authService.refreshAccessToken(anyString())).thenReturn(authResponse);
 
-        String body = objectMapper.writeValueAsString(Map.of("refreshToken", refreshTokenStr));
-
         mockMvc.perform(post("/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
+                        .cookie(new Cookie("refresh_token", refreshTokenStr)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value(newAccessToken))
                 .andExpect(jsonPath("$.email").value("user@example.com"))
                 .andExpect(jsonPath("$.userId").value(userId.toString()));
     }
@@ -86,14 +82,11 @@ class AuthControllerTest {
         when(authService.refreshAccessToken(invalidToken))
                 .thenThrow(new IllegalArgumentException("Refresh token not found"));
 
-        String body = objectMapper.writeValueAsString(Map.of("refreshToken", invalidToken));
-
         // MockMvc propagates unhandled exceptions as NestedServletException.
         // We verify the service was called and the exception originates correctly.
         try {
             mockMvc.perform(post("/auth/refresh")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(body));
+                            .cookie(new Cookie("refresh_token", invalidToken)));
         } catch (Exception ex) {
             Throwable cause = ex.getCause();
             org.assertj.core.api.Assertions.assertThat(cause)
@@ -118,7 +111,6 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("access-token"))
                 .andExpect(jsonPath("$.email").value("new@example.com"));
     }
 
@@ -138,7 +130,7 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("access-token"));
+                .andExpect(jsonPath("$.email").value("user@example.com"));
     }
 
     @Test

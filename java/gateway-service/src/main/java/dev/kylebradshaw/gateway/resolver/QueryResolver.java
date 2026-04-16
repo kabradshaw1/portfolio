@@ -32,33 +32,37 @@ public class QueryResolver {
 
     @QueryMapping
     public List<ProjectDto> myProjects(DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        return taskClient.getMyProjects(userId);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return taskClient.getMyProjects(authHeader);
     }
 
     @QueryMapping
     public ProjectDto project(@Argument String id, DataFetchingEnvironment env) {
-        return taskClient.getProject(id);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return taskClient.getProject(id, authHeader);
     }
 
     @QueryMapping
     public TaskDto task(@Argument String id, DataFetchingEnvironment env) {
-        return taskClient.getTask(id);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return taskClient.getTask(id, authHeader);
     }
 
     @QueryMapping
     public List<ActivityEventDto> taskActivity(@Argument String taskId, DataFetchingEnvironment env) {
-        return activityClient.getActivityByTask(taskId);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return activityClient.getActivityByTask(taskId, authHeader);
     }
 
     @QueryMapping
     public List<CommentDto> taskComments(@Argument String taskId, DataFetchingEnvironment env) {
-        return activityClient.getCommentsByTask(taskId);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return activityClient.getCommentsByTask(taskId, authHeader);
     }
 
     @QueryMapping
     public NotificationDto myNotifications(@Argument Boolean unreadOnly, DataFetchingEnvironment env) {
-        String userId = env.getGraphQlContext().get("userId");
-        return notificationClient.getNotifications(userId, unreadOnly);
+        String authHeader = env.getGraphQlContext().get("authorizationHeader");
+        return notificationClient.getNotifications(authHeader, unreadOnly);
     }
 }

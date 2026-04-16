@@ -37,14 +37,18 @@ class QueryResolverTest {
 
     @Test
     void myProjects_returnsProjects() {
-        when(taskClient.getMyProjects("test-user"))
+        String testAuthHeader = "Bearer test-token";
+        when(taskClient.getMyProjects(testAuthHeader))
                 .thenReturn(List.of(new ProjectDto("1", "Project 1", "Desc", "o1", "Owner", "2026-04-03T00:00:00Z")));
 
-        // Inject userId directly into the GraphQL execution context
+        // Inject authorizationHeader into the GraphQL execution context
         ExecutionGraphQlServiceTester tester = ((ExecutionGraphQlServiceTester) graphQlTester)
                 .mutate()
                 .configureExecutionInput((input, builder) ->
-                        builder.graphQLContext(ctx -> ctx.put("userId", "test-user")).build())
+                        builder.graphQLContext(ctx -> {
+                            ctx.put("userId", "test-user");
+                            ctx.put("authorizationHeader", testAuthHeader);
+                        }).build())
                 .build();
 
         tester.document("query { myProjects { id name } }")

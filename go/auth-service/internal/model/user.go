@@ -17,7 +17,7 @@ type User struct {
 
 type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
+	Password string `json:"password" binding:"required,min=12"`
 	Name     string `json:"name" binding:"required"`
 }
 

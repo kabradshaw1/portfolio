@@ -27,12 +27,15 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(TaskController.class)
 class TaskControllerTest {
+
+    static final String TEST_USER_ID = "00000000-0000-0000-0000-000000000001";
 
     @TestConfiguration
     static class TestSecurityConfig {
@@ -60,12 +63,12 @@ class TaskControllerTest {
     }
 
     @Test
+    @WithMockUser(username = TEST_USER_ID)
     void createTask_returns201() throws Exception {
         UUID projectId = UUID.randomUUID();
-        UUID actorId = UUID.randomUUID();
         Task task = buildTask("Write tests");
 
-        when(taskService.createTask(any(), eq(actorId))).thenReturn(task);
+        when(taskService.createTask(any(), any())).thenReturn(task);
 
         String body = objectMapper.writeValueAsString(Map.of(
                 "projectId", projectId.toString(),
@@ -73,7 +76,6 @@ class TaskControllerTest {
         ));
 
         mockMvc.perform(post("/tasks")
-                        .header("X-User-Id", actorId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
@@ -81,6 +83,7 @@ class TaskControllerTest {
     }
 
     @Test
+    @WithMockUser(username = TEST_USER_ID)
     void getTasksByProject_returns200() throws Exception {
         UUID projectId = UUID.randomUUID();
         Task task = buildTask("Implement feature");
@@ -94,6 +97,7 @@ class TaskControllerTest {
     }
 
     @Test
+    @WithMockUser(username = TEST_USER_ID)
     void getTask_returns200() throws Exception {
         UUID taskId = UUID.randomUUID();
         Task task = buildTask("Get task");
@@ -106,17 +110,16 @@ class TaskControllerTest {
     }
 
     @Test
+    @WithMockUser(username = TEST_USER_ID)
     void updateTask_returns200() throws Exception {
         UUID taskId = UUID.randomUUID();
-        UUID actorId = UUID.randomUUID();
         Task updated = buildTask("Updated Title");
 
-        when(taskService.updateTask(eq(taskId), any(), eq(actorId))).thenReturn(updated);
+        when(taskService.updateTask(eq(taskId), any(), any())).thenReturn(updated);
 
         String body = objectMapper.writeValueAsString(Map.of("title", "Updated Title"));
 
         mockMvc.perform(put("/tasks/{id}", taskId)
-                        .header("X-User-Id", actorId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
@@ -124,29 +127,27 @@ class TaskControllerTest {
     }
 
     @Test
+    @WithMockUser(username = TEST_USER_ID)
     void assignTask_returns200() throws Exception {
         UUID taskId = UUID.randomUUID();
         UUID assigneeId = UUID.randomUUID();
-        UUID actorId = UUID.randomUUID();
         Task assigned = buildTask("Assigned Task");
 
-        when(taskService.assignTask(taskId, assigneeId, actorId)).thenReturn(assigned);
+        when(taskService.assignTask(eq(taskId), eq(assigneeId), any())).thenReturn(assigned);
 
-        mockMvc.perform(put("/tasks/{id}/assign/{assigneeId}", taskId, assigneeId)
-                        .header("X-User-Id", actorId.toString()))
+        mockMvc.perform(put("/tasks/{id}/assign/{assigneeId}", taskId, assigneeId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Assigned Task"));
     }
 
     @Test
+    @WithMockUser(username = TEST_USER_ID)
     void deleteTask_returns204() throws Exception {
         UUID taskId = UUID.randomUUID();
-        UUID actorId = UUID.randomUUID();
 
-        doNothing().when(taskService).deleteTask(taskId, actorId);
+        doNothing().when(taskService).deleteTask(eq(taskId), any());
 
-        mockMvc.perform(delete("/tasks/{id}", taskId)
-                        .header("X-User-Id", actorId.toString()))
+        mockMvc.perform(delete("/tasks/{id}", taskId))
                 .andExpect(status().isNoContent());
     }
 }

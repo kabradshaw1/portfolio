@@ -19,6 +19,9 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-secret
+      volumes:
+        - name: tmp
+          emptyDir: {}
       containers:
         - name: task-service
           image: ghcr.io/kabradshaw1/portfolio/java-task-service:latest
@@ -61,3 +64,14 @@ spec:
               port: 8081
             initialDelaySeconds: 15
             periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp

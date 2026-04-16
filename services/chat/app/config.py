@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     collection_name: str = "documents"
     allowed_origins: str = "https://kylebradshaw.dev"
+    jwt_secret: str = ""
 
     def get_llm_base_url(self) -> str:
         if self.llm_provider == "ollama":

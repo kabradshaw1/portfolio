@@ -20,3 +20,4 @@ resources:
   - pdb/ecommerce-pdb.yml
   - pdb/ai-pdb.yml
   - ingress.yml
+  - network-policy.yml

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -65,7 +66,8 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI string) (*U
 
 	if tokenResp.StatusCode >= 400 {
 		body, _ := io.ReadAll(tokenResp.Body)
-		return nil, fmt.Errorf("google token endpoint returned %d: %s", tokenResp.StatusCode, string(body))
+		slog.Error("google token endpoint error", "status", tokenResp.StatusCode, "body", string(body))
+		return nil, fmt.Errorf("google authentication failed")
 	}
 
 	var tr tokenResponse
@@ -90,7 +92,8 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI string) (*U
 
 	if userResp.StatusCode >= 400 {
 		body, _ := io.ReadAll(userResp.Body)
-		return nil, fmt.Errorf("google userinfo endpoint returned %d: %s", userResp.StatusCode, string(body))
+		slog.Error("google userinfo endpoint error", "status", userResp.StatusCode, "body", string(body))
+		return nil, fmt.Errorf("google authentication failed")
 	}
 
 	var info UserInfo

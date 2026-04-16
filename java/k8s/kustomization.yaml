@@ -27,3 +27,4 @@ resources:
   - volumes/postgres-pvc.yml
   - ingress.yml
   - ingress-rabbitmq.yml
+  - network-policy.yml

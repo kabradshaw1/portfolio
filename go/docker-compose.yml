@@ -44,7 +44,7 @@ services:
       - "8091:8091"
     environment:
       DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/ecommercedb
-      JWT_SECRET: dev-secret-key-at-least-32-characters-long
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       ALLOWED_ORIGINS: http://localhost:3000
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
@@ -63,7 +63,7 @@ services:
       DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/ecommercedb
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      JWT_SECRET: dev-secret-key-at-least-32-characters-long
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       ALLOWED_ORIGINS: http://localhost:3000
       PORT: "8092"
     depends_on:
@@ -85,7 +85,7 @@ services:
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: "qwen2.5:14b"
       ECOMMERCE_URL: http://ecommerce-service:8092
-      JWT_SECRET: dev-secret-key-at-least-32-characters-long
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       REDIS_URL: redis://redis:6379
     extra_hosts:
       - "host.docker.internal:host-gateway"
