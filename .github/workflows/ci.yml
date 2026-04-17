@@ -821,20 +821,20 @@ jobs:
             --from-literal=jwt-secret='dev-secret-key-at-least-32-characters-long' \
             --dry-run=client -o yaml | kubectl apply -f -"
 
-          # Delete Go migration jobs BEFORE applying the Go overlay.
-          # Jobs are immutable — the image tag sed replacement would fail on apply
-          # if the jobs already exist with a different tag.
-          $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
+          # Apply Go overlay, excluding Jobs (they must run sequentially below).
+          # Split multi-doc YAML on '---', drop any document containing 'kind: Job'.
+          kubectl kustomize k8s/overlays/qa-go/ \
+            | sed "s|:latest|:${QA_TAG}|g" \
+            | awk 'BEGIN{doc=""} /^---$/{if(doc!="" && doc !~ /kind: Job/)print doc; doc="---\n";next} {doc=doc $0 "\n"} END{if(doc!="" && doc !~ /kind: Job/)print doc}' \
+            | $SSH "kubectl apply -f -"
 
-          # Apply Go overlay (includes Jobs, which are now fresh creates, not patches)
-          kubectl kustomize k8s/overlays/qa-go/ | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
-
+          # Run Go migration jobs sequentially in QA namespace.
+          # Jobs are immutable; delete before re-applying so they re-run on every deploy.
           # auth-migrate MUST run before ecommerce-migrate: both services share
           # the same Postgres, and ecommerce-service's migrations reference users(id)
           # which is created by auth-service's migrations.
-          # The kustomize apply above already created the jobs, but they need to be
-          # re-run sequentially. Delete and re-apply with namespace rewrite.
           $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
+
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce-qa --tail=200" || true

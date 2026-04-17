@@ -30,6 +30,8 @@ services:
     build:
       context: ./services
       dockerfile: ingestion/Dockerfile
+      cache_from:
+        - ghcr.io/kabradshaw1/portfolio/ingestion:latest
     env_file: .env
     depends_on:
       qdrant:
@@ -42,6 +44,8 @@ services:
     build:
       context: ./services
       dockerfile: chat/Dockerfile
+      cache_from:
+        - ghcr.io/kabradshaw1/portfolio/chat:latest
     env_file: .env
     depends_on:
       qdrant:
@@ -54,6 +58,8 @@ services:
     build:
       context: ./services
       dockerfile: debug/Dockerfile
+      cache_from:
+        - ghcr.io/kabradshaw1/portfolio/debug:latest
     env_file: .env
     depends_on:
       qdrant:
