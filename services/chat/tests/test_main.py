@@ -126,6 +126,45 @@ def test_chat_returns_error_when_backend_unreachable(mock_rag_query):
     assert "Connection refused" not in response.text
 
 
+@patch("app.main.retrieve_chunks", new_callable=AsyncMock)
+def test_search_returns_chunks(mock_retrieve):
+    mock_retrieve.return_value = [
+        {
+            "text": "Hello world",
+            "filename": "test.pdf",
+            "page_number": 1,
+            "document_id": "abc",
+            "score": 0.92,
+        },
+        {
+            "text": "Goodbye world",
+            "filename": "test.pdf",
+            "page_number": 2,
+            "document_id": "abc",
+            "score": 0.85,
+        },
+    ]
+
+    response = client.post("/search", json={"query": "hello", "limit": 5})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["results"]) == 2
+    assert data["results"][0]["text"] == "Hello world"
+    assert data["results"][0]["score"] == 0.92
+
+
+def test_search_requires_query():
+    response = client.post("/search", json={})
+    assert response.status_code == 422
+
+
+def test_search_rejects_invalid_collection():
+    response = client.post(
+        "/search", json={"query": "hello", "collection": "DROP TABLE users"}
+    )
+    assert response.status_code == 422
+
+
 def test_cors_rejects_unknown_origin():
     response = client.options(
         "/health",
