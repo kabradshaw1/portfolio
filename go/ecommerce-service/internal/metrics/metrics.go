@@ -36,4 +36,9 @@ var (
 		Name: "ecommerce_rabbitmq_publish_total",
 		Help: "RabbitMQ publish attempts.",
 	}, []string{"queue", "result"})
+
+	IdempotencyOps = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "ecommerce_idempotency_operations_total",
+		Help: "Idempotency key operations.",
+	}, []string{"result"}) // hit, miss, conflict, error
 )
