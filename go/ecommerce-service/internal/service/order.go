@@ -15,7 +15,7 @@ var ErrEmptyCart = apperror.BadRequest("EMPTY_CART", "cart is empty")
 type OrderRepo interface {
 	Create(ctx context.Context, userID uuid.UUID, total int, items []model.OrderItem) (*model.Order, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*model.Order, error)
-	ListByUser(ctx context.Context, userID uuid.UUID) ([]model.Order, error)
+	ListByUser(ctx context.Context, userID uuid.UUID, params model.OrderListParams) ([]model.Order, error)
 	UpdateStatus(ctx context.Context, orderID uuid.UUID, status model.OrderStatus) error
 }
 
@@ -83,6 +83,6 @@ func (s *OrderService) GetOrder(ctx context.Context, orderID uuid.UUID) (*model.
 	return s.orderRepo.FindByID(ctx, orderID)
 }
 
-func (s *OrderService) ListOrders(ctx context.Context, userID uuid.UUID) ([]model.Order, error) {
-	return s.orderRepo.ListByUser(ctx, userID)
+func (s *OrderService) ListOrders(ctx context.Context, userID uuid.UUID, params model.OrderListParams) ([]model.Order, error) {
+	return s.orderRepo.ListByUser(ctx, userID, params)
 }

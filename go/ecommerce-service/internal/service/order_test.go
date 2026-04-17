@@ -42,7 +42,7 @@ func (m *mockOrderRepo) FindByID(ctx context.Context, id uuid.UUID) (*model.Orde
 	return order, nil
 }
 
-func (m *mockOrderRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]model.Order, error) {
+func (m *mockOrderRepo) ListByUser(ctx context.Context, userID uuid.UUID, params model.OrderListParams) ([]model.Order, error) {
 	var result []model.Order
 	for _, o := range m.orders {
 		if o.UserID == userID {

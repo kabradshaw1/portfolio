@@ -28,6 +28,17 @@ func ErrorHandler() gin.HandlerFunc {
 
 		var ae *AppError
 		if errors.As(err, &ae) {
+			if len(ae.Fields) > 0 {
+				c.JSON(ae.HTTPStatus, ValidationErrorResponse{
+					Error: ValidationErrorBody{
+						Code:      ae.Code,
+						Message:   ae.Message,
+						RequestID: rid,
+						Fields:    ae.Fields,
+					},
+				})
+				return
+			}
 			c.JSON(ae.HTTPStatus, ErrorResponse{
 				Error: ErrorBody{
 					Code:      ae.Code,

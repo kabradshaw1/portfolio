@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/validate"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 )
 
@@ -36,7 +37,12 @@ func (h *ReturnHandler) Initiate(c *gin.Context) {
 	}
 	var req model.InitiateReturnRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		_ = c.Error(apperror.BadRequest("VALIDATION_ERROR", err.Error()))
+		_ = c.Error(apperror.BadRequest("INVALID_JSON", "invalid request body"))
+		return
+	}
+
+	if errs := validate.InitiateReturn(req.ItemIDs, req.Reason); len(errs) > 0 {
+		_ = c.Error(apperror.Validation(errs))
 		return
 	}
 

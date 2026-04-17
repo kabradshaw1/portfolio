@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/pagination"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	gobreaker "github.com/sony/gobreaker/v2"
@@ -105,14 +107,47 @@ func (r *OrderRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Or
 	})
 }
 
-func (r *OrderRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]model.Order, error) {
+func (r *OrderRepository) ListByUser(ctx context.Context, userID uuid.UUID, params model.OrderListParams) ([]model.Order, error) {
 	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) ([]model.Order, error) {
-		rows, err := r.pool.Query(ctx,
-			`SELECT id, user_id, status, total, created_at, updated_at
-			 FROM orders WHERE user_id = $1
-			 ORDER BY created_at DESC`,
-			userID,
-		)
+		limit := params.Limit
+		if limit <= 0 {
+			limit = 20
+		}
+
+		var rows interface {
+			Next() bool
+			Scan(dest ...any) error
+			Close()
+			Err() error
+		}
+		var err error
+
+		if params.Cursor != "" {
+			cursorTime, cursorID, decErr := pagination.DecodeCursor(params.Cursor)
+			if decErr != nil {
+				return nil, fmt.Errorf("invalid cursor: %w", decErr)
+			}
+			t, parseErr := time.Parse(time.RFC3339Nano, cursorTime)
+			if parseErr != nil {
+				return nil, fmt.Errorf("invalid cursor time: %w", parseErr)
+			}
+			rows, err = r.pool.Query(ctx,
+				`SELECT id, user_id, status, total, created_at, updated_at
+				 FROM orders
+				 WHERE user_id = $1 AND (created_at, id) < ($2, $3)
+				 ORDER BY created_at DESC, id DESC
+				 LIMIT $4`,
+				userID, t, cursorID, limit+1,
+			)
+		} else {
+			rows, err = r.pool.Query(ctx,
+				`SELECT id, user_id, status, total, created_at, updated_at
+				 FROM orders WHERE user_id = $1
+				 ORDER BY created_at DESC, id DESC
+				 LIMIT $2`,
+				userID, limit+1,
+			)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("list orders: %w", err)
 		}
@@ -125,6 +160,9 @@ func (r *OrderRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]m
 				return nil, fmt.Errorf("scan order: %w", err)
 			}
 			orders = append(orders, o)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("rows error: %w", err)
 		}
 		return orders, nil
 	})
