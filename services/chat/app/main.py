@@ -1,7 +1,7 @@
 import json
-import logging
 
 import httpx
+import structlog
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -9,6 +9,8 @@ from llm.factory import get_embedding_provider, get_llm_provider
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
 from shared.auth import create_auth_dependency
+from shared.logging import RequestLoggingMiddleware, configure_logging
+from shared.tracing import configure_tracing, instrument_app
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -19,7 +21,10 @@ from app.chain import rag_query, retrieve_chunks
 from app.config import settings
 from app.metrics import instrumentator
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
+
+configure_logging(service_name="chat")
+configure_tracing(service_name="chat")
 
 app = FastAPI(title="Chat API")
 
@@ -29,8 +34,10 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
+instrument_app(app)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -148,10 +155,10 @@ async def chat(
             ):
                 yield {"data": json.dumps(event)}
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.error("Backend service error: %s", e)
+            logger.error("backend_service_error", error=str(e))
             yield {"data": json.dumps({"error": "Service unavailable"})}
         except Exception as e:
-            logger.error("Internal error: %s", e, exc_info=True)
+            logger.error("internal_error", error=str(e), exc_info=True)
             yield {"data": json.dumps({"error": "Internal error"})}
 
     return EventSourceResponse(event_generator())

@@ -30,6 +30,11 @@ func NewProductService(repo ProductRepo, redisClient *redis.Client) *ProductServ
 }
 
 func (s *ProductService) List(ctx context.Context, params model.ProductListParams) ([]model.Product, int, error) {
+	// Cursor values are unique per request; caching would be useless and wasteful.
+	if params.Cursor != "" {
+		return s.repo.List(ctx, params)
+	}
+
 	cacheKey := fmt.Sprintf("ecom:products:list:%s:%s:%d:%d", params.Category, params.Sort, params.Page, params.Limit)
 
 	if s.redis != nil {

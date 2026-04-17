@@ -24,11 +24,14 @@ type ProductListParams struct {
 	Sort     string
 	Page     int
 	Limit    int
+	Cursor   string
 }
 
 type ProductListResponse struct {
-	Products []Product `json:"products"`
-	Total    int       `json:"total"`
-	Page     int       `json:"page"`
-	Limit    int       `json:"limit"`
+	Products   []Product `json:"products"`
+	Total      int       `json:"total,omitempty"`      // only in offset mode
+	Page       int       `json:"page,omitempty"`       // only in offset mode
+	Limit      int       `json:"limit"`
+	NextCursor string    `json:"nextCursor,omitempty"`
+	HasMore    bool      `json:"hasMore"`
 }
