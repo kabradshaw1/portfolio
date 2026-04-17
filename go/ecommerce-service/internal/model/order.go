@@ -37,3 +37,14 @@ type OrderItem struct {
 type OrderMessage struct {
 	OrderID string `json:"orderId"`
 }
+
+type OrderListParams struct {
+	Cursor string
+	Limit  int
+}
+
+type OrderListResponse struct {
+	Orders     []Order `json:"orders"`
+	NextCursor string  `json:"nextCursor,omitempty"`
+	HasMore    bool    `json:"hasMore"`
+}

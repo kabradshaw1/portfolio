@@ -23,7 +23,7 @@ func (f *fakeOrderService) Checkout(ctx context.Context, userID uuid.UUID) (*mod
 func (f *fakeOrderService) GetOrder(ctx context.Context, orderID uuid.UUID) (*model.Order, error) {
 	return f.order, nil
 }
-func (f *fakeOrderService) ListOrders(ctx context.Context, userID uuid.UUID) ([]model.Order, error) {
+func (f *fakeOrderService) ListOrders(ctx context.Context, userID uuid.UUID, params model.OrderListParams) ([]model.Order, error) {
 	return nil, nil
 }
 
