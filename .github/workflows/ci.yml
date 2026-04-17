@@ -804,12 +804,11 @@ jobs:
           # Create QA database if not exists
           $SSH "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"SELECT 1 FROM pg_database WHERE datname='ecommercedb_qa'\" | grep -q 1 || kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"CREATE DATABASE ecommercedb_qa;\""
 
-          # QA images are tagged qa-<sha>, not :latest — rewrite before applying
-          QA_TAG="qa-$(echo ${{ github.sha }} | cut -c1-7)"
-
-          # Apply QA Kustomize overlays (rewrite image tags inline)
-          kubectl kustomize k8s/overlays/qa/ | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
-          kubectl kustomize k8s/overlays/qa-java/ | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
+          # Apply QA Kustomize overlays.
+          # Images use :latest tag — all builds push both :qa-<sha> and :latest,
+          # so :latest always points to the most recently built image for each service.
+          kubectl kustomize k8s/overlays/qa/ | $SSH "kubectl apply -f -"
+          kubectl kustomize k8s/overlays/qa-java/ | $SSH "kubectl apply -f -"
 
           # Seed placeholder go-secrets in QA so go-auth-service can start.
           # The service rejects empty GOOGLE_CLIENT_ID at startup but accepts any
@@ -824,7 +823,6 @@ jobs:
           # Apply Go overlay, excluding Jobs (they must run sequentially below).
           # Split multi-doc YAML on '---', drop any document containing 'kind: Job'.
           kubectl kustomize k8s/overlays/qa-go/ \
-            | sed "s|:latest|:${QA_TAG}|g" \
             | awk 'BEGIN{doc=""} /^---$/{if(doc!="" && doc !~ /kind: Job/)print doc; doc="---\n";next} {doc=doc $0 "\n"} END{if(doc!="" && doc !~ /kind: Job/)print doc}' \
             | $SSH "kubectl apply -f -"
 
@@ -835,13 +833,13 @@ jobs:
           # which is created by auth-service's migrations.
           $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
 
-          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
+          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
-          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/ecommerce-service-migrate.yml | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
+          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/ecommerce-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
