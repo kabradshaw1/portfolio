@@ -9,4 +9,4 @@ data:
   LLM_BASE_URL: http://ollama:11434
   LLM_MODEL: qwen2.5:14b
   DB_PATH: /app/data/eval.db
-  ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
+  ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev,https://qa.kylebradshaw.dev
