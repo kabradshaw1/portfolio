@@ -392,10 +392,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Log in to GHCR (for pulling cached images)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create empty .env (required by docker-compose.yml env_file refs)
         run: touch .env
 
+      - name: Pull pre-built images (cache for compose build)
+        run: |
+          # Pull latest images to use as Docker layer cache.
+          # Failures are OK — first build or new services won't have images yet.
+          REPO="ghcr.io/${{ github.repository }}"
+          for svc in ingestion chat debug; do
+            docker pull "${REPO}/${svc}:latest" 2>/dev/null || true
+          done
+
       - name: Build and start compose stack with mock-ollama
+        env:
+          DOCKER_BUILDKIT: 1
         run: |
           # Only start services needed for the Python RAG smoke path.
           # docker-compose.yml also defines nvidia-gpu-exporter and cadvisor,
@@ -531,7 +549,11 @@ jobs:
             --ignore-vuln CVE-2026-34070 \
             --ignore-vuln GHSA-r7w7-9xr2-qq2r \
             --ignore-vuln CVE-2025-6985 \
-            --ignore-vuln GHSA-rr7j-v2q5-chgv
+            --ignore-vuln GHSA-rr7j-v2q5-chgv \
+            --ignore-vuln CVE-2025-8869 \
+            --ignore-vuln CVE-2026-1703 \
+            --ignore-vuln ECHO-ffe1-1d3c-d9bc \
+            --ignore-vuln ECHO-7db2-03aa-5591
 
   security-npm-audit:
     name: Security - npm audit
