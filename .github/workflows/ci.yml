@@ -633,55 +633,82 @@ jobs:
             context: services
             file: services/ingestion/Dockerfile
             image: ingestion
+            paths: services/ingestion services/shared
           - service: chat
             context: services
             file: services/chat/Dockerfile
             image: chat
+            paths: services/chat services/shared
           - service: debug
             context: services
             file: services/debug/Dockerfile
             image: debug
+            paths: services/debug services/shared
           - service: eval
             context: services
             file: services/eval/Dockerfile
             image: eval
+            paths: services/eval services/shared
           - service: java-task-service
             context: java/task-service
             file: java/task-service/Dockerfile
             image: java-task-service
             java-service: task-service
+            paths: java/task-service java/build.gradle java/settings.gradle
           - service: java-activity-service
             context: java/activity-service
             file: java/activity-service/Dockerfile
             image: java-activity-service
             java-service: activity-service
+            paths: java/activity-service java/build.gradle java/settings.gradle
           - service: java-notification-service
             context: java/notification-service
             file: java/notification-service/Dockerfile
             image: java-notification-service
             java-service: notification-service
+            paths: java/notification-service java/build.gradle java/settings.gradle
           - service: java-gateway-service
             context: java/gateway-service
             file: java/gateway-service/Dockerfile
             image: java-gateway-service
             java-service: gateway-service
+            paths: java/gateway-service java/build.gradle java/settings.gradle
           - service: go-auth-service
             context: go
             file: go/auth-service/Dockerfile
             image: go-auth-service
+            paths: go/auth-service go/pkg go/go.work
           - service: go-ecommerce-service
             context: go
             file: go/ecommerce-service/Dockerfile
             image: go-ecommerce-service
+            paths: go/ecommerce-service go/pkg go/go.work
           - service: go-ai-service
             context: go
             file: go/ai-service/Dockerfile
             image: go-ai-service
+            paths: go/ai-service go/pkg go/go.work
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for changes
+        id: changes
+        env:
+          PATHS: ${{ matrix.paths }}
+        run: |
+          # Check if this service's files changed since the previous commit
+          if git diff --quiet HEAD~1 -- $PATHS; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No changes in [$PATHS] — skipping build"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changes detected in [$PATHS]"
+          fi
 
       - name: Set up JDK 21
-        if: matrix.java-service
+        if: matrix.java-service && steps.changes.outputs.changed == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -689,14 +716,16 @@ jobs:
           cache: gradle
 
       - name: Build JAR
-        if: matrix.java-service
+        if: matrix.java-service && steps.changes.outputs.changed == 'true'
         working-directory: java
         run: ./gradlew :${{ matrix.java-service }}:bootJar --no-daemon
 
       - name: Set up Docker Buildx
+        if: steps.changes.outputs.changed == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: steps.changes.outputs.changed == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -704,6 +733,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Determine image tags
+        if: steps.changes.outputs.changed == 'true'
         id: tag
         env:
           IMAGE: ghcr.io/${{ github.repository }}/${{ matrix.image }}
@@ -718,6 +748,7 @@ jobs:
           fi
 
       - name: Build and push image
+        if: steps.changes.outputs.changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
