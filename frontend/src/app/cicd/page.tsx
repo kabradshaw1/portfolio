@@ -53,6 +53,24 @@ const qaArchitectureDiagram = `flowchart TB
   QANS -.->|shared infra| ProdNS
 `;
 
+const optimizationDiagram = `flowchart LR
+  A[PR / Push] --> B[Quality Checks]
+  B --> C[Compose Smoke]
+  C --> D[Build Images]
+  D --> E[Deploy]
+  E --> F[Smoke Tests]
+
+  style B fill:#1e3a5f,stroke:#3b82f6,color:#fff
+  style C fill:#1e3a5f,stroke:#3b82f6,color:#fff
+  style D fill:#1e3a5f,stroke:#3b82f6,color:#fff
+  style E fill:#1e3a5f,stroke:#3b82f6,color:#fff
+
+  B -.- G["① Venv caching"]
+  C -.- H["③ Pull, don't build"]
+  D -.- I["② Conditional builds"]
+  E -.- J["④ Job immutability fix"]
+`;
+
 export default function CICDPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -386,6 +404,245 @@ ssh PC@100.79.113.84 \\
                 prod deploy, cleans up.
               </li>
             </ol>
+          </div>
+        </section>
+
+        {/* Pipeline Optimization */}
+        <section className="mt-12">
+          <h2 className="text-xl font-semibold">Pipeline Optimization</h2>
+          <p className="mt-2 text-muted-foreground leading-relaxed">
+            Adding a RAG evaluation service exposed several performance
+            bottlenecks. The eval service depends on RAGAS, which pulls in 200+
+            transitive packages including LangChain. That single addition pushed
+            the pipeline from a manageable ~10 minutes to 30+ minutes per run,
+            with most of the time spent on redundant work. Here&apos;s how each
+            bottleneck was diagnosed and fixed.
+          </p>
+          <div className="mt-4">
+            <MermaidDiagram chart={optimizationDiagram} />
+          </div>
+        </section>
+
+        {/* Optimization 1: Venv Caching */}
+        <section className="mt-12">
+          <h3 className="text-lg font-semibold">
+            1. Virtualenv Caching
+          </h3>
+          <div className="mt-3 space-y-4 text-muted-foreground leading-relaxed">
+            <p>
+              <strong className="text-foreground">Problem:</strong>{" "}
+              <code>pip install</code> ran from scratch on every CI run. For the
+              eval service with its 200+ transitive dependencies, this took ~20
+              minutes — longer than all other checks combined.
+            </p>
+            <p>
+              <strong className="text-foreground">Investigation:</strong> The
+              GitHub Actions runner starts fresh each time, so there was no pip
+              cache to reuse. The eval service&apos;s dependency tree (RAGAS →
+              LangChain → dozens of ML packages) made cold installs
+              exceptionally slow.
+            </p>
+            <p>
+              <strong className="text-foreground">Fix:</strong> Cache the
+              entire <code>.venv</code> directory using{" "}
+              <code>actions/cache@v4</code>, keyed on the hash of{" "}
+              <code>requirements.txt</code> and{" "}
+              <code>shared/pyproject.toml</code>. On cache hit, the install
+              step is skipped entirely.
+            </p>
+            <pre className="overflow-x-auto rounded-lg border border-border bg-muted/50 p-4 text-sm">
+{`# Cache key
+venv-{service}-{hash(requirements.txt, shared/pyproject.toml)}
+
+# On cache hit → skip pip install entirely`}
+            </pre>
+            <p>
+              <strong className="text-foreground">Result:</strong> Eval tests
+              went from <strong>20 minutes → 20 seconds</strong>. pip-audit
+              dropped from <strong>20 minutes → 9 seconds</strong>.
+            </p>
+          </div>
+        </section>
+
+        {/* Optimization 2: Conditional Image Builds */}
+        <section className="mt-12">
+          <h3 className="text-lg font-semibold">
+            2. Conditional Image Builds
+          </h3>
+          <div className="mt-3 space-y-4 text-muted-foreground leading-relaxed">
+            <p>
+              <strong className="text-foreground">Problem:</strong> All 11
+              service images were rebuilt on every push, even when only one
+              service changed. A one-line fix to the chat service triggered
+              builds for all Go, Java, and Python images.
+            </p>
+            <p>
+              <strong className="text-foreground">Investigation:</strong> The
+              build matrix had no path awareness — every matrix entry ran
+              unconditionally. Most builds were wasted compute producing
+              identical images.
+            </p>
+            <p>
+              <strong className="text-foreground">Fix:</strong> Each matrix
+              entry declares a <code>paths</code> field listing the directories
+              that affect its image. A <code>git diff HEAD~1</code> check at
+              the start of each build job skips the build when none of those
+              paths changed.
+            </p>
+            <pre className="overflow-x-auto rounded-lg border border-border bg-muted/50 p-4 text-sm">
+{`- service: chat
+  paths: services/chat services/shared
+- service: go-auth-service
+  paths: go/auth-service go/pkg go/go.work`}
+            </pre>
+            <p>
+              <strong className="text-foreground">Result:</strong> A typical
+              single-service change rebuilds{" "}
+              <strong>1 image instead of 11</strong>. Unchanged services are
+              skipped in ~20 seconds.
+            </p>
+          </div>
+        </section>
+
+        {/* Optimization 3: Compose Smoke */}
+        <section className="mt-12">
+          <h3 className="text-lg font-semibold">
+            3. Compose Smoke: Pull Instead of Build
+          </h3>
+          <div className="mt-3 space-y-4 text-muted-foreground leading-relaxed">
+            <p>
+              <strong className="text-foreground">Problem:</strong>{" "}
+              <code>docker compose up --build</code> rebuilt all Python images
+              from source in CI, spending ~10 minutes per service on pip install
+              with no layer cache (fresh runner each time).
+            </p>
+            <p>
+              <strong className="text-foreground">Investigation:</strong> The
+              compose-smoke job existed to verify service configuration — env
+              vars, nginx routing, health checks, inter-service connectivity.
+              It didn&apos;t need freshly built images to test those things.
+              Code correctness was already covered by unit tests.
+            </p>
+            <p>
+              <strong className="text-foreground">Fix:</strong> Pull pre-built{" "}
+              <code>:latest</code> images from GHCR instead of building from
+              source. The smoke tests verify configuration, not code.
+            </p>
+            <pre className="overflow-x-auto rounded-lg border border-border bg-muted/50 p-4 text-sm">
+{`# Before: build from source (~15 min)
+docker compose up --build
+
+# After: pull pre-built images (~95 sec)
+for svc in ingestion chat debug; do
+  docker pull "ghcr.io/.../\${svc}:latest"
+done
+docker compose up -d`}
+            </pre>
+            <p>
+              <strong className="text-foreground">Result:</strong> Compose
+              smoke went from <strong>~15 minutes → 95 seconds</strong>.
+            </p>
+          </div>
+        </section>
+
+        {/* Optimization 4: Job Immutability */}
+        <section className="mt-12">
+          <h3 className="text-lg font-semibold">
+            4. QA Deploy: Job Immutability Fix
+          </h3>
+          <div className="mt-3 space-y-4 text-muted-foreground leading-relaxed">
+            <p>
+              <strong className="text-foreground">Problem:</strong> QA deploys
+              were failing entirely. The Go kustomize overlay includes
+              migration Jobs, and Kubernetes Jobs are immutable — once created,
+              their <code>spec.template</code> cannot be patched.
+            </p>
+            <p>
+              <strong className="text-foreground">Investigation:</strong> When
+              kustomize apply tried to update existing Jobs with a new image
+              tag, Kubernetes rejected it with{" "}
+              <code>field is immutable</code>. The Jobs had completed
+              successfully on the previous deploy but were still present in the
+              namespace.
+            </p>
+            <p>
+              <strong className="text-foreground">Fix:</strong> Filter Jobs out
+              of the kustomize output using awk, then handle them separately:
+              delete the old Job, create the new one, wait for completion.
+            </p>
+            <pre className="overflow-x-auto rounded-lg border border-border bg-muted/50 p-4 text-sm">
+{`# Apply overlay without Jobs
+kubectl kustomize k8s/overlays/qa-go/ \\
+  | awk '...filter out kind: Job...' \\
+  | kubectl apply -f -
+
+# Run migrations sequentially
+kubectl delete job go-auth-migrate --ignore-not-found
+kubectl apply -f auth-service-migrate.yml
+kubectl wait --for=condition=complete job/go-auth-migrate`}
+            </pre>
+            <p>
+              <strong className="text-foreground">Result:</strong> QA deploy
+              went from <strong>failing → succeeding in 85 seconds</strong>.
+            </p>
+          </div>
+        </section>
+
+        {/* Combined Impact */}
+        <section className="mt-12">
+          <h3 className="text-lg font-semibold">Combined Impact</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The four optimizations together reduced the pipeline from 30+
+            minutes to ~5 minutes on a typical push.
+          </p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="py-2 pr-4 text-left font-medium">Stage</th>
+                  <th className="py-2 px-4 text-left font-medium">Before</th>
+                  <th className="py-2 px-4 text-left font-medium">After</th>
+                </tr>
+              </thead>
+              <tbody className="text-muted-foreground">
+                <tr className="border-b border-border/50">
+                  <td className="py-2 pr-4">Python Tests (eval)</td>
+                  <td className="py-2 px-4">20 min</td>
+                  <td className="py-2 px-4 text-green-400">20 sec</td>
+                </tr>
+                <tr className="border-b border-border/50">
+                  <td className="py-2 pr-4">pip-audit (eval)</td>
+                  <td className="py-2 px-4">20 min</td>
+                  <td className="py-2 px-4 text-green-400">9 sec</td>
+                </tr>
+                <tr className="border-b border-border/50">
+                  <td className="py-2 pr-4">Compose Smoke</td>
+                  <td className="py-2 px-4">~15 min</td>
+                  <td className="py-2 px-4 text-green-400">95 sec</td>
+                </tr>
+                <tr className="border-b border-border/50">
+                  <td className="py-2 pr-4">Image Builds (no change)</td>
+                  <td className="py-2 px-4">~3 min each</td>
+                  <td className="py-2 px-4 text-green-400">~20 sec (skipped)</td>
+                </tr>
+                <tr className="border-b border-border/50">
+                  <td className="py-2 pr-4">Deploy QA</td>
+                  <td className="py-2 px-4">failing</td>
+                  <td className="py-2 px-4 text-green-400">85 sec</td>
+                </tr>
+                <tr className="border-t border-border">
+                  <td className="py-2 pr-4 font-medium text-foreground">
+                    Total pipeline
+                  </td>
+                  <td className="py-2 px-4 font-medium text-foreground">
+                    30+ min
+                  </td>
+                  <td className="py-2 px-4 font-medium text-green-400">
+                    ~5 min
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
 
