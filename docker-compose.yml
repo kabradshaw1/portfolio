@@ -22,6 +22,7 @@ services:
       - ingestion
       - chat
       - debug
+      - eval
     restart: unless-stopped
 
   ingestion:
@@ -57,6 +58,20 @@ services:
     depends_on:
       qdrant:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  eval:
+    image: ghcr.io/kabradshaw1/portfolio/eval:latest
+    build:
+      context: ./services
+      dockerfile: eval/Dockerfile
+    env_file: .env
+    volumes:
+      - eval_data:/app/data
+    depends_on:
+      chat:
+        condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -113,5 +128,6 @@ services:
 
 volumes:
   qdrant_data:
+  eval_data:
   prometheus_data:
   grafana_data:
