@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ingestion, chat, debug]
+        service: [ingestion, chat, debug, eval]
     steps:
       - uses: actions/checkout@v4
 
@@ -467,7 +467,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ingestion, chat, debug]
+        service: [ingestion, chat, debug, eval]
     steps:
       - uses: actions/checkout@v4
 
@@ -556,6 +556,7 @@ jobs:
           - services/ingestion/Dockerfile
           - services/chat/Dockerfile
           - services/debug/Dockerfile
+          - services/eval/Dockerfile
           - java/task-service/Dockerfile
           - java/activity-service/Dockerfile
           - java/notification-service/Dockerfile
@@ -618,6 +619,10 @@ jobs:
             context: services
             file: services/debug/Dockerfile
             image: debug
+          - service: eval
+            context: services
+            file: services/eval/Dockerfile
+            image: eval
           - service: java-task-service
             context: java/task-service
             file: java/task-service/Dockerfile
