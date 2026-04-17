@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ingestion, chat, debug]
+        service: [ingestion, chat, debug, eval]
     steps:
       - uses: actions/checkout@v4
 
@@ -467,7 +467,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ingestion, chat, debug]
+        service: [ingestion, chat, debug, eval]
     steps:
       - uses: actions/checkout@v4
 
@@ -486,11 +486,33 @@ jobs:
 
       # 2026-04-16: CVE-2025-71176 (pytest) — dev-only dep, fix at pytest 9.0.3 which is not yet released
       # 2026-04-16: GHSA-fv5p-p927-qmxr (langchain-text-splitters) — fix at 1.1.2 which is not yet released (latest is 0.3.11)
+      # 2026-04-17: ragas 0.2.x transitive deps — all langchain 0.2.x CVEs are unexploitable in our context
+      #   (no user-controlled templates, no EverNote/HTML loaders, no langchain serialization, text-only inputs)
+      #   Revisit when ragas 0.3.0 stable releases (will pull modern langchain 0.3.x)
+      # CVE-2025-45691 (ragas) — file read via image URLs, text-only service not affected
+      # CVE-2025-69872 (diskcache) — pickle deser requires local fs access
+      # CVE-2025-6984 (langchain-community) — XXE in EverNoteLoader, never used
+      # CVE-2025-65106, CVE-2025-68664, CVE-2026-26013, CVE-2026-40087, CVE-2026-34070 (langchain-core)
+      #   — template/serialization/path traversal, no untrusted input
+      # GHSA-r7w7-9xr2-qq2r (langchain-openai) — DNS rebinding in image token counting, not used
+      # CVE-2025-6985 (langchain-text-splitters) — XXE in HTMLSectionSplitter, not used
+      # GHSA-rr7j-v2q5-chgv (langsmith) — streaming bypass of output redaction, not used
       - name: Run pip-audit
         run: >
           pip-audit
           --ignore-vuln CVE-2025-71176
           --ignore-vuln GHSA-fv5p-p927-qmxr
+          --ignore-vuln CVE-2025-45691
+          --ignore-vuln CVE-2025-69872
+          --ignore-vuln CVE-2025-6984
+          --ignore-vuln CVE-2025-65106
+          --ignore-vuln CVE-2025-68664
+          --ignore-vuln CVE-2026-26013
+          --ignore-vuln CVE-2026-40087
+          --ignore-vuln CVE-2026-34070
+          --ignore-vuln GHSA-r7w7-9xr2-qq2r
+          --ignore-vuln CVE-2025-6985
+          --ignore-vuln GHSA-rr7j-v2q5-chgv
 
   security-npm-audit:
     name: Security - npm audit
@@ -534,6 +556,7 @@ jobs:
           - services/ingestion/Dockerfile
           - services/chat/Dockerfile
           - services/debug/Dockerfile
+          - services/eval/Dockerfile
           - java/task-service/Dockerfile
           - java/activity-service/Dockerfile
           - java/notification-service/Dockerfile
@@ -596,6 +619,10 @@ jobs:
             context: services
             file: services/debug/Dockerfile
             image: debug
+          - service: eval
+            context: services
+            file: services/eval/Dockerfile
+            image: eval
           - service: java-task-service
             context: java/task-service
             file: java/task-service/Dockerfile

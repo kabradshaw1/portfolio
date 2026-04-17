@@ -2,7 +2,7 @@ import json
 
 import httpx
 import structlog
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider, get_llm_provider
@@ -17,7 +17,7 @@ from slowapi.util import get_remote_address
 from sse_starlette.sse import EventSourceResponse
 from starlette.requests import Request
 
-from app.chain import rag_query
+from app.chain import rag_query, retrieve_chunks
 from app.config import settings
 from app.metrics import instrumentator
 
@@ -70,6 +70,12 @@ class ChatRequest(BaseModel):
     collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
 
 
+class SearchRequest(BaseModel):
+    query: str = Field(max_length=2000)
+    collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
+    limit: int = Field(default=5, ge=1, le=20)
+
+
 @app.get("/health")
 async def health():
     qdrant_ok = False
@@ -107,6 +113,34 @@ async def health():
 async def chat(
     request: Request, body: ChatRequest, user_id: str = Depends(require_auth)
 ):
+    wants_json = request.headers.get("accept", "").startswith("application/json")
+
+    if wants_json:
+        try:
+            tokens = []
+            sources = []
+            async for event in rag_query(
+                question=body.question,
+                llm_provider=_llm_provider,
+                embedding_provider=_embedding_provider,
+                chat_model=settings.get_llm_model(),
+                embedding_model=settings.embedding_model,
+                qdrant_host=settings.qdrant_host,
+                qdrant_port=settings.qdrant_port,
+                collection_name=body.collection or settings.collection_name,
+            ):
+                if "token" in event:
+                    tokens.append(event["token"])
+                if event.get("done"):
+                    sources = event.get("sources", [])
+            return {"answer": "".join(tokens), "sources": sources}
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.error("Backend service error: %s", e)
+            raise HTTPException(status_code=503, detail="Service unavailable")
+        except Exception as e:
+            logger.error("Internal error: %s", e, exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal error")
+
     async def event_generator():
         try:
             async for event in rag_query(
@@ -128,3 +162,35 @@ async def chat(
             yield {"data": json.dumps({"error": "Internal error"})}
 
     return EventSourceResponse(event_generator())
+
+
+@app.post("/search")
+@limiter.limit("30/minute")
+async def search(
+    request: Request, body: SearchRequest, user_id: str = Depends(require_auth)
+):
+    try:
+        chunks = await retrieve_chunks(
+            question=body.query,
+            embedding_provider=_embedding_provider,
+            embedding_model=settings.embedding_model,
+            qdrant_host=settings.qdrant_host,
+            qdrant_port=settings.qdrant_port,
+            collection_name=body.collection or settings.collection_name,
+            top_k=body.limit,
+        )
+    except (httpx.ConnectError, httpx.TimeoutException) as e:
+        logger.error("Embedding service error: %s", e)
+        raise HTTPException(status_code=503, detail="Embedding service unavailable")
+
+    return {
+        "results": [
+            {
+                "text": c["text"],
+                "filename": c["filename"],
+                "page_number": c["page_number"],
+                "score": c["score"],
+            }
+            for c in chunks
+        ]
+    }

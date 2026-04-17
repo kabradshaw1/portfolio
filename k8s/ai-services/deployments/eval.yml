@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eval
+  namespace: ai-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eval
+  template:
+    metadata:
+      labels:
+        app: eval
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: eval
+          image: ghcr.io/kabradshaw1/portfolio/eval:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: eval-config
+          volumeMounts:
+            - name: eval-data
+              mountPath: /app/data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: eval-data
+          emptyDir: {}

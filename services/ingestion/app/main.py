@@ -108,6 +108,18 @@ async def health():
     )
 
 
+@app.get("/collections")
+@limiter.limit("30/minute")
+async def list_collections(request: Request, user_id: str = Depends(require_auth)):
+    store = get_store()
+    try:
+        collections = store.list_collections()
+    except Exception as e:
+        logger.error("Qdrant error listing collections: %s", e, exc_info=True)
+        raise HTTPException(status_code=503, detail="Vector store unavailable")
+    return {"collections": collections}
+
+
 @app.post("/ingest")
 @limiter.limit("5/minute")
 async def ingest(

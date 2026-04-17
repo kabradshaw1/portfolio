@@ -126,6 +126,66 @@ def test_chat_returns_error_when_backend_unreachable(mock_rag_query):
     assert "Connection refused" not in response.text
 
 
+@patch("app.main.retrieve_chunks", new_callable=AsyncMock)
+def test_search_returns_chunks(mock_retrieve):
+    mock_retrieve.return_value = [
+        {
+            "text": "Hello world",
+            "filename": "test.pdf",
+            "page_number": 1,
+            "document_id": "abc",
+            "score": 0.92,
+        },
+        {
+            "text": "Goodbye world",
+            "filename": "test.pdf",
+            "page_number": 2,
+            "document_id": "abc",
+            "score": 0.85,
+        },
+    ]
+
+    response = client.post("/search", json={"query": "hello", "limit": 5})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["results"]) == 2
+    assert data["results"][0]["text"] == "Hello world"
+    assert data["results"][0]["score"] == 0.92
+
+
+def test_search_requires_query():
+    response = client.post("/search", json={})
+    assert response.status_code == 422
+
+
+def test_search_rejects_invalid_collection():
+    response = client.post(
+        "/search", json={"query": "hello", "collection": "DROP TABLE users"}
+    )
+    assert response.status_code == 422
+
+
+@patch("app.main.rag_query")
+def test_chat_json_mode(mock_rag_query):
+    async def fake_rag_query(**kwargs):
+        yield {"token": "Hello"}
+        yield {"token": " world"}
+        yield {"done": True, "sources": [{"file": "test.pdf", "page": 1}]}
+
+    mock_rag_query.return_value = fake_rag_query()
+
+    response = client.post(
+        "/chat",
+        json={"question": "What is this?"},
+        headers={"Accept": "application/json"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answer"] == "Hello world"
+    assert len(data["sources"]) == 1
+    assert data["sources"][0]["file"] == "test.pdf"
+
+
 def test_cors_rejects_unknown_origin():
     response = client.options(
         "/health",

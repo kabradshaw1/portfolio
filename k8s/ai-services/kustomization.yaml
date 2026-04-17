@@ -5,13 +5,16 @@ resources:
   - namespace.yml
   - configmaps/chat-config.yml
   - configmaps/debug-config.yml
+  - configmaps/eval-config.yml
   - configmaps/ingestion-config.yml
   - deployments/chat.yml
   - deployments/debug.yml
+  - deployments/eval.yml
   - deployments/ingestion.yml
   - deployments/qdrant.yml
   - services/chat.yml
   - services/debug.yml
+  - services/eval.yml
   - services/ingestion.yml
   - services/qdrant.yml
   - ingress.yml
