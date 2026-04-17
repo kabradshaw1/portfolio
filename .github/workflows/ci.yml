@@ -681,13 +681,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine image tag
+      - name: Determine image tags
         id: tag
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/${{ matrix.image }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
         run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "tag=latest" >> $GITHUB_OUTPUT
+          if [ "$REF" = "refs/heads/main" ]; then
+            echo "tags=${IMAGE}:latest" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=qa-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+            SHORT_SHA=$(echo "$SHA" | cut -c1-7)
+            echo "tags=${IMAGE}:qa-${SHORT_SHA},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and push image
@@ -696,7 +701,7 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           push: true
-          tags: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ steps.tag.outputs.tag }}
+          tags: ${{ steps.tag.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
