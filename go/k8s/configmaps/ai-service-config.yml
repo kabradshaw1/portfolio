@@ -8,6 +8,8 @@ data:
   OLLAMA_URL: "http://ollama.ai-services.svc.cluster.local:11434"
   OLLAMA_MODEL: "qwen2.5:14b"
   ECOMMERCE_URL: "http://go-ecommerce-service:8092"
+  RAG_CHAT_URL: "http://chat-service.ai-services.svc.cluster.local:8001"
+  RAG_INGESTION_URL: "http://ingestion-service.ai-services.svc.cluster.local:8002"
   REDIS_URL: "redis://redis.java-tasks.svc.cluster.local:6379"
   OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"
   ALLOWED_ORIGINS: "http://localhost:3000,https://kylebradshaw.dev"

@@ -55,6 +55,8 @@ func runServe() {
 	ollamaURL := getenv("OLLAMA_URL", "http://ollama:11434")
 	ollamaModel := getenv("OLLAMA_MODEL", "qwen2.5:14b")
 	ecommerceURL := getenv("ECOMMERCE_URL", "http://ecommerce-service:8092")
+	ragChatURL := getenv("RAG_CHAT_URL", "http://chat-service:8001")
+	ragIngestionURL := getenv("RAG_INGESTION_URL", "http://ingestion-service:8002")
 	redisURL := getenv("REDIS_URL", "")
 
 	jwtSecret := os.Getenv("JWT_SECRET")
@@ -79,6 +81,10 @@ func runServe() {
 		Name:          "ai-ecommerce",
 		OnStateChange: resilience.ObserveStateChange,
 	})
+	ragBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "ai-rag",
+		OnStateChange: resilience.ObserveStateChange,
+	})
 	redisBreaker := resilience.NewBreaker(resilience.BreakerConfig{
 		Name:          "ai-redis",
 		OnStateChange: resilience.ObserveStateChange,
@@ -100,6 +106,7 @@ func runServe() {
 
 	// Tool registry
 	ecomClient := clients.NewEcommerceClient(ecommerceURL, ecomBreaker)
+	ragClient := clients.NewRAGClient(ragChatURL, ragIngestionURL, ragBreaker)
 
 	var toolCache cache.Cache = cache.NopCache{}
 	var limiter *guardrails.Limiter
@@ -130,6 +137,11 @@ func runServe() {
 	registry.Register(tools.NewViewCartTool(ecomClient))
 	registry.Register(tools.NewAddToCartTool(ecomClient))
 	registry.Register(tools.NewInitiateReturnTool(ecomClient))
+
+	// RAG document tools
+	registry.Register(tools.Cached(tools.NewSearchDocumentsTool(ragClient), toolCache, 30*time.Second))
+	registry.Register(tools.NewAskDocumentTool(ragClient))
+	registry.Register(tools.Cached(tools.NewListCollectionsTool(ragClient), toolCache, 60*time.Second))
 
 	// MCP streamable HTTP endpoint
 	mcpSrv := mcpadapter.NewServer(registry, mcpadapter.Defaults{})

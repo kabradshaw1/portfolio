@@ -164,3 +164,30 @@ def test_delete_collection_not_found(mock_qdrant_client):
     mock_qdrant_client.collection_exists.return_value = False
     with pytest.raises(ValueError, match="Collection nonexistent not found"):
         store.delete_collection("nonexistent")
+
+
+def test_list_collections(mock_qdrant_client):
+    store = QdrantStore(host="localhost", port=6333, collection_name="default")
+
+    collection1 = MagicMock()
+    collection1.name = "documents"
+    collection2 = MagicMock()
+    collection2.name = "debug-myproject"
+
+    mock_qdrant_client.get_collections.return_value = MagicMock(
+        collections=[collection1, collection2]
+    )
+
+    info1 = MagicMock()
+    info1.points_count = 150
+    info2 = MagicMock()
+    info2.points_count = 42
+
+    mock_qdrant_client.get_collection.side_effect = [info1, info2]
+
+    result = store.list_collections()
+    assert len(result) == 2
+    assert result[0]["name"] == "documents"
+    assert result[0]["point_count"] == 150
+    assert result[1]["name"] == "debug-myproject"
+    assert result[1]["point_count"] == 42
