@@ -1,4 +1,4 @@
-.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-security preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup
+.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-go-integration preflight-security preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup
 
 # Run all CI checks locally before pushing
 preflight: grafana-sync-check preflight-python preflight-frontend preflight-security preflight-java preflight-go
@@ -53,6 +53,11 @@ preflight-go:
 	cd go/auth-service && go test ./... -v -race
 	cd go/ecommerce-service && go test ./... -v -race
 	cd go/ai-service && go test ./... -v -race
+
+# --- Go integration tests (requires Docker via Colima) ---
+preflight-go-integration:
+	@echo "\n=== Go: integration tests (ecommerce) ==="
+	cd go/ecommerce-service && DOCKER_HOST=unix://$${HOME}/.colima/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock go test -tags=integration -race -timeout 180s ./internal/integration/...
 
 # Bootstrap golangci-lint into .bin/ pinned to the version CI uses,
 # so local preflight catches the same lint issues that gate CI.
