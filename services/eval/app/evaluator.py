@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
-from ragas import EvaluationDataset
-from ragas import evaluate as ragas_evaluate
-from ragas.dataset_schema import SingleTurnSample
-from ragas.llms import llm_factory
-from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
-
-from app.rag_client import RAGClient
+if TYPE_CHECKING:
+    from app.rag_client import RAGClient
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +34,9 @@ async def build_ragas_dataset(
 
 def _create_llm(provider: str, base_url: str, model: str, api_key: str):
     """Create a RAGAS-compatible LLM from the service config."""
+    from ragas.llms import llm_factory
+
     if provider == "ollama":
-        # Ollama exposes an OpenAI-compatible API at base_url/v1
         return llm_factory(model=model, base_url=f"{base_url}/v1")
     else:
         return llm_factory(model=model, base_url=base_url)
@@ -54,7 +51,22 @@ async def run_evaluation(
     llm_model: str,
     llm_api_key: str,
 ) -> tuple[dict, list[dict]]:
-    """Run a full RAGAS evaluation and return (aggregate_scores, per_query_results)."""
+    """Run a full RAGAS evaluation and return (aggregate_scores, per_query_results).
+
+    RAGAS imports are deferred to call time because ragas uses nest_asyncio
+    at import time, which is incompatible with uvloop (used by uvicorn).
+    """
+    # Lazy imports — ragas + nest_asyncio conflict with uvloop at import time
+    from ragas import EvaluationDataset
+    from ragas import evaluate as ragas_evaluate
+    from ragas.dataset_schema import SingleTurnSample
+    from ragas.metrics import (
+        AnswerRelevancy,
+        ContextPrecision,
+        ContextRecall,
+        Faithfulness,
+    )
+
     # Step 1: Build dataset by running queries through RAG pipeline
     raw_dataset = await build_ragas_dataset(items, rag_client, collection)
 

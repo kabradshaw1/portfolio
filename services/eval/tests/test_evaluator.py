@@ -97,7 +97,7 @@ async def test_build_ragas_dataset_with_collection(
 
 @pytest.mark.asyncio
 @patch("app.evaluator._create_llm")
-@patch("app.evaluator.ragas_evaluate")
+@patch("ragas.evaluate")
 async def test_run_evaluation(
     mock_ragas_evaluate,
     mock_create_llm,
