@@ -497,12 +497,9 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
+          pip install --upgrade pip
           pip install services/shared/
           pip install -r services/${{ matrix.service }}/requirements.txt
-
-      - name: Install pip-audit
-        run: |
-          source .venv/bin/activate
           pip install pip-audit
 
       # 2026-04-16: CVE-2025-71176 (pytest) — dev-only dep, fix at pytest 9.0.3 which is not yet released
@@ -791,7 +788,6 @@ jobs:
           # Apply QA Kustomize overlays (rewrite image tags inline)
           kubectl kustomize k8s/overlays/qa/ | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
           kubectl kustomize k8s/overlays/qa-java/ | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
-          kubectl kustomize k8s/overlays/qa-go/ | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
 
           # Seed placeholder go-secrets in QA so go-auth-service can start.
           # The service rejects empty GOOGLE_CLIENT_ID at startup but accepts any
@@ -803,23 +799,27 @@ jobs:
             --from-literal=jwt-secret='dev-secret-key-at-least-32-characters-long' \
             --dry-run=client -o yaml | kubectl apply -f -"
 
-          # Run Go migration jobs in QA namespace.
-          # Jobs are immutable; delete before re-applying so they re-run on every deploy.
+          # Delete Go migration jobs BEFORE applying the Go overlay.
+          # Jobs are immutable — the image tag sed replacement would fail on apply
+          # if the jobs already exist with a different tag.
           $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
+
+          # Apply Go overlay (includes Jobs, which are now fresh creates, not patches)
+          kubectl kustomize k8s/overlays/qa-go/ | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
 
           # auth-migrate MUST run before ecommerce-migrate: both services share
           # the same Postgres, and ecommerce-service's migrations reference users(id)
           # which is created by auth-service's migrations.
-          # Source job manifests target the prod namespace (`go-ecommerce`); rewrite
-          # to the QA namespace inline. ConfigMap lookups (DATABASE_URL) resolve
-          # within the same namespace, so the QA-patched ConfigMap is used automatically.
-          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | $SSH "kubectl apply -f -"
+          # The kustomize apply above already created the jobs, but they need to be
+          # re-run sequentially. Delete and re-apply with namespace rewrite.
+          $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
+          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
-          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/ecommerce-service-migrate.yml | $SSH "kubectl apply -f -"
+          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/ecommerce-service-migrate.yml | sed "s|:latest|:${QA_TAG}|g" | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
