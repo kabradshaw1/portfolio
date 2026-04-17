@@ -12,8 +12,6 @@ import uuid
 from typing import Any
 
 import structlog
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from structlog.types import EventDict, WrappedLogger
 
 
@@ -129,33 +127,54 @@ def configure_logging(
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 
-class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Starlette middleware that adds per-request structured logging context.
+class RequestLoggingMiddleware:
+    """Pure ASGI middleware for per-request structured logging context.
 
-    For every incoming request:
+    Uses raw ASGI instead of BaseHTTPMiddleware to avoid breaking SSE/streaming
+    responses (BaseHTTPMiddleware wraps the response body iterator, which
+    truncates streaming bodies).
+
+    For every incoming HTTP request:
     - Generates a UUID4 request_id and binds it (plus method + path) to
       structlog's contextvars so every log line emitted during the request
       automatically carries those fields — no manual passing needed.
     - Logs ``request_finished`` with status_code and duration_ms on success.
     - Logs ``request_failed`` with exc_info on unhandled exception, then
       re-raises so FastAPI's exception handlers still fire.
-    - Sets the ``x-request-id`` response header for client correlation.
+    - Injects the ``x-request-id`` response header for client correlation.
     """
 
-    async def dispatch(self, request: Request, call_next):
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
         request_id = str(uuid.uuid4())
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(
             request_id=request_id,
-            method=request.method,
-            path=request.url.path,
+            method=scope["method"],
+            path=scope["path"],
         )
 
         logger = structlog.get_logger()
         start = time.perf_counter()
+        status_code = 500
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+                headers = list(message.get("headers", []))
+                headers.append((b"x-request-id", request_id.encode()))
+                message = {**message, "headers": headers}
+            await send(message)
 
         try:
-            response = await call_next(request)
+            await self.app(scope, receive, send_wrapper)
         except Exception:
             logger.error("request_failed", exc_info=True)
             raise
@@ -163,8 +182,6 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             duration_ms = round((time.perf_counter() - start) * 1000, 1)
             logger.info(
                 "request_finished",
-                status_code=response.status_code,
+                status_code=status_code,
                 duration_ms=duration_ms,
             )
-            response.headers["x-request-id"] = request_id
-            return response
