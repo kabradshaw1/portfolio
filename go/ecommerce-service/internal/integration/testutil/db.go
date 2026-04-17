@@ -19,7 +19,7 @@ import (
 // RunMigrations reads all .up.sql files from the service migrations directory,
 // sorts them lexicographically (matching golang-migrate ordering), creates the
 // pgcrypto extension, and executes each file in sequence.
-func RunMigrations(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
+func RunMigrations(ctx context.Context, t testing.TB, pool *pgxpool.Pool) {
 	t.Helper()
 
 	// Locate this file at runtime to build a stable relative path to migrations/.
@@ -60,7 +60,7 @@ func RunMigrations(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 
 // TruncateAll removes all rows from every data table in FK-safe order so tests
 // can start with a clean slate without recreating the schema.
-func TruncateAll(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
+func TruncateAll(ctx context.Context, t testing.TB, pool *pgxpool.Pool) {
 	t.Helper()
 
 	// Order matters: child tables before parents.
@@ -73,7 +73,7 @@ func TruncateAll(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 
 // SeedProducts inserts n products with varied names, prices, categories, and
 // staggered created_at timestamps. It returns the inserted IDs as strings.
-func SeedProducts(ctx context.Context, t *testing.T, pool *pgxpool.Pool, n int) []string {
+func SeedProducts(ctx context.Context, t testing.TB, pool *pgxpool.Pool, n int) []string {
 	t.Helper()
 
 	categories := []string{"electronics", "clothing", "books", "home", "sports"}
@@ -87,13 +87,14 @@ func SeedProducts(ctx context.Context, t *testing.T, pool *pgxpool.Pool, n int) 
 
 		var id string
 		err := pool.QueryRow(ctx,
-			`INSERT INTO products (name, description, price, category, stock, created_at, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $6)
+			`INSERT INTO products (name, description, price, category, image_url, stock, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
 			 RETURNING id::text`,
 			name,
 			fmt.Sprintf("Description for %s", name),
 			price,
 			category,
+			fmt.Sprintf("https://example.com/products/%d.jpg", i+1),
 			10+i, // varied stock
 			createdAt,
 		).Scan(&id)

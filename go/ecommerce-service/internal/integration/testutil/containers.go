@@ -32,7 +32,7 @@ type Infra struct {
 // SetupInfra starts Postgres 16-alpine, Redis 7-alpine, and RabbitMQ 3-alpine
 // containers, establishes connections to all three, and registers t.Cleanup to
 // tear everything down at the end of the test.
-func SetupInfra(ctx context.Context, t *testing.T) *Infra {
+func SetupInfra(ctx context.Context, t testing.TB) *Infra {
 	t.Helper()
 
 	// ── Postgres ──────────────────────────────────────────────────────────────
@@ -144,4 +144,18 @@ func SetupInfra(ctx context.Context, t *testing.T) *Infra {
 	})
 
 	return infra
+}
+
+// Teardown closes all connections and terminates all containers. It is
+// intended for use in TestMain where t.Cleanup cannot be used.
+func (i *Infra) Teardown() {
+	_ = i.RabbitCh.Close()
+	_ = i.RabbitConn.Close()
+	_ = i.RedisClient.Close()
+	i.Pool.Close()
+
+	ctx := context.Background()
+	_ = i.pgContainer.Terminate(ctx)
+	_ = i.redisContainer.Terminate(ctx)
+	_ = i.rabbitContainer.Terminate(ctx)
 }

@@ -15,7 +15,7 @@ import (
 // DoRequest fires an HTTP request against the provided gin router and returns
 // the recorded response. body may be empty for requests without a payload.
 func DoRequest(
-	t *testing.T,
+	t testing.TB,
 	router *gin.Engine,
 	method, path, body string,
 	headers map[string]string,
@@ -48,7 +48,7 @@ func DoRequest(
 
 // ParseJSON unmarshals the recorder's response body into target. The test
 // fails immediately on any decode error.
-func ParseJSON(t *testing.T, w *httptest.ResponseRecorder, target any) {
+func ParseJSON(t testing.TB, w *httptest.ResponseRecorder, target any) {
 	t.Helper()
 
 	if err := json.NewDecoder(w.Body).Decode(target); err != nil {
