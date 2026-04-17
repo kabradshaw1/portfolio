@@ -1,4 +1,5 @@
 import { MermaidDiagram } from "@/components/MermaidDiagram";
+import { QADiffSection } from "@/components/QADiffSection";
 
 const pipelineFlowDiagram = `flowchart LR
   subgraph PR["Pull Request to qa"]
@@ -225,6 +226,19 @@ export default function CICDPage() {
             set QA-specific CORS origins, database names, and ingress hosts —
             without duplicating the manifests themselves.
           </p>
+          <div className="mt-4 flex items-center gap-4">
+            <a
+              href="https://qa.kylebradshaw.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 transition-colors"
+            >
+              Visit the QA environment →
+            </a>
+            <span className="text-sm text-muted-foreground">
+              See the latest pre-prod build before it ships.
+            </span>
+          </div>
           <div className="mt-4">
             <MermaidDiagram chart={qaArchitectureDiagram} />
           </div>
@@ -254,6 +268,7 @@ export default function CICDPage() {
               </tbody>
             </table>
           </div>
+          <QADiffSection />
         </section>
 
         {/* Image Tagging */}

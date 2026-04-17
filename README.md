@@ -53,6 +53,18 @@ Next.js + TypeScript + shadcn/ui + Apollo Client, deployed on Vercel. Sections f
 
 ---
 
+## QA Environment
+
+Every change goes through a QA branch before reaching production. Feature branches merge into `qa`, which auto-deploys to a parallel set of Kubernetes namespaces (`ai-services-qa`, `java-tasks-qa`, `go-ecommerce-qa`) and a separate Vercel frontend build. Once visually inspected, `qa` merges into `main` for production deploy.
+
+- **QA frontend:** [qa.kylebradshaw.dev](https://qa.kylebradshaw.dev)
+- **QA API:** `qa-api.kylebradshaw.dev`
+- **Production:** [kylebradshaw.dev](https://kylebradshaw.dev) / `api.kylebradshaw.dev`
+
+The `/cicd` page on the live site shows what's currently staged on QA vs production.
+
+---
+
 ## Infrastructure & DevOps
 
 - **Kubernetes (Minikube)** on a self-installed **Debian 13 server** with an RTX 3090 running Ollama natively for GPU inference

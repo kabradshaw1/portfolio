@@ -4,6 +4,8 @@ import "./globals.css";
 import { AuthProvider } from "@/components/java/AuthProvider";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { QABanner } from "@/components/QABanner";
+import { EnvironmentChip } from "@/components/EnvironmentChip";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,7 +34,9 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <AuthProvider>
+          <QABanner />
           <SiteHeader />
+          <EnvironmentChip />
           {children}
           <SiteFooter />
         </AuthProvider>
