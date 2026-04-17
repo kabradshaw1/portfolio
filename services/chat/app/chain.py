@@ -63,6 +63,34 @@ async def stream_response(
             break
 
 
+async def retrieve_chunks(
+    question: str,
+    embedding_provider: EmbeddingProvider,
+    embedding_model: str,
+    qdrant_host: str,
+    qdrant_port: int,
+    collection_name: str,
+    top_k: int = 5,
+) -> list[dict]:
+    """Embed question and retrieve ranked chunks from Qdrant."""
+    retrieve_start = time.perf_counter()
+    vectors = await embed_texts(
+        texts=[question],
+        provider=embedding_provider,
+        model=embedding_model,
+    )
+    query_vector = vectors[0]
+
+    retriever = QdrantRetriever(
+        host=qdrant_host, port=qdrant_port, collection_name=collection_name
+    )
+    chunks = retriever.search(query_vector=query_vector, top_k=top_k)
+    RAG_PIPELINE_DURATION.labels(stage="retrieve").observe(
+        time.perf_counter() - retrieve_start
+    )
+    return chunks
+
+
 async def rag_query(
     question: str,
     llm_provider: LLMProvider,
@@ -74,22 +102,15 @@ async def rag_query(
     collection_name: str,
     top_k: int = 5,
 ) -> AsyncGenerator[dict, None]:
-    # Embed the question
-    retrieve_start = time.perf_counter()
-    vectors = await embed_texts(
-        texts=[question],
-        provider=embedding_provider,
-        model=embedding_model,
-    )
-    query_vector = vectors[0]
-
     # Retrieve relevant chunks
-    retriever = QdrantRetriever(
-        host=qdrant_host, port=qdrant_port, collection_name=collection_name
-    )
-    chunks = retriever.search(query_vector=query_vector, top_k=top_k)
-    RAG_PIPELINE_DURATION.labels(stage="retrieve").observe(
-        time.perf_counter() - retrieve_start
+    chunks = await retrieve_chunks(
+        question=question,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
+        qdrant_host=qdrant_host,
+        qdrant_port=qdrant_port,
+        collection_name=collection_name,
+        top_k=top_k,
     )
 
     # Build prompt
