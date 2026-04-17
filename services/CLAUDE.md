@@ -25,7 +25,7 @@ Before every commit touching `services/`:
 
 ## Known Issues
 
-- langchain 0.2.x has 5 CVEs that require 0.3.x migration (ignored in pip-audit). Migration tracked as future work.
+- langchain-community removed (unused). Only langchain-text-splitters is used (ingestion + debug services).
 
 ## Adding a New Service
 
