@@ -213,11 +213,11 @@ func main() {
 	auth.Use(ecomLimiter.Middleware())
 	{
 		auth.GET("/cart", cartHandler.GetCart)
-		auth.POST("/cart", cartHandler.AddItem)
+		auth.POST("/cart", middleware.Idempotency(redisClient, false), cartHandler.AddItem)
 		auth.PUT("/cart/:itemId", cartHandler.UpdateQuantity)
 		auth.DELETE("/cart/:itemId", cartHandler.RemoveItem)
 
-		auth.POST("/orders", orderHandler.Checkout)
+		auth.POST("/orders", middleware.Idempotency(redisClient, true), orderHandler.Checkout)
 		auth.GET("/orders", orderHandler.List)
 		auth.GET("/orders/:id", orderHandler.GetByID)
 		auth.POST("/orders/:id/returns", returnHandler.Initiate)
