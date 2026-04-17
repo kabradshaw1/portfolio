@@ -2,14 +2,17 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/pagination"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/validate"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 )
@@ -34,6 +37,7 @@ func (h *ProductHandler) List(c *gin.Context) {
 	category := c.Query("category")
 	query := c.Query("q")
 	sort := c.DefaultQuery("sort", "created_at_desc")
+	cursor := c.Query("cursor")
 
 	if errs := validate.ProductListParams(sort, page, limit); len(errs) > 0 {
 		_ = c.Error(apperror.Validation(errs))
@@ -46,6 +50,7 @@ func (h *ProductHandler) List(c *gin.Context) {
 		Sort:     sort,
 		Page:     page,
 		Limit:    limit,
+		Cursor:   cursor,
 	}
 
 	products, total, err := h.svc.List(c.Request.Context(), params)
@@ -54,12 +59,51 @@ func (h *ProductHandler) List(c *gin.Context) {
 		return
 	}
 
+	if cursor != "" {
+		// Cursor-based pagination response
+		hasMore := len(products) > limit
+		if hasMore {
+			products = products[:limit]
+		}
+		var nextCursor string
+		if hasMore && len(products) > 0 {
+			nextCursor = buildProductCursor(products[len(products)-1], sort)
+		}
+		c.JSON(http.StatusOK, model.ProductListResponse{
+			Products:   products,
+			Limit:      limit,
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
+		})
+		return
+	}
+
+	// Offset-based pagination response with forward-compatibility cursor
+	var nextCursor string
+	hasMore := total > page*limit
+	if hasMore && len(products) > 0 {
+		nextCursor = buildProductCursor(products[len(products)-1], sort)
+	}
 	c.JSON(http.StatusOK, model.ProductListResponse{
-		Products: products,
-		Total:    total,
-		Page:     page,
-		Limit:    limit,
+		Products:   products,
+		Total:      total,
+		Page:       page,
+		Limit:      limit,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
 	})
+}
+
+// buildProductCursor encodes the last product in a page into a cursor for the next page.
+func buildProductCursor(p model.Product, sort string) string {
+	switch sort {
+	case "price_asc", "price_desc":
+		return pagination.EncodeCursor(fmt.Sprintf("%d", p.Price), p.ID)
+	case "name_asc":
+		return pagination.EncodeCursor(p.Name, p.ID)
+	default: // created_at_desc
+		return pagination.EncodeCursor(p.CreatedAt.Format(time.RFC3339Nano), p.ID)
+	}
 }
 
 func (h *ProductHandler) GetByID(c *gin.Context) {
