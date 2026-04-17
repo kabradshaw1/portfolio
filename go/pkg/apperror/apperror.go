@@ -8,10 +8,11 @@ import (
 // AppError is a structured application error with an HTTP status code and
 // machine-readable error code. It satisfies the error interface.
 type AppError struct {
-	Code       string `json:"code"`
-	Message    string `json:"message"`
-	HTTPStatus int    `json:"-"`
-	Err        error  `json:"-"`
+	Code       string       `json:"code"`
+	Message    string       `json:"message"`
+	HTTPStatus int          `json:"-"`
+	Err        error        `json:"-"`
+	Fields     []FieldError `json:"-"`
 }
 
 func (e *AppError) Error() string { return e.Message }
@@ -28,6 +29,19 @@ type ErrorBody struct {
 // ErrorResponse is the top-level JSON envelope returned to clients.
 type ErrorResponse struct {
 	Error ErrorBody `json:"error"`
+}
+
+// ValidationErrorBody extends ErrorBody with field-level validation details.
+type ValidationErrorBody struct {
+	Code      string       `json:"code"`
+	Message   string       `json:"message"`
+	RequestID string       `json:"request_id,omitempty"`
+	Fields    []FieldError `json:"fields"`
+}
+
+// ValidationErrorResponse is the top-level JSON envelope for 422 responses.
+type ValidationErrorResponse struct {
+	Error ValidationErrorBody `json:"error"`
 }
 
 // --- Constructors ---

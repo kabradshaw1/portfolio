@@ -91,6 +91,51 @@ func TestErrorHandler_NoError(t *testing.T) {
 	}
 }
 
+func TestErrorHandler_ValidationError(t *testing.T) {
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("requestId", "req-val")
+		c.Next()
+	})
+	r.Use(ErrorHandler())
+	r.POST("/test", func(c *gin.Context) {
+		_ = c.Error(Validation([]FieldError{
+			{Field: "quantity", Message: "must be between 1 and 99"},
+		}))
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", w.Code)
+	}
+
+	var resp ValidationErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Error.Code != "VALIDATION_ERROR" {
+		t.Errorf("code = %q, want VALIDATION_ERROR", resp.Error.Code)
+	}
+	if resp.Error.Message != "validation failed" {
+		t.Errorf("message = %q, want validation failed", resp.Error.Message)
+	}
+	if resp.Error.RequestID != "req-val" {
+		t.Errorf("request_id = %q, want req-val", resp.Error.RequestID)
+	}
+	if len(resp.Error.Fields) != 1 {
+		t.Fatalf("len(fields) = %d, want 1", len(resp.Error.Fields))
+	}
+	if resp.Error.Fields[0].Field != "quantity" {
+		t.Errorf("fields[0].field = %q, want quantity", resp.Error.Fields[0].Field)
+	}
+	if resp.Error.Fields[0].Message != "must be between 1 and 99" {
+		t.Errorf("fields[0].message = %q", resp.Error.Fields[0].Message)
+	}
+}
+
 func TestErrorHandler_MissingRequestID(t *testing.T) {
 	r := gin.New()
 	r.Use(ErrorHandler())
