@@ -10,6 +10,7 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/validate"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 )
 
@@ -34,11 +35,9 @@ func (h *ProductHandler) List(c *gin.Context) {
 	query := c.Query("q")
 	sort := c.DefaultQuery("sort", "created_at_desc")
 
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 || limit > 100 {
-		limit = 20
+	if errs := validate.ProductListParams(sort, page, limit); len(errs) > 0 {
+		_ = c.Error(apperror.Validation(errs))
+		return
 	}
 
 	params := model.ProductListParams{

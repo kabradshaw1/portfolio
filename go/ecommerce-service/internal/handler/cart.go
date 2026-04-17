@@ -9,6 +9,7 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/validate"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 )
 
@@ -60,15 +61,16 @@ func (h *CartHandler) AddItem(c *gin.Context) {
 
 	var req model.AddToCartRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		_ = c.Error(apperror.BadRequest("VALIDATION_ERROR", err.Error()))
+		_ = c.Error(apperror.BadRequest("INVALID_JSON", "invalid request body"))
 		return
 	}
 
-	productID, err := uuid.Parse(req.ProductID)
-	if err != nil {
-		_ = c.Error(apperror.BadRequest("INVALID_ID", "invalid product ID"))
+	if errs := validate.AddToCart(req.ProductID, req.Quantity); len(errs) > 0 {
+		_ = c.Error(apperror.Validation(errs))
 		return
 	}
+
+	productID, _ := uuid.Parse(req.ProductID)
 
 	item, err := h.svc.AddItem(c.Request.Context(), userID, productID, req.Quantity)
 	if err != nil {
@@ -95,7 +97,12 @@ func (h *CartHandler) UpdateQuantity(c *gin.Context) {
 
 	var req model.UpdateCartRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		_ = c.Error(apperror.BadRequest("VALIDATION_ERROR", err.Error()))
+		_ = c.Error(apperror.BadRequest("INVALID_JSON", "invalid request body"))
+		return
+	}
+
+	if errs := validate.UpdateCart(req.Quantity); len(errs) > 0 {
+		_ = c.Error(apperror.Validation(errs))
 		return
 	}
 
