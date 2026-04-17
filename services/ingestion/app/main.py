@@ -1,15 +1,17 @@
-import logging
 import re
 import uuid
 from io import BytesIO
 
 import httpx
+import structlog
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider
 from qdrant_client import QdrantClient
 from shared.auth import create_auth_dependency
+from shared.logging import RequestLoggingMiddleware, configure_logging
+from shared.tracing import configure_tracing, instrument_app
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -22,7 +24,10 @@ from app.metrics import CHUNKS_CREATED, instrumentator
 from app.pdf_parser import extract_pages
 from app.store import QdrantStore
 
-logger = logging.getLogger(__name__)
+configure_logging(service_name="ingestion")
+configure_tracing(service_name="ingestion")
+
+logger = structlog.get_logger()
 
 app = FastAPI(title="Ingestion API")
 
@@ -34,8 +39,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
+instrument_app(app)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -149,7 +156,7 @@ async def ingest(
             model=settings.embedding_model,
         )
     except (httpx.ConnectError, httpx.TimeoutException) as e:
-        logger.error("Embedding service error: %s", e)
+        logger.error("embedding_service_error", error=str(e))
         raise HTTPException(status_code=503, detail="Embedding service unavailable")
 
     document_id = str(uuid.uuid4())
@@ -169,7 +176,7 @@ async def ingest(
             filename=file.filename,
         )
     except Exception as e:
-        logger.error("Vector store error: %s", e, exc_info=True)
+        logger.error("vector_store_error", error=str(e), exc_info=True)
         raise HTTPException(status_code=503, detail="Vector store unavailable")
 
     CHUNKS_CREATED.labels(service="ingestion").inc(len(chunks))
