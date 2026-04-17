@@ -2,8 +2,7 @@ fastapi==0.135.3
 uvicorn[standard]==0.30.0
 python-multipart==0.0.26
 pypdf==6.10.2
-langchain-text-splitters==0.2.4
-langchain-community==0.2.19
+langchain-text-splitters==0.3.11
 qdrant-client==1.9.0
 httpx==0.28.1
 pydantic-settings==2.3.0
