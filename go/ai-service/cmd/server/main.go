@@ -183,7 +183,7 @@ func runServe() {
 	}
 
 	// Agent
-	a := agent.New(llmc, registry, metrics.PromRecorder{}, 8, 30*time.Second).WithModel(ollamaModel)
+	a := agent.New(llmc, registry, metrics.PromRecorder{}, 8, 90*time.Second).WithModel(ollamaModel)
 
 	// HTTP
 	router := gin.New()
