@@ -165,6 +165,27 @@ def test_search_rejects_invalid_collection():
     assert response.status_code == 422
 
 
+@patch("app.main.rag_query")
+def test_chat_json_mode(mock_rag_query):
+    async def fake_rag_query(**kwargs):
+        yield {"token": "Hello"}
+        yield {"token": " world"}
+        yield {"done": True, "sources": [{"file": "test.pdf", "page": 1}]}
+
+    mock_rag_query.return_value = fake_rag_query()
+
+    response = client.post(
+        "/chat",
+        json={"question": "What is this?"},
+        headers={"Accept": "application/json"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answer"] == "Hello world"
+    assert len(data["sources"]) == 1
+    assert data["sources"][0]["file"] == "test.pdf"
+
+
 def test_cors_rejects_unknown_origin():
     response = client.options(
         "/health",

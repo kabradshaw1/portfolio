@@ -106,6 +106,34 @@ async def health():
 async def chat(
     request: Request, body: ChatRequest, user_id: str = Depends(require_auth)
 ):
+    wants_json = request.headers.get("accept", "").startswith("application/json")
+
+    if wants_json:
+        try:
+            tokens = []
+            sources = []
+            async for event in rag_query(
+                question=body.question,
+                llm_provider=_llm_provider,
+                embedding_provider=_embedding_provider,
+                chat_model=settings.get_llm_model(),
+                embedding_model=settings.embedding_model,
+                qdrant_host=settings.qdrant_host,
+                qdrant_port=settings.qdrant_port,
+                collection_name=body.collection or settings.collection_name,
+            ):
+                if "token" in event:
+                    tokens.append(event["token"])
+                if event.get("done"):
+                    sources = event.get("sources", [])
+            return {"answer": "".join(tokens), "sources": sources}
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.error("Backend service error: %s", e)
+            raise HTTPException(status_code=503, detail="Service unavailable")
+        except Exception as e:
+            logger.error("Internal error: %s", e, exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal error")
+
     async def event_generator():
         try:
             async for event in rag_query(
