@@ -114,15 +114,35 @@ export default function Home() {
               <CardHeader>
                 <CardTitle>CI/CD Pipeline</CardTitle>
                 <CardDescription>
-                  Unified GitHub Actions workflow with QA environment and agent
-                  automation
+                  Unified GitHub Actions workflow with a live QA environment at
+                  qa.kylebradshaw.dev for pre-prod review
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground text-sm">
                   A single workflow handles quality checks, image builds, and
                   deployments for three service stacks — designed for a solo
-                  developer with automated spec-to-production delivery.
+                  developer with automated spec-to-production delivery. See
+                  what&apos;s currently staged for production review on the
+                  CI/CD page.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/security" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>Security</CardTitle>
+                <CardDescription>
+                  Defense-in-depth across the stack — application, CI/CD,
+                  Kubernetes, and the hardened Linux host that runs it all
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Six CI security gates, JWT + httpOnly cookies, pod security
+                  contexts, UFW default-deny firewall, Tailscale-only SSH,
+                  auditd, sysctl hardening, and a lynis baseline score of 77.
                 </p>
               </CardContent>
             </Card>

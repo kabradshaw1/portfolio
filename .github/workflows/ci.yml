@@ -484,18 +484,13 @@ jobs:
       - name: Install pip-audit
         run: pip install pip-audit
 
+      # 2026-04-16: CVE-2025-71176 (pytest) — dev-only dep, fix at pytest 9.0.3 which is not yet released
+      # 2026-04-16: GHSA-fv5p-p927-qmxr (langchain-text-splitters) — fix at 1.1.2 which is not yet released (latest is 0.3.11)
       - name: Run pip-audit
         run: >
           pip-audit
-          --ignore-vuln CVE-2025-6984
-          --ignore-vuln CVE-2025-65106
-          --ignore-vuln CVE-2025-68664
-          --ignore-vuln CVE-2026-26013
-          --ignore-vuln CVE-2025-6985
-          --ignore-vuln GHSA-926x-3r5x-gfhw
           --ignore-vuln CVE-2025-71176
-          --ignore-vuln GHSA-rr7j-v2q5-chgv
-          --ignore-vuln CVE-2026-34070
+          --ignore-vuln GHSA-fv5p-p927-qmxr
 
   security-npm-audit:
     name: Security - npm audit

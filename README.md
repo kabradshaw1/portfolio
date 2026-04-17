@@ -53,6 +53,18 @@ Next.js + TypeScript + shadcn/ui + Apollo Client, deployed on Vercel. Sections f
 
 ---
 
+## QA Environment
+
+Every change goes through a QA branch before reaching production. Feature branches merge into `qa`, which auto-deploys to a parallel set of Kubernetes namespaces (`ai-services-qa`, `java-tasks-qa`, `go-ecommerce-qa`) and a separate Vercel frontend build. Once visually inspected, `qa` merges into `main` for production deploy.
+
+- **QA frontend:** [qa.kylebradshaw.dev](https://qa.kylebradshaw.dev)
+- **QA API:** `qa-api.kylebradshaw.dev`
+- **Production:** [kylebradshaw.dev](https://kylebradshaw.dev) / `api.kylebradshaw.dev`
+
+The `/cicd` page on the live site shows what's currently staged on QA vs production.
+
+---
+
 ## Infrastructure & DevOps
 
 - **Kubernetes (Minikube)** on a self-installed **Debian 13 server** with an RTX 3090 running Ollama natively for GPU inference
@@ -121,7 +133,8 @@ If you're short on time:
 2. **`docs/adr/go-stress-testing.md`** — k6 load testing that found real bugs (stock overselling), with before/after metrics
 3. **`services/`** — FastAPI + RAG + agent implementation
 4. **`docs/adr/document-qa/`** and **`docs/adr/document-debugger/`** — how and why the AI services were built
-5. **`.github/workflows/`** — CI/CD, security scanning, and deployment
-6. **`k8s/`** — production Kubernetes topology
+5. **`docs/security/`** — security assessments for the application stack and the hardened Debian 13 host (lynis 77)
+6. **`.github/workflows/`** — CI/CD, security scanning, and deployment
+7. **`k8s/`** — production Kubernetes topology
 
 Thanks for taking a look. — Kyle
