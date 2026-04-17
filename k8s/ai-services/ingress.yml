@@ -35,3 +35,10 @@ spec:
                 name: debug
                 port:
                   number: 8000
+          - path: /eval(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: eval
+                port:
+                  number: 8000

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eval-config
+  namespace: ai-services
+data:
+  CHAT_SERVICE_URL: http://chat:8000
+  LLM_PROVIDER: ollama
+  LLM_BASE_URL: http://ollama:11434
+  LLM_MODEL: qwen2.5:14b
+  DB_PATH: /app/data/eval.db
+  ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
