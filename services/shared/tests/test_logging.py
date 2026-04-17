@@ -2,11 +2,14 @@
 
 import json
 import logging
+import uuid
 from io import StringIO
 
 import pytest
+from fastapi import FastAPI
+from starlette.testclient import TestClient
 
-from shared.logging import configure_logging
+from shared.logging import RequestLoggingMiddleware, configure_logging
 
 
 def test_configure_logging_json_format():
@@ -87,3 +90,19 @@ def test_configure_logging_text_format():
         root_logger.removeHandler(handler)
         for h in original_handlers:
             root_logger.addHandler(h)
+
+
+def test_request_logging_middleware_adds_request_id():
+    configure_logging(service_name="test", log_format="json")
+    app = FastAPI()
+    app.add_middleware(RequestLoggingMiddleware)
+
+    @app.get("/test")
+    async def test_endpoint():
+        return {"ok": True}
+
+    client = TestClient(app)
+    response = client.get("/test")
+    assert response.status_code == 200
+    assert "x-request-id" in response.headers
+    uuid.UUID(response.headers["x-request-id"])  # validates it's a valid UUID

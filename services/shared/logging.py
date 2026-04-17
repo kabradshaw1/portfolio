@@ -7,9 +7,13 @@ fields: timestamp, level, service name, and OpenTelemetry trace/span IDs.
 
 import logging
 import sys
+import time
+import uuid
 from typing import Any
 
 import structlog
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 from structlog.types import EventDict, WrappedLogger
 
 
@@ -123,3 +127,44 @@ def configure_logging(
 
     # Step 4: quiet noisy third-party loggers.
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Starlette middleware that adds per-request structured logging context.
+
+    For every incoming request:
+    - Generates a UUID4 request_id and binds it (plus method + path) to
+      structlog's contextvars so every log line emitted during the request
+      automatically carries those fields — no manual passing needed.
+    - Logs ``request_finished`` with status_code and duration_ms on success.
+    - Logs ``request_failed`` with exc_info on unhandled exception, then
+      re-raises so FastAPI's exception handlers still fire.
+    - Sets the ``x-request-id`` response header for client correlation.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        request_id = str(uuid.uuid4())
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+        )
+
+        logger = structlog.get_logger()
+        start = time.perf_counter()
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            logger.error("request_failed", exc_info=True)
+            raise
+        else:
+            duration_ms = round((time.perf_counter() - start) * 1000, 1)
+            logger.info(
+                "request_finished",
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+            response.headers["x-request-id"] = request_id
+            return response
