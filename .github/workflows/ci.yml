@@ -744,7 +744,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.changes.outputs.changed == 'true' || github.ref == 'refs/heads/qa'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -776,6 +776,20 @@ jobs:
           tags: ${{ steps.tag.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Retag latest when build skipped
+        if: steps.changes.outputs.changed == 'false' && github.ref == 'refs/heads/qa'
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/${{ matrix.image }}
+          SHA: ${{ github.sha }}
+        run: |
+          # When the build is skipped, :latest still exists from the last build.
+          # The deploy rewrites manifests to qa-<sha>, so we retag :latest so
+          # the deploy can find the image under the new tag.
+          SHORT_SHA=$(echo "$SHA" | cut -c1-7)
+          docker pull "${IMAGE}:latest"
+          docker tag "${IMAGE}:latest" "${IMAGE}:qa-${SHORT_SHA}"
+          docker push "${IMAGE}:qa-${SHORT_SHA}"
 
   # ---------- Deploy QA ----------
 
