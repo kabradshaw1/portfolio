@@ -402,23 +402,21 @@ jobs:
       - name: Create empty .env (required by docker-compose.yml env_file refs)
         run: touch .env
 
-      - name: Pull pre-built images (cache for compose build)
+      - name: Pull pre-built images and start compose stack
         run: |
-          # Pull latest images to use as Docker layer cache.
-          # Failures are OK — first build or new services won't have images yet.
+          # Pull pre-built GHCR images instead of building from source.
+          # This skips the ~10 min pip install during docker build.
+          # Smoke tests verify service configuration (env vars, routing, health),
+          # not the code itself — unit tests cover that.
           REPO="ghcr.io/${{ github.repository }}"
           for svc in ingestion chat debug; do
-            docker pull "${REPO}/${svc}:latest" 2>/dev/null || true
+            docker pull "${REPO}/${svc}:latest"
           done
 
-      - name: Build and start compose stack with mock-ollama
-        env:
-          DOCKER_BUILDKIT: 1
-        run: |
           # Only start services needed for the Python RAG smoke path.
           # docker-compose.yml also defines nvidia-gpu-exporter and cadvisor,
           # which require a GPU / host access not available on GH runners.
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build \
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d \
             qdrant gateway ingestion chat debug mock-ollama
 
       - name: Wait for gateway to be reachable
