@@ -121,6 +121,20 @@ class QdrantStore:
         ).observe(time.perf_counter() - start)
         return len(records)
 
+    def list_collections(self) -> list[dict]:
+        """List all Qdrant collections with point counts."""
+        response = self.client.get_collections()
+        result = []
+        for col in response.collections:
+            info = self.client.get_collection(col.name)
+            result.append(
+                {
+                    "name": col.name,
+                    "point_count": info.points_count,
+                }
+            )
+        return result
+
     def delete_collection(self, collection_name: str) -> None:
         if not self.client.collection_exists(collection_name):
             raise ValueError(f"Collection {collection_name} not found")

@@ -234,3 +234,19 @@ def test_delete_collection_rejects_invalid_name(mock_get_store):
     response = client.delete("/collections/DROP TABLE users")
     assert response.status_code == 422
     assert "Invalid collection name" in response.json()["detail"]
+
+
+@patch("app.main.get_store")
+def test_list_collections(mock_get_store):
+    mock_store = MagicMock()
+    mock_store.list_collections.return_value = [
+        {"name": "documents", "point_count": 150},
+        {"name": "debug-myproject", "point_count": 42},
+    ]
+    mock_get_store.return_value = mock_store
+
+    response = client.get("/collections")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["collections"]) == 2
+    assert data["collections"][0]["name"] == "documents"
