@@ -9,18 +9,33 @@ import { useGoStore } from "@/components/go/GoStoreProvider";
 export function GoSubHeader() {
   const pathname = usePathname();
   const inStore = pathname.startsWith("/go/ecommerce");
+  const inAnalytics = pathname.startsWith("/go/analytics");
   const onStoreRoot = pathname === "/go/ecommerce";
+  const showNav = inStore || inAnalytics;
   const { categories, activeCategory, setActiveCategory } = useGoStore();
+
+  if (!showNav) return null;
 
   return (
     <div className="border-b border-foreground/10 bg-background">
       <div className="mx-auto grid h-12 max-w-5xl grid-cols-[1fr_auto_1fr] items-center gap-4 px-6">
-        <div className="flex items-center">
-          {inStore && (
-            <Link href="/go/ecommerce" className="text-lg font-semibold hover:text-primary transition-colors">
-              Store
-            </Link>
-          )}
+        <div className="flex items-center gap-4">
+          <Link
+            href="/go/ecommerce"
+            className={`text-sm font-medium transition-colors ${
+              inStore ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Store
+          </Link>
+          <Link
+            href="/go/analytics"
+            className={`text-sm font-medium transition-colors ${
+              inAnalytics ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Analytics
+          </Link>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           {onStoreRoot && (
@@ -52,7 +67,7 @@ export function GoSubHeader() {
           )}
         </div>
         <div className="flex items-center justify-end gap-4">
-          <GoCartIcon />
+          {inStore && <GoCartIcon />}
           <GoUserDropdown />
         </div>
       </div>

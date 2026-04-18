@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import {
   LineChart,
   Line,
@@ -102,8 +103,10 @@ export default function AnalyticsPage() {
       </p>
 
       {isStale && (
-        <div className="mb-4 rounded border border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-sm text-yellow-600 dark:text-yellow-400">
-          Data may be stale — Kafka consumer is disconnected
+        <div className="mb-4 rounded border border-muted-foreground/20 bg-muted px-4 py-3 text-sm text-muted-foreground">
+          No recent activity. Place orders in the{" "}
+          <Link href="/go/ecommerce" className="underline hover:text-foreground">Store</Link>{" "}
+          to see live metrics appear here.
         </div>
       )}
 

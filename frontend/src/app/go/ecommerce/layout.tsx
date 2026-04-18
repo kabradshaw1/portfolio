@@ -1,6 +1,5 @@
 "use client";
 
-import { GoSubHeader } from "@/components/go/GoSubHeader";
 import { AiAssistantDrawer } from "@/components/go/AiAssistantDrawer";
 import { HealthGate } from "@/components/HealthGate";
 
@@ -18,7 +17,6 @@ export default function GoEcommerceLayout({
       stack="Go Ecommerce"
       docsHref="/go"
     >
-      <GoSubHeader />
       {children}
       <AiAssistantDrawer />
     </HealthGate>
