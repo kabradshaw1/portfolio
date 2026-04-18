@@ -299,7 +299,9 @@ test.describe("Go ecommerce smoke tests", () => {
     expect(loginRes.status()).toBe(200);
 
     // Step 2: Find the Smoke Test Widget product
-    const productsRes = await authContext.get(`${API_URL}/go-api/products`);
+    const productsRes = await authContext.get(
+      `${API_URL}/go-api/products?limit=50`
+    );
     expect(productsRes.status()).toBe(200);
     const productsBody = await productsRes.json();
     const smokeProduct = productsBody.products.find(
