@@ -23,7 +23,7 @@ interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   isLoggedIn: boolean;
-  login: (code: string, redirectUri: string) => Promise<void>;
+  login: (code: string, redirectUri: string, state: string) => Promise<void>;
   loginWithPassword: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -86,11 +86,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("java-auth-cleared", handler);
   }, []);
 
-  const login = useCallback(async (code: string, redirectUri: string) => {
+  const login = useCallback(async (code: string, redirectUri: string, state: string) => {
     const res = await fetch(`${GATEWAY_URL}/auth/google`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, redirectUri }),
+      body: JSON.stringify({ code, redirectUri, state }),
       credentials: "include",
     });
     if (!res.ok) throw new Error("Login failed");

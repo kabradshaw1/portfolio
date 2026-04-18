@@ -23,11 +23,24 @@ export function TasksPageContent() {
   // Handle OAuth callback
   useEffect(() => {
     const code = searchParams.get("code");
-    if (code && !isLoggedIn) {
-      const redirectUri = `${window.location.origin}/java/tasks`;
-      login(code, redirectUri).then(() => {
+    const state = searchParams.get("state");
+    if (code && state && !isLoggedIn) {
+      const storedState = sessionStorage.getItem("java_oauth_state");
+      sessionStorage.removeItem("java_oauth_state");
+      if (state !== storedState) {
+        setError("OAuth state mismatch — please try signing in again.");
         window.history.replaceState({}, "", "/java/tasks");
-      });
+        return;
+      }
+      const redirectUri = `${window.location.origin}/java/tasks`;
+      login(code, redirectUri, state)
+        .then(() => {
+          window.history.replaceState({}, "", "/java/tasks");
+        })
+        .catch(() => {
+          setError("Google sign-in failed. Please try again.");
+          window.history.replaceState({}, "", "/java/tasks");
+        });
     }
   }, [searchParams, isLoggedIn, login]);
 
