@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	accessTokenTTLMs  = 900_000     // 15 minutes
-	refreshTokenTTLMs = 604_800_000 // 7 days
+	accessTokenTTLMs  = 900_000     // 15 minutes (900 seconds)
+	refreshTokenTTLMs = 604_800_000 // 7 days (604800 seconds)
 )
 
 func main() {
