@@ -1,17 +1,21 @@
 """JWT authentication dependency for FastAPI services."""
 
 import jwt
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def create_auth_dependency(secret: str):
-    """Create a FastAPI dependency that validates JWT Bearer tokens.
+    """Create a FastAPI dependency that validates JWT Bearer tokens or cookies.
 
     When secret is empty, auth is disabled (all requests pass as anonymous).
     This allows compose-smoke CI tests to run without token generation.
+
+    Auth resolution order:
+    1. Authorization: Bearer <token> header (takes precedence)
+    2. access_token cookie (set by Go auth service as httpOnly cookie)
     """
     if not secret:
 
@@ -23,12 +27,22 @@ def create_auth_dependency(secret: str):
         return no_auth
 
     async def require_auth(
+        request: Request,
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     ) -> str:
-        """Validate JWT and return userId."""
-        if credentials is None:
+        """Validate JWT from Bearer header or cookie and return userId."""
+        token: str | None = None
+
+        # Bearer header takes precedence over cookie
+        if credentials is not None:
+            token = credentials.credentials
+        else:
+            # Fall back to access_token cookie (set by Go auth service)
+            token = request.cookies.get("access_token")
+
+        if token is None:
             raise HTTPException(status_code=401, detail="Missing authorization")
-        token = credentials.credentials
+
         try:
             payload = jwt.decode(
                 token,

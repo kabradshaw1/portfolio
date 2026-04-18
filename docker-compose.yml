@@ -67,6 +67,8 @@ services:
       context: ./services
       dockerfile: eval/Dockerfile
     env_file: .env
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
     volumes:
       - eval_data:/app/data
     depends_on:

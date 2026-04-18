@@ -29,6 +29,7 @@ app = FastAPI(title="Eval API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
+    allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
