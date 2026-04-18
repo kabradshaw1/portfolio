@@ -11,6 +11,6 @@ data:
   RABBITMQ_PASSWORD: guest
   REDIS_HOST: redis
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
-  COOKIE_DOMAIN: ".kylebradshaw.dev"
+  COOKIE_DOMAIN: "kylebradshaw.dev"
   COOKIE_SECURE: "true"
   COOKIE_SAMESITE: "none"
