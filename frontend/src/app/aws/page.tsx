@@ -108,7 +108,7 @@ export default function AWSPage() {
         <p className="mt-4 text-muted-foreground leading-relaxed">
           The frontend is a Next.js app on Vercel. API traffic hits
           Cloudflare&apos;s edge network, which routes it through an
-          outbound-only Cloudflare Tunnel to a Windows PC running a Minikube
+          outbound-only Cloudflare Tunnel to a Debian 13 running a Minikube
           Kubernetes cluster. Three namespaces isolate services by concern.
           Ollama runs natively on the host to access the RTX 3090 GPU directly.
           No ports are opened, no public IP is exposed, and no port forwarding
@@ -305,9 +305,7 @@ export default function AWSPage() {
           </table>
         </div>
 
-        <h3 className="mt-6 text-lg font-medium">
-          Torn down (~$0.11/month)
-        </h3>
+        <h3 className="mt-6 text-lg font-medium">Torn down (~$0.11/month)</h3>
         <div className="mt-2 overflow-x-auto">
           <table className="w-full text-sm text-muted-foreground">
             <thead>
@@ -315,9 +313,7 @@ export default function AWSPage() {
                 <th className="pb-2 pr-4 font-medium text-foreground">
                   Resource
                 </th>
-                <th className="pb-2 font-medium text-foreground">
-                  Cost/month
-                </th>
+                <th className="pb-2 font-medium text-foreground">Cost/month</th>
               </tr>
             </thead>
             <tbody className="divide-y">

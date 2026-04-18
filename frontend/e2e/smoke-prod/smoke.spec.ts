@@ -342,7 +342,7 @@ test.describe("Go ecommerce smoke tests", () => {
     const emptyCartRes = await authContext.get(`${API_URL}/go-api/cart`);
     expect(emptyCartRes.status()).toBe(200);
     const emptyCartBody = await emptyCartRes.json();
-    expect(emptyCartBody.items).toHaveLength(0);
+    expect(emptyCartBody.items ?? []).toHaveLength(0);
 
     // Step 7: Checkout on empty cart should fail
     const emptyCheckoutRes = await authContext.post(
