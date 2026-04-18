@@ -8,3 +8,6 @@ data:
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
   PORT: "8091"
   OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"
+  COOKIE_DOMAIN: ".kylebradshaw.dev"
+  COOKIE_SECURE: "true"
+  COOKIE_SAMESITE: "none"
