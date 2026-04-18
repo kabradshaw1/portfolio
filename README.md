@@ -117,6 +117,7 @@ docs/adr/          Architecture Decision Records (notebooks + markdown)
 
 Every major design choice is written up in `docs/adr/`:
 
+- [`docs/architecture.md`](docs/architecture.md) — System architecture overview and AI platform deep dive
 - **`document-qa/`** — 7 notebooks walking through the RAG pipeline build
 - **`document-debugger/`** — 3 notebooks on code-aware chunking, the agent loop, and tool design
 - **`java-task-management/`** — 7 lessons on the Spring Boot stack (JPA, GraphQL, caching, analytics)
