@@ -282,4 +282,77 @@ test.describe("Go ecommerce smoke tests", () => {
     ).toBeDefined();
     expect(accessCookie).toContain("HttpOnly");
   });
+
+  test("full checkout lifecycle: cart → order → verify", async ({
+    playwright,
+  }) => {
+    expect(
+      SMOKE_PASSWORD,
+      "SMOKE_GO_PASSWORD env var must be set for this test"
+    ).toBeTruthy();
+
+    // Step 1: Login and get an authenticated API context with cookies
+    const authContext = await playwright.request.newContext();
+    const loginRes = await authContext.post(`${API_URL}/go-auth/auth/login`, {
+      data: { email: SMOKE_EMAIL, password: SMOKE_PASSWORD },
+    });
+    expect(loginRes.status()).toBe(200);
+
+    // Step 2: Find the Smoke Test Widget product
+    const productsRes = await authContext.get(`${API_URL}/go-api/products`);
+    expect(productsRes.status()).toBe(200);
+    const productsBody = await productsRes.json();
+    const smokeProduct = productsBody.products.find(
+      (p: { name: string }) => p.name === "Smoke Test Widget"
+    );
+    expect(
+      smokeProduct,
+      "Smoke Test Widget must exist in product catalog (check seed.sql)"
+    ).toBeDefined();
+
+    // Step 3: Add to cart
+    const addRes = await authContext.post(`${API_URL}/go-api/cart`, {
+      data: { productId: smokeProduct.id, quantity: 1 },
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+    });
+    expect(addRes.status()).toBe(201);
+
+    // Step 4: Verify cart contents
+    const cartRes = await authContext.get(`${API_URL}/go-api/cart`);
+    expect(cartRes.status()).toBe(200);
+    const cartBody = await cartRes.json();
+    expect(cartBody.items.length).toBeGreaterThan(0);
+    const cartItem = cartBody.items.find(
+      (i: { productId: string }) => i.productId === smokeProduct.id
+    );
+    expect(cartItem, "Smoke product must be in cart").toBeDefined();
+
+    // Step 5: Checkout
+    const orderRes = await authContext.post(`${API_URL}/go-api/orders`, {
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+    });
+    expect(orderRes.status()).toBe(201);
+    const order = await orderRes.json();
+    expect(order.status).toBe("pending");
+    expect(order.total).toBe(smokeProduct.price);
+
+    // Step 6: Cart should be empty after checkout
+    const emptyCartRes = await authContext.get(`${API_URL}/go-api/cart`);
+    expect(emptyCartRes.status()).toBe(200);
+    const emptyCartBody = await emptyCartRes.json();
+    expect(emptyCartBody.items).toHaveLength(0);
+
+    // Step 7: Checkout on empty cart should fail
+    const emptyCheckoutRes = await authContext.post(
+      `${API_URL}/go-api/orders`,
+      {
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      }
+    );
+    expect(emptyCheckoutRes.status()).toBe(400);
+    const emptyErr = await emptyCheckoutRes.json();
+    expect(emptyErr.error.code).toBe("EMPTY_CART");
+
+    await authContext.dispose();
+  });
 });

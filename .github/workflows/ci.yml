@@ -993,24 +993,46 @@ jobs:
     runs-on: ubuntu-latest
     needs: [deploy-qa]
     if: needs.deploy-qa.result == 'success'
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
       - name: Wait for deployment to stabilize
         run: sleep 30
-      - name: Check QA health endpoints
-        run: |
-          for endpoint in \
-            "https://qa-api.kylebradshaw.dev/ingestion/health" \
-            "https://qa-api.kylebradshaw.dev/chat/health" \
-            "https://qa-api.kylebradshaw.dev/debug/health" \
-            "https://qa-api.kylebradshaw.dev/actuator/health" \
-            "https://qa-api.kylebradshaw.dev/go-auth/health" \
-            "https://qa-api.kylebradshaw.dev/go-api/health" \
-            "https://qa-api.kylebradshaw.dev/ai-api/health"; do
-            echo "Checking $endpoint..."
-            curl -fsS --retry 3 --retry-delay 5 "$endpoint" || exit 1
-          done
-          echo "All QA health checks passed"
+
+      - name: Run smoke tests
+        env:
+          SMOKE_FRONTEND_URL: https://qa.kylebradshaw.dev
+          SMOKE_API_URL: https://qa-api.kylebradshaw.dev
+          SMOKE_GRAPHQL_URL: https://qa-api.kylebradshaw.dev/graphql
+          SMOKE_GO_PASSWORD: ${{ secrets.SMOKE_GO_PASSWORD }}
+        run: npx playwright test --config=playwright.smoke.config.ts
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-qa-playwright-report
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
 
   smoke-prod:
     name: Production Smoke Tests
