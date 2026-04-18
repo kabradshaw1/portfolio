@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
@@ -44,16 +45,18 @@ type CacheInvalidator interface {
 }
 
 type OrderProcessor struct {
-	orderRepo   OrderRepoForWorker
-	productRepo ProductRepoForWorker
-	cache       CacheInvalidator
+	orderRepo      OrderRepoForWorker
+	productRepo    ProductRepoForWorker
+	cache          CacheInvalidator
+	kafkaPublisher kafka.Producer
 }
 
-func NewOrderProcessor(orderRepo OrderRepoForWorker, productRepo ProductRepoForWorker, cache CacheInvalidator) *OrderProcessor {
+func NewOrderProcessor(orderRepo OrderRepoForWorker, productRepo ProductRepoForWorker, cache CacheInvalidator, kafkaPub kafka.Producer) *OrderProcessor {
 	return &OrderProcessor{
-		orderRepo:   orderRepo,
-		productRepo: productRepo,
-		cache:       cache,
+		orderRepo:      orderRepo,
+		productRepo:    productRepo,
+		cache:          cache,
+		kafkaPublisher: kafkaPub,
 	}
 }
 
@@ -76,6 +79,10 @@ func (p *OrderProcessor) ProcessOrder(ctx context.Context, orderIDStr string) er
 		if err := p.productRepo.DecrementStock(ctx, item.ProductID, item.Quantity); err != nil {
 			_ = p.orderRepo.UpdateStatus(ctx, orderID, model.OrderStatusFailed)
 			ordersTotal.WithLabelValues("failed").Inc()
+			kafka.SafePublish(ctx, p.kafkaPublisher, "ecommerce.orders", orderIDStr, kafka.Event{
+				Type: "order.failed",
+				Data: map[string]any{"orderID": orderIDStr, "userID": order.UserID.String()},
+			})
 			return fmt.Errorf("decrement stock for product %s: %w", item.ProductID, err)
 		}
 	}
@@ -89,6 +96,14 @@ func (p *OrderProcessor) ProcessOrder(ctx context.Context, orderIDStr string) er
 	}
 
 	ordersTotal.WithLabelValues("completed").Inc()
+	kafka.SafePublish(ctx, p.kafkaPublisher, "ecommerce.orders", orderIDStr, kafka.Event{
+		Type: "order.completed",
+		Data: map[string]any{
+			"orderID":    orderIDStr,
+			"userID":     order.UserID.String(),
+			"totalCents": order.Total,
+		},
+	})
 	return nil
 }
 

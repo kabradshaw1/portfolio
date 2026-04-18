@@ -23,6 +23,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/cache"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/guardrails"
 	apphttp "github.com/kabradshaw1/portfolio/go/ai-service/internal/http"
+	appkafka "github.com/kabradshaw1/portfolio/go/ai-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
 	mcpadapter "github.com/kabradshaw1/portfolio/go/ai-service/internal/mcp"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
@@ -127,9 +128,22 @@ func runServe() {
 		}
 	}
 
+	// Kafka producer (optional)
+	var kafkaPub appkafka.Producer
+	if brokers := os.Getenv("KAFKA_BROKERS"); brokers != "" {
+		kafkaPub = appkafka.NewProducer(strings.Split(brokers, ","))
+		defer kafkaPub.Close()
+		slog.Info("kafka producer enabled", "brokers", brokers)
+	}
+
 	registry := tools.NewMemRegistry()
-	registry.Register(tools.Cached(tools.NewSearchProductsTool(ecomClient), toolCache, 60*time.Second))
-	registry.Register(tools.Cached(tools.NewGetProductTool(ecomClient), toolCache, 60*time.Second))
+	if kafkaPub != nil {
+		registry.Register(tools.Cached(tools.NewSearchProductsTool(ecomClient, kafkaPub), toolCache, 60*time.Second))
+		registry.Register(tools.Cached(tools.NewGetProductTool(ecomClient, kafkaPub), toolCache, 60*time.Second))
+	} else {
+		registry.Register(tools.Cached(tools.NewSearchProductsTool(ecomClient), toolCache, 60*time.Second))
+		registry.Register(tools.Cached(tools.NewGetProductTool(ecomClient), toolCache, 60*time.Second))
+	}
 	registry.Register(tools.Cached(tools.NewCheckInventoryTool(ecomClient), toolCache, 10*time.Second))
 	registry.Register(tools.Cached(tools.NewListOrdersTool(ecomClient), toolCache, 10*time.Second))
 	registry.Register(tools.Cached(tools.NewGetOrderTool(ecomClient), toolCache, 10*time.Second))

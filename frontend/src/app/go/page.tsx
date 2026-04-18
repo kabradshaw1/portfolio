@@ -42,12 +42,13 @@ export default function GoPage() {
 
         <h3 className="mt-6 text-lg font-medium">Tech Stack</h3>
         <ul className="mt-2 list-disc pl-6 text-muted-foreground space-y-1">
-          <li>3 Go microservices (auth, ecommerce, ai-service)</li>
+          <li>4 Go microservices (auth, ecommerce, ai-service, analytics)</li>
           <li>Gin HTTP framework with JWT authentication</li>
           <li>Ollama (Qwen 2.5 14B) tool-calling agent with 9 tools</li>
           <li>PostgreSQL (users, products, carts, orders)</li>
           <li>Redis caching + rate limiting</li>
           <li>RabbitMQ asynchronous order processing</li>
+          <li>Apache Kafka streaming analytics pipeline</li>
           <li>Prometheus metrics instrumentation</li>
           <li>Next.js + TypeScript frontend</li>
           <li>Docker Compose (local dev), Kubernetes (production)</li>
@@ -348,12 +349,18 @@ export default function GoPage() {
           </p>
         </section>
 
-        <div className="mt-8">
+        <div className="mt-8 flex gap-3">
           <Link
             href="/go/ecommerce"
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             View Project &rarr;
+          </Link>
+          <Link
+            href="/go/analytics"
+            className="inline-flex items-center gap-2 rounded-lg border px-6 py-3 text-sm font-medium hover:bg-accent transition-colors"
+          >
+            Streaming Analytics &rarr;
           </Link>
         </div>
       </section>

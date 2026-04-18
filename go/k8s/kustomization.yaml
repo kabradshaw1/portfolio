@@ -6,9 +6,12 @@ resources:
   - configmaps/ai-service-config.yml
   - configmaps/auth-service-config.yml
   - configmaps/ecommerce-service-config.yml
+  - configmaps/analytics-service-config.yml
   - deployments/ai-service.yml
   - deployments/auth-service.yml
   - deployments/ecommerce-service.yml
+  - deployments/analytics-service.yml
+  - statefulsets/kafka.yml
   - hpa/auth-hpa.yml
   - hpa/ecommerce-hpa.yml
   - jobs/auth-service-migrate.yml
@@ -16,8 +19,11 @@ resources:
   - services/ai-service.yml
   - services/auth-service.yml
   - services/ecommerce-service.yml
+  - services/kafka.yml
+  - services/analytics-service.yml
   - pdb/auth-pdb.yml
   - pdb/ecommerce-pdb.yml
   - pdb/ai-pdb.yml
+  - pdb/analytics-pdb.yml
   - ingress.yml
   - network-policy.yml

@@ -32,3 +32,10 @@ spec:
                 name: go-ai-service
                 port:
                   number: 8093
+          - path: /go-analytics(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: go-analytics-service
+                port:
+                  number: 8094

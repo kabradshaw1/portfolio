@@ -7,9 +7,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/service"
 )
+
+// nopKafka is a no-op Kafka producer for tests.
+type nopKafka struct{}
+
+func (nopKafka) Publish(context.Context, string, string, kafka.Event) error { return nil }
+func (nopKafka) Close() error                                              { return nil }
 
 // mockOrderRepo is an in-memory order repository for tests.
 type mockOrderRepo struct {
@@ -76,7 +83,7 @@ func TestCheckout(t *testing.T) {
 	cartRepo := &mockCartRepo{}
 	orderRepo := newMockOrderRepo()
 	publisher := &mockPublisher{}
-	svc := service.NewOrderService(orderRepo, cartRepo, publisher)
+	svc := service.NewOrderService(orderRepo, cartRepo, publisher, nopKafka{})
 
 	userID := uuid.New()
 	productID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
@@ -122,7 +129,7 @@ func TestCheckoutEmptyCart(t *testing.T) {
 	cartRepo := &mockCartRepo{}
 	orderRepo := newMockOrderRepo()
 	publisher := &mockPublisher{}
-	svc := service.NewOrderService(orderRepo, cartRepo, publisher)
+	svc := service.NewOrderService(orderRepo, cartRepo, publisher, nopKafka{})
 
 	userID := uuid.New()
 

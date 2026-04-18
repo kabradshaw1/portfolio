@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/integration/testutil"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/service"
 )
@@ -44,7 +45,7 @@ func TestCheckoutFlow_EndToEnd(t *testing.T) {
 	cartRepo := repository.NewCartRepository(infra.Pool, breaker)
 	orderRepo := repository.NewOrderRepository(infra.Pool, breaker)
 	publisher := &testPublisher{}
-	orderSvc := service.NewOrderService(orderRepo, cartRepo, publisher)
+	orderSvc := service.NewOrderService(orderRepo, cartRepo, publisher, kafka.NopProducer{})
 
 	userID := uuid.New()
 
@@ -108,7 +109,7 @@ func TestCheckoutFlow_EmptyCart(t *testing.T) {
 	cartRepo := repository.NewCartRepository(infra.Pool, breaker)
 	orderRepo := repository.NewOrderRepository(infra.Pool, breaker)
 	publisher := &testPublisher{}
-	orderSvc := service.NewOrderService(orderRepo, cartRepo, publisher)
+	orderSvc := service.NewOrderService(orderRepo, cartRepo, publisher, kafka.NopProducer{})
 
 	userID := uuid.New()
 
