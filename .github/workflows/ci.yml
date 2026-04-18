@@ -800,7 +800,7 @@ jobs:
   deploy-qa:
     name: Deploy QA
     runs-on: ubuntu-latest
-    needs: [build-images]
+    needs: [build-images, e2e-mocked]
     if: github.event_name == 'push' && github.ref == 'refs/heads/qa'
     steps:
       - uses: actions/checkout@v4
