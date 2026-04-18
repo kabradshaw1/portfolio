@@ -67,6 +67,7 @@ export default function CartPage() {
     try {
       const res = await goApiFetch("/orders", {
         method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
       });
       if (res.status === 401 || res.status === 403) {
         router.replace("/go/login?next=/go/ecommerce/cart");
