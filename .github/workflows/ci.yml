@@ -6,6 +6,10 @@ on:
   push:
     branches: [qa, main]
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   grafana-dashboard-sync:
     name: Grafana Dashboard Sync Check
