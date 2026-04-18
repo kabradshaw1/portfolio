@@ -66,11 +66,11 @@ export default function GoRegisterPage() {
           />
           <input
             type="password"
-            placeholder="Password (min 8 chars)"
+            placeholder="Password (min 12 chars)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={8}
+            minLength={12}
             disabled={busy}
             className="w-full rounded border border-foreground/20 bg-background px-3 py-2 text-sm"
           />
