@@ -1,6 +1,6 @@
 package dev.kylebradshaw.task.controller;
 
-import dev.kylebradshaw.task.dto.AuthRequest;
+import dev.kylebradshaw.task.dto.AuthRequest; // cookie config: COOKIE_DOMAIN, COOKIE_SECURE, COOKIE_SAMESITE
 import dev.kylebradshaw.task.dto.AuthResponse;
 import dev.kylebradshaw.task.dto.ForgotPasswordRequest;
 import dev.kylebradshaw.task.dto.LoginRequest;
