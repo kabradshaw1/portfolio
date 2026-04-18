@@ -108,11 +108,11 @@ export default function AWSPage() {
         <p className="mt-4 text-muted-foreground leading-relaxed">
           The frontend is a Next.js app on Vercel. API traffic hits
           Cloudflare&apos;s edge network, which routes it through an
-          outbound-only Cloudflare Tunnel to a Debian 13 running a Minikube
-          Kubernetes cluster. Three namespaces isolate services by concern.
-          Ollama runs natively on the host to access the RTX 3090 GPU directly.
-          No ports are opened, no public IP is exposed, and no port forwarding
-          is configured.
+          outbound-only Cloudflare Tunnel to a Debian 13 linux machine running a
+          Minikube Kubernetes cluster. Three namespaces isolate services by
+          concern. Ollama runs natively on the host to access the RTX 3090 GPU
+          directly. No ports are opened, no public IP is exposed, and no port
+          forwarding is configured.
         </p>
         <div className="mt-6 rounded-xl border border-foreground/10 bg-card p-6">
           <MermaidDiagram chart={currentProductionDiagram} />
