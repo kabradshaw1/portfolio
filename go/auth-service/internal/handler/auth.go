@@ -50,13 +50,13 @@ func NewAuthHandler(svc AuthServiceInterface, googleClient GoogleClientInterface
 func (h *AuthHandler) setAuthCookies(c *gin.Context, resp *model.AuthResponse) {
 	c.SetSameSite(h.cookieCfg.SameSite)
 	c.SetCookie("access_token", resp.AccessToken, int(h.accessTTL.Seconds()), "/", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
-	c.SetCookie("refresh_token", resp.RefreshToken, int(h.refreshTTL.Seconds()), "/auth", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
+	c.SetCookie("refresh_token", resp.RefreshToken, int(h.refreshTTL.Seconds()), "/", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
 }
 
 func (h *AuthHandler) clearAuthCookies(c *gin.Context) {
 	c.SetSameSite(h.cookieCfg.SameSite)
 	c.SetCookie("access_token", "", -1, "/", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
-	c.SetCookie("refresh_token", "", -1, "/auth", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
+	c.SetCookie("refresh_token", "", -1, "/", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
