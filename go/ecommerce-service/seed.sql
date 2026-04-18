@@ -38,3 +38,9 @@ WHERE NOT EXISTS (SELECT 1 FROM products);
 INSERT INTO users (email, password_hash, name)
 SELECT 'smoke@kylebradshaw.dev', '$2b$10$fBBfS.Pgxgqw2mavsb4cAOcavTkBkeZqMiXnM7e1nl6vCAOQ036Pq', 'Smoke Test'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'smoke@kylebradshaw.dev');
+
+-- Smoke-test product with effectively unlimited stock so automated tests
+-- never deplete inventory or affect the demo catalog.
+INSERT INTO products (name, description, price, category, image_url, stock)
+SELECT 'Smoke Test Widget', 'Reserved for automated smoke tests', 100, 'Electronics', '', 999999
+WHERE NOT EXISTS (SELECT 1 FROM products WHERE name = 'Smoke Test Widget');
