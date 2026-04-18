@@ -116,7 +116,7 @@ function GoLoginPageInner() {
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         No account?{" "}
-        <Link href="/go/register" className="underline hover:text-foreground">
+        <Link href={searchParams.get("next") ? `/go/register?next=${searchParams.get("next")}` : "/go/register"} className="underline hover:text-foreground">
           Register
         </Link>
       </p>
