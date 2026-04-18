@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -130,11 +131,16 @@ func main() {
 	cookieSecure := os.Getenv("COOKIE_SECURE") == "true"
 	cookieDomain := os.Getenv("COOKIE_DOMAIN")
 	cookieSameSite := http.SameSiteLaxMode
-	switch os.Getenv("COOKIE_SAMESITE") {
+	switch strings.ToLower(os.Getenv("COOKIE_SAMESITE")) {
 	case "none":
 		cookieSameSite = http.SameSiteNoneMode
 	case "strict":
 		cookieSameSite = http.SameSiteStrictMode
+	case "lax", "":
+		// default already set
+	default:
+		slog.Warn("unrecognised COOKIE_SAMESITE value, defaulting to Lax",
+			"value", os.Getenv("COOKIE_SAMESITE"))
 	}
 	cookieCfg := handler.CookieConfig{
 		Secure:   cookieSecure,
