@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { GoCartIcon } from "@/components/go/GoCartIcon";
 import { GoUserDropdown } from "@/components/go/GoUserDropdown";
@@ -15,7 +16,11 @@ export function GoSubHeader() {
     <div className="border-b border-foreground/10 bg-background">
       <div className="mx-auto grid h-12 max-w-5xl grid-cols-[1fr_auto_1fr] items-center gap-4 px-6">
         <div className="flex items-center">
-          {inStore && <h1 className="text-lg font-semibold">Store</h1>}
+          {inStore && (
+            <Link href="/go/ecommerce" className="text-lg font-semibold hover:text-primary transition-colors">
+              Store
+            </Link>
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           {onStoreRoot && (
