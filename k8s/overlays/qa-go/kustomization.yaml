@@ -34,6 +34,9 @@ patches:
       - op: replace
         path: /data/RABBITMQ_URL
         value: "amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672"
+      - op: replace
+        path: /data/KAFKA_BROKERS
+        value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
   - target:
       kind: ConfigMap
       name: ai-service-config
@@ -50,6 +53,9 @@ patches:
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
+      - op: replace
+        path: /data/KAFKA_BROKERS
+        value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
   - target:
       kind: ConfigMap
       name: analytics-service-config
@@ -57,6 +63,17 @@ patches:
       - op: replace
         path: /data/ALLOWED_ORIGINS
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/KAFKA_BROKERS
+        value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
+  # --- Kafka: fix advertised listeners for QA namespace ---
+  - target:
+      kind: StatefulSet
+      name: kafka
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/env/3/value
+        value: "PLAINTEXT://kafka.go-ecommerce-qa.svc.cluster.local:9092"
   # --- Ingress: QA host ---
   - target:
       kind: Ingress
