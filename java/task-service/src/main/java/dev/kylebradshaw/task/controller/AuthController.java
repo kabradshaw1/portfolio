@@ -53,17 +53,27 @@ public class AuthController {
         this.restClient = RestClient.create();
     }
 
+    private String resolveSameSite() {
+        String value = System.getenv().getOrDefault("COOKIE_SAMESITE", "lax");
+        return switch (value.toLowerCase()) {
+            case "none" -> "None";
+            case "strict" -> "Strict";
+            default -> "Lax";
+        };
+    }
+
     private void setAuthCookies(HttpServletResponse response, String accessToken, String refreshToken) {
         boolean secure = Boolean.parseBoolean(
                 System.getenv().getOrDefault("COOKIE_SECURE", "false"));
         String domain = System.getenv().getOrDefault("COOKIE_DOMAIN", "");
+        String sameSite = resolveSameSite();
 
         Cookie accessCookie = new Cookie("access_token", accessToken);
         accessCookie.setHttpOnly(true);
         accessCookie.setSecure(secure);
         accessCookie.setPath("/");
         accessCookie.setMaxAge(900); // 15 min
-        accessCookie.setAttribute("SameSite", "Lax");
+        accessCookie.setAttribute("SameSite", sameSite);
         if (!domain.isEmpty()) {
             accessCookie.setDomain(domain);
         }
@@ -74,7 +84,7 @@ public class AuthController {
         refreshCookie.setSecure(secure);
         refreshCookie.setPath("/auth");
         refreshCookie.setMaxAge(604800); // 7 days
-        refreshCookie.setAttribute("SameSite", "Lax");
+        refreshCookie.setAttribute("SameSite", sameSite);
         if (!domain.isEmpty()) {
             refreshCookie.setDomain(domain);
         }
@@ -85,13 +95,14 @@ public class AuthController {
         boolean secure = Boolean.parseBoolean(
                 System.getenv().getOrDefault("COOKIE_SECURE", "false"));
         String domain = System.getenv().getOrDefault("COOKIE_DOMAIN", "");
+        String sameSite = resolveSameSite();
 
         Cookie accessCookie = new Cookie("access_token", "");
         accessCookie.setHttpOnly(true);
         accessCookie.setSecure(secure);
         accessCookie.setPath("/");
         accessCookie.setMaxAge(0);
-        accessCookie.setAttribute("SameSite", "Lax");
+        accessCookie.setAttribute("SameSite", sameSite);
         if (!domain.isEmpty()) {
             accessCookie.setDomain(domain);
         }
@@ -102,7 +113,7 @@ public class AuthController {
         refreshCookie.setSecure(secure);
         refreshCookie.setPath("/auth");
         refreshCookie.setMaxAge(0);
-        refreshCookie.setAttribute("SameSite", "Lax");
+        refreshCookie.setAttribute("SameSite", sameSite);
         if (!domain.isEmpty()) {
             refreshCookie.setDomain(domain);
         }
