@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
 )
 
@@ -19,10 +20,17 @@ type ecommerceAPI interface {
 // -------- get_product --------
 
 type getProductTool struct {
-	api ecommerceAPI
+	api       ecommerceAPI
+	kafkaPub  kafka.Producer
 }
 
-func NewGetProductTool(api ecommerceAPI) Tool { return &getProductTool{api: api} }
+func NewGetProductTool(api ecommerceAPI, opts ...kafka.Producer) Tool {
+	t := &getProductTool{api: api}
+	if len(opts) > 0 {
+		t.kafkaPub = opts[0]
+	}
+	return t
+}
 
 func (t *getProductTool) Name() string        { return "get_product" }
 func (t *getProductTool) Description() string { return "Fetch the full details of one product by id." }
@@ -52,6 +60,12 @@ func (t *getProductTool) Call(ctx context.Context, args json.RawMessage, userID 
 	if err != nil {
 		return Result{}, fmt.Errorf("get_product: %w", err)
 	}
+	if t.kafkaPub != nil {
+		kafka.SafePublish(ctx, t.kafkaPub, "ecommerce.views", p.ID, kafka.Event{
+			Type: "product.viewed",
+			Data: map[string]any{"productID": p.ID, "productName": p.Name, "source": "detail"},
+		})
+	}
 	return Result{
 		Content: map[string]any{"id": p.ID, "name": p.Name, "price": p.Price, "stock": p.Stock},
 		Display: map[string]any{"kind": "product_card", "product": p},
@@ -61,10 +75,17 @@ func (t *getProductTool) Call(ctx context.Context, args json.RawMessage, userID 
 // -------- search_products --------
 
 type searchProductsTool struct {
-	api ecommerceAPI
+	api      ecommerceAPI
+	kafkaPub kafka.Producer
 }
 
-func NewSearchProductsTool(api ecommerceAPI) Tool { return &searchProductsTool{api: api} }
+func NewSearchProductsTool(api ecommerceAPI, opts ...kafka.Producer) Tool {
+	t := &searchProductsTool{api: api}
+	if len(opts) > 0 {
+		t.kafkaPub = opts[0]
+	}
+	return t
+}
 
 func (t *searchProductsTool) Name() string { return "search_products" }
 func (t *searchProductsTool) Description() string {
@@ -118,6 +139,14 @@ func (t *searchProductsTool) Call(ctx context.Context, args json.RawMessage, use
 		})
 		if len(out) >= limit {
 			break
+		}
+	}
+	if t.kafkaPub != nil {
+		for _, p := range prods {
+			kafka.SafePublish(ctx, t.kafkaPub, "ecommerce.views", p.ID, kafka.Event{
+				Type: "product.viewed",
+				Data: map[string]any{"productID": p.ID, "productName": p.Name, "source": "search"},
+			})
 		}
 	}
 	return Result{

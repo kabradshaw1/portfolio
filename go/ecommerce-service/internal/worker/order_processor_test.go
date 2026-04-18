@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/worker"
 )
@@ -89,7 +90,7 @@ func TestProcessOrder_Success(t *testing.T) {
 	}
 
 	cache := &mockCacheInvalidator{}
-	processor := worker.NewOrderProcessor(orderRepo, productRepo, cache)
+	processor := worker.NewOrderProcessor(orderRepo, productRepo, cache, kafka.NopProducer{})
 
 	err := processor.ProcessOrder(context.Background(), orderID.String())
 	if err != nil {
@@ -141,7 +142,7 @@ func TestProcessOrder_InsufficientStock(t *testing.T) {
 	}
 
 	cache := &mockCacheInvalidator{}
-	processor := worker.NewOrderProcessor(orderRepo, productRepo, cache)
+	processor := worker.NewOrderProcessor(orderRepo, productRepo, cache, kafka.NopProducer{})
 
 	err := processor.ProcessOrder(context.Background(), orderID.String())
 	if err == nil {

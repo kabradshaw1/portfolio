@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/service"
 )
@@ -76,7 +77,7 @@ func (m *mockCartRepo) ClearCart(ctx context.Context, userID uuid.UUID) error {
 
 func TestAddToCart(t *testing.T) {
 	repo := &mockCartRepo{}
-	svc := service.NewCartService(repo)
+	svc := service.NewCartService(repo, kafka.NopProducer{})
 
 	userID := uuid.New()
 	productID := uuid.New()
@@ -92,7 +93,7 @@ func TestAddToCart(t *testing.T) {
 
 func TestGetCart(t *testing.T) {
 	repo := &mockCartRepo{}
-	svc := service.NewCartService(repo)
+	svc := service.NewCartService(repo, kafka.NopProducer{})
 
 	userID := uuid.New()
 
@@ -116,7 +117,7 @@ func TestGetCart(t *testing.T) {
 
 func TestRemoveFromCart(t *testing.T) {
 	repo := &mockCartRepo{}
-	svc := service.NewCartService(repo)
+	svc := service.NewCartService(repo, kafka.NopProducer{})
 
 	userID := uuid.New()
 

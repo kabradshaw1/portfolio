@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"os/signal"
 	"strconv"
 	"syscall"
@@ -23,6 +24,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/handler"
+	appkafka "github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/middleware"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/repository"
@@ -150,6 +152,14 @@ func main() {
 	}
 	slog.Info("connected to RabbitMQ")
 
+	// Kafka producer (optional — NopProducer if KAFKA_BROKERS is empty)
+	var kafkaPub appkafka.Producer = appkafka.NopProducer{}
+	if brokers := os.Getenv("KAFKA_BROKERS"); brokers != "" {
+		kafkaPub = appkafka.NewProducer(strings.Split(brokers, ","))
+		defer kafkaPub.Close()
+		slog.Info("kafka producer enabled", "brokers", brokers)
+	}
+
 	// Wire dependencies
 	pgBreaker := resilience.NewBreaker(resilience.BreakerConfig{
 		Name:          "ecommerce-postgres",
@@ -162,8 +172,8 @@ func main() {
 	publisher := &rabbitPublisher{ch: ch}
 
 	productSvc := service.NewProductService(productRepo, redisClient)
-	cartSvc := service.NewCartService(cartRepo)
-	orderSvc := service.NewOrderService(orderRepo, cartRepo, publisher)
+	cartSvc := service.NewCartService(cartRepo, kafkaPub)
+	orderSvc := service.NewOrderService(orderRepo, cartRepo, publisher, kafkaPub)
 
 	returnRepo := repository.NewReturnRepository(pool, pgBreaker)
 	returnSvc := service.NewReturnService(returnRepo, orderSvc)
@@ -181,7 +191,7 @@ func main() {
 			workerConcurrency = n
 		}
 	}
-	processor := worker.NewOrderProcessor(orderRepo, productRepo, productSvc)
+	processor := worker.NewOrderProcessor(orderRepo, productRepo, productSvc, kafkaPub)
 	go func() {
 		if err := processor.StartConsumer(ctx, ch, workerConcurrency); err != nil {
 			slog.Error("order processor failed", "error", err)

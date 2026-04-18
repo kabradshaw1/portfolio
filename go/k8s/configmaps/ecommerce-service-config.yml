@@ -9,4 +9,5 @@ data:
   RABBITMQ_URL: amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
   PORT: "8092"
+  KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
   OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"

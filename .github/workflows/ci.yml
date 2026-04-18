@@ -168,7 +168,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, ecommerce-service, ai-service]
+        service: [auth-service, ecommerce-service, ai-service, analytics-service]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -186,7 +186,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, ecommerce-service, ai-service]
+        service: [auth-service, ecommerce-service, ai-service, analytics-service]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -603,6 +603,7 @@ jobs:
           - go/auth-service/Dockerfile
           - go/ecommerce-service/Dockerfile
           - go/ai-service/Dockerfile
+          - go/analytics-service/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -705,6 +706,11 @@ jobs:
             file: go/ai-service/Dockerfile
             image: go-ai-service
             paths: go/ai-service go/pkg go/go.work
+          - service: go-analytics-service
+            context: go
+            file: go/analytics-service/Dockerfile
+            image: go-analytics-service
+            paths: go/analytics-service go/pkg go/go.work
     steps:
       - uses: actions/checkout@v4
         with:

@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
@@ -24,16 +25,18 @@ type OrderPublisher interface {
 }
 
 type OrderService struct {
-	orderRepo OrderRepo
-	cartRepo  CartRepo
-	publisher OrderPublisher
+	orderRepo      OrderRepo
+	cartRepo       CartRepo
+	publisher      OrderPublisher
+	kafkaPublisher kafka.Producer
 }
 
-func NewOrderService(orderRepo OrderRepo, cartRepo CartRepo, publisher OrderPublisher) *OrderService {
+func NewOrderService(orderRepo OrderRepo, cartRepo CartRepo, publisher OrderPublisher, kafkaPub kafka.Producer) *OrderService {
 	return &OrderService{
-		orderRepo: orderRepo,
-		cartRepo:  cartRepo,
-		publisher: publisher,
+		orderRepo:      orderRepo,
+		cartRepo:       cartRepo,
+		publisher:      publisher,
+		kafkaPublisher: kafkaPub,
 	}
 }
 
@@ -75,6 +78,30 @@ func (s *OrderService) Checkout(ctx context.Context, userID uuid.UUID) (*model.O
 	} else {
 		metrics.RabbitMQPublish.WithLabelValues("order.created", "success").Inc()
 	}
+
+	// Publish analytics event to Kafka (fire-and-forget).
+	type itemData struct {
+		ProductID  string `json:"productID"`
+		Quantity   int    `json:"quantity"`
+		PriceCents int    `json:"priceCents"`
+	}
+	items := make([]itemData, len(orderItems))
+	for i, oi := range orderItems {
+		items[i] = itemData{
+			ProductID:  oi.ProductID.String(),
+			Quantity:   oi.Quantity,
+			PriceCents: oi.PriceAtPurchase,
+		}
+	}
+	kafka.SafePublish(ctx, s.kafkaPublisher, "ecommerce.orders", order.ID.String(), kafka.Event{
+		Type: "order.created",
+		Data: map[string]any{
+			"orderID":    order.ID.String(),
+			"userID":     userID.String(),
+			"totalCents": order.Total,
+			"items":      items,
+		},
+	})
 
 	return order, nil
 }

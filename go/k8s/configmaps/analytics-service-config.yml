@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analytics-service-config
+  namespace: go-ecommerce
+data:
+  KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
+  PORT: "8094"
+  ALLOWED_ORIGINS: "http://localhost:3000,https://kylebradshaw.dev"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"
