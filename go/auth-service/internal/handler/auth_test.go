@@ -343,3 +343,56 @@ func TestLogout_NoToken(t *testing.T) {
 		t.Fatalf("status = %d", w.Code)
 	}
 }
+
+func TestRegister_SameSiteNone_SetsCookieCorrectly(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := newMockUserRepo()
+	svc := service.NewAuthService(repo, "test-secret", 900000, 604800000)
+	cfg := handler.CookieConfig{
+		Secure:   true,
+		Domain:   "example.com",
+		SameSite: http.SameSiteNoneMode,
+	}
+	h := handler.NewAuthHandler(svc, nil, service.NewTokenDenylist(nil), 15*time.Minute, 7*24*time.Hour, cfg)
+
+	router := testRouter()
+	router.POST("/auth/register", h.Register)
+
+	body, _ := json.Marshal(model.RegisterRequest{
+		Email:    "samesite@example.com",
+		Password: "password123456",
+		Name:     "SameSite Test",
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	cookies := w.Result().Cookies()
+	var accessCookie *http.Cookie
+	for _, c := range cookies {
+		if c.Name == "access_token" {
+			accessCookie = c
+			break
+		}
+	}
+	if accessCookie == nil {
+		t.Fatal("access_token cookie not found")
+	}
+	if accessCookie.Domain != "example.com" {
+		t.Errorf("expected domain example.com, got %s", accessCookie.Domain)
+	}
+	if !accessCookie.Secure {
+		t.Error("expected Secure flag to be true")
+	}
+	if accessCookie.SameSite != http.SameSiteNoneMode {
+		t.Errorf("expected SameSite=None, got %v", accessCookie.SameSite)
+	}
+}

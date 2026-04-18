@@ -129,10 +129,17 @@ func main() {
 	refreshTTL := time.Duration(refreshTokenTTLMs) * time.Millisecond
 	cookieSecure := os.Getenv("COOKIE_SECURE") == "true"
 	cookieDomain := os.Getenv("COOKIE_DOMAIN")
+	cookieSameSite := http.SameSiteLaxMode
+	switch os.Getenv("COOKIE_SAMESITE") {
+	case "none":
+		cookieSameSite = http.SameSiteNoneMode
+	case "strict":
+		cookieSameSite = http.SameSiteStrictMode
+	}
 	cookieCfg := handler.CookieConfig{
 		Secure:   cookieSecure,
 		Domain:   cookieDomain,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: cookieSameSite,
 	}
 	authHandler := handler.NewAuthHandler(authSvc, googleClient, denylist, accessTTL, refreshTTL, cookieCfg)
 	healthHandler := handler.NewHealthHandler(pool)
