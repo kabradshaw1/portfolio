@@ -107,8 +107,8 @@ Prometheus already scrapes `host.minikube.internal:9835` but nothing is listenin
 # Check latest release at https://github.com/utkuozdemir/nvidia_gpu_exporter/releases
 # As of writing, v1.2.1 is latest
 cd /tmp
-curl -LO https://github.com/utkuozdemir/nvidia_gpu_exporter/releases/download/v1.2.1/nvidia_gpu_exporter_1.2.1_linux_amd64.tar.gz
-tar xzf nvidia_gpu_exporter_1.2.1_linux_amd64.tar.gz
+curl -LO https://github.com/utkuozdemir/nvidia_gpu_exporter/releases/download/v1.4.1/nvidia_gpu_exporter_1.4.1_linux_amd64.tar.gz
+tar xzf nvidia_gpu_exporter_1.4.1_linux_amd64.tar.gz
 sudo mv nvidia_gpu_exporter /usr/local/bin/
 sudo chmod +x /usr/local/bin/nvidia_gpu_exporter
 ```
