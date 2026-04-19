@@ -14,8 +14,8 @@ data:
           - uid: telegram-default
             type: telegram
             settings:
-              bottoken: $__file{/etc/grafana/secrets/bot-token}
-              chatid: $__file{/etc/grafana/secrets/chat-id}
+              bottoken: "8652800206:AAF7pnX2KXafOQG2oeH142LKBSl3tuaieo0"
+              chatid: "8710936679"
             disableResolveMessage: false
 
     policies:
@@ -42,7 +42,7 @@ data:
                 relativeTimeRange:
                   from: 300
                   to: 0
-                datasourceUid: prometheus
+                datasourceUid: PBFA97CFB590B2093
                 model:
                   expr: up{job="nvidia-gpu"}
                   instant: true
@@ -77,49 +77,6 @@ data:
             annotations:
               summary: "GPU exporter is unreachable — NVIDIA GPU may be down or driver unloaded"
 
-          - uid: ollama-down
-            title: Ollama Down
-            condition: C
-            data:
-              - refId: A
-                relativeTimeRange:
-                  from: 300
-                  to: 0
-                datasourceUid: prometheus
-                model:
-                  expr: up{job="ollama"}
-                  instant: true
-                  refId: A
-              - refId: B
-                relativeTimeRange:
-                  from: 300
-                  to: 0
-                datasourceUid: __expr__
-                model:
-                  type: reduce
-                  expression: A
-                  reducer: last
-                  refId: B
-              - refId: C
-                relativeTimeRange:
-                  from: 300
-                  to: 0
-                datasourceUid: __expr__
-                model:
-                  type: threshold
-                  expression: B
-                  conditions:
-                    - evaluator:
-                        type: lt
-                        params:
-                          - 1
-                  refId: C
-            for: 2m
-            labels:
-              severity: critical
-            annotations:
-              summary: "Ollama is not responding — AI services will be degraded"
-
           - uid: ai-service-not-ready
             title: AI Service Not Ready
             condition: C
@@ -128,7 +85,7 @@ data:
                 relativeTimeRange:
                   from: 300
                   to: 0
-                datasourceUid: prometheus
+                datasourceUid: PBFA97CFB590B2093
                 model:
                   expr: kube_pod_status_ready{pod=~"go-ai-service.*", condition="true"}
                   instant: true
@@ -171,7 +128,7 @@ data:
                 relativeTimeRange:
                   from: 300
                   to: 0
-                datasourceUid: prometheus
+                datasourceUid: PBFA97CFB590B2093
                 model:
                   expr: nvidia_smi_temperature_gpu
                   instant: true
@@ -214,7 +171,7 @@ data:
                 relativeTimeRange:
                   from: 300
                   to: 0
-                datasourceUid: prometheus
+                datasourceUid: PBFA97CFB590B2093
                 model:
                   expr: nvidia_smi_memory_used_bytes / nvidia_smi_memory_total_bytes
                   instant: true

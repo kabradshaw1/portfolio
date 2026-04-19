@@ -45,9 +45,6 @@ spec:
             - name: alerting
               mountPath: /etc/grafana/provisioning/alerting/alerting.yml
               subPath: alerting.yml
-            - name: telegram-secret
-              mountPath: /etc/grafana/secrets
-              readOnly: true
           resources:
             requests:
               memory: "128Mi"
@@ -74,6 +71,3 @@ spec:
         - name: alerting
           configMap:
             name: grafana-alerting
-        - name: telegram-secret
-          secret:
-            secretName: telegram-bot
