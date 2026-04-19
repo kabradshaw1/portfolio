@@ -117,8 +117,8 @@ We'll use provisioning: add a `grafana-alerting.yml` ConfigMap with the contact 
 | GPUExporterDown | `up{job="nvidia-gpu"} == 0` | critical | 2m | GPU exporter unreachable — GPU may be down |
 | OllamaDown | `up{job="ollama"} == 0` | critical | 2m | Ollama not responding to health checks |
 | AIServiceNotReady | `kube_pod_status_ready{pod=~"go-ai-service.*", condition="true"} == 0` | critical | 3m | AI service pod not ready |
-| GPUTemperatureHigh | `nvidia_gpu_temperature_celsius > 85` | warning | 5m | GPU running hot |
-| GPUVRAMHigh | `(nvidia_gpu_vram_used_bytes / nvidia_gpu_vram_total_bytes) > 0.9` | warning | 10m | GPU memory nearly full |
+| GPUTemperatureHigh | `nvidia_smi_temperature_gpu > 85` | warning | 5m | GPU running hot |
+| GPUVRAMHigh | `(nvidia_smi_memory_used_bytes / nvidia_smi_memory_total_bytes) > 0.9` | warning | 10m | GPU memory nearly full |
 
 **OllamaCPUFallback detection:** The GPU exporter going down while Ollama stays up is the signal for CPU fallback (exactly today's scenario). The GPUExporterDown alert covers this case. If we want an explicit "Ollama on CPU" alert, we could add a simple script that checks `ollama ps` output — but the GPU exporter down alert is sufficient for now.
 
