@@ -1,0 +1,250 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-alerting
+  namespace: monitoring
+data:
+  alerting.yml: |
+    apiVersion: 1
+
+    contactPoints:
+      - orgId: 1
+        name: telegram
+        receivers:
+          - uid: telegram-default
+            type: telegram
+            settings:
+              bottoken: $__file{/etc/grafana/secrets/bot-token}
+              chatid: $__file{/etc/grafana/secrets/chat-id}
+            disableResolveMessage: false
+
+    policies:
+      - orgId: 1
+        receiver: telegram
+        group_by:
+          - grafana_folder
+          - alertname
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 4h
+
+    groups:
+      - orgId: 1
+        name: Infrastructure
+        folder: Infrastructure Alerts
+        interval: 1m
+        rules:
+          - uid: gpu-exporter-down
+            title: GPU Exporter Down
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  expr: up{job="nvidia-gpu"}
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: lt
+                        params:
+                          - 1
+                  refId: C
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "GPU exporter is unreachable — NVIDIA GPU may be down or driver unloaded"
+
+          - uid: ollama-down
+            title: Ollama Down
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  expr: up{job="ollama"}
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: lt
+                        params:
+                          - 1
+                  refId: C
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Ollama is not responding — AI services will be degraded"
+
+          - uid: ai-service-not-ready
+            title: AI Service Not Ready
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  expr: kube_pod_status_ready{pod=~"go-ai-service.*", condition="true"}
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: lt
+                        params:
+                          - 1
+                  refId: C
+            for: 3m
+            labels:
+              severity: critical
+            annotations:
+              summary: "go-ai-service pod is not ready — shopping assistant is down"
+
+          - uid: gpu-temperature-high
+            title: GPU Temperature High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  expr: nvidia_smi_temperature_gpu
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 85
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "GPU temperature is above 85°C"
+
+          - uid: gpu-vram-high
+            title: GPU VRAM Usage High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  expr: nvidia_smi_memory_used_bytes / nvidia_smi_memory_total_bytes
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 0.9
+                  refId: C
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "GPU VRAM usage is above 90%"

@@ -13,6 +13,7 @@ resources:
   - configmaps/grafana-dashboard-provider.yml
   - configmaps/grafana-dashboards.yml
   - configmaps/grafana-datasource.yml
+  - configmaps/grafana-alerting.yml
   - configmaps/prometheus-config.yml
   - deployments/grafana.yml
   - deployments/jaeger.yml

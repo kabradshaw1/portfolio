@@ -22,6 +22,12 @@ data:
         static_configs:
           - targets: ["host.minikube.internal:9835"]
 
+      - job_name: "ollama"
+        metrics_path: /api/tags
+        scrape_interval: 30s
+        static_configs:
+          - targets: ["host.minikube.internal:11434"]
+
       - job_name: "kube-state-metrics"
         static_configs:
           - targets: ["kube-state-metrics.monitoring.svc.cluster.local:8080"]
