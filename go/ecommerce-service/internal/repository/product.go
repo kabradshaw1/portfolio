@@ -20,6 +20,76 @@ var (
 	ErrInsufficientStock = apperror.Conflict("INSUFFICIENT_STOCK", "insufficient stock")
 )
 
+// sortConfig describes how to order product queries and, for cursor pagination,
+// how to parse the cursor's sort value and build the comparator condition.
+type sortConfig struct {
+	orderClause string
+	comparator  string
+	sortCol     string
+	parseValue  func(string) (any, error)
+}
+
+// sortConfigForParam returns the sort configuration for a given sort parameter.
+func sortConfigForParam(sort string) sortConfig {
+	switch sort {
+	case "price_asc":
+		return sortConfig{
+			orderClause: "ORDER BY price ASC, id ASC",
+			comparator:  ">",
+			sortCol:     "price",
+			parseValue: func(v string) (any, error) {
+				var n int
+				_, err := fmt.Sscanf(v, "%d", &n)
+				return n, err
+			},
+		}
+	case "price_desc":
+		return sortConfig{
+			orderClause: "ORDER BY price DESC, id DESC",
+			comparator:  "<",
+			sortCol:     "price",
+			parseValue: func(v string) (any, error) {
+				var n int
+				_, err := fmt.Sscanf(v, "%d", &n)
+				return n, err
+			},
+		}
+	case "name_asc":
+		return sortConfig{
+			orderClause: "ORDER BY name ASC, id ASC",
+			comparator:  ">",
+			sortCol:     "name",
+			parseValue:  func(v string) (any, error) { return v, nil },
+		}
+	default:
+		return sortConfig{
+			orderClause: "ORDER BY created_at DESC, id DESC",
+			comparator:  "<",
+			sortCol:     "created_at",
+			parseValue: func(v string) (any, error) {
+				return time.Parse(time.RFC3339Nano, v)
+			},
+		}
+	}
+}
+
+// buildWhereClause appends category/query filter conditions and returns
+// the assembled WHERE parts.
+func buildWhereClause(params model.ProductListParams, args *[]any, argIdx *int) []string {
+	var whereParts []string
+	if params.Category != "" {
+		whereParts = append(whereParts, fmt.Sprintf("category = $%d", *argIdx))
+		*args = append(*args, params.Category)
+		(*argIdx)++
+	}
+	if params.Query != "" {
+		whereParts = append(whereParts, fmt.Sprintf("name ILIKE '%%' || $%d || '%%'", *argIdx))
+		*args = append(*args, params.Query)
+		(*argIdx)++
+	}
+	return whereParts
+}
+
 type ProductRepository struct {
 	pool     *pgxpool.Pool
 	breaker  *gobreaker.CircuitBreaker[any]
@@ -51,66 +121,9 @@ func (r *ProductRepository) listByCursor(ctx context.Context, params model.Produ
 
 		var args []any
 		argIdx := 1
+		whereParts := buildWhereClause(params, &args, &argIdx)
 
-		var whereParts []string
-		if params.Category != "" {
-			whereParts = append(whereParts, fmt.Sprintf("category = $%d", argIdx))
-			args = append(args, params.Category)
-			argIdx++
-		}
-		if params.Query != "" {
-			whereParts = append(whereParts, fmt.Sprintf("name ILIKE '%%' || $%d || '%%'", argIdx))
-			args = append(args, params.Query)
-			argIdx++
-		}
-
-		// Determine sort column, order direction, and comparator
-		type sortConfig struct {
-			orderClause string
-			comparator  string
-			sortCol     string
-			parseValue  func(string) (any, error)
-		}
-		cfg := sortConfig{
-			orderClause: "ORDER BY created_at DESC, id DESC",
-			comparator:  "<",
-			sortCol:     "created_at",
-			parseValue: func(v string) (any, error) {
-				return time.Parse(time.RFC3339Nano, v)
-			},
-		}
-		switch params.Sort {
-		case "price_asc":
-			cfg = sortConfig{
-				orderClause: "ORDER BY price ASC, id ASC",
-				comparator:  ">",
-				sortCol:     "price",
-				parseValue: func(v string) (any, error) {
-					var n int
-					_, err := fmt.Sscanf(v, "%d", &n)
-					return n, err
-				},
-			}
-		case "price_desc":
-			cfg = sortConfig{
-				orderClause: "ORDER BY price DESC, id DESC",
-				comparator:  "<",
-				sortCol:     "price",
-				parseValue: func(v string) (any, error) {
-					var n int
-					_, err := fmt.Sscanf(v, "%d", &n)
-					return n, err
-				},
-			}
-		case "name_asc":
-			cfg = sortConfig{
-				orderClause: "ORDER BY name ASC, id ASC",
-				comparator:  ">",
-				sortCol:     "name",
-				parseValue:  func(v string) (any, error) { return v, nil },
-			}
-		}
-
+		cfg := sortConfigForParam(params.Sort)
 		parsedSortValue, err := cfg.parseValue(sortValue)
 		if err != nil {
 			return result{}, apperror.BadRequest("INVALID_CURSOR", "invalid cursor sort value")
@@ -168,18 +181,8 @@ func (r *ProductRepository) listByOffset(ctx context.Context, params model.Produ
 	res, err := resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) (result, error) {
 		var args []any
 		argIdx := 1
+		whereParts := buildWhereClause(params, &args, &argIdx)
 
-		var whereParts []string
-		if params.Category != "" {
-			whereParts = append(whereParts, fmt.Sprintf("category = $%d", argIdx))
-			args = append(args, params.Category)
-			argIdx++
-		}
-		if params.Query != "" {
-			whereParts = append(whereParts, fmt.Sprintf("name ILIKE '%%' || $%d || '%%'", argIdx))
-			args = append(args, params.Query)
-			argIdx++
-		}
 		whereClause := ""
 		if len(whereParts) > 0 {
 			whereClause = " WHERE " + strings.Join(whereParts, " AND ")
@@ -191,15 +194,7 @@ func (r *ProductRepository) listByOffset(ctx context.Context, params model.Produ
 			return result{}, fmt.Errorf("count products: %w", err)
 		}
 
-		orderClause := " ORDER BY created_at DESC, id DESC"
-		switch params.Sort {
-		case "price_asc":
-			orderClause = " ORDER BY price ASC, id ASC"
-		case "price_desc":
-			orderClause = " ORDER BY price DESC, id DESC"
-		case "name_asc":
-			orderClause = " ORDER BY name ASC, id ASC"
-		}
+		cfg := sortConfigForParam(params.Sort)
 
 		limit := params.Limit
 		if limit <= 0 {
@@ -212,8 +207,8 @@ func (r *ProductRepository) listByOffset(ctx context.Context, params model.Produ
 		offset := (page - 1) * limit
 
 		query := fmt.Sprintf(
-			"SELECT id, name, description, price, category, image_url, stock, created_at, updated_at FROM products%s%s LIMIT $%d OFFSET $%d",
-			whereClause, orderClause, argIdx, argIdx+1,
+			"SELECT id, name, description, price, category, image_url, stock, created_at, updated_at FROM products%s %s LIMIT $%d OFFSET $%d",
+			whereClause, cfg.orderClause, argIdx, argIdx+1,
 		)
 		args = append(args, limit, offset)
 
