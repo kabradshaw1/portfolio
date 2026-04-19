@@ -14,7 +14,7 @@ data:
           - uid: telegram-default
             type: telegram
             settings:
-              bottoken: "8652800206:AAF7pnX2KXafOQG2oeH142LKBSl3tuaieo0"
+              bottoken: "$__env{TELEGRAM_BOT_TOKEN}"
               chatid: "8710936679"
             disableResolveMessage: false
 

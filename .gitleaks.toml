@@ -1,5 +1,11 @@
 title = "gitleaks config"
 
+[[rules]]
+id = "telegram-bot-token"
+description = "Telegram Bot Token"
+regex = '''[0-9]{8,10}:[A-Za-z0-9_-]{35}'''
+keywords = ["telegram", "bottoken", "bot_token"]
+
 [allowlist]
 paths = [
     '''\.env\.example''',
