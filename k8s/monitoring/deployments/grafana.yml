@@ -31,6 +31,14 @@ spec:
               value: https://grafana.kylebradshaw.dev
             - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
               value: /var/lib/grafana/dashboards/system-overview.json
+            - name: GF_UNIFIED_ALERTING_ENABLED
+              value: "true"
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: TELEGRAM_BOT_TOKEN
+                  optional: true
           volumeMounts:
             - name: datasource
               mountPath: /etc/grafana/provisioning/datasources/prometheus.yml
@@ -40,6 +48,9 @@ spec:
               subPath: dashboard.yml
             - name: dashboards
               mountPath: /var/lib/grafana/dashboards
+            - name: alerting
+              mountPath: /etc/grafana/provisioning/alerting/alerting.yml
+              subPath: alerting.yml
           resources:
             requests:
               memory: "128Mi"
@@ -63,3 +74,6 @@ spec:
         - name: dashboards
           configMap:
             name: grafana-dashboards
+        - name: alerting
+          configMap:
+            name: grafana-alerting

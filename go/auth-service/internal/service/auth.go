@@ -107,28 +107,26 @@ func (s *AuthService) AuthenticateGoogleUser(ctx context.Context, email, name, a
 	return s.generateTokens(user)
 }
 
+// baseClaims builds the common JWT claims shared by access and refresh tokens.
+func (s *AuthService) baseClaims(user *model.User, now time.Time, ttl time.Duration) jwt.MapClaims {
+	return jwt.MapClaims{
+		"sub":   user.ID.String(),
+		"email": user.Email,
+		"iat":   now.Unix(),
+		"exp":   now.Add(ttl).Unix(),
+	}
+}
+
 // generateTokens creates an access token and a refresh token for the user.
 func (s *AuthService) generateTokens(user *model.User) (*model.AuthResponse, error) {
 	now := time.Now()
 
-	accessClaims := jwt.MapClaims{
-		"sub":   user.ID.String(),
-		"email": user.Email,
-		"iat":   now.Unix(),
-		"exp":   now.Add(s.accessTokenTTL).Unix(),
-	}
-	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString(s.jwtSecret)
+	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, s.baseClaims(user, now, s.accessTokenTTL)).SignedString(s.jwtSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshClaims := jwt.MapClaims{
-		"sub":   user.ID.String(),
-		"email": user.Email,
-		"iat":   now.Unix(),
-		"exp":   now.Add(s.refreshTokenTTL).Unix(),
-	}
-	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString(s.jwtSecret)
+	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, s.baseClaims(user, now, s.refreshTokenTTL)).SignedString(s.jwtSecret)
 	if err != nil {
 		return nil, err
 	}

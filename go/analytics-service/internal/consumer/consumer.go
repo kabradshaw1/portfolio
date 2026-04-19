@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync/atomic"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/aggregator"
+	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -98,6 +100,8 @@ func (c *Consumer) route(msg kafka.Message) {
 		return
 	}
 
+	start := time.Now()
+
 	switch msg.Topic {
 	case TopicOrders:
 		c.handleOrder(env)
@@ -107,7 +111,11 @@ func (c *Consumer) route(msg kafka.Message) {
 		c.handleView(env)
 	default:
 		slog.Warn("unknown topic", "topic", msg.Topic)
+		return
 	}
+
+	metrics.EventsConsumed.WithLabelValues(msg.Topic).Inc()
+	metrics.AggregationLatency.WithLabelValues(msg.Topic).Observe(time.Since(start).Seconds())
 }
 
 type orderData struct {

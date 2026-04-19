@@ -83,6 +83,11 @@ kubectl wait --for=condition=available --timeout=120s deployment/qdrant -n ai-se
 
 # --- Deploy monitoring (same for both environments) ---
 echo "==> Deploying monitoring..."
+if [ -f "$SCRIPT_DIR/monitoring/secrets/grafana-secrets.yml" ]; then
+  kubectl apply -f "$SCRIPT_DIR/monitoring/secrets/grafana-secrets.yml"
+else
+  echo "    WARN: grafana-secrets.yml not found — Telegram alerts will not work"
+fi
 kubectl apply -k "$SCRIPT_DIR/monitoring"
 
 # --- Deploy java-tasks ---

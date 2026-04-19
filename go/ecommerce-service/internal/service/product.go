@@ -13,6 +13,38 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 )
 
+// getFromCache attempts to read and unmarshal a value from Redis.
+// Returns (value, true) on cache hit, (zero, false) on miss or error.
+func getFromCache[T any](ctx context.Context, r *redis.Client, key string) (T, bool) {
+	var zero T
+	if r == nil {
+		return zero, false
+	}
+	cached, err := r.Get(ctx, key).Result()
+	if err != nil {
+		metrics.CacheOps.WithLabelValues("get", "miss").Inc()
+		return zero, false
+	}
+	var val T
+	if json.Unmarshal([]byte(cached), &val) != nil {
+		metrics.CacheOps.WithLabelValues("get", "miss").Inc()
+		return zero, false
+	}
+	metrics.CacheOps.WithLabelValues("get", "hit").Inc()
+	return val, true
+}
+
+// setInCache marshals and stores a value in Redis with the given TTL.
+func setInCache[T any](ctx context.Context, r *redis.Client, key string, val T, ttl time.Duration) {
+	if r == nil {
+		return
+	}
+	if data, err := json.Marshal(val); err == nil {
+		r.Set(ctx, key, data, ttl)
+		metrics.CacheOps.WithLabelValues("set", "success").Inc()
+	}
+}
+
 type ProductRepo interface {
 	List(ctx context.Context, params model.ProductListParams) ([]model.Product, int, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*model.Product, error)
@@ -37,16 +69,8 @@ func (s *ProductService) List(ctx context.Context, params model.ProductListParam
 
 	cacheKey := fmt.Sprintf("ecom:products:list:%s:%s:%d:%d", params.Category, params.Sort, params.Page, params.Limit)
 
-	if s.redis != nil {
-		cached, err := s.redis.Get(ctx, cacheKey).Result()
-		if err == nil {
-			var resp model.ProductListResponse
-			if json.Unmarshal([]byte(cached), &resp) == nil {
-				metrics.CacheOps.WithLabelValues("get", "hit").Inc()
-				return resp.Products, resp.Total, nil
-			}
-		}
-		metrics.CacheOps.WithLabelValues("get", "miss").Inc()
+	if resp, ok := getFromCache[model.ProductListResponse](ctx, s.redis, cacheKey); ok {
+		return resp.Products, resp.Total, nil
 	}
 
 	products, total, err := s.repo.List(ctx, params)
@@ -54,13 +78,9 @@ func (s *ProductService) List(ctx context.Context, params model.ProductListParam
 		return nil, 0, err
 	}
 
-	if s.redis != nil {
-		resp := model.ProductListResponse{Products: products, Total: total, Page: params.Page, Limit: params.Limit}
-		if data, err := json.Marshal(resp); err == nil {
-			s.redis.Set(ctx, cacheKey, data, 5*time.Minute)
-			metrics.CacheOps.WithLabelValues("set", "success").Inc()
-		}
-	}
+	setInCache(ctx, s.redis, cacheKey, model.ProductListResponse{
+		Products: products, Total: total, Page: params.Page, Limit: params.Limit,
+	}, 5*time.Minute)
 
 	return products, total, nil
 }
@@ -68,16 +88,8 @@ func (s *ProductService) List(ctx context.Context, params model.ProductListParam
 func (s *ProductService) GetByID(ctx context.Context, id uuid.UUID) (*model.Product, error) {
 	cacheKey := fmt.Sprintf("ecom:product:%s", id.String())
 
-	if s.redis != nil {
-		cached, err := s.redis.Get(ctx, cacheKey).Result()
-		if err == nil {
-			var p model.Product
-			if json.Unmarshal([]byte(cached), &p) == nil {
-				metrics.CacheOps.WithLabelValues("get", "hit").Inc()
-				return &p, nil
-			}
-		}
-		metrics.CacheOps.WithLabelValues("get", "miss").Inc()
+	if p, ok := getFromCache[model.Product](ctx, s.redis, cacheKey); ok {
+		return &p, nil
 	}
 
 	product, err := s.repo.FindByID(ctx, id)
@@ -85,29 +97,15 @@ func (s *ProductService) GetByID(ctx context.Context, id uuid.UUID) (*model.Prod
 		return nil, err
 	}
 
-	if s.redis != nil {
-		if data, err := json.Marshal(product); err == nil {
-			s.redis.Set(ctx, cacheKey, data, 5*time.Minute)
-			metrics.CacheOps.WithLabelValues("set", "success").Inc()
-		}
-	}
-
+	setInCache(ctx, s.redis, cacheKey, product, 5*time.Minute)
 	return product, nil
 }
 
 func (s *ProductService) Categories(ctx context.Context) ([]string, error) {
 	cacheKey := "ecom:categories"
 
-	if s.redis != nil {
-		cached, err := s.redis.Get(ctx, cacheKey).Result()
-		if err == nil {
-			var cats []string
-			if json.Unmarshal([]byte(cached), &cats) == nil {
-				metrics.CacheOps.WithLabelValues("get", "hit").Inc()
-				return cats, nil
-			}
-		}
-		metrics.CacheOps.WithLabelValues("get", "miss").Inc()
+	if cats, ok := getFromCache[[]string](ctx, s.redis, cacheKey); ok {
+		return cats, nil
 	}
 
 	cats, err := s.repo.Categories(ctx)
@@ -115,13 +113,7 @@ func (s *ProductService) Categories(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	if s.redis != nil {
-		if data, err := json.Marshal(cats); err == nil {
-			s.redis.Set(ctx, cacheKey, data, 30*time.Minute)
-			metrics.CacheOps.WithLabelValues("set", "success").Inc()
-		}
-	}
-
+	setInCache(ctx, s.redis, cacheKey, cats, 30*time.Minute)
 	return cats, nil
 }
 
