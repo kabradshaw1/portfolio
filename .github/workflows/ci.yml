@@ -724,7 +724,7 @@ jobs:
             context: go
             file: go/ecommerce-service/Dockerfile
             image: go-ecommerce-service
-            paths: go/ecommerce-service go/pkg go/go.work
+            paths: go/ecommerce-service go/product-service go/pkg go/go.work
           - service: go-ai-service
             context: go
             file: go/ai-service/Dockerfile
