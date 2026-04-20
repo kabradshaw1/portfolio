@@ -7,7 +7,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { sendChat, type AiEvent, type ChatMessage } from "@/lib/ai-service";
 
-import { AiToolCallCard, type ToolCallView } from "./AiToolCallCard";
+import { ToolResultDisplay } from "./tool-results/ToolResultDisplay";
+
+type ToolCallView = {
+  id: string;
+  name: string;
+  args: unknown;
+  status: "running" | "success" | "error";
+  display?: unknown;
+  error?: string;
+};
 
 type DisplayItem =
   | { kind: "user"; text: string }
@@ -21,6 +30,7 @@ export function AiAssistantDrawer() {
   const [items, setItems] = useState<DisplayItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [showPanel, setShowPanel] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
 
   const appendItem = useCallback((item: DisplayItem) => {
@@ -54,6 +64,7 @@ export function AiAssistantDrawer() {
     appendItem({ kind: "user", text: trimmed });
     setInput("");
     setBusy(true);
+    setShowPanel(false);
     setErrorText(null);
 
     const controller = new AbortController();
@@ -136,13 +147,65 @@ export function AiAssistantDrawer() {
               Close
             </button>
           </header>
+          {showPanel && (
+            <div className="border-b px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowPanel(false)}
+                className="mb-2 flex w-full items-center justify-between text-xs font-semibold text-muted-foreground"
+              >
+                <span>What can I help with?</span>
+                <span className="text-[10px]">✕</span>
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-md bg-muted p-2">
+                  <div className="text-[10px] font-semibold text-blue-500">
+                    📦 PRODUCT CATALOG
+                  </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Search products, check prices &amp; stock, manage your cart, view orders
+                  </p>
+                </div>
+                <div className="rounded-md bg-muted p-2">
+                  <div className="text-[10px] font-semibold text-green-500">
+                    📄 PRODUCT KNOWLEDGE
+                  </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Spec sheets, buying guides, compatibility info
+                  </p>
+                  <a
+                    href="/ai/rag"
+                    className="mt-1 block text-[10px] text-blue-400 hover:underline"
+                  >
+                    Add docs at AI / Document Q&amp;A →
+                  </a>
+                </div>
+              </div>
+              <div className="mt-2">
+                <div className="text-[10px] text-muted-foreground">TRY ASKING:</div>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {[
+                    "Compare laptops under $1000",
+                    "What's the battery life of the Laptop Pro 15?",
+                    "Which cookware is oven-safe?",
+                  ].map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      className="rounded-full bg-muted px-2.5 py-1 text-[10px] text-muted-foreground hover:bg-muted/80"
+                      onClick={() => {
+                        setInput(q);
+                        setShowPanel(false);
+                      }}
+                    >
+                      &quot;{q}&quot;
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           <ScrollArea className="flex-1 px-4 py-3">
-            {items.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Try: &quot;find me a waterproof jacket under $150&quot; or
-                &quot;where&apos;s my last order?&quot;
-              </p>
-            )}
             {items.map((it, i) => (
               <div key={i} className="mb-3">
                 {it.kind === "user" && (
@@ -158,7 +221,24 @@ export function AiAssistantDrawer() {
                     {it.text}
                   </div>
                 )}
-                {it.kind === "tool" && <AiToolCallCard call={it.call} />}
+                {it.kind === "tool" && (
+                  <>
+                    {it.call.status === "running" && (
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500" />
+                        {it.call.name}
+                      </div>
+                    )}
+                    {it.call.status === "error" && (
+                      <div className="rounded border border-red-500/30 p-2 text-xs text-red-500">
+                        <span className="font-semibold">{it.call.name}</span>: {it.call.error}
+                      </div>
+                    )}
+                    {it.call.status === "success" && it.call.display !== undefined && (
+                      <ToolResultDisplay toolName={it.call.name} display={it.call.display} />
+                    )}
+                  </>
+                )}
               </div>
             ))}
             {errorText && (
