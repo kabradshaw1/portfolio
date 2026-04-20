@@ -55,6 +55,10 @@ func runServe() {
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
+	slog.SetDefault(slog.New(
+		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
+	))
+
 	// Circuit breakers
 	ollamaBreaker := newCircuitBreaker("ai-ollama")
 	ecomBreaker := newCircuitBreaker("ai-ecommerce")

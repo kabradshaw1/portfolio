@@ -63,6 +63,10 @@ func main() {
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
+	slog.SetDefault(slog.New(
+		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
+	))
+
 	pool := connectPostgres(ctx, cfg.DatabaseURL)
 	defer pool.Close()
 
