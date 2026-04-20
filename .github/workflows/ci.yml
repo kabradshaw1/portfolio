@@ -627,6 +627,7 @@ jobs:
           - go/ecommerce-service/Dockerfile
           - go/ai-service/Dockerfile
           - go/analytics-service/Dockerfile
+          - go/product-service/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
