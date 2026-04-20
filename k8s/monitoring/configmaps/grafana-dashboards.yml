@@ -1487,6 +1487,111 @@ data:
               "placement": "bottom"
             }
           }
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 35
+          },
+          "id": 22,
+          "title": "Streaming Analytics",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 0,
+            "y": 36
+          },
+          "id": 23,
+          "title": "Kafka Consumer Lag",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "kafka_consumer_lag",
+              "legendFormat": "lag",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 8,
+            "y": 36
+          },
+          "id": 24,
+          "title": "Events Consumed Rate",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum(rate(analytics_events_consumed_total[5m])) by (topic)",
+              "legendFormat": "{{ topic }}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 16,
+            "y": 36
+          },
+          "id": 25,
+          "title": "Consumer Errors",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "increase(kafka_consumer_errors_total[1h])",
+              "legendFormat": "errors",
+              "refId": "A"
+            }
+          ]
         }
       ],
       "schemaVersion": 39,
