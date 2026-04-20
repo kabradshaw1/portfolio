@@ -475,3 +475,284 @@ data:
               severity: warning
             annotations:
               summary: "Deployment {{ $labels.deployment }} in {{ $labels.namespace }} has unavailable replicas"
+
+      - orgId: 1
+        name: Application SLOs
+        folder: Infrastructure Alerts
+        interval: 1m
+        rules:
+          - uid: go-ai-error-rate
+            title: Go AI Service Error Rate High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    sum(rate(http_requests_total{service="go-ai-service",status=~"5.."}[5m]))
+                    / sum(rate(http_requests_total{service="go-ai-service"}[5m]))
+                    * 100
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 5
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go AI service error rate is above 5%"
+
+          - uid: go-ecommerce-error-rate
+            title: Go Ecommerce Error Rate High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    sum(rate(http_requests_total{service="go-ecommerce-service",status=~"5.."}[5m]))
+                    / sum(rate(http_requests_total{service="go-ecommerce-service"}[5m]))
+                    * 100
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 2
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go ecommerce service error rate is above 2%"
+
+          - uid: java-gateway-error-rate
+            title: Java Gateway Error Rate High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    sum(rate(http_server_requests_seconds_count{namespace="java-tasks",status=~"5.."}[5m]))
+                    / sum(rate(http_server_requests_seconds_count{namespace="java-tasks"}[5m]))
+                    * 100
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 2
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Java gateway error rate is above 2%"
+
+          - uid: go-ai-latency-high
+            title: Go AI Service Latency High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    histogram_quantile(0.95,
+                      sum(rate(http_request_duration_seconds_bucket{service="go-ai-service"}[5m])) by (le)
+                    )
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 30
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go AI service p95 latency is above 30s"
+
+          - uid: go-ecommerce-latency-high
+            title: Go Ecommerce Latency High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    histogram_quantile(0.95,
+                      sum(rate(http_request_duration_seconds_bucket{service="go-ecommerce-service"}[5m])) by (le)
+                    )
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 2
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go ecommerce service p95 latency is above 2s"
+
+          - uid: java-gateway-latency-high
+            title: Java Gateway Latency High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    histogram_quantile(0.95,
+                      sum(rate(http_server_requests_seconds_bucket{namespace="java-tasks"}[5m])) by (le)
+                    )
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 3
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Java gateway p95 latency is above 3s"
