@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-product-service
+  namespace: go-ecommerce
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: go-product-service
+  template:
+    metadata:
+      labels:
+        app: go-product-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8095"
+        prometheus.io/path: "/metrics"
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: go-product-service
+          image: ghcr.io/kabradshaw1/portfolio/go-product-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8095
+              name: http
+            - containerPort: 9095
+              name: grpc
+          envFrom:
+            - configMapRef:
+                name: product-service-config
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8095
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8095
+            initialDelaySeconds: 15
+            periodSeconds: 30
