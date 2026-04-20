@@ -94,7 +94,7 @@ Replace the generic `AiToolCallCard` JSON dump with typed components based on th
 
 **Sample questions** (clickable, populate the input):
 - "Compare laptops under $1000" (triggers catalog search)
-- "What's the battery life of the ThinkPad?" (triggers RAG document search)
+- "What's the battery life of the Laptop Pro 15?" (triggers RAG document search)
 - "Which cookware is oven-safe?" (triggers RAG buying guide search)
 
 ## What's NOT Changing
