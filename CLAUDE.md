@@ -8,7 +8,7 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 
 - **Python:** FastAPI microservices (ingestion, chat, debug), LangChain text splitters, Qdrant vector DB
 - **Java:** Spring Boot microservices (task, activity, notification, gateway), PostgreSQL, MongoDB, Redis, RabbitMQ, GraphQL
-- **Go:** Auth, ecommerce, and AI agent services, PostgreSQL, Redis, RabbitMQ, shared `go/pkg/` module (see `go/CLAUDE.md`)
+- **Go:** Auth, ecommerce, AI agent, and analytics services, PostgreSQL, Redis, RabbitMQ, Kafka, shared `go/pkg/` module (see `go/CLAUDE.md`)
 - **AI/ML:** Ollama (Qwen 2.5 14B for chat/debug, nomic-embed-text for embeddings)
 - **Frontend:** Next.js + TypeScript + shadcn/ui, Apollo Client (GraphQL)
 - **Testing:** pytest, JUnit, Go test/benchmarks, Playwright (E2E)
@@ -23,7 +23,7 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
   - `ai-services` namespace: Python AI services + Qdrant
   - `java-tasks` namespace: Java microservices + databases
   - `go-ecommerce` namespace: Go auth + ecommerce services
-  - `monitoring` namespace: Prometheus + Grafana
+  - `monitoring` namespace: Prometheus, Grafana, Loki, Promtail, Jaeger, kube-state-metrics, node-exporter
   - `ai-services-qa` namespace: QA copies of Python AI services (shared Qdrant with prod)
   - `java-tasks-qa` namespace: QA copies of Java services (shared infra with prod)
   - `go-ecommerce-qa` namespace: QA copies of Go services (shared infra with prod)
@@ -96,6 +96,7 @@ go/                         # Go microservices
 ├── auth-service/           # JWT auth (register, login, refresh), PostgreSQL
 ├── ecommerce-service/      # Products, cart, orders, Redis caching, RabbitMQ worker pool
 ├── ai-service/             # Agent loop over Ollama tool-calling, 9 tools wrapping ecommerce
+├── analytics-service/      # Kafka consumer — streaming analytics (orders, cart, views)
 ├── k8s/                    # Go-specific K8s manifests
 frontend/                   # Next.js + shadcn/ui
 ├── src/app/                # Pages: ai/ (rag, debug), java/ (tasks), go/ (ecommerce)
@@ -105,9 +106,9 @@ frontend/                   # Next.js + shadcn/ui
 nginx/                      # Reverse proxy — path-based routing to all backend stacks
 k8s/                        # Kubernetes manifests — production deployment (Minikube)
 ├── ai-services/            # Python AI services + Qdrant
-├── monitoring/             # Prometheus + Grafana
+├── monitoring/             # Full observability stack (see Monitoring section below)
 ├── deploy.sh               # Unified deploy script for all namespaces
-monitoring/                 # Prometheus + Grafana config files
+monitoring/                 # Local Docker Compose Prometheus + Grafana config files
 docs/adr/                   # Architecture Decision Records
 ├── document-qa/            # 7 notebooks (Python/FastAPI, RAG pipeline)
 ├── document-debugger/      # 3 notebooks (code-aware chunking, agent loop, tools)
@@ -130,6 +131,53 @@ The Go ai-service (`go/ai-service/`) is the MCP gateway for all AI functionality
 - **Frontend integration:** POST /chat with SSE streaming. Frontend client in `frontend/src/lib/ai-service.ts` parses event types.
 - **Roadmap (Q2 2026, issue #75):** Phase 1: architecture doc → Phase 2: unified AI assistant UI (#77) → Phase 3: Loki log aggregation (#78) → Phase 4a-c: RAG eval harness, hybrid search, cross-encoder re-ranking (#79-#81).
 
+## Monitoring & Observability
+
+Three pillars deployed in the `monitoring` namespace (`k8s/monitoring/`):
+
+- **Metrics (Prometheus):** Scrapes kube-state-metrics, node-exporter, GPU exporter, and all app pods via `prometheus.io/scrape` annotations. 15s scrape interval, 15-day retention, 8GB max storage.
+- **Logs (Loki + Promtail):** Loki (single-binary, StatefulSet with 5Gi PVC) stores logs. Promtail (DaemonSet) tails `/var/log/pods/`, parses JSON logs, extracts `level` and `traceID` labels, ships to Loki. Go services emit structured JSON via `slog` + `tracing.NewLogHandler()`. Java services use `logstash-logback-encoder` for JSON output.
+- **Traces (Jaeger):** OTLP gRPC collector on port 4317. Go services use OTel SDK with `otelgin` middleware. Trace context propagates across HTTP (W3C traceparent), Kafka headers (`go/pkg/tracing/kafka.go`), and RabbitMQ headers.
+- **Correlation:** Loki datasource has derived fields that turn `traceID` in log lines into clickable Jaeger links. The "Observability Overview" dashboard shows metrics → logs → traces drill-down.
+
+**Grafana dashboards** (5 total, embedded in `k8s/monitoring/configmaps/grafana-dashboards.yml`):
+- `system-overview.json` — GPU, system, RAG pipeline
+- `go-services.json` — RED metrics, Go runtime, ecommerce, cache, AI agent, streaming analytics
+- `kubernetes.json` — Pod status, restarts, deployment replicas
+- `ai-pipeline.json` — Ollama, RAG, embeddings, vector search
+- `observability-overview.json` — Correlation dashboard (metrics/logs/traces)
+
+**Alert rules** (4 groups in `k8s/monitoring/configmaps/grafana-alerting.yml`, all → Telegram):
+- Infrastructure: GPU exporter down, AI service not ready, GPU temp, GPU VRAM
+- Kubernetes Health: OOM killed, pod restart storm, container memory high, node memory/disk pressure, deployment replicas unavailable
+- Application SLOs: Error rate + p95 latency for Go AI (5%/30s), Go ecommerce (2%/2s), Java gateway (2%/3s)
+- Streaming Analytics: Kafka consumer lag > 1000
+
+**Datasources** (`k8s/monitoring/configmaps/grafana-datasource.yml`):
+- Prometheus: uid `PBFA97CFB590B2093` (referenced by all alert rules — do not change)
+- Loki: uid `loki`
+- Jaeger: uid `jaeger`
+
+**Minikube:** Allocated 16Gi memory (cannot increase without `minikube delete` which wipes all cluster state). Currently sufficient.
+
+## Kafka Streaming Analytics
+
+The Go analytics-service (`go/analytics-service/`, port 8094) consumes events from Kafka:
+
+- **Broker:** Apache Kafka 3.7.0 (KRaft mode, no Zookeeper), StatefulSet in `go-ecommerce` namespace
+- **Topics:** `ecommerce.orders`, `ecommerce.cart`, `ecommerce.views`
+- **Producers:** ecommerce-service (orders, cart events), ai-service (product view events, optional)
+- **Consumer:** analytics-service, consumer group `analytics-group`, aggregates into order/cart/trending metrics
+- **Library:** `segmentio/kafka-go` v0.4.50
+- **Prometheus metrics:** `analytics_events_consumed_total`, `analytics_aggregation_latency_seconds`, `kafka_consumer_lag`, `kafka_consumer_errors_total`
+- **Trace propagation:** W3C trace context in Kafka message headers via `go/pkg/tracing/kafka.go`
+
+## Java Service Resource Limits
+
+Java services use `-Xmx512m` heap cap (set in Dockerfiles) with 768Mi container memory limits. Without the heap cap, JVM auto-sizing can cause OOM kills. If adding a new Java service, always include `-Xmx512m` in the `ENTRYPOINT`.
+
+**`make preflight-java` fails on Mac** — requires JDK 21 which is not installed locally. Java compilation and tests run correctly in CI (Debian server has JDK 21). This is a known limitation of the local dev setup.
+
 ## Kyle's Background
 
 - Strong in Go and TypeScript (full-stack web apps)
@@ -150,6 +198,7 @@ Current ADRs:
 - `docs/adr/document-qa/` — 7 Jupyter notebooks covering the ingestion and chat services
 - `docs/adr/document-debugger/` — 3 Jupyter notebooks covering the debug assistant
 - `docs/adr/java-task-management/` — 7 markdown lessons covering the Java microservices stack
+- `docs/adr/observability/` — 6 markdown guides (three pillars, Prometheus, Loki, Jaeger, SLOs, correlation)
 - Standalone markdown ADRs for CI/CD, deployment architecture, K8s migration, analytics, auth, etc.
 
 ## Branching & Workflow
