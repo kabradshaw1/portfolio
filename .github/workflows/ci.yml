@@ -819,10 +819,15 @@ jobs:
           # When the build is skipped, :latest still exists from the last build.
           # The deploy rewrites manifests to qa-<sha>, so we retag :latest so
           # the deploy can find the image under the new tag.
+          # If :latest doesn't exist (new service), skip — the next push that
+          # touches the service's paths will trigger a full build.
           SHORT_SHA=$(echo "$SHA" | cut -c1-7)
-          docker pull "${IMAGE}:latest"
-          docker tag "${IMAGE}:latest" "${IMAGE}:qa-${SHORT_SHA}"
-          docker push "${IMAGE}:qa-${SHORT_SHA}"
+          if docker pull "${IMAGE}:latest" 2>/dev/null; then
+            docker tag "${IMAGE}:latest" "${IMAGE}:qa-${SHORT_SHA}"
+            docker push "${IMAGE}:qa-${SHORT_SHA}"
+          else
+            echo "No existing :latest for ${IMAGE} — skipping retag (new service, needs first build)"
+          fi
 
   # ---------- Deploy QA ----------
 
