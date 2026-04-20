@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ProductCard } from "@/components/go/ProductCard";
 import { useGoStore } from "@/components/go/GoStoreProvider";
-import { GO_ECOMMERCE_URL } from "@/lib/go-auth";
+import { GO_PRODUCT_URL } from "@/lib/go-auth";
 
 interface Product {
   id: string;
@@ -18,7 +18,7 @@ export default function EcommercePage() {
   const [products, setProducts] = useState<Product[]>([]);
 
   useEffect(() => {
-    fetch(`${GO_ECOMMERCE_URL}/products`)
+    fetch(`${GO_PRODUCT_URL}/products`)
       .then((r) => r.json())
       .then((data) => setProducts(data?.products ?? []))
       .catch(() => {});

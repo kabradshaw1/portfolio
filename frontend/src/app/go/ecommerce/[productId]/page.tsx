@@ -7,7 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useGoAuth } from "@/components/go/GoAuthProvider";
 import { useGoCart } from "@/components/go/GoCartProvider";
 import { goApiFetch } from "@/lib/go-api";
-import { GO_ECOMMERCE_URL } from "@/lib/go-auth";
+import { GO_PRODUCT_URL } from "@/lib/go-auth";
 
 interface Product {
   id: string;
@@ -60,7 +60,7 @@ export default function ProductDetailPage() {
   }
 
   useEffect(() => {
-    fetch(`${GO_ECOMMERCE_URL}/products/${params.productId}`)
+    fetch(`${GO_PRODUCT_URL}/products/${params.productId}`)
       .then((r) => {
         if (!r.ok) throw new Error("Not found");
         return r.json();
