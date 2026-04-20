@@ -38,6 +38,12 @@ export function SiteHeader() {
             <Link href="/cicd" className={navLinkClass("/cicd")}>
               CI/CD
             </Link>
+            <Link
+              href="/observability"
+              className={navLinkClass("/observability")}
+            >
+              Observability
+            </Link>
             <Link href="/security" className={navLinkClass("/security")}>
               Security
             </Link>
