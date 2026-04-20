@@ -4,7 +4,7 @@ metadata:
   name: grafana-datasource
   namespace: monitoring
 data:
-  prometheus.yml: |
+  datasources.yml: |
     apiVersion: 1
     datasources:
       - name: Prometheus
@@ -13,3 +13,23 @@ data:
         url: http://prometheus.monitoring.svc.cluster.local:9090
         isDefault: true
         editable: false
+        uid: PBFA97CFB590B2093
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.monitoring.svc.cluster.local:3100
+        editable: false
+        uid: loki
+        jsonData:
+          derivedFields:
+            - datasourceUid: jaeger
+              matcherRegex: '"traceID":"([a-f0-9]+)"'
+              name: TraceID
+              url: "$${__value.raw}"
+              urlDisplayLabel: View Trace
+      - name: Jaeger
+        type: jaeger
+        access: proxy
+        url: http://jaeger.monitoring.svc.cluster.local:16686
+        editable: false
+        uid: jaeger
