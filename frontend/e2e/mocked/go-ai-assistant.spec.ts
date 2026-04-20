@@ -47,16 +47,91 @@ test.describe("Go ecommerce AI assistant drawer", () => {
       page.getByText("find me a waterproof jacket under $150"),
     ).toBeVisible();
 
-    // Tool call card renders the tool name.
-    await expect(page.getByText("search_products")).toBeVisible();
+    // Product name renders in the rich component
+    await expect(
+      page.getByText("Waterproof Jacket", { exact: true }),
+    ).toBeVisible();
 
-    // Tool args render as pretty-printed JSON in the tool card.
-    await expect(page.getByText(/"max_price": 150/)).toBeVisible();
+    // Catalog source label should be visible
+    await expect(page.getByText("Catalog Search")).toBeVisible();
 
     // Final answer streamed into the assistant bubble.
     await expect(page.getByTestId("ai-assistant-final")).toHaveText(
       "I found a waterproof jacket under $150.",
     );
+  });
+
+  test("renders RAG search results with source badges", async ({ page }) => {
+    await page.route("**/chat", (route) => {
+      const sseBody = [
+        "event: tool_call",
+        'data: {"name":"search_documents","args":{"query":"battery life laptop"}}',
+        "",
+        "event: tool_result",
+        'data: {"name":"search_documents","display":{"kind":"search_results","results":[{"text":"The Laptop Pro 15 features a 72Wh battery rated for up to 10 hours.","filename":"laptop-pro-15-specs.pdf","page_number":1,"score":0.92}]}}',
+        "",
+        "event: final",
+        'data: {"text":"The Laptop Pro 15 has up to 10 hours of battery life."}',
+        "",
+      ].join("\n");
+
+      return route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: sseBody,
+      });
+    });
+
+    await page.route("**/products**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ products: [], total: 0, page: 1, limit: 20 }),
+      }),
+    );
+
+    await page.goto("/go/ecommerce");
+    await page.getByTestId("ai-assistant-open").click();
+    await page.getByTestId("ai-assistant-input").fill("battery life laptop");
+    await page.getByTestId("ai-assistant-send").click();
+
+    // RAG source label
+    await expect(page.getByText("Product Knowledge")).toBeVisible();
+
+    // Source badge with filename and page
+    await expect(page.getByText("laptop-pro-15-specs.pdf, p.1")).toBeVisible();
+
+    // Match score
+    await expect(page.getByText("92% match")).toBeVisible();
+
+    // Final answer
+    await expect(page.getByTestId("ai-assistant-final")).toHaveText(
+      "The Laptop Pro 15 has up to 10 hours of battery life.",
+    );
+  });
+
+  test("shows context panel with sample questions", async ({ page }) => {
+    await page.route("**/products**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ products: [], total: 0, page: 1, limit: 20 }),
+      }),
+    );
+
+    await page.goto("/go/ecommerce");
+    await page.getByTestId("ai-assistant-open").click();
+
+    // Context panel visible
+    await expect(page.getByText("What can I help with?")).toBeVisible();
+    await expect(page.getByText("Product Catalog", { exact: false })).toBeVisible();
+    await expect(page.getByText("Product Knowledge", { exact: false })).toBeVisible();
+
+    // Sample questions visible
+    await expect(page.getByText("Compare laptops under $1000")).toBeVisible();
+
+    // Link to RAG page
+    await expect(page.getByText("Add docs at AI / Document Q&A")).toBeVisible();
   });
 
   test("shows an error when ai-service returns 500", async ({ page }) => {
