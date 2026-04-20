@@ -65,10 +65,15 @@ func (c *Consumer) Run(ctx context.Context) error {
 				return nil // shutting down
 			}
 			slog.Error("kafka fetch error", "error", err)
+			metrics.ConsumerErrors.Inc()
 			continue
 		}
 
 		c.connected.Store(true)
+
+		// Record consumer lag from reader stats.
+		stats := c.reader.Stats()
+		metrics.ConsumerLag.Set(float64(stats.Lag))
 
 		// Extract trace context from Kafka headers.
 		msgCtx := tracing.ExtractKafka(ctx, msg.Headers)

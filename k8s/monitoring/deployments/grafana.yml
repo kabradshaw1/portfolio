@@ -36,13 +36,13 @@ spec:
             - name: TELEGRAM_BOT_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: grafana-secrets
-                  key: TELEGRAM_BOT_TOKEN
+                  name: telegram-bot
+                  key: bot-token
                   optional: true
           volumeMounts:
             - name: datasource
-              mountPath: /etc/grafana/provisioning/datasources/prometheus.yml
-              subPath: prometheus.yml
+              mountPath: /etc/grafana/provisioning/datasources/datasources.yml
+              subPath: datasources.yml
             - name: dashboard-provider
               mountPath: /etc/grafana/provisioning/dashboards/dashboard.yml
               subPath: dashboard.yml

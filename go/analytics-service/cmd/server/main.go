@@ -29,6 +29,10 @@ func main() {
 	}
 	defer func() { _ = shutdownTracer(ctx) }()
 
+	slog.SetDefault(slog.New(
+		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
+	))
+
 	orders := aggregator.NewOrderAggregator()
 	trending := aggregator.NewTrendingAggregator()
 	carts := aggregator.NewCartAggregator()

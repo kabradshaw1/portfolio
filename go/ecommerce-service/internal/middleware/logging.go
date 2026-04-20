@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func Logging() gin.HandlerFunc {
@@ -16,7 +17,8 @@ func Logging() gin.HandlerFunc {
 		start := time.Now()
 		c.Next()
 		latency := time.Since(start)
-		slog.Info("request",
+
+		attrs := []any{
 			"requestId", requestID,
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
@@ -24,6 +26,13 @@ func Logging() gin.HandlerFunc {
 			"latency", latency.String(),
 			"ip", c.ClientIP(),
 			"userId", c.GetString("userId"),
-		)
+		}
+
+		sc := trace.SpanContextFromContext(c.Request.Context())
+		if sc.HasTraceID() {
+			attrs = append(attrs, "traceID", sc.TraceID().String())
+		}
+
+		slog.InfoContext(c.Request.Context(), "request", attrs...)
 	}
 }
