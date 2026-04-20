@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package product.v1;
+
+option go_package = "github.com/kabradshaw1/portfolio/go/product-service/pb/product/v1";
+
+import "google/protobuf/timestamp.proto";
+
+service ProductService {
+  rpc GetProduct(GetProductRequest) returns (Product);
+  rpc GetProducts(GetProductsRequest) returns (GetProductsResponse);
+  rpc CheckAvailability(CheckAvailabilityRequest) returns (CheckAvailabilityResponse);
+  rpc DecrementStock(DecrementStockRequest) returns (DecrementStockResponse);
+  rpc InvalidateCache(InvalidateCacheRequest) returns (InvalidateCacheResponse);
+}
+
+message Product {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  int32 price = 4;
+  string category = 5;
+  string image_url = 6;
+  int32 stock = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message GetProductRequest {
+  string id = 1;
+}
+
+message GetProductsRequest {
+  string category = 1;
+  string query = 2;
+  string sort = 3;
+  int32 page = 4;
+  int32 limit = 5;
+  string cursor = 6;
+}
+
+message GetProductsResponse {
+  repeated Product products = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+  string next_cursor = 5;
+  bool has_more = 6;
+}
+
+message CheckAvailabilityRequest {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message CheckAvailabilityResponse {
+  bool available = 1;
+  int32 current_stock = 2;
+  int32 price = 3;
+}
+
+message DecrementStockRequest {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message DecrementStockResponse {
+  int32 remaining_stock = 1;
+}
+
+message InvalidateCacheRequest {}
+message InvalidateCacheResponse {}

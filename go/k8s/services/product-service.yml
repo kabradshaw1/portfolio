@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-product-service
+  namespace: go-ecommerce
+spec:
+  selector:
+    app: go-product-service
+  ports:
+    - name: http
+      port: 8095
+      targetPort: 8095
+    - name: grpc
+      port: 9095
+      targetPort: 9095

@@ -17,7 +17,6 @@ import (
 // setupRouter creates the Gin engine with all middleware and route registrations.
 func setupRouter(
 	cfg Config,
-	productHandler *handler.ProductHandler,
 	cartHandler *handler.CartHandler,
 	orderHandler *handler.OrderHandler,
 	returnHandler *handler.ReturnHandler,
@@ -34,9 +33,6 @@ func setupRouter(
 	router.Use(middleware.CORS(cfg.AllowedOrigins))
 
 	// Public routes
-	router.GET("/products", productHandler.List)
-	router.GET("/products/:id", productHandler.GetByID)
-	router.GET("/categories", productHandler.Categories)
 	router.GET("/health", healthHandler.Health)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 

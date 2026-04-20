@@ -18,6 +18,7 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/productclient"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/worker"
@@ -83,18 +84,27 @@ func main() {
 		Name:          "ecommerce-postgres",
 		OnStateChange: resilience.ObserveStateChange,
 	})
-	productRepo := repository.NewProductRepository(pool, pgBreaker)
 	cartRepo := repository.NewCartRepository(pool, pgBreaker)
 	orderRepo := repository.NewOrderRepository(pool, pgBreaker)
 	returnRepo := repository.NewReturnRepository(pool, pgBreaker)
 
 	publisher := &rabbitPublisher{ch: ch}
-	productSvc := service.NewProductService(productRepo, redisClient)
 	cartSvc := service.NewCartService(cartRepo, kafkaPub)
 	orderSvc := service.NewOrderService(orderRepo, cartRepo, publisher, kafkaPub)
 	returnSvc := service.NewReturnService(returnRepo, orderSvc)
 
-	processor := worker.NewOrderProcessor(orderRepo, productRepo, productSvc, kafkaPub)
+	var prodClient *productclient.GRPCClient
+	if cfg.ProductGRPCAddr != "" {
+		var err error
+		prodClient, err = productclient.New(cfg.ProductGRPCAddr)
+		if err != nil {
+			log.Fatalf("product gRPC client: %v", err)
+		}
+		defer prodClient.Close()
+		slog.Info("connected to product-service gRPC", "addr", cfg.ProductGRPCAddr)
+	}
+
+	processor := worker.NewOrderProcessor(orderRepo, prodClient, kafkaPub)
 	go func() {
 		if err := processor.StartConsumer(ctx, ch, cfg.WorkerConcurrency); err != nil {
 			slog.Error("order processor failed", "error", err)
@@ -102,7 +112,6 @@ func main() {
 	}()
 
 	router := setupRouter(cfg,
-		handler.NewProductHandler(productSvc),
 		handler.NewCartHandler(cartSvc),
 		handler.NewOrderHandler(orderSvc),
 		handler.NewReturnHandler(returnSvc),

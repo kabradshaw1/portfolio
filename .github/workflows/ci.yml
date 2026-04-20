@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, ecommerce-service, ai-service, analytics-service]
+        service: [auth-service, ecommerce-service, ai-service, analytics-service, product-service]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -190,7 +190,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, ecommerce-service, ai-service, analytics-service]
+        service: [auth-service, ecommerce-service, ai-service, analytics-service, product-service]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -245,6 +245,12 @@ jobs:
         run: |
           psql -h localhost -U taskuser -d taskdb -c "CREATE DATABASE ecommercedb;"
 
+      - name: Create productdb
+        env:
+          PGPASSWORD: taskpass
+        run: |
+          psql -h localhost -U taskuser -d taskdb -c "CREATE DATABASE productdb;"
+
       # Per-service x-migrations-table matches go/k8s/jobs/*.yml exactly.
       # Without this, both services share the default schema_migrations table
       # and whichever runs first claims the version counter, causing the other
@@ -261,12 +267,25 @@ jobs:
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f go/ecommerce-service/seed.sql
 
+      - name: Run product-service migrations
+        run: |
+          migrate -path go/product-service/migrations -database "postgres://taskuser:taskpass@localhost:5432/productdb?sslmode=disable&x-migrations-table=product_schema_migrations" up
+
+      - name: Apply product seed data
+        run: |
+          psql "postgres://taskuser:taskpass@localhost:5432/productdb?sslmode=disable" -v ON_ERROR_STOP=1 -f go/product-service/seed.sql
+
       - name: Verify tables exist
         run: |
           psql "$DATABASE_URL" -c "\dt" | tee /tmp/tables.txt
           grep -q ' users ' /tmp/tables.txt || (echo "users table missing" && exit 1)
           grep -q ' products ' /tmp/tables.txt || (echo "products table missing" && exit 1)
           grep -q ' orders ' /tmp/tables.txt || (echo "orders table missing" && exit 1)
+
+      - name: Verify product tables exist
+        run: |
+          psql "postgres://taskuser:taskpass@localhost:5432/productdb?sslmode=disable" -c "\dt" | tee /tmp/product-tables.txt
+          grep -q ' products ' /tmp/product-tables.txt || (echo "products table missing in productdb" && exit 1)
 
   frontend-checks:
     name: Frontend Checks
@@ -715,6 +734,11 @@ jobs:
             file: go/analytics-service/Dockerfile
             image: go-analytics-service
             paths: go/analytics-service go/pkg go/go.work
+          - service: go-product-service
+            context: go
+            file: go/product-service/Dockerfile
+            image: go-product-service
+            paths: go/product-service go/pkg
     steps:
       - uses: actions/checkout@v4
         with:
