@@ -10,16 +10,20 @@ resources:
   - rbac/prometheus-clusterrolebinding.yml
   - rbac/prometheus-serviceaccount.yml
   - pvc/prometheus-data.yml
+  - pvc/loki-data.yml
   - configmaps/grafana-dashboard-provider.yml
   - configmaps/grafana-dashboards.yml
   - configmaps/grafana-datasource.yml
   - configmaps/grafana-alerting.yml
+  - configmaps/loki-config.yml
   - configmaps/prometheus-config.yml
   - deployments/grafana.yml
   - deployments/jaeger.yml
   - deployments/kube-state-metrics.yml
   - deployments/prometheus.yml
+  - statefulsets/loki.yml
   - daemonsets/node-exporter.yml
+  - services/loki.yml
   - services/grafana.yml
   - services/jaeger.yml
   - services/kube-state-metrics.yml
