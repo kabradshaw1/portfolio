@@ -1,5 +1,6 @@
 FROM migrate/migrate:v4.17.0 AS migrate
 
+# Product-service: REST :8095, gRPC :9095
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app/product-service
