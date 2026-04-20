@@ -15,8 +15,9 @@ type Config struct {
 	Port           string // default "8092"
 	RedisURL       string // optional
 	KafkaBrokers   string // optional
-	WorkerConcurrency int  // default 3, parsed from WORKER_CONCURRENCY
-	OTELEndpoint     string // optional
+	WorkerConcurrency int    // default 3, parsed from WORKER_CONCURRENCY
+	OTELEndpoint      string // optional
+	ProductGRPCAddr   string // optional, address of product-service gRPC
 }
 
 // loadConfig reads environment variables and returns a validated Config.
@@ -30,7 +31,8 @@ func loadConfig() Config {
 		Port:           os.Getenv("PORT"),
 		RedisURL:       os.Getenv("REDIS_URL"),
 		KafkaBrokers:   os.Getenv("KAFKA_BROKERS"),
-		OTELEndpoint:   os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		OTELEndpoint:      os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		ProductGRPCAddr:   os.Getenv("PRODUCT_GRPC_ADDR"),
 		WorkerConcurrency: 3,
 	}
 

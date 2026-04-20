@@ -20,7 +20,7 @@ import (
 
 	grpcsrv "github.com/kabradshaw1/portfolio/go/product-service/internal/grpc"
 	"github.com/kabradshaw1/portfolio/go/product-service/internal/handler"
-	pb "github.com/kabradshaw1/portfolio/go/product-service/internal/pb/product/v1"
+	pb "github.com/kabradshaw1/portfolio/go/product-service/pb/product/v1"
 	"github.com/kabradshaw1/portfolio/go/product-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/product-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"

@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/kabradshaw1/portfolio/go/product-service/internal/model"
-	pb "github.com/kabradshaw1/portfolio/go/product-service/internal/pb/product/v1"
+	pb "github.com/kabradshaw1/portfolio/go/product-service/pb/product/v1"
 )
 
 type ProductServicer interface {

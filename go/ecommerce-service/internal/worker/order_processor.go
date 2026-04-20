@@ -36,26 +36,22 @@ type OrderRepoForWorker interface {
 	UpdateStatus(ctx context.Context, orderID uuid.UUID, status model.OrderStatus) error
 }
 
-type ProductRepoForWorker interface {
+// ProductClient abstracts product-service calls (gRPC in production).
+type ProductClient interface {
 	DecrementStock(ctx context.Context, productID uuid.UUID, qty int) error
-}
-
-type CacheInvalidator interface {
 	InvalidateCache(ctx context.Context) error
 }
 
 type OrderProcessor struct {
 	orderRepo      OrderRepoForWorker
-	productRepo    ProductRepoForWorker
-	cache          CacheInvalidator
+	productClient  ProductClient
 	kafkaPublisher kafka.Producer
 }
 
-func NewOrderProcessor(orderRepo OrderRepoForWorker, productRepo ProductRepoForWorker, cache CacheInvalidator, kafkaPub kafka.Producer) *OrderProcessor {
+func NewOrderProcessor(orderRepo OrderRepoForWorker, productClient ProductClient, kafkaPub kafka.Producer) *OrderProcessor {
 	return &OrderProcessor{
 		orderRepo:      orderRepo,
-		productRepo:    productRepo,
-		cache:          cache,
+		productClient:  productClient,
 		kafkaPublisher: kafkaPub,
 	}
 }
@@ -76,7 +72,7 @@ func (p *OrderProcessor) ProcessOrder(ctx context.Context, orderIDStr string) er
 	}
 
 	for _, item := range order.Items {
-		if err := p.productRepo.DecrementStock(ctx, item.ProductID, item.Quantity); err != nil {
+		if err := p.productClient.DecrementStock(ctx, item.ProductID, item.Quantity); err != nil {
 			_ = p.orderRepo.UpdateStatus(ctx, orderID, model.OrderStatusFailed)
 			ordersTotal.WithLabelValues("failed").Inc()
 			kafka.SafePublish(ctx, p.kafkaPublisher, "ecommerce.orders", orderIDStr, kafka.Event{
@@ -91,7 +87,7 @@ func (p *OrderProcessor) ProcessOrder(ctx context.Context, orderIDStr string) er
 		return fmt.Errorf("set completed: %w", err)
 	}
 
-	if err := p.cache.InvalidateCache(ctx); err != nil {
+	if err := p.productClient.InvalidateCache(ctx); err != nil {
 		log.Printf("WARN: failed to invalidate cache: %v", err)
 	}
 

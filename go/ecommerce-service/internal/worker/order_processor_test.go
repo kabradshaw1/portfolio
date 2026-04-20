@@ -34,11 +34,12 @@ func (m *mockOrderRepoForWorker) UpdateStatus(ctx context.Context, orderID uuid.
 	return nil
 }
 
-type mockProductRepoForWorker struct {
-	stock map[uuid.UUID]int
+type mockProductClient struct {
+	stock            map[uuid.UUID]int
+	cacheInvalidated bool
 }
 
-func (m *mockProductRepoForWorker) DecrementStock(ctx context.Context, productID uuid.UUID, qty int) error {
+func (m *mockProductClient) DecrementStock(ctx context.Context, productID uuid.UUID, qty int) error {
 	current, ok := m.stock[productID]
 	if !ok {
 		return fmt.Errorf("product not found")
@@ -50,12 +51,8 @@ func (m *mockProductRepoForWorker) DecrementStock(ctx context.Context, productID
 	return nil
 }
 
-type mockCacheInvalidator struct {
-	called bool
-}
-
-func (m *mockCacheInvalidator) InvalidateCache(ctx context.Context) error {
-	m.called = true
+func (m *mockProductClient) InvalidateCache(ctx context.Context) error {
+	m.cacheInvalidated = true
 	return nil
 }
 
@@ -83,14 +80,13 @@ func TestProcessOrder_Success(t *testing.T) {
 		},
 	}
 
-	productRepo := &mockProductRepoForWorker{
+	prodClient := &mockProductClient{
 		stock: map[uuid.UUID]int{
 			productID: 10,
 		},
 	}
 
-	cache := &mockCacheInvalidator{}
-	processor := worker.NewOrderProcessor(orderRepo, productRepo, cache, kafka.NopProducer{})
+	processor := worker.NewOrderProcessor(orderRepo, prodClient, kafka.NopProducer{})
 
 	err := processor.ProcessOrder(context.Background(), orderID.String())
 	if err != nil {
@@ -102,11 +98,11 @@ func TestProcessOrder_Success(t *testing.T) {
 		t.Errorf("expected status completed, got %s", order.Status)
 	}
 
-	if productRepo.stock[productID] != 8 {
-		t.Errorf("expected stock 8, got %d", productRepo.stock[productID])
+	if prodClient.stock[productID] != 8 {
+		t.Errorf("expected stock 8, got %d", prodClient.stock[productID])
 	}
 
-	if !cache.called {
+	if !prodClient.cacheInvalidated {
 		t.Error("expected cache invalidation to be called")
 	}
 }
@@ -135,14 +131,13 @@ func TestProcessOrder_InsufficientStock(t *testing.T) {
 		},
 	}
 
-	productRepo := &mockProductRepoForWorker{
+	prodClient := &mockProductClient{
 		stock: map[uuid.UUID]int{
 			productID: 5,
 		},
 	}
 
-	cache := &mockCacheInvalidator{}
-	processor := worker.NewOrderProcessor(orderRepo, productRepo, cache, kafka.NopProducer{})
+	processor := worker.NewOrderProcessor(orderRepo, prodClient, kafka.NopProducer{})
 
 	err := processor.ProcessOrder(context.Background(), orderID.String())
 	if err == nil {
