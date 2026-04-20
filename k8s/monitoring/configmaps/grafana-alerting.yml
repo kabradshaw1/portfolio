@@ -756,3 +756,51 @@ data:
               severity: warning
             annotations:
               summary: "Java gateway p95 latency is above 3s"
+
+      - orgId: 1
+        name: Streaming Analytics
+        folder: Infrastructure Alerts
+        interval: 1m
+        rules:
+          - uid: kafka-consumer-lag-high
+            title: Kafka Consumer Lag High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: kafka_consumer_lag
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 1000
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Kafka consumer lag is above 1000 messages"
