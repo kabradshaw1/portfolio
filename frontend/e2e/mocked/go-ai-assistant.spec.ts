@@ -48,7 +48,9 @@ test.describe("Go ecommerce AI assistant drawer", () => {
     ).toBeVisible();
 
     // Product name renders in the rich component
-    await expect(page.getByText("Waterproof Jacket")).toBeVisible();
+    await expect(
+      page.getByText("Waterproof Jacket", { exact: true }),
+    ).toBeVisible();
 
     // Catalog source label should be visible
     await expect(page.getByText("Catalog Search")).toBeVisible();
