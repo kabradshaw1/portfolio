@@ -9,6 +9,9 @@ resources:
   - rbac/prometheus-clusterrole.yml
   - rbac/prometheus-clusterrolebinding.yml
   - rbac/prometheus-serviceaccount.yml
+  - rbac/promtail-clusterrole.yml
+  - rbac/promtail-clusterrolebinding.yml
+  - rbac/promtail-serviceaccount.yml
   - pvc/prometheus-data.yml
   - pvc/loki-data.yml
   - configmaps/grafana-dashboard-provider.yml
@@ -16,6 +19,7 @@ resources:
   - configmaps/grafana-datasource.yml
   - configmaps/grafana-alerting.yml
   - configmaps/loki-config.yml
+  - configmaps/promtail-config.yml
   - configmaps/prometheus-config.yml
   - deployments/grafana.yml
   - deployments/jaeger.yml
@@ -23,6 +27,7 @@ resources:
   - deployments/prometheus.yml
   - statefulsets/loki.yml
   - daemonsets/node-exporter.yml
+  - daemonsets/promtail.yml
   - services/loki.yml
   - services/grafana.yml
   - services/jaeger.yml
