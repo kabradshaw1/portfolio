@@ -66,3 +66,4 @@ frontend/.next/
 # Lynis machine-readable report data (we keep the human-readable .log)
 docs/security/*.dat
 /go/cart-service/server
+/go/ecommerce-service/server
