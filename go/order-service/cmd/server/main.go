@@ -6,10 +6,13 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/kabradshaw1/portfolio/go/auth-service/authmiddleware"
+	authpb "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/cartclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/productclient"
@@ -17,6 +20,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/saga"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
+	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -30,14 +34,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("tracing init: %v", err)
 	}
-	defer func() { _ = shutdownTracer(ctx) }()
-
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
 
 	pool := connectPostgres(ctx, cfg.DatabaseURL)
-	defer pool.Close()
 
 	redisClient := connectRedis(ctx, cfg.RedisURL)
 
@@ -100,11 +101,23 @@ func main() {
 	orderSvc := service.NewOrderService(orderRepo, cartClient, orch)
 	returnSvc := service.NewReturnService(returnRepo, orderSvc)
 
+	// Auth-service gRPC connection for denylist checks.
+	authConn, err := grpc.NewClient(cfg.AuthGRPCURL,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		log.Fatalf("auth gRPC dial: %v", err)
+	}
+	defer authConn.Close()
+	authClient := authpb.NewAuthServiceClient(authConn)
+	authMw := authmiddleware.New(cfg.JWTSecret, authClient)
+
 	router := setupRouter(cfg,
 		handler.NewOrderHandler(orderSvc),
 		handler.NewReturnHandler(returnSvc),
 		handler.NewHealthHandler(pool, redisClient),
 		redisClient,
+		authMw,
 	)
 
 	srv := &http.Server{
@@ -122,17 +135,17 @@ func main() {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	slog.Info("shutting down server")
-
-	cancel()
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("server forced to shutdown: %v", err)
-	}
-	slog.Info("server stopped")
+	// Graceful shutdown
+	sm := shutdown.New(15 * time.Second)
+	sm.Register("cancel-ctx", 0, func(_ context.Context) error {
+		cancel()
+		return nil
+	})
+	sm.Register("http", 20, func(ctx context.Context) error {
+		return srv.Shutdown(ctx)
+	})
+	sm.Register("otel", 30, func(ctx context.Context) error {
+		return shutdownTracer(ctx)
+	})
+	sm.Wait()
 }

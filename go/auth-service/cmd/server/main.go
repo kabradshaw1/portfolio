@@ -4,19 +4,27 @@ import (
 	"context"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
-	"github.com/kabradshaw1/portfolio/go/auth-service/internal/google"
+	authgrpc "github.com/kabradshaw1/portfolio/go/auth-service/internal/grpc"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/middleware"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/service"
+	pb "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
+	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/reflection"
+
+	"github.com/kabradshaw1/portfolio/go/auth-service/internal/google"
 )
 
 func main() {
@@ -27,14 +35,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("tracing init: %v", err)
 	}
-	defer func() { _ = shutdownTracer(ctx) }()
 
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
 
 	pool := connectPostgres(ctx, cfg.DatabaseURL)
-	defer pool.Close()
 
 	redisClient := connectRedis(ctx, cfg.RedisURL)
 
@@ -70,14 +76,50 @@ func main() {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	slog.Info("shutting down server")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("server forced to shutdown: %v", err)
+	// gRPC server
+	grpcServer := grpc.NewServer(
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+	)
+	pb.RegisterAuthServiceServer(grpcServer, authgrpc.NewAuthGRPCServer(cfg.JWTSecret, denylist))
+
+	healthSrv := health.NewServer()
+	healthpb.RegisterHealthServer(grpcServer, healthSrv)
+	healthSrv.SetServingStatus("auth.v1.AuthService", healthpb.HealthCheckResponse_SERVING)
+
+	reflection.Register(grpcServer)
+
+	lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
+	if err != nil {
+		log.Fatalf("gRPC listen: %v", err)
 	}
-	slog.Info("server stopped")
+
+	go func() {
+		slog.Info("gRPC server starting", "port", cfg.GRPCPort)
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("gRPC server failed: %v", err)
+		}
+	}()
+
+	sm := shutdown.New(15 * time.Second)
+	sm.Register("grpc-drain", 10, func(ctx context.Context) error {
+		grpcServer.GracefulStop()
+		return nil
+	})
+	sm.Register("http", 20, func(ctx context.Context) error {
+		return srv.Shutdown(ctx)
+	})
+	sm.Register("postgres", 20, func(ctx context.Context) error {
+		pool.Close()
+		return nil
+	})
+	sm.Register("redis", 20, func(ctx context.Context) error {
+		if redisClient != nil {
+			return redisClient.Close()
+		}
+		return nil
+	})
+	sm.Register("otel", 30, func(ctx context.Context) error {
+		return shutdownTracer(ctx)
+	})
+	sm.Wait()
 }

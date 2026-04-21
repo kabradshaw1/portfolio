@@ -6,9 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -25,6 +23,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
+	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -53,8 +52,6 @@ func runServe() {
 	if err != nil {
 		log.Fatalf("tracing init: %v", err)
 	}
-	defer func() { _ = shutdownTracer(ctx) }()
-
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
@@ -162,16 +159,15 @@ func runServe() {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	slog.Info("shutting down")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("forced shutdown: %v", err)
-	}
+	// Graceful shutdown
+	sm := shutdown.New(15 * time.Second)
+	sm.Register("http", 20, func(ctx context.Context) error {
+		return srv.Shutdown(ctx)
+	})
+	sm.Register("otel", 30, func(sctx context.Context) error {
+		return shutdownTracer(sctx)
+	})
+	sm.Wait()
 }
 
 func runMCP() {

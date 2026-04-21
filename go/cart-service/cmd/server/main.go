@@ -7,11 +7,10 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -20,6 +19,8 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
+	"github.com/kabradshaw1/portfolio/go/auth-service/authmiddleware"
+	authpb "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1"
 	grpcsrv "github.com/kabradshaw1/portfolio/go/cart-service/internal/grpc"
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/productclient"
@@ -28,6 +29,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/worker"
 	pb "github.com/kabradshaw1/portfolio/go/cart-service/pb/cart/v1"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
+	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -41,14 +43,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("tracing init: %v", err)
 	}
-	defer func() { _ = shutdownTracer(ctx) }()
-
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
 
 	pool := connectPostgres(ctx, cfg.DatabaseURL)
-	defer pool.Close()
 
 	redisClient := connectRedis(ctx, cfg.RedisURL)
 	kafkaPub := connectKafka(cfg.KafkaBrokers)
@@ -95,11 +94,23 @@ func main() {
 		slog.Info("saga command handler enabled", "url", cfg.RabbitmqURL)
 	}
 
+	// Auth-service gRPC connection for denylist checks.
+	authConn, err := grpc.NewClient(cfg.AuthGRPCURL,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		log.Fatalf("auth gRPC dial: %v", err)
+	}
+	defer authConn.Close()
+	authClient := authpb.NewAuthServiceClient(authConn)
+	authMw := authmiddleware.New(cfg.JWTSecret, authClient)
+
 	// REST server
 	router := setupRouter(cfg,
 		handler.NewCartHandler(cartSvc),
 		handler.NewHealthHandler(pool, redisClient),
 		redisClient,
+		authMw,
 	)
 
 	httpSrv := &http.Server{
@@ -142,19 +153,20 @@ func main() {
 	}()
 
 	// Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	slog.Info("shutting down servers")
-
-	cancel()
-	grpcServer.GracefulStop()
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
-
-	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("REST server forced to shutdown: %v", err)
-	}
-	slog.Info("servers stopped")
+	sm := shutdown.New(15 * time.Second)
+	sm.Register("cancel-ctx", 0, func(_ context.Context) error {
+		cancel()
+		return nil
+	})
+	sm.Register("grpc-drain", 10, func(_ context.Context) error {
+		grpcServer.GracefulStop()
+		return nil
+	})
+	sm.Register("http", 20, func(ctx context.Context) error {
+		return httpSrv.Shutdown(ctx)
+	})
+	sm.Register("otel", 30, func(ctx context.Context) error {
+		return shutdownTracer(ctx)
+	})
+	sm.Wait()
 }

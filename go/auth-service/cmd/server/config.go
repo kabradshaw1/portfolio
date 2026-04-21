@@ -33,6 +33,7 @@ type Config struct {
 	CookieDomain      string
 	CookieSameSite    http.SameSite
 	OTELEndpoint      string
+	GRPCPort          string
 }
 
 // loadConfig reads environment variables and returns a Config.
@@ -71,6 +72,10 @@ func loadConfig() Config {
 	if port == "" {
 		port = "8091"
 	}
+	grpcPort := os.Getenv("GRPC_PORT")
+	if grpcPort == "" {
+		grpcPort = "9091"
+	}
 
 	cookieSameSite := http.SameSiteLaxMode
 	switch strings.ToLower(os.Getenv("COOKIE_SAMESITE")) {
@@ -99,6 +104,7 @@ func loadConfig() Config {
 		CookieDomain:       os.Getenv("COOKIE_DOMAIN"),
 		CookieSameSite:     cookieSameSite,
 		OTELEndpoint:       os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		GRPCPort:           grpcPort,
 	}
 }
 

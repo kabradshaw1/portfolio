@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1";
+
+service AuthService {
+  rpc CheckToken(CheckTokenRequest) returns (CheckTokenResponse);
+}
+
+message CheckTokenRequest {
+  string token = 1;
+}
+
+message CheckTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string reason = 3;
+}
