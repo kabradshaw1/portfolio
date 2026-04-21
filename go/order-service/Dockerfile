@@ -2,14 +2,14 @@ FROM migrate/migrate:v4.17.0 AS migrate
 
 FROM golang:1.26-alpine AS builder
 
-WORKDIR /app/ecommerce-service
+WORKDIR /app/order-service
 COPY pkg/ /app/pkg/
 COPY product-service/ /app/product-service/
 COPY cart-service/ /app/cart-service/
-COPY ecommerce-service/go.mod ecommerce-service/go.sum ./
+COPY order-service/go.mod order-service/go.sum ./
 RUN go mod download
-COPY ecommerce-service/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /ecommerce-service ./cmd/server
+COPY order-service/ .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /order-service ./cmd/server
 
 FROM alpine:3.19
 
@@ -19,12 +19,12 @@ FROM alpine:3.19
 RUN apk add --no-cache postgresql-client \
     && adduser -D -u 1001 appuser
 
-COPY --from=builder /ecommerce-service /ecommerce-service
+COPY --from=builder /order-service /order-service
 COPY --from=migrate /usr/local/bin/migrate /usr/local/bin/migrate
-COPY ecommerce-service/migrations/ /migrations/
-COPY ecommerce-service/seed.sql /seed.sql
+COPY order-service/migrations/ /migrations/
+COPY order-service/seed.sql /seed.sql
 
 USER appuser
 
 EXPOSE 8092
-ENTRYPOINT ["/ecommerce-service"]
+ENTRYPOINT ["/order-service"]
