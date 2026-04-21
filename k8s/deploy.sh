@@ -52,6 +52,10 @@ if [ "$ENV" = "qa" ]; then
   kubectl wait --for=condition=available --timeout=180s deployment/go-auth-service -n go-ecommerce-qa
   kubectl wait --for=condition=available --timeout=180s deployment/go-ecommerce-service -n go-ecommerce-qa
   kubectl wait --for=condition=available --timeout=180s deployment/go-ai-service -n go-ecommerce-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/go-product-service -n go-ecommerce-qa
+
+  echo "==> Seeding product documents for RAG (QA)..."
+  "$REPO_DIR/scripts/seed-product-docs.sh" "http://$(minikube ip):80/qa/ingestion" || echo "WARN: Product doc seeding failed (non-fatal)"
 
   echo ""
   echo "==> QA environment deployed!"
@@ -117,9 +121,13 @@ kubectl wait --for=condition=available --timeout=180s deployment/gateway-service
 kubectl wait --for=condition=available --timeout=180s deployment/go-auth-service -n go-ecommerce
 kubectl wait --for=condition=available --timeout=180s deployment/go-ecommerce-service -n go-ecommerce
 kubectl wait --for=condition=available --timeout=180s deployment/go-ai-service -n go-ecommerce
+kubectl wait --for=condition=available --timeout=180s deployment/go-product-service -n go-ecommerce
 kubectl wait --for=condition=available --timeout=120s deployment/prometheus -n monitoring
 kubectl wait --for=condition=available --timeout=120s deployment/kube-state-metrics -n monitoring
 kubectl wait --for=condition=available --timeout=120s deployment/grafana -n monitoring
+
+echo "==> Seeding product documents for RAG..."
+"$REPO_DIR/scripts/seed-product-docs.sh" "http://$(minikube ip):80/ingestion" || echo "WARN: Product doc seeding failed (non-fatal)"
 
 echo ""
 echo "==> All services deployed! (env: $ENV)"

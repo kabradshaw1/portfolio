@@ -4,6 +4,7 @@ FROM golang:1.26-alpine AS builder
 
 WORKDIR /app/ecommerce-service
 COPY pkg/ /app/pkg/
+COPY product-service/ /app/product-service/
 COPY ecommerce-service/go.mod ecommerce-service/go.sum ./
 RUN go mod download
 COPY ecommerce-service/ .

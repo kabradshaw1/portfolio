@@ -8,7 +8,7 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 
 - **Python:** FastAPI microservices (ingestion, chat, debug), LangChain text splitters, Qdrant vector DB
 - **Java:** Spring Boot microservices (task, activity, notification, gateway), PostgreSQL, MongoDB, Redis, RabbitMQ, GraphQL
-- **Go:** Auth, ecommerce, product, AI agent, and analytics services, gRPC + REST, PostgreSQL, Redis, RabbitMQ, Kafka, protobuf/buf, shared `go/pkg/` module (see `go/CLAUDE.md`)
+- **Go:** Auth, product, ecommerce, AI agent, and analytics services, gRPC + REST, PostgreSQL, Redis, RabbitMQ, Kafka, protobuf/buf, shared `go/pkg/` module (see `go/CLAUDE.md`)
 - **AI/ML:** Ollama (Qwen 2.5 14B for chat/debug, nomic-embed-text for embeddings)
 - **Frontend:** Next.js + TypeScript + shadcn/ui, Apollo Client (GraphQL)
 - **Testing:** pytest, JUnit, Go test/benchmarks, Playwright (E2E)
@@ -96,7 +96,7 @@ java/                       # Java microservices (Spring Boot, Gradle multi-proj
 go/                         # Go microservices
 ├── auth-service/           # JWT auth (register, login, refresh), PostgreSQL
 ├── product-service/        # Product catalog CRUD, REST :8095 + gRPC :9095, productdb
-├── ecommerce-service/      # Cart, orders, returns, Redis caching, RabbitMQ worker pool (products extracted)
+├── ecommerce-service/      # Cart, orders, returns, Redis, RabbitMQ (products extracted)
 ├── ai-service/             # Agent loop over Ollama tool-calling, 9 tools wrapping ecommerce
 ├── analytics-service/      # Kafka consumer — streaming analytics (orders, cart, views)
 ├── proto/                  # Protobuf definitions (product/v1/product.proto)
@@ -154,6 +154,26 @@ Splitting the monolithic `ecommerce-service` into product, cart, and order servi
 - **Phase 3 (TODO):** Order-service + saga orchestrator. RabbitMQ saga for checkout (reserve → validate → confirm → clear). DLQ with retry. Compensation flows. Retires ecommerce-service.
 - **Database-per-service:** Each service gets its own database on the shared Postgres instance (`productdb`, `cartdb`, `orderdb`). Same logical isolation as enterprise, pragmatic for portfolio infra.
 - **GitHub issues for future enhancements:** #96 (auth gRPC), #97 (DLQ replay), #98 (proto contract testing), #99 (async integration tests), #100 (graceful shutdown), #101 (mTLS).
+
+### Adding a New Decomposed Go Service (checklist)
+
+When extracting a service from ecommerce-service (or adding any new Go service), every item below must be addressed or the QA/prod deploy will fail:
+
+1. **Service code:** Create `go/<service>/` with cmd/server, internal/, go.mod (with `replace ../pkg`), Dockerfile
+2. **Proto:** Add `go/proto/<service>/v1/<service>.proto`, run `buf generate`. Generated code at `go/<service>/pb/<service>/v1/`
+3. **Cross-module imports:** If service A imports service B's proto, add `replace` directive in A's go.mod AND `COPY <service-b>/ /app/<service-b>/` in A's Dockerfile
+4. **Seed data:** Use explicit UUIDs shared across all seed files so FKs work during the transition phase (both databases need matching product/cart/order IDs)
+5. **Kubernetes manifests:** deployment, service, configmap, migration job, HPA, PDB in `go/k8s/`
+6. **QA database:** Create `<dbname>_qa` manually on the Debian server (`kubectl exec -n java-tasks deploy/postgres -- psql -U taskuser -d taskdb -c 'CREATE DATABASE <dbname>_qa OWNER taskuser;'`). The `postgres-initdb` ConfigMap only runs on fresh PVC.
+7. **QA Kustomize overlay:** Add ConfigMap patch in `k8s/overlays/qa-go/kustomization.yaml` pointing DATABASE_URL to `*_qa`, CORS to `qa.kylebradshaw.dev`, Redis to DB index `/1`
+8. **CI matrices:** Add to `go-lint`, `go-tests`, `build-images`, `security-hadolint` matrices in `.github/workflows/ci.yml`
+9. **CI deploy steps:** Add migration job delete+apply+wait to both QA deploy (line ~886) and prod deploy (line ~1003) in ci.yml
+10. **deploy.sh:** Add `kubectl wait` for the new deployment in both QA and prod sections
+11. **Ingress:** Add path in `go/k8s/ingress.yml` and update `go/k8s/kustomization.yaml`
+12. **Frontend:** Add `NEXT_PUBLIC_*` env var to Vercel (both production and preview/qa) BEFORE merging
+13. **Smoke tests:** Update `frontend/e2e/smoke-prod/smoke.spec.ts` if endpoints moved
+14. **Makefile:** Add to `preflight-go` target (lint + test)
+15. **Migration state:** If tables are created manually before the migration job runs, set the `*_schema_migrations` table to the correct version (`INSERT INTO <svc>_schema_migrations (version, dirty) VALUES (<N>, false)`) or the job will fail with "dirty database"
 
 ## Monitoring & Observability
 

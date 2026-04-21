@@ -9,3 +9,5 @@ data:
   # per-service Kubernetes Jobs (golang-migrate) — see go/k8s/jobs/.
   01-create-ecommercedb.sql: |
     CREATE DATABASE ecommercedb OWNER taskuser;
+  02-create-productdb.sql: |
+    CREATE DATABASE productdb OWNER taskuser;

@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, ecommerce-service, ai-service, analytics-service]
+        service: [auth-service, ecommerce-service, ai-service, analytics-service, product-service]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -190,7 +190,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, ecommerce-service, ai-service, analytics-service]
+        service: [auth-service, ecommerce-service, ai-service, analytics-service, product-service]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -245,6 +245,12 @@ jobs:
         run: |
           psql -h localhost -U taskuser -d taskdb -c "CREATE DATABASE ecommercedb;"
 
+      - name: Create productdb
+        env:
+          PGPASSWORD: taskpass
+        run: |
+          psql -h localhost -U taskuser -d taskdb -c "CREATE DATABASE productdb;"
+
       # Per-service x-migrations-table matches go/k8s/jobs/*.yml exactly.
       # Without this, both services share the default schema_migrations table
       # and whichever runs first claims the version counter, causing the other
@@ -261,12 +267,25 @@ jobs:
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f go/ecommerce-service/seed.sql
 
+      - name: Run product-service migrations
+        run: |
+          migrate -path go/product-service/migrations -database "postgres://taskuser:taskpass@localhost:5432/productdb?sslmode=disable&x-migrations-table=product_schema_migrations" up
+
+      - name: Apply product seed data
+        run: |
+          psql "postgres://taskuser:taskpass@localhost:5432/productdb?sslmode=disable" -v ON_ERROR_STOP=1 -f go/product-service/seed.sql
+
       - name: Verify tables exist
         run: |
           psql "$DATABASE_URL" -c "\dt" | tee /tmp/tables.txt
           grep -q ' users ' /tmp/tables.txt || (echo "users table missing" && exit 1)
           grep -q ' products ' /tmp/tables.txt || (echo "products table missing" && exit 1)
           grep -q ' orders ' /tmp/tables.txt || (echo "orders table missing" && exit 1)
+
+      - name: Verify product tables exist
+        run: |
+          psql "postgres://taskuser:taskpass@localhost:5432/productdb?sslmode=disable" -c "\dt" | tee /tmp/product-tables.txt
+          grep -q ' products ' /tmp/product-tables.txt || (echo "products table missing in productdb" && exit 1)
 
   frontend-checks:
     name: Frontend Checks
@@ -608,6 +627,7 @@ jobs:
           - go/ecommerce-service/Dockerfile
           - go/ai-service/Dockerfile
           - go/analytics-service/Dockerfile
+          - go/product-service/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -704,7 +724,7 @@ jobs:
             context: go
             file: go/ecommerce-service/Dockerfile
             image: go-ecommerce-service
-            paths: go/ecommerce-service go/pkg go/go.work
+            paths: go/ecommerce-service go/product-service go/pkg go/go.work
           - service: go-ai-service
             context: go
             file: go/ai-service/Dockerfile
@@ -715,6 +735,11 @@ jobs:
             file: go/analytics-service/Dockerfile
             image: go-analytics-service
             paths: go/analytics-service go/pkg go/go.work
+          - service: go-product-service
+            context: go
+            file: go/product-service/Dockerfile
+            image: go-product-service
+            paths: go/product-service go/pkg
     steps:
       - uses: actions/checkout@v4
         with:
@@ -794,10 +819,15 @@ jobs:
           # When the build is skipped, :latest still exists from the last build.
           # The deploy rewrites manifests to qa-<sha>, so we retag :latest so
           # the deploy can find the image under the new tag.
+          # If :latest doesn't exist (new service), skip — the next push that
+          # touches the service's paths will trigger a full build.
           SHORT_SHA=$(echo "$SHA" | cut -c1-7)
-          docker pull "${IMAGE}:latest"
-          docker tag "${IMAGE}:latest" "${IMAGE}:qa-${SHORT_SHA}"
-          docker push "${IMAGE}:qa-${SHORT_SHA}"
+          if docker pull "${IMAGE}:latest" 2>/dev/null; then
+            docker tag "${IMAGE}:latest" "${IMAGE}:qa-${SHORT_SHA}"
+            docker push "${IMAGE}:qa-${SHORT_SHA}"
+          else
+            echo "No existing :latest for ${IMAGE} — skipping retag (new service, needs first build)"
+          fi
 
   # ---------- Deploy QA ----------
 
@@ -853,7 +883,7 @@ jobs:
           # auth-migrate MUST run before ecommerce-migrate: both services share
           # the same Postgres, and ecommerce-service's migrations reference users(id)
           # which is created by auth-service's migrations.
-          $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
+          $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate go-product-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
 
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
@@ -864,6 +894,12 @@ jobs:
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/ecommerce-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce-qa --tail=200" || true
+            exit 1
+          fi
+
+          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/product-service-migrate.yml | $SSH "kubectl apply -f -"
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-product-migrate -n go-ecommerce-qa"; then
+            $SSH "kubectl logs job/go-product-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
@@ -964,7 +1000,7 @@ jobs:
           if [ "$GO_CHANGED" = "true" ] || [ "$K8S_CHANGED" = "true" ]; then
             echo "Running Go migration Jobs..."
             # Jobs are immutable; delete before re-applying so they re-run on every deploy.
-            $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce --ignore-not-found --wait=true"
+            $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate go-product-migrate -n go-ecommerce --ignore-not-found --wait=true"
 
             # auth-migrate MUST run before ecommerce-migrate: both services share
             # ecommercedb, and the ecommerce seed inserts into the users table
@@ -980,6 +1016,13 @@ jobs:
             if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce"; then
               echo "go-ecommerce-migrate failed. Logs follow:"
               $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce --tail=200" || true
+              exit 1
+            fi
+
+            $SSH "kubectl apply -f -" < go/k8s/jobs/product-service-migrate.yml
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-product-migrate -n go-ecommerce"; then
+              echo "go-product-migrate failed. Logs follow:"
+              $SSH "kubectl logs job/go-product-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
 

@@ -235,7 +235,7 @@ test.describe("Go ecommerce smoke tests", () => {
   const SMOKE_PASSWORD = process.env.SMOKE_GO_PASSWORD;
 
   test("products endpoint returns a non-empty catalog", async ({ request }) => {
-    const res = await request.get(`${API_URL}/go-api/products`);
+    const res = await request.get(`${API_URL}/go-products/products`);
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.products)).toBe(true);
@@ -243,7 +243,7 @@ test.describe("Go ecommerce smoke tests", () => {
   });
 
   test("categories endpoint returns a non-empty list", async ({ request }) => {
-    const res = await request.get(`${API_URL}/go-api/categories`);
+    const res = await request.get(`${API_URL}/go-products/categories`);
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.categories)).toBe(true);
@@ -300,7 +300,7 @@ test.describe("Go ecommerce smoke tests", () => {
 
     // Step 2: Find the Smoke Test Widget product
     const productsRes = await authContext.get(
-      `${API_URL}/go-api/products?limit=50`
+      `${API_URL}/go-products/products?limit=50`
     );
     expect(productsRes.status()).toBe(200);
     const productsBody = await productsRes.json();

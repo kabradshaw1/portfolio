@@ -82,8 +82,20 @@ patches:
       - op: add
         path: /spec/rules/0/host
         value: "qa-api.kylebradshaw.dev"
+  - target:
+      kind: ConfigMap
+      name: product-service-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/DATABASE_URL
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/productdb_qa?sslmode=disable"
+      - op: replace
+        path: /data/REDIS_URL
+        value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
   # --- Migration jobs ---
-  # No Job patches needed: both go-auth-migrate and go-ecommerce-migrate read
-  # DATABASE_URL via configMapKeyRef from their respective ConfigMaps above.
-  # The ConfigMap patches above already repoint DATABASE_URL to ecommercedb_qa,
-  # so the jobs inherit the correct QA connection string automatically.
+  # No Job patches needed: migration jobs read DATABASE_URL via configMapKeyRef
+  # from their respective ConfigMaps above. The patches already repoint
+  # DATABASE_URL to *_qa databases, so jobs inherit QA connection strings.
