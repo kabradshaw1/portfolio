@@ -67,10 +67,10 @@ jobs:
             context: go
             dockerfile: go/auth-service/Dockerfile
             ecr_repo: gen-ai-portfolio/go-auth-service
-          - service: ecommerce-service
+          - service: order-service
             context: go
-            dockerfile: go/ecommerce-service/Dockerfile
-            ecr_repo: gen-ai-portfolio/go-ecommerce-service
+            dockerfile: go/order-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-order-service
           - service: ai-service
             context: go
             dockerfile: go/ai-service/Dockerfile
@@ -176,21 +176,21 @@ jobs:
       - name: Deploy java-tasks
         run: kubectl apply -k java/k8s/overlays/aws
 
-      - name: Deploy go-ecommerce
+      - name: Deploy go-ecommerce (order-service)
         run: kubectl apply -k go/k8s/overlays/aws
 
       - name: Run Go migrations
         run: |
-          kubectl delete job go-auth-migrate go-ecommerce-migrate \
+          kubectl delete job go-auth-migrate go-order-migrate \
             -n go-ecommerce --ignore-not-found --wait=true
 
           kubectl apply -f go/k8s/jobs/auth-service-migrate.yml
           kubectl wait --for=condition=complete --timeout=180s \
             job/go-auth-migrate -n go-ecommerce
 
-          kubectl apply -f go/k8s/jobs/ecommerce-service-migrate.yml
+          kubectl apply -f go/k8s/jobs/order-service-migrate.yml
           kubectl wait --for=condition=complete --timeout=180s \
-            job/go-ecommerce-migrate -n go-ecommerce
+            job/go-order-migrate -n go-ecommerce
 
       - name: Wait for deployments
         run: |

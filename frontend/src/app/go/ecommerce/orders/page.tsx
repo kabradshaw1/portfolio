@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { goApiFetch } from "@/lib/go-api";
+import { goOrderFetch } from "@/lib/go-order-api";
 
 interface Order {
   id: string;
@@ -38,7 +38,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    goApiFetch("/orders")
+    goOrderFetch("/orders")
       .then((r) => {
         if (r.status === 401 || r.status === 403) {
           router.replace("/go/login?next=/go/ecommerce/orders");

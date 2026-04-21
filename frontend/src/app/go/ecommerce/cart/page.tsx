@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { useGoCart } from "@/components/go/GoCartProvider";
-import { goApiFetch } from "@/lib/go-api";
+import { goOrderFetch } from "@/lib/go-order-api";
 import { goCartFetch } from "@/lib/go-cart-api";
 
 interface CartItem {
@@ -66,7 +66,7 @@ export default function CartPage() {
     setCheckingOut(true);
     setMessage("");
     try {
-      const res = await goApiFetch("/orders", {
+      const res = await goOrderFetch("/orders", {
         method: "POST",
         headers: { "Idempotency-Key": crypto.randomUUID() },
       });

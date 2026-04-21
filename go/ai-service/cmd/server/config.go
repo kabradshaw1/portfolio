@@ -13,7 +13,7 @@ type Config struct {
 	Port            string
 	OllamaURL       string
 	OllamaModel     string
-	EcommerceURL    string
+	OrderURL        string
 	RAGChatURL      string
 	RAGIngestionURL string
 	RedisURL        string
@@ -49,7 +49,7 @@ func loadConfig() Config {
 		Port:            getenv("PORT", "8093"),
 		OllamaURL:       ollamaURL,
 		OllamaModel:     getenv("OLLAMA_MODEL", "qwen2.5:14b"),
-		EcommerceURL:    getenv("ECOMMERCE_URL", "http://ecommerce-service:8092"),
+		OrderURL:        getenv("ORDER_URL", "http://order-service:8092"),
 		RAGChatURL:      getenv("RAG_CHAT_URL", "http://chat-service:8001"),
 		RAGIngestionURL: getenv("RAG_INGESTION_URL", "http://ingestion-service:8002"),
 		RedisURL:        getenv("REDIS_URL", ""),

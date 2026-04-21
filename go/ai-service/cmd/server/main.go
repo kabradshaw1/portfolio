@@ -72,7 +72,7 @@ func runServe() {
 	}
 
 	// Tool dependencies
-	ecomClient := clients.NewEcommerceClient(cfg.EcommerceURL, ecomBreaker)
+	ecomClient := clients.NewEcommerceClient(cfg.OrderURL, ecomBreaker)
 	ragClient := clients.NewRAGClient(cfg.RAGChatURL, cfg.RAGIngestionURL, ragBreaker)
 
 	var toolCache cache.Cache = cache.NopCache{}
@@ -155,7 +155,7 @@ func runServe() {
 			"port", cfg.Port,
 			"ollama_url", cfg.OllamaURL,
 			"ollama_model", cfg.OllamaModel,
-			"ecommerce_url", cfg.EcommerceURL,
+			"order_url", cfg.OrderURL,
 		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server failed: %v", err)
@@ -176,10 +176,10 @@ func runServe() {
 
 func runMCP() {
 	jwtSecret := os.Getenv("JWT_SECRET")
-	ecommerceURL := getenv("ECOMMERCE_URL", "http://ecommerce-service:8092")
+	orderURL := getenv("ORDER_URL", "http://order-service:8092")
 
 	ecomBreaker := newCircuitBreaker("ai-ecommerce")
-	ecomClient := clients.NewEcommerceClient(ecommerceURL, ecomBreaker)
+	ecomClient := clients.NewEcommerceClient(orderURL, ecomBreaker)
 
 	registry := tools.NewMemRegistry()
 	registerCoreTools(registry, ecomClient)

@@ -1,7 +1,7 @@
 export const GO_AUTH_URL =
   process.env.NEXT_PUBLIC_GO_AUTH_URL || "http://localhost:8091";
-export const GO_ECOMMERCE_URL =
-  process.env.NEXT_PUBLIC_GO_ECOMMERCE_URL || "http://localhost:8092";
+export const GO_ORDER_URL =
+  process.env.NEXT_PUBLIC_GO_ORDER_URL || "http://localhost:8092";
 export const GO_PRODUCT_URL =
   process.env.NEXT_PUBLIC_GO_PRODUCT_URL || "http://localhost:8095";
 export const GO_CART_URL =

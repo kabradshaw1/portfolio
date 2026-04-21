@@ -11,6 +11,7 @@ type CartItem struct {
 	UserID       uuid.UUID `json:"userId"`
 	ProductID    uuid.UUID `json:"productId"`
 	Quantity     int       `json:"quantity"`
+	Reserved     bool      `json:"reserved,omitempty"`
 	CreatedAt    time.Time `json:"createdAt"`
 	ProductName  string    `json:"productName,omitempty"`
 	ProductPrice int       `json:"productPrice,omitempty"`

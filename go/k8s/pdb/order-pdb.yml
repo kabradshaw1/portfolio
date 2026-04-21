@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: go-order-pdb
+  namespace: go-ecommerce
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: go-order-service

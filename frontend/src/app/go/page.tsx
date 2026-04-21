@@ -72,7 +72,7 @@ export default function GoPage() {
   MQ{{RabbitMQ}}
   WP[Worker pool<br/>goroutines]
   FE -->|REST /go-auth| AUTH
-  FE -->|REST /go-api| EC
+  FE -->|REST /go-orders| EC
   AUTH --> PG
   EC --> PG
   EC --> RD

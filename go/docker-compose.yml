@@ -76,10 +76,10 @@ services:
       postgres:
         condition: service_healthy
 
-  ecommerce-service:
+  order-service:
     build:
       context: .
-      dockerfile: ecommerce-service/Dockerfile
+      dockerfile: order-service/Dockerfile
     ports:
       - "8092:8092"
     environment:
@@ -110,7 +110,7 @@ services:
       PORT: "8093"
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: "qwen2.5:14b"
-      ECOMMERCE_URL: http://ecommerce-service:8092
+      ORDER_URL: http://order-service:8092
       RAG_CHAT_URL: http://chat:8001
       RAG_INGESTION_URL: http://ingestion:8002
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
@@ -119,7 +119,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - ecommerce-service
+      - order-service
       - redis
 
   analytics-service:

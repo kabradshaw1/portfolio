@@ -3,8 +3,8 @@
 import { AiAssistantDrawer } from "@/components/go/AiAssistantDrawer";
 import { HealthGate } from "@/components/HealthGate";
 
-const goEcommerceUrl =
-  process.env.NEXT_PUBLIC_GO_ECOMMERCE_URL || "http://localhost:8092";
+const goOrderUrl =
+  process.env.NEXT_PUBLIC_GO_ORDER_URL || "http://localhost:8092";
 
 export default function GoEcommerceLayout({
   children,
@@ -13,7 +13,7 @@ export default function GoEcommerceLayout({
 }) {
   return (
     <HealthGate
-      endpoint={`${goEcommerceUrl}/health`}
+      endpoint={`${goOrderUrl}/health`}
       stack="Go Ecommerce"
       docsHref="/go"
     >

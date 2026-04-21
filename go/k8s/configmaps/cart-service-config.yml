@@ -8,6 +8,7 @@ data:
   REDIS_URL: redis://redis.java-tasks.svc.cluster.local:6379
   KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
   PRODUCT_GRPC_ADDR: "go-product-service.go-ecommerce.svc.cluster.local:9095"
+  RABBITMQ_URL: amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
   PORT: "8096"
   GRPC_PORT: "9096"

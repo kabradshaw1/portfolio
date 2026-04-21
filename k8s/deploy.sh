@@ -50,7 +50,7 @@ if [ "$ENV" = "qa" ]; then
   kubectl wait --for=condition=available --timeout=180s deployment/notification-service -n java-tasks-qa
   kubectl wait --for=condition=available --timeout=180s deployment/gateway-service -n java-tasks-qa
   kubectl wait --for=condition=available --timeout=180s deployment/go-auth-service -n go-ecommerce-qa
-  kubectl wait --for=condition=available --timeout=180s deployment/go-ecommerce-service -n go-ecommerce-qa
+  kubectl wait --for=condition=available --timeout=180s deployment/go-order-service -n go-ecommerce-qa
   kubectl wait --for=condition=available --timeout=180s deployment/go-ai-service -n go-ecommerce-qa
   kubectl wait --for=condition=available --timeout=180s deployment/go-product-service -n go-ecommerce-qa
   kubectl wait --for=condition=available --timeout=180s deployment/go-cart-service -n go-ecommerce-qa
@@ -120,7 +120,7 @@ kubectl wait --for=condition=available --timeout=180s deployment/activity-servic
 kubectl wait --for=condition=available --timeout=180s deployment/notification-service -n java-tasks
 kubectl wait --for=condition=available --timeout=180s deployment/gateway-service -n java-tasks
 kubectl wait --for=condition=available --timeout=180s deployment/go-auth-service -n go-ecommerce
-kubectl wait --for=condition=available --timeout=180s deployment/go-ecommerce-service -n go-ecommerce
+kubectl wait --for=condition=available --timeout=180s deployment/go-order-service -n go-ecommerce
 kubectl wait --for=condition=available --timeout=180s deployment/go-ai-service -n go-ecommerce
 kubectl wait --for=condition=available --timeout=180s deployment/go-product-service -n go-ecommerce
 kubectl wait --for=condition=available --timeout=180s deployment/go-cart-service -n go-ecommerce
@@ -158,7 +158,7 @@ echo "      /graphql        — Java GraphQL API"
 echo "      /graphiql       — GraphQL IDE"
 echo "      /auth/*         — OAuth authentication"
 echo "      /go-auth/*      — Go auth API"
-echo "      /go-api/*       — Go ecommerce API"
+echo "      /go-orders/*       — Go ecommerce API"
 echo "      /ai-api/*       — Go AI agent API"
 echo "      /grafana/       — Monitoring dashboards"
 echo "      /rabbitmq/      — Message broker UI"

@@ -2,7 +2,7 @@ import http from "k6/http";
 import { check, group, sleep } from "k6";
 import { Counter, Trend } from "k6/metrics";
 import {
-  ECOMMERCE_URL,
+  ORDER_URL,
   authHeaders,
   registerUser,
   getProducts,
@@ -73,14 +73,14 @@ export const options = {
 export function browseProducts() {
   group("browse_products", function () {
     // List products (default page)
-    const listRes = http.get(`${ECOMMERCE_URL}/products`);
+    const listRes = http.get(`${ORDER_URL}/products`);
     check(listRes, {
       "product list 200": (r) => r.status === 200,
       "has products": (r) => JSON.parse(r.body).products.length > 0,
     });
 
     // Get categories
-    const catRes = http.get(`${ECOMMERCE_URL}/categories`);
+    const catRes = http.get(`${ORDER_URL}/categories`);
     check(catRes, {
       "categories 200": (r) => r.status === 200,
     });
@@ -89,22 +89,22 @@ export function browseProducts() {
     const categories = JSON.parse(catRes.body).categories || [];
     if (categories.length > 0) {
       const cat = randomItem(categories);
-      http.get(`${ECOMMERCE_URL}/products?category=${cat}`);
+      http.get(`${ORDER_URL}/products?category=${cat}`);
     }
 
     // View a single product
     const products = JSON.parse(listRes.body).products || [];
     if (products.length > 0) {
       const product = randomItem(products);
-      const detailRes = http.get(`${ECOMMERCE_URL}/products/${product.id}`);
+      const detailRes = http.get(`${ORDER_URL}/products/${product.id}`);
       check(detailRes, {
         "product detail 200": (r) => r.status === 200,
       });
     }
 
     // Paginate
-    http.get(`${ECOMMERCE_URL}/products?page=2&limit=10`);
-    http.get(`${ECOMMERCE_URL}/products?sort=price_asc&limit=10`);
+    http.get(`${ORDER_URL}/products?page=2&limit=10`);
+    http.get(`${ORDER_URL}/products?sort=price_asc&limit=10`);
   });
 
   sleep(1);
@@ -125,7 +125,7 @@ export function cartOperations() {
     for (const item of items) {
       const start = Date.now();
       const res = http.post(
-        `${ECOMMERCE_URL}/cart`,
+        `${ORDER_URL}/cart`,
         JSON.stringify({ productId: item.id, quantity: 1 }),
         authHeaders(auth.accessToken)
       );
@@ -137,7 +137,7 @@ export function cartOperations() {
 
     // View cart
     const cartRes = http.get(
-      `${ECOMMERCE_URL}/cart`,
+      `${ORDER_URL}/cart`,
       authHeaders(auth.accessToken)
     );
     check(cartRes, {
@@ -150,7 +150,7 @@ export function cartOperations() {
     if (cartItems.length > 0) {
       const start = Date.now();
       http.put(
-        `${ECOMMERCE_URL}/cart/${cartItems[0].id}`,
+        `${ORDER_URL}/cart/${cartItems[0].id}`,
         JSON.stringify({ quantity: 2 }),
         authHeaders(auth.accessToken)
       );
@@ -160,7 +160,7 @@ export function cartOperations() {
     // Remove last item
     if (cartItems.length > 1) {
       http.del(
-        `${ECOMMERCE_URL}/cart/${cartItems[cartItems.length - 1].id}`,
+        `${ORDER_URL}/cart/${cartItems[cartItems.length - 1].id}`,
         null,
         authHeaders(auth.accessToken)
       );
@@ -183,7 +183,7 @@ export function checkoutFlow() {
     const items = randomItems(products, 2);
     for (const item of items) {
       http.post(
-        `${ECOMMERCE_URL}/cart`,
+        `${ORDER_URL}/cart`,
         JSON.stringify({ productId: item.id, quantity: 1 }),
         authHeaders(auth.accessToken)
       );
@@ -191,7 +191,7 @@ export function checkoutFlow() {
 
     // Checkout
     const orderRes = http.post(
-      `${ECOMMERCE_URL}/orders`,
+      `${ORDER_URL}/orders`,
       null,
       authHeaders(auth.accessToken)
     );
@@ -206,7 +206,7 @@ export function checkoutFlow() {
       // Verify order appears in list
       sleep(0.5);
       const listRes = http.get(
-        `${ECOMMERCE_URL}/orders`,
+        `${ORDER_URL}/orders`,
         authHeaders(auth.accessToken)
       );
       check(listRes, {
@@ -215,7 +215,7 @@ export function checkoutFlow() {
 
       // Fetch order detail
       http.get(
-        `${ECOMMERCE_URL}/orders/${order.id}`,
+        `${ORDER_URL}/orders/${order.id}`,
         authHeaders(auth.accessToken)
       );
     } else {
@@ -242,7 +242,7 @@ export function stockContention() {
   group("stock_contention", function () {
     // Add the target item to cart
     const addRes = http.post(
-      `${ECOMMERCE_URL}/cart`,
+      `${ORDER_URL}/cart`,
       JSON.stringify({ productId: target.id, quantity: 1 }),
       authHeaders(auth.accessToken)
     );
@@ -250,7 +250,7 @@ export function stockContention() {
     if (addRes.status === 200 || addRes.status === 201) {
       // Attempt checkout
       const orderRes = http.post(
-        `${ECOMMERCE_URL}/orders`,
+        `${ORDER_URL}/orders`,
         null,
         authHeaders(auth.accessToken)
       );

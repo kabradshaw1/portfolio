@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-order-service
+  namespace: go-ecommerce
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: go-order-service
+  template:
+    metadata:
+      labels:
+        app: go-order-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8092"
+        prometheus.io/path: "/metrics"
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: go-order-service
+          image: ghcr.io/kabradshaw1/portfolio/go-order-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8092
+          envFrom:
+            - configMapRef:
+                name: order-service-config
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: go-secrets
+                  key: jwt-secret
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8092
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8092
+            initialDelaySeconds: 15
+            periodSeconds: 30

@@ -6,7 +6,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { GO_ECOMMERCE_URL } from "@/lib/go-auth";
+import { GO_PRODUCT_URL } from "@/lib/go-auth";
 
 interface GoStoreContextType {
   categories: string[];
@@ -30,7 +30,7 @@ export function GoStoreProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${GO_ECOMMERCE_URL}/categories`)
+    fetch(`${GO_PRODUCT_URL}/categories`)
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled) setCategories(data?.categories ?? []);

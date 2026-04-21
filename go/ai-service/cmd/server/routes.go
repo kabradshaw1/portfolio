@@ -58,7 +58,7 @@ func setupRouter(
 			return err
 		},
 		"ecommerce": func() error {
-			req, _ := http.NewRequest(http.MethodGet, cfg.EcommerceURL+"/health", nil)
+			req, _ := http.NewRequest(http.MethodGet, cfg.OrderURL+"/health", nil)
 			client := &http.Client{Timeout: 2 * time.Second}
 			resp, err := client.Do(req)
 			if err != nil {
