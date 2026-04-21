@@ -40,6 +40,9 @@ patches:
       - op: add
         path: /data/CART_GRPC_ADDR
         value: "go-cart-service.go-ecommerce-qa.svc.cluster.local:9096"
+      - op: replace
+        path: /data/PRODUCT_GRPC_ADDR
+        value: "go-product-service.go-ecommerce-qa.svc.cluster.local:9095"
   - target:
       kind: ConfigMap
       name: ai-service-config
