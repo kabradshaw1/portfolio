@@ -17,6 +17,7 @@ spec:
         prometheus.io/port: "8091"
         prometheus.io/path: "/metrics"
     spec:
+      terminationGracePeriodSeconds: 20
       imagePullSecrets:
         - name: ghcr-secret
       containers:
@@ -25,6 +26,9 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8091
+              name: http
+            - containerPort: 9091
+              name: grpc
           envFrom:
             - configMapRef:
                 name: auth-service-config

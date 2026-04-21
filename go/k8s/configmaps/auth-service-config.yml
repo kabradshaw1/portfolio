@@ -11,3 +11,5 @@ data:
   COOKIE_DOMAIN: ".kylebradshaw.dev"
   COOKIE_SECURE: "true"
   COOKIE_SAMESITE: "none"
+  GRPC_PORT: "9091"
+  REDIS_URL: redis://redis.java-tasks.svc.cluster.local:6379
