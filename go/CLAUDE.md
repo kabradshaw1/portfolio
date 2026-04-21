@@ -32,7 +32,9 @@ Three packages live here:
 - **Config:** `go/buf.yaml` (lint rules), `go/buf.gen.yaml` (Go + gRPC code generation)
 - **Proto files:** `go/proto/<service>/v1/<service>.proto`
 - **Generated code:** `go/<service>/pb/<service>/v1/` — uses public path (not `internal/`) so other services can import the generated types cross-module
-- **Generate:** `cd go && buf generate`
+- **Generate (product-service):** `cd go && buf generate --path proto/product --template buf.gen.yaml`
+- **Generate (cart-service):** `cd go && buf generate --path proto/cart --template buf.gen.cart.yaml`
+- **Generate (all):** run both commands above in sequence
 - **Lint:** `cd go && buf lint`
 - **Cross-service imports:** services that call another service via gRPC add a `replace` directive to import the target's generated proto code (e.g., ecommerce-service imports product-service's pb package)
 

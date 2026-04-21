@@ -12,3 +12,4 @@ data:
   KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
   OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"
   PRODUCT_GRPC_ADDR: "go-product-service.go-ecommerce.svc.cluster.local:9095"
+  CART_GRPC_ADDR: "go-cart-service.go-ecommerce.svc.cluster.local:9096"

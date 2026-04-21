@@ -6,11 +6,6 @@ import (
 )
 
 var (
-	CartItemsAdded = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "ecommerce_cart_items_added_total",
-		Help: "Total number of items added to carts.",
-	})
-
 	OrdersPlaced = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "ecommerce_orders_placed_total",
 		Help: "Total orders placed.",

@@ -6,8 +6,8 @@ import { ArrowLeft } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useGoAuth } from "@/components/go/GoAuthProvider";
 import { useGoCart } from "@/components/go/GoCartProvider";
-import { goApiFetch } from "@/lib/go-api";
 import { GO_PRODUCT_URL } from "@/lib/go-auth";
+import { goCartFetch } from "@/lib/go-cart-api";
 
 interface Product {
   id: string;
@@ -44,7 +44,7 @@ export default function ProductDetailPage() {
     setError("");
     setRemoving(true);
     try {
-      const res = await goApiFetch(`/cart/${cartEntry.id}`, {
+      const res = await goCartFetch(`/cart/${cartEntry.id}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -78,7 +78,7 @@ export default function ProductDetailPage() {
     setError("");
     setAdding(true);
     try {
-      const res = await goApiFetch("/cart", {
+      const res = await goCartFetch("/cart", {
         method: "POST",
         body: JSON.stringify({ productId: product.id, quantity }),
       });

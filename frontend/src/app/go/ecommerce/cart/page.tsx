@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { useGoCart } from "@/components/go/GoCartProvider";
 import { goApiFetch } from "@/lib/go-api";
+import { goCartFetch } from "@/lib/go-cart-api";
 
 interface CartItem {
   id: string;
@@ -29,7 +30,7 @@ export default function CartPage() {
 
   const fetchCart = useCallback(async () => {
     try {
-      const res = await goApiFetch("/cart");
+      const res = await goCartFetch("/cart");
       if (res.status === 401 || res.status === 403) {
         router.replace("/go/login?next=/go/ecommerce/cart");
         return;
@@ -48,7 +49,7 @@ export default function CartPage() {
   }, [fetchCart]);
 
   async function removeItem(itemId: string) {
-    const res = await goApiFetch(`/cart/${itemId}`, {
+    const res = await goCartFetch(`/cart/${itemId}`, {
       method: "DELETE",
     });
     if (res.status === 401 || res.status === 403) {

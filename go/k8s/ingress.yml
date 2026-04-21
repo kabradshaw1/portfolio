@@ -25,6 +25,13 @@ spec:
                 name: go-product-service
                 port:
                   number: 8095
+          - path: /go-cart(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: go-cart-service
+                port:
+                  number: 8096
           - path: /go-api(/|$)(.*)
             pathType: ImplementationSpecific
             backend:

@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/cartclient"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/productclient"
@@ -84,14 +85,10 @@ func main() {
 		Name:          "ecommerce-postgres",
 		OnStateChange: resilience.ObserveStateChange,
 	})
-	cartRepo := repository.NewCartRepository(pool, pgBreaker)
 	orderRepo := repository.NewOrderRepository(pool, pgBreaker)
 	returnRepo := repository.NewReturnRepository(pool, pgBreaker)
 
 	publisher := &rabbitPublisher{ch: ch}
-	cartSvc := service.NewCartService(cartRepo, kafkaPub)
-	orderSvc := service.NewOrderService(orderRepo, cartRepo, publisher, kafkaPub)
-	returnSvc := service.NewReturnService(returnRepo, orderSvc)
 
 	var prodClient *productclient.GRPCClient
 	if cfg.ProductGRPCAddr != "" {
@@ -104,6 +101,20 @@ func main() {
 		slog.Info("connected to product-service gRPC", "addr", cfg.ProductGRPCAddr)
 	}
 
+	var cartClient *cartclient.GRPCClient
+	if cfg.CartGRPCAddr != "" {
+		var err error
+		cartClient, err = cartclient.New(cfg.CartGRPCAddr, cfg.ProductGRPCAddr)
+		if err != nil {
+			log.Fatalf("cart gRPC client: %v", err)
+		}
+		defer cartClient.Close()
+		slog.Info("connected to cart-service gRPC", "addr", cfg.CartGRPCAddr)
+	}
+
+	orderSvc := service.NewOrderService(orderRepo, cartClient, publisher, kafkaPub)
+	returnSvc := service.NewReturnService(returnRepo, orderSvc)
+
 	processor := worker.NewOrderProcessor(orderRepo, prodClient, kafkaPub)
 	go func() {
 		if err := processor.StartConsumer(ctx, ch, cfg.WorkerConcurrency); err != nil {
@@ -112,7 +123,6 @@ func main() {
 	}()
 
 	router := setupRouter(cfg,
-		handler.NewCartHandler(cartSvc),
 		handler.NewOrderHandler(orderSvc),
 		handler.NewReturnHandler(returnSvc),
 		handler.NewHealthHandler(pool, redisClient),
