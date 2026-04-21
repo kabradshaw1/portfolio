@@ -8,10 +8,10 @@ import (
 
 func TestExtractXDeath_ValidHeaders(t *testing.T) {
 	headers := amqp.Table{
-		"x-death": []interface{}{
+		"x-death": []any{
 			amqp.Table{
 				"exchange":     "ecommerce.saga",
-				"routing-keys": []interface{}{"saga.cart.commands"},
+				"routing-keys": []any{"saga.cart.commands"},
 				"queue":        "saga.cart.commands",
 				"reason":       "rejected",
 			},
@@ -36,7 +36,7 @@ func TestExtractXDeath_MissingHeader(t *testing.T) {
 
 func TestExtractXDeath_EmptyDeathList(t *testing.T) {
 	headers := amqp.Table{
-		"x-death": []interface{}{},
+		"x-death": []any{},
 	}
 	rk, ex := extractXDeath(headers)
 	if rk != "" || ex != "" {

@@ -15,7 +15,7 @@ type DLQMessage struct {
 	Exchange   string                 `json:"exchange"`
 	Timestamp  time.Time              `json:"timestamp"`
 	RetryCount int32                  `json:"retry_count"`
-	Headers    map[string]interface{} `json:"headers"`
+	Headers    map[string]any `json:"headers"`
 	Body       json.RawMessage        `json:"body"`
 }
 
@@ -93,7 +93,7 @@ func extractXDeath(headers amqp.Table) (routingKey, exchange string) {
 		return "", ""
 	}
 
-	deaths, ok := xdeath.([]interface{})
+	deaths, ok := xdeath.([]any)
 	if !ok || len(deaths) == 0 {
 		return "", ""
 	}
@@ -103,7 +103,7 @@ func extractXDeath(headers amqp.Table) (routingKey, exchange string) {
 		return "", ""
 	}
 
-	if rks, ok := first["routing-keys"].([]interface{}); ok && len(rks) > 0 {
+	if rks, ok := first["routing-keys"].([]any); ok && len(rks) > 0 {
 		if rk, ok := rks[0].(string); ok {
 			routingKey = rk
 		}
