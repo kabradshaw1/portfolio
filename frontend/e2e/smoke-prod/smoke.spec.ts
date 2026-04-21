@@ -330,7 +330,7 @@ test.describe("Go ecommerce smoke tests", () => {
     expect(cartItem, "Smoke product must be in cart").toBeDefined();
 
     // Step 5: Checkout
-    const orderRes = await authContext.post(`${API_URL}/go-api/orders`, {
+    const orderRes = await authContext.post(`${API_URL}/go-orders/orders`, {
       headers: { "Idempotency-Key": crypto.randomUUID() },
     });
     expect(orderRes.status()).toBe(201);
@@ -346,7 +346,7 @@ test.describe("Go ecommerce smoke tests", () => {
 
     // Step 7: Checkout on empty cart should fail
     const emptyCheckoutRes = await authContext.post(
-      `${API_URL}/go-api/orders`,
+      `${API_URL}/go-orders/orders`,
       {
         headers: { "Idempotency-Key": crypto.randomUUID() },
       }

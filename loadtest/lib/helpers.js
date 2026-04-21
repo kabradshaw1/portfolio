@@ -1,10 +1,10 @@
 import http from "k6/http";
 
 // Base URL — services accessed through SSH tunnel to Windows PC
-// nginx routes: /go-api/* → ecommerce:8092, /go-auth/* → auth:8091, /ai-api/* → ai:8093
+// nginx routes: /go-orders/* → order:8092, /go-auth/* → auth:8091, /ai-api/* → ai:8093
 export const BASE_URL = __ENV.BASE_URL || "http://localhost:8000";
 
-export const ECOMMERCE_URL = `${BASE_URL}/go-api`;
+export const ORDER_URL = `${BASE_URL}/go-orders`;
 export const AUTH_URL = `${BASE_URL}/go-auth`;
 export const AI_URL = `${BASE_URL}/ai-api`;
 
@@ -69,7 +69,7 @@ export function getProducts(params) {
   const query = params
     ? "?" + Object.entries(params).map(([k, v]) => `${k}=${v}`).join("&")
     : "";
-  const res = http.get(`${ECOMMERCE_URL}/products${query}`);
+  const res = http.get(`${ORDER_URL}/products${query}`);
   if (res.status !== 200) {
     return [];
   }
