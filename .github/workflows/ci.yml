@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, ecommerce-service, ai-service, analytics-service, product-service, cart-service]
+        service: [auth-service, order-service, ai-service, analytics-service, product-service, cart-service]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -190,7 +190,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, ecommerce-service, ai-service, analytics-service, product-service, cart-service]
+        service: [auth-service, order-service, ai-service, analytics-service, product-service, cart-service]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -259,13 +259,13 @@ jobs:
         run: |
           migrate -path go/auth-service/migrations -database "${DATABASE_URL}&x-migrations-table=auth_schema_migrations" up
 
-      - name: Run ecommerce-service migrations
+      - name: Run order-service migrations
         run: |
-          migrate -path go/ecommerce-service/migrations -database "${DATABASE_URL}&x-migrations-table=ecommerce_schema_migrations" up
+          migrate -path go/order-service/migrations -database "${DATABASE_URL}&x-migrations-table=ecommerce_schema_migrations" up
 
-      - name: Apply ecommerce seed data
+      - name: Apply order-service seed data
         run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f go/ecommerce-service/seed.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f go/order-service/seed.sql
 
       - name: Run product-service migrations
         run: |
@@ -624,7 +624,7 @@ jobs:
           - java/notification-service/Dockerfile
           - java/gateway-service/Dockerfile
           - go/auth-service/Dockerfile
-          - go/ecommerce-service/Dockerfile
+          - go/order-service/Dockerfile
           - go/ai-service/Dockerfile
           - go/analytics-service/Dockerfile
           - go/product-service/Dockerfile
@@ -721,11 +721,11 @@ jobs:
             file: go/auth-service/Dockerfile
             image: go-auth-service
             paths: go/auth-service go/pkg go/go.work
-          - service: go-ecommerce-service
+          - service: go-order-service
             context: go
-            file: go/ecommerce-service/Dockerfile
-            image: go-ecommerce-service
-            paths: go/ecommerce-service go/product-service go/cart-service go/pkg go/go.work
+            file: go/order-service/Dockerfile
+            image: go-order-service
+            paths: go/order-service go/product-service go/cart-service go/pkg go/go.work
           - service: go-ai-service
             context: go
             file: go/ai-service/Dockerfile
@@ -886,10 +886,10 @@ jobs:
 
           # Run Go migration jobs sequentially in QA namespace.
           # Jobs are immutable; delete before re-applying so they re-run on every deploy.
-          # auth-migrate MUST run before ecommerce-migrate: both services share
-          # the same Postgres, and ecommerce-service's migrations reference users(id)
+          # auth-migrate MUST run before order-migrate: both services share
+          # the same Postgres, and order-service's migrations reference users(id)
           # which is created by auth-service's migrations.
-          $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate go-product-migrate go-cart-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
+          $SSH "kubectl delete job go-auth-migrate go-order-migrate go-product-migrate go-cart-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
 
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
@@ -897,9 +897,9 @@ jobs:
             exit 1
           fi
 
-          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/ecommerce-service-migrate.yml | $SSH "kubectl apply -f -"
-          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce-qa"; then
-            $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce-qa --tail=200" || true
+          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/order-service-migrate.yml | $SSH "kubectl apply -f -"
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-order-migrate -n go-ecommerce-qa"; then
+            $SSH "kubectl logs job/go-order-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
@@ -1012,10 +1012,10 @@ jobs:
           if [ "$GO_CHANGED" = "true" ] || [ "$K8S_CHANGED" = "true" ]; then
             echo "Running Go migration Jobs..."
             # Jobs are immutable; delete before re-applying so they re-run on every deploy.
-            $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate go-product-migrate go-cart-migrate -n go-ecommerce --ignore-not-found --wait=true"
+            $SSH "kubectl delete job go-auth-migrate go-order-migrate go-product-migrate go-cart-migrate -n go-ecommerce --ignore-not-found --wait=true"
 
-            # auth-migrate MUST run before ecommerce-migrate: both services share
-            # ecommercedb, and the ecommerce seed inserts into the users table
+            # auth-migrate MUST run before order-migrate: both services share
+            # ecommercedb, and the order-service seed inserts into the users table
             # which is created by auth-service's migrations.
             $SSH "kubectl apply -f -" < go/k8s/jobs/auth-service-migrate.yml
             if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce"; then
@@ -1024,10 +1024,10 @@ jobs:
               exit 1
             fi
 
-            $SSH "kubectl apply -f -" < go/k8s/jobs/ecommerce-service-migrate.yml
-            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce"; then
-              echo "go-ecommerce-migrate failed. Logs follow:"
-              $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce --tail=200" || true
+            $SSH "kubectl apply -f -" < go/k8s/jobs/order-service-migrate.yml
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-order-migrate -n go-ecommerce"; then
+              echo "go-order-migrate failed. Logs follow:"
+              $SSH "kubectl logs job/go-order-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
 
