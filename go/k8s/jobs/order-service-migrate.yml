@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: go-ecommerce-migrate
+  name: go-order-migrate
   namespace: go-ecommerce
 spec:
   backoffLimit: 2
@@ -14,7 +14,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: migrate-and-seed
-          image: ghcr.io/kabradshaw1/portfolio/go-ecommerce-service:latest
+          image: ghcr.io/kabradshaw1/portfolio/go-order-service:latest
           imagePullPolicy: Always
           command: ["/bin/sh", "-c"]
           args:
@@ -29,7 +29,7 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 configMapKeyRef:
-                  name: ecommerce-service-config
+                  name: order-service-config
                   key: DATABASE_URL
           resources:
             requests:

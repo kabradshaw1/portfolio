@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: go-ecommerce-service
+  name: go-order-service
   namespace: go-ecommerce
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: go-ecommerce-service
+      app: go-order-service
   template:
     metadata:
       labels:
-        app: go-ecommerce-service
+        app: go-order-service
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8092"
@@ -20,14 +20,14 @@ spec:
       imagePullSecrets:
         - name: ghcr-secret
       containers:
-        - name: go-ecommerce-service
-          image: ghcr.io/kabradshaw1/portfolio/go-ecommerce-service:latest
+        - name: go-order-service
+          image: ghcr.io/kabradshaw1/portfolio/go-order-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8092
           envFrom:
             - configMapRef:
-                name: ecommerce-service-config
+                name: order-service-config
           env:
             - name: JWT_SECRET
               valueFrom:

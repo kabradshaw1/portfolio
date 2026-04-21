@@ -5,34 +5,34 @@ resources:
   - namespace.yml
   - configmaps/ai-service-config.yml
   - configmaps/auth-service-config.yml
-  - configmaps/ecommerce-service-config.yml
+  - configmaps/order-service-config.yml
   - configmaps/analytics-service-config.yml
   - configmaps/product-service-config.yml
   - configmaps/cart-service-config.yml
   - deployments/ai-service.yml
   - deployments/auth-service.yml
-  - deployments/ecommerce-service.yml
+  - deployments/order-service.yml
   - deployments/analytics-service.yml
   - deployments/product-service.yml
   - deployments/cart-service.yml
   - statefulsets/kafka.yml
   - hpa/auth-hpa.yml
-  - hpa/ecommerce-hpa.yml
+  - hpa/order-hpa.yml
   - hpa/product-hpa.yml
   - hpa/cart-hpa.yml
   - jobs/auth-service-migrate.yml
-  - jobs/ecommerce-service-migrate.yml
+  - jobs/order-service-migrate.yml
   - jobs/product-service-migrate.yml
   - jobs/cart-service-migrate.yml
   - services/ai-service.yml
   - services/auth-service.yml
-  - services/ecommerce-service.yml
+  - services/order-service.yml
   - services/kafka.yml
   - services/analytics-service.yml
   - services/product-service.yml
   - services/cart-service.yml
   - pdb/auth-pdb.yml
-  - pdb/ecommerce-pdb.yml
+  - pdb/order-pdb.yml
   - pdb/ai-pdb.yml
   - pdb/analytics-pdb.yml
   - pdb/product-pdb.yml
