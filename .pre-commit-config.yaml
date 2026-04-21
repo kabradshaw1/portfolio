@@ -40,7 +40,7 @@ repos:
         stages: [pre-push]
       - id: go-lint
         name: Go Lint
-        entry: bash -c 'cd go/auth-service && ~/go/bin/golangci-lint run ./... && cd ../ecommerce-service && ~/go/bin/golangci-lint run ./...'
+        entry: bash -c 'cd go/auth-service && ~/go/bin/golangci-lint run ./... && cd ../order-service && ~/go/bin/golangci-lint run ./...'
         language: system
         files: ^go/.*\.go$
         pass_filenames: false
