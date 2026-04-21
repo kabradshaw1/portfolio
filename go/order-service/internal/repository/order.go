@@ -2,11 +2,12 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/pagination"
@@ -77,7 +78,7 @@ func (r *OrderRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Or
 			id,
 		).Scan(&order.ID, &order.UserID, &order.Status, &order.SagaStep, &order.Total, &order.CreatedAt, &order.UpdatedAt)
 		if err != nil {
-			if strings.Contains(err.Error(), "no rows") {
+			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, ErrOrderNotFound
 			}
 			return nil, fmt.Errorf("find order: %w", err)

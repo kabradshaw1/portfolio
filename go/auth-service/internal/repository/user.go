@@ -3,9 +3,9 @@ package repository
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kabradshaw1/portfolio/go/auth-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
@@ -37,7 +37,8 @@ func (r *UserRepository) Create(ctx context.Context, email, passwordHash, name s
 			email, passwordHash, name,
 		).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt)
 		if err != nil {
-			if strings.Contains(err.Error(), "duplicate key") {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 				return nil, ErrEmailExists
 			}
 			return nil, err

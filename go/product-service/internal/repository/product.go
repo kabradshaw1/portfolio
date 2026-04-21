@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kabradshaw1/portfolio/go/product-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/product-service/internal/pagination"
@@ -243,7 +245,7 @@ func (r *ProductRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 			id,
 		).Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.Category, &p.ImageURL, &p.Stock, &p.CreatedAt, &p.UpdatedAt)
 		if err != nil {
-			if strings.Contains(err.Error(), "no rows") {
+			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, ErrProductNotFound
 			}
 			return nil, fmt.Errorf("find product: %w", err)
