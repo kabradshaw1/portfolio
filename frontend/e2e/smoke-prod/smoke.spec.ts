@@ -338,11 +338,18 @@ test.describe("Go ecommerce smoke tests", () => {
     expect(order.status).toBe("pending");
     expect(order.total).toBe(smokeProduct.price);
 
-    // Step 6: Cart should be empty after checkout
-    const emptyCartRes = await authContext.get(`${API_URL}/go-cart/cart`);
-    expect(emptyCartRes.status()).toBe(200);
-    const emptyCartBody = await emptyCartRes.json();
-    expect(emptyCartBody.items ?? []).toHaveLength(0);
+    // Step 6: Cart should be empty after saga completes (async — poll with retries)
+    let cartEmpty = false;
+    for (let i = 0; i < 10; i++) {
+      const pollRes = await authContext.get(`${API_URL}/go-cart/cart`);
+      const pollBody = await pollRes.json();
+      if ((pollBody.items ?? []).length === 0) {
+        cartEmpty = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(cartEmpty, "cart should be empty after saga completes (5s timeout)").toBe(true);
 
     // Step 7: Checkout on empty cart should fail
     const emptyCheckoutRes = await authContext.post(
