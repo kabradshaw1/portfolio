@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { useGoAuth } from "@/components/go/GoAuthProvider";
-import { goApiFetch } from "@/lib/go-api";
+import { goCartFetch } from "@/lib/go-cart-api";
 
 export interface GoCartItem {
   id: string;
@@ -47,7 +47,7 @@ export function GoCartProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      const res = await goApiFetch("/cart");
+      const res = await goCartFetch("/cart");
       if (!res.ok) return;
       const data = await res.json();
       setItems(data.items ?? []);
