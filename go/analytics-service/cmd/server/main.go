@@ -6,14 +6,13 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/aggregator"
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/consumer"
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/handler"
+	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -27,8 +26,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("tracing init: %v", err)
 	}
-	defer func() { _ = shutdownTracer(ctx) }()
-
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
@@ -63,22 +60,20 @@ func main() {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	slog.Info("shutting down analytics-service")
-
-	cancel() // Stop consumer
-
-	if err := cons.Close(); err != nil {
-		slog.Error("kafka consumer close error", "error", err)
-	}
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("server forced to shutdown: %v", err)
-	}
-	slog.Info("analytics-service stopped")
+	// Graceful shutdown
+	sm := shutdown.New(15 * time.Second)
+	sm.Register("cancel-ctx", 0, func(_ context.Context) error {
+		cancel()
+		return nil
+	})
+	sm.Register("kafka-close", 10, func(_ context.Context) error {
+		return cons.Close()
+	})
+	sm.Register("http", 20, func(ctx context.Context) error {
+		return srv.Shutdown(ctx)
+	})
+	sm.Register("otel", 30, func(ctx context.Context) error {
+		return shutdownTracer(ctx)
+	})
+	sm.Wait()
 }
