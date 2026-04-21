@@ -60,8 +60,10 @@ preflight-go:
 
 # --- Go integration tests (requires Docker via Colima) ---
 preflight-go-integration:
-	@echo "\n=== Go: integration tests (ecommerce) ==="
+	@echo "\n=== Go: integration tests (order-service) ==="
 	cd go/order-service && DOCKER_HOST=unix://$${HOME}/.colima/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock go test -tags=integration -race -timeout 180s ./internal/integration/...
+	@echo "\n=== Go: integration tests (analytics-service) ==="
+	cd go/analytics-service && DOCKER_HOST=unix://$${HOME}/.colima/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock go test -tags=integration -race -timeout 180s ./internal/integration/...
 
 # Bootstrap golangci-lint into .bin/ pinned to the version CI uses,
 # so local preflight catches the same lint issues that gate CI.
