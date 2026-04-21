@@ -20,7 +20,7 @@ patches:
         value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/ecommercedb_qa?sslmode=disable"
   - target:
       kind: ConfigMap
-      name: ecommerce-service-config
+      name: order-service-config
     patch: |
       - op: replace
         path: /data/ALLOWED_ORIGINS
@@ -54,8 +54,8 @@ patches:
         path: /data/OLLAMA_URL
         value: "http://ollama.ai-services.svc.cluster.local:11434"
       - op: replace
-        path: /data/ECOMMERCE_URL
-        value: "http://go-ecommerce-service:8092"
+        path: /data/ORDER_URL
+        value: "http://go-order-service:8092"
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
