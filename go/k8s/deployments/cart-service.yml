@@ -28,6 +28,12 @@ spec:
               name: http
             - containerPort: 9096
               name: grpc
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: go-secrets
+                  key: jwt-secret
           envFrom:
             - configMapRef:
                 name: cart-service-config
