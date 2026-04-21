@@ -69,6 +69,22 @@ func (m *mockOrderRepo) UpdateStatus(ctx context.Context, orderID uuid.UUID, sta
 	return nil
 }
 
+// mockCartClient satisfies the CartClient interface for order tests.
+type mockCartClient struct {
+	items   []model.CartItem
+	cleared bool
+}
+
+func (m *mockCartClient) GetByUser(_ context.Context, _ uuid.UUID) ([]model.CartItem, error) {
+	return m.items, nil
+}
+
+func (m *mockCartClient) ClearCart(_ context.Context, _ uuid.UUID) error {
+	m.items = nil
+	m.cleared = true
+	return nil
+}
+
 // mockPublisher tracks published order IDs.
 type mockPublisher struct {
 	publishedIDs []string
@@ -80,25 +96,24 @@ func (m *mockPublisher) PublishOrderCreated(orderID string) error {
 }
 
 func TestCheckout(t *testing.T) {
-	cartRepo := &mockCartRepo{}
-	orderRepo := newMockOrderRepo()
-	publisher := &mockPublisher{}
-	svc := service.NewOrderService(orderRepo, cartRepo, publisher, nopKafka{})
-
 	userID := uuid.New()
 	productID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
-	// Simulate cart items with product price info.
-	cartRepo.items = []model.CartItem{
-		{
-			ID:           uuid.New(),
-			UserID:       userID,
-			ProductID:    productID,
-			Quantity:     2,
-			ProductPrice: 5000,
-			CreatedAt:    time.Now(),
+	cartClient := &mockCartClient{
+		items: []model.CartItem{
+			{
+				ID:           uuid.New(),
+				UserID:       userID,
+				ProductID:    productID,
+				Quantity:     2,
+				ProductPrice: 5000,
+				CreatedAt:    time.Now(),
+			},
 		},
 	}
+	orderRepo := newMockOrderRepo()
+	publisher := &mockPublisher{}
+	svc := service.NewOrderService(orderRepo, cartClient, publisher, nopKafka{})
 
 	order, err := svc.Checkout(context.Background(), userID)
 	if err != nil {
@@ -119,17 +134,16 @@ func TestCheckout(t *testing.T) {
 	}
 
 	// Cart should be cleared after checkout.
-	items, _ := cartRepo.GetByUser(context.Background(), userID)
-	if len(items) != 0 {
-		t.Errorf("expected cart to be empty after checkout, got %d items", len(items))
+	if !cartClient.cleared {
+		t.Error("expected cart to be cleared after checkout")
 	}
 }
 
 func TestCheckoutEmptyCart(t *testing.T) {
-	cartRepo := &mockCartRepo{}
+	cartClient := &mockCartClient{}
 	orderRepo := newMockOrderRepo()
 	publisher := &mockPublisher{}
-	svc := service.NewOrderService(orderRepo, cartRepo, publisher, nopKafka{})
+	svc := service.NewOrderService(orderRepo, cartClient, publisher, nopKafka{})
 
 	userID := uuid.New()
 

@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/kabradshaw1/portfolio/go/ecommerce-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/cart-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	gobreaker "github.com/sony/gobreaker/v2"
@@ -29,12 +29,10 @@ func NewCartRepository(pool *pgxpool.Pool, breaker *gobreaker.CircuitBreaker[any
 func (r *CartRepository) GetByUser(ctx context.Context, userID uuid.UUID) ([]model.CartItem, error) {
 	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) ([]model.CartItem, error) {
 		rows, err := r.pool.Query(ctx,
-			`SELECT ci.id, ci.user_id, ci.product_id, ci.quantity, ci.created_at,
-			        p.name, p.price, p.image_url
-			 FROM cart_items ci
-			 JOIN products p ON p.id = ci.product_id
-			 WHERE ci.user_id = $1
-			 ORDER BY ci.created_at DESC`,
+			`SELECT id, user_id, product_id, quantity, created_at
+			 FROM cart_items
+			 WHERE user_id = $1
+			 ORDER BY created_at DESC`,
 			userID,
 		)
 		if err != nil {
@@ -47,7 +45,6 @@ func (r *CartRepository) GetByUser(ctx context.Context, userID uuid.UUID) ([]mod
 			var item model.CartItem
 			if err := rows.Scan(
 				&item.ID, &item.UserID, &item.ProductID, &item.Quantity, &item.CreatedAt,
-				&item.ProductName, &item.ProductPrice, &item.ProductImage,
 			); err != nil {
 				return nil, fmt.Errorf("scan cart item: %w", err)
 			}

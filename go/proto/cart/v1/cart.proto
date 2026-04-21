@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package cart.v1;
+
+option go_package = "github.com/kabradshaw1/portfolio/go/cart-service/pb/cart/v1";
+
+import "google/protobuf/timestamp.proto";
+
+service CartService {
+  rpc GetCart(GetCartRequest) returns (GetCartResponse);
+  rpc ClearCart(ClearCartRequest) returns (ClearCartResponse);
+  rpc ReserveItems(ReserveItemsRequest) returns (ReserveItemsResponse);
+  rpc ReleaseItems(ReleaseItemsRequest) returns (ReleaseItemsResponse);
+}
+
+message CartItem {
+  string id = 1;
+  string user_id = 2;
+  string product_id = 3;
+  int32 quantity = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message GetCartRequest {
+  string user_id = 1;
+}
+
+message GetCartResponse {
+  repeated CartItem items = 1;
+}
+
+message ClearCartRequest {
+  string user_id = 1;
+}
+
+message ClearCartResponse {}
+
+message ReserveItemsRequest {
+  string user_id = 1;
+  string order_id = 2;
+}
+
+message ReserveItemsResponse {
+  bool success = 1;
+  repeated CartItem items = 2;
+}
+
+message ReleaseItemsRequest {
+  string user_id = 1;
+  string order_id = 2;
+}
+
+message ReleaseItemsResponse {
+  bool success = 1;
+}

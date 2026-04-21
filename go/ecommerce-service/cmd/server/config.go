@@ -18,6 +18,7 @@ type Config struct {
 	WorkerConcurrency int    // default 3, parsed from WORKER_CONCURRENCY
 	OTELEndpoint      string // optional
 	ProductGRPCAddr   string // optional, address of product-service gRPC
+	CartGRPCAddr      string // optional, address of cart-service gRPC
 }
 
 // loadConfig reads environment variables and returns a validated Config.
@@ -33,6 +34,7 @@ func loadConfig() Config {
 		KafkaBrokers:   os.Getenv("KAFKA_BROKERS"),
 		OTELEndpoint:      os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 		ProductGRPCAddr:   os.Getenv("PRODUCT_GRPC_ADDR"),
+		CartGRPCAddr:      os.Getenv("CART_GRPC_ADDR"),
 		WorkerConcurrency: 3,
 	}
 

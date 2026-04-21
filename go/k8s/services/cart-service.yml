@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-cart-service
+  namespace: go-ecommerce
+spec:
+  selector:
+    app: go-cart-service
+  ports:
+    - name: http
+      port: 8096
+      targetPort: 8096
+    - name: grpc
+      port: 9096
+      targetPort: 9096

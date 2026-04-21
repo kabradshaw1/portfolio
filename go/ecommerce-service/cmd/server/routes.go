@@ -17,7 +17,6 @@ import (
 // setupRouter creates the Gin engine with all middleware and route registrations.
 func setupRouter(
 	cfg Config,
-	cartHandler *handler.CartHandler,
 	orderHandler *handler.OrderHandler,
 	returnHandler *handler.ReturnHandler,
 	healthHandler *handler.HealthHandler,
@@ -43,11 +42,6 @@ func setupRouter(
 	auth.Use(middleware.Auth(cfg.JWTSecret))
 	auth.Use(ecomLimiter.Middleware())
 	{
-		auth.GET("/cart", cartHandler.GetCart)
-		auth.POST("/cart", middleware.Idempotency(redisClient, false), cartHandler.AddItem)
-		auth.PUT("/cart/:itemId", cartHandler.UpdateQuantity)
-		auth.DELETE("/cart/:itemId", cartHandler.RemoveItem)
-
 		auth.POST("/orders", middleware.Idempotency(redisClient, true), orderHandler.Checkout)
 		auth.GET("/orders", orderHandler.List)
 		auth.GET("/orders/:id", orderHandler.GetByID)

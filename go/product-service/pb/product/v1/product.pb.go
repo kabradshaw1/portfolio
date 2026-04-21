@@ -679,7 +679,7 @@ const file_product_v1_product_proto_rawDesc = "" +
 	"\vGetProducts\x12\x1e.product.v1.GetProductsRequest\x1a\x1f.product.v1.GetProductsResponse\x12`\n" +
 	"\x11CheckAvailability\x12$.product.v1.CheckAvailabilityRequest\x1a%.product.v1.CheckAvailabilityResponse\x12W\n" +
 	"\x0eDecrementStock\x12!.product.v1.DecrementStockRequest\x1a\".product.v1.DecrementStockResponse\x12Z\n" +
-	"\x0fInvalidateCache\x12\".product.v1.InvalidateCacheRequest\x1a#.product.v1.InvalidateCacheResponseBLZJgithub.com/kabradshaw1/portfolio/go/product-service/internal/pb/product/v1b\x06proto3"
+	"\x0fInvalidateCache\x12\".product.v1.InvalidateCacheRequest\x1a#.product.v1.InvalidateCacheResponseBCZAgithub.com/kabradshaw1/portfolio/go/product-service/pb/product/v1b\x06proto3"
 
 var (
 	file_product_v1_product_proto_rawDescOnce sync.Once

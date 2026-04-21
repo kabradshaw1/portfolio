@@ -313,14 +313,14 @@ test.describe("Go ecommerce smoke tests", () => {
     ).toBeDefined();
 
     // Step 3: Add to cart
-    const addRes = await authContext.post(`${API_URL}/go-api/cart`, {
+    const addRes = await authContext.post(`${API_URL}/go-cart/cart`, {
       data: { productId: smokeProduct.id, quantity: 1 },
       headers: { "Idempotency-Key": crypto.randomUUID() },
     });
     expect(addRes.status()).toBe(201);
 
     // Step 4: Verify cart contents
-    const cartRes = await authContext.get(`${API_URL}/go-api/cart`);
+    const cartRes = await authContext.get(`${API_URL}/go-cart/cart`);
     expect(cartRes.status()).toBe(200);
     const cartBody = await cartRes.json();
     expect(cartBody.items.length).toBeGreaterThan(0);
@@ -339,7 +339,7 @@ test.describe("Go ecommerce smoke tests", () => {
     expect(order.total).toBe(smokeProduct.price);
 
     // Step 6: Cart should be empty after checkout
-    const emptyCartRes = await authContext.get(`${API_URL}/go-api/cart`);
+    const emptyCartRes = await authContext.get(`${API_URL}/go-cart/cart`);
     expect(emptyCartRes.status()).toBe(200);
     const emptyCartBody = await emptyCartRes.json();
     expect(emptyCartBody.items ?? []).toHaveLength(0);
