@@ -1,9 +1,9 @@
 import {
   refreshGoAccessToken,
-  GO_ECOMMERCE_URL,
+  GO_ORDER_URL,
 } from "@/lib/go-auth";
 
-export async function goApiFetch(
+export async function goOrderFetch(
   path: string,
   options: RequestInit = {},
 ): Promise<Response> {
@@ -12,7 +12,7 @@ export async function goApiFetch(
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(`${GO_ECOMMERCE_URL}${path}`, {
+  const res = await fetch(`${GO_ORDER_URL}${path}`, {
     ...options,
     headers,
     credentials: "include",
@@ -22,7 +22,7 @@ export async function goApiFetch(
   if (res.status === 401 || res.status === 403) {
     const success = await refreshGoAccessToken();
     if (success) {
-      return fetch(`${GO_ECOMMERCE_URL}${path}`, {
+      return fetch(`${GO_ORDER_URL}${path}`, {
         ...options,
         headers,
         credentials: "include",
