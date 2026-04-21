@@ -527,7 +527,7 @@ data:
             annotations:
               summary: "Go AI service error rate is above 5%"
 
-          - uid: go-ecommerce-error-rate
+          - uid: go-order-error-rate
             title: Go Ecommerce Error Rate High
             condition: C
             data:
@@ -538,8 +538,8 @@ data:
                 datasourceUid: PBFA97CFB590B2093
                 model:
                   expr: >-
-                    sum(rate(http_requests_total{service="go-ecommerce-service",status=~"5.."}[5m]))
-                    / sum(rate(http_requests_total{service="go-ecommerce-service"}[5m]))
+                    sum(rate(http_requests_total{service="go-order-service",status=~"5.."}[5m]))
+                    / sum(rate(http_requests_total{service="go-order-service"}[5m]))
                     * 100
                   instant: true
                   refId: A
@@ -571,7 +571,7 @@ data:
             labels:
               severity: warning
             annotations:
-              summary: "Go ecommerce service error rate is above 2%"
+              summary: "Go order-service error rate is above 2%"
 
           - uid: java-gateway-error-rate
             title: Java Gateway Error Rate High
@@ -665,7 +665,7 @@ data:
             annotations:
               summary: "Go AI service p95 latency is above 30s"
 
-          - uid: go-ecommerce-latency-high
+          - uid: go-order-latency-high
             title: Go Ecommerce Latency High
             condition: C
             data:
@@ -677,7 +677,7 @@ data:
                 model:
                   expr: >-
                     histogram_quantile(0.95,
-                      sum(rate(http_request_duration_seconds_bucket{service="go-ecommerce-service"}[5m])) by (le)
+                      sum(rate(http_request_duration_seconds_bucket{service="go-order-service"}[5m])) by (le)
                     )
                   instant: true
                   refId: A
@@ -709,7 +709,7 @@ data:
             labels:
               severity: warning
             annotations:
-              summary: "Go ecommerce service p95 latency is above 2s"
+              summary: "Go order-service p95 latency is above 2s"
 
           - uid: java-gateway-latency-high
             title: Java Gateway Latency High
