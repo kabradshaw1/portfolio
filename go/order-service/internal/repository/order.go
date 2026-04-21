@@ -49,14 +49,19 @@ func (r *OrderRepository) Create(ctx context.Context, userID uuid.UUID, total in
 			return nil, fmt.Errorf("insert order: %w", err)
 		}
 
-		for _, item := range items {
-			_, err = tx.Exec(ctx,
-				`INSERT INTO order_items (id, order_id, product_id, quantity, price_at_purchase)
-				 VALUES ($1, $2, $3, $4, $5)`,
-				uuid.New(), order.ID, item.ProductID, item.Quantity, item.PriceAtPurchase,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("insert order item: %w", err)
+		if len(items) > 0 {
+			query := "INSERT INTO order_items (id, order_id, product_id, quantity, price_at_purchase) VALUES "
+			args := make([]any, 0, len(items)*5)
+			for i, item := range items {
+				if i > 0 {
+					query += ", "
+				}
+				base := i*5 + 1
+				query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)", base, base+1, base+2, base+3, base+4)
+				args = append(args, uuid.New(), order.ID, item.ProductID, item.Quantity, item.PriceAtPurchase)
+			}
+			if _, err = tx.Exec(ctx, query, args...); err != nil {
+				return nil, fmt.Errorf("insert order items: %w", err)
 			}
 		}
 
