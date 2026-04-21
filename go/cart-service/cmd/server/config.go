@@ -15,6 +15,7 @@ type Config struct {
 	KafkaBrokers    string
 	ProductGRPCAddr string
 	RabbitmqURL     string
+	AuthGRPCURL     string
 	OTELEndpoint    string
 }
 
@@ -29,6 +30,7 @@ func loadConfig() Config {
 		KafkaBrokers:    os.Getenv("KAFKA_BROKERS"),
 		ProductGRPCAddr: os.Getenv("PRODUCT_GRPC_ADDR"),
 		RabbitmqURL:     os.Getenv("RABBITMQ_URL"),
+		AuthGRPCURL:     getEnv("AUTH_GRPC_URL", "localhost:9091"),
 		OTELEndpoint:    os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 	}
 
@@ -49,4 +51,11 @@ func loadConfig() Config {
 	}
 
 	return cfg
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

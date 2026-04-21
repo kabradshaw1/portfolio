@@ -5,6 +5,7 @@ FROM golang:1.26-alpine AS builder
 
 WORKDIR /app/cart-service
 COPY pkg/ /app/pkg/
+COPY auth-service/ /app/auth-service/
 COPY product-service/ /app/product-service/
 COPY cart-service/go.mod cart-service/go.sum ./
 RUN go mod download

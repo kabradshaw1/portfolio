@@ -11,6 +11,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/middleware"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
+
 	pkgmw "github.com/kabradshaw1/portfolio/go/pkg/middleware"
 )
 
@@ -21,6 +22,7 @@ func setupRouter(
 	returnHandler *handler.ReturnHandler,
 	healthHandler *handler.HealthHandler,
 	redisClient *redis.Client,
+	authMw gin.HandlerFunc,
 ) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -39,7 +41,7 @@ func setupRouter(
 
 	// Authenticated routes
 	auth := router.Group("/")
-	auth.Use(middleware.Auth(cfg.JWTSecret))
+	auth.Use(authMw)
 	auth.Use(ecomLimiter.Middleware())
 	{
 		auth.POST("/orders", middleware.Idempotency(redisClient, true), orderHandler.Checkout)

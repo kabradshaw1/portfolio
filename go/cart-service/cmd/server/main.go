@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -18,6 +19,8 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
+	"github.com/kabradshaw1/portfolio/go/auth-service/authmiddleware"
+	authpb "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1"
 	grpcsrv "github.com/kabradshaw1/portfolio/go/cart-service/internal/grpc"
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/productclient"
@@ -91,11 +94,23 @@ func main() {
 		slog.Info("saga command handler enabled", "url", cfg.RabbitmqURL)
 	}
 
+	// Auth-service gRPC connection for denylist checks.
+	authConn, err := grpc.NewClient(cfg.AuthGRPCURL,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		log.Fatalf("auth gRPC dial: %v", err)
+	}
+	defer authConn.Close()
+	authClient := authpb.NewAuthServiceClient(authConn)
+	authMw := authmiddleware.New(cfg.JWTSecret, authClient)
+
 	// REST server
 	router := setupRouter(cfg,
 		handler.NewCartHandler(cartSvc),
 		handler.NewHealthHandler(pool, redisClient),
 		redisClient,
+		authMw,
 	)
 
 	httpSrv := &http.Server{

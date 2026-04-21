@@ -8,6 +8,11 @@ import (
 	"os"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/kabradshaw1/portfolio/go/auth-service/authmiddleware"
+	authpb "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/cartclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/productclient"
@@ -96,11 +101,23 @@ func main() {
 	orderSvc := service.NewOrderService(orderRepo, cartClient, orch)
 	returnSvc := service.NewReturnService(returnRepo, orderSvc)
 
+	// Auth-service gRPC connection for denylist checks.
+	authConn, err := grpc.NewClient(cfg.AuthGRPCURL,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		log.Fatalf("auth gRPC dial: %v", err)
+	}
+	defer authConn.Close()
+	authClient := authpb.NewAuthServiceClient(authConn)
+	authMw := authmiddleware.New(cfg.JWTSecret, authClient)
+
 	router := setupRouter(cfg,
 		handler.NewOrderHandler(orderSvc),
 		handler.NewReturnHandler(returnSvc),
 		handler.NewHealthHandler(pool, redisClient),
 		redisClient,
+		authMw,
 	)
 
 	srv := &http.Server{

@@ -7,6 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
+	github.com/kabradshaw1/portfolio/go/auth-service v0.0.0
 	github.com/kabradshaw1/portfolio/go/cart-service v0.0.0
 	github.com/kabradshaw1/portfolio/go/pkg v0.0.0
 	github.com/kabradshaw1/portfolio/go/product-service v0.0.0
@@ -26,6 +27,8 @@ require (
 )
 
 replace github.com/kabradshaw1/portfolio/go/pkg => ../pkg
+
+replace github.com/kabradshaw1/portfolio/go/auth-service => ../auth-service
 
 replace github.com/kabradshaw1/portfolio/go/cart-service => ../cart-service
 

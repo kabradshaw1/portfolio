@@ -19,6 +19,7 @@ func setupRouter(
 	cartHandler *handler.CartHandler,
 	healthHandler *handler.HealthHandler,
 	redisClient *redis.Client,
+	authMw gin.HandlerFunc,
 ) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -35,7 +36,7 @@ func setupRouter(
 	cartLimiter := middleware.NewRateLimiter(redisClient, "cart:ratelimit", 60, time.Minute)
 
 	auth := router.Group("/")
-	auth.Use(middleware.Auth(cfg.JWTSecret))
+	auth.Use(authMw)
 	auth.Use(cartLimiter.Middleware())
 	{
 		auth.GET("/cart", cartHandler.GetCart)
