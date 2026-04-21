@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cart-service-config
+  namespace: go-ecommerce
+data:
+  DATABASE_URL: postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/cartdb?sslmode=disable
+  REDIS_URL: redis://redis.java-tasks.svc.cluster.local:6379
+  KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
+  PRODUCT_GRPC_ADDR: "go-product-service.go-ecommerce.svc.cluster.local:9095"
+  ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
+  PORT: "8096"
+  GRPC_PORT: "9096"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"

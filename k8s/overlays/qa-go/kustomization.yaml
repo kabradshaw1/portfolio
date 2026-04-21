@@ -37,6 +37,9 @@ patches:
       - op: replace
         path: /data/KAFKA_BROKERS
         value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
+      - op: add
+        path: /data/CART_GRPC_ADDR
+        value: "go-cart-service.go-ecommerce-qa.svc.cluster.local:9096"
   - target:
       kind: ConfigMap
       name: ai-service-config
@@ -95,6 +98,22 @@ patches:
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
+  - target:
+      kind: ConfigMap
+      name: cart-service-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/DATABASE_URL
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/cartdb_qa?sslmode=disable"
+      - op: replace
+        path: /data/REDIS_URL
+        value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
+      - op: replace
+        path: /data/KAFKA_BROKERS
+        value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
   # --- Migration jobs ---
   # No Job patches needed: migration jobs read DATABASE_URL via configMapKeyRef
   # from their respective ConfigMaps above. The patches already repoint
