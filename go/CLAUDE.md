@@ -1,10 +1,12 @@
 # Go Services
 
-Three microservices sharing a common `go/pkg/` module:
+Five microservices sharing a common `go/pkg/` module:
 
 - **auth-service** (8091) — JWT auth, Google OAuth, PostgreSQL
-- **ecommerce-service** (8092) — products, cart, orders, returns, PostgreSQL, Redis, RabbitMQ
+- **product-service** (REST 8095, gRPC 9095) — product catalog CRUD, categories, stock management, `productdb`
+- **ecommerce-service** (8092) — cart, orders, returns, PostgreSQL, Redis, RabbitMQ (products extracted to product-service)
 - **ai-service** (8093) — LLM agent loop with tool calling, Ollama/OpenAI/Anthropic, Redis
+- **analytics-service** (8094) — Kafka consumer, streaming analytics (orders, cart, views)
 
 ## Shared Package (`go/pkg/`)
 
@@ -21,7 +23,18 @@ Three packages live here:
 - **`resilience`** — `sony/gobreaker` circuit breakers, exponential retry with jitter, combined `Call[T]`/`Do` wrappers. `IsPgRetryable` skips domain errors. Prometheus gauge tracks breaker state.
 - **`tracing`** — OpenTelemetry init (`Init(ctx, serviceName, endpoint)`), `RedisSpan` helper, `InjectAMQP`/`ExtractAMQP` for RabbitMQ trace propagation.
 
-**When modifying `go/pkg/`:** run `go mod tidy` in `go/pkg/` and all three service directories, since they all depend on it.
+**When modifying `go/pkg/`:** run `go mod tidy` in `go/pkg/` and all service directories, since they all depend on it.
+
+## Proto Toolchain (buf)
+
+`buf` v2 manages protobuf definitions and code generation at the `go/` level.
+
+- **Config:** `go/buf.yaml` (lint rules), `go/buf.gen.yaml` (Go + gRPC code generation)
+- **Proto files:** `go/proto/<service>/v1/<service>.proto`
+- **Generated code:** `go/<service>/pb/<service>/v1/` — uses public path (not `internal/`) so other services can import the generated types cross-module
+- **Generate:** `cd go && buf generate`
+- **Lint:** `cd go && buf lint`
+- **Cross-service imports:** services that call another service via gRPC add a `replace` directive to import the target's generated proto code (e.g., ecommerce-service imports product-service's pb package)
 
 ## Docker Build Context
 

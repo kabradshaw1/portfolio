@@ -8,7 +8,7 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 
 - **Python:** FastAPI microservices (ingestion, chat, debug), LangChain text splitters, Qdrant vector DB
 - **Java:** Spring Boot microservices (task, activity, notification, gateway), PostgreSQL, MongoDB, Redis, RabbitMQ, GraphQL
-- **Go:** Auth, ecommerce, AI agent, and analytics services, PostgreSQL, Redis, RabbitMQ, Kafka, shared `go/pkg/` module (see `go/CLAUDE.md`)
+- **Go:** Auth, product, ecommerce, AI agent, and analytics services, gRPC + REST, PostgreSQL, Redis, RabbitMQ, Kafka, protobuf/buf, shared `go/pkg/` module (see `go/CLAUDE.md`)
 - **AI/ML:** Ollama (Qwen 2.5 14B for chat/debug, nomic-embed-text for embeddings)
 - **Frontend:** Next.js + TypeScript + shadcn/ui, Apollo Client (GraphQL)
 - **Testing:** pytest, JUnit, Go test/benchmarks, Playwright (E2E)
@@ -38,7 +38,7 @@ Portfolio project for a Gen AI Engineer job application — demonstrating RAG ar
 - **Frontend:** `npm run dev` in `frontend/`, points to `localhost:8000` via tunnel
 - **Production:** Frontend on Vercel (`https://kylebradshaw.dev`), backend via Cloudflare Tunnel:
   - `https://api.kylebradshaw.dev` → Debian Minikube Ingress (192.168.49.2:80)
-  - Ingress routes by path: `/ingestion/*`, `/chat/*`, `/debug/*` → Python services; `/graphql`, `/api/auth/*` → Java services; `/go-api/*`, `/go-auth/*` → Go services; `/grafana/*` → monitoring
+  - Ingress routes by path: `/ingestion/*`, `/chat/*`, `/debug/*` → Python services; `/graphql`, `/api/auth/*` → Java services; `/go-api/*`, `/go-auth/*`, `/go-products/*` → Go services; `/grafana/*` → monitoring
   - Cloudflared runs as systemd service (auto-starts on boot)
   - `minikube tunnel` runs as systemd service (auto-starts on boot)
 
@@ -65,7 +65,8 @@ Frontend env vars currently set in Vercel production:
 - `NEXT_PUBLIC_INGESTION_API_URL`, `NEXT_PUBLIC_CHAT_API_URL` — Python AI services
 - `NEXT_PUBLIC_GO_AUTH_URL=https://api.kylebradshaw.dev/go-auth`
 - `NEXT_PUBLIC_GO_ECOMMERCE_URL=https://api.kylebradshaw.dev/go-api`
-- `NEXT_PUBLIC_AI_SERVICE_URL=https://api.kylebradshaw.dev/ai-api` (add in Vercel before merge — localhost fallback will otherwise bake into the production bundle)
+- `NEXT_PUBLIC_AI_SERVICE_URL=https://api.kylebradshaw.dev/ai-api`
+- `NEXT_PUBLIC_GO_PRODUCT_URL=https://api.kylebradshaw.dev/go-products`
 
 If frontend code adds a new `NEXT_PUBLIC_*` env var with a `localhost` fallback, **Vercel will silently bake the localhost fallback into the production bundle** unless the env var is added in Vercel and a redeploy is triggered. Always add the var to Vercel before merging.
 
@@ -94,9 +95,12 @@ java/                       # Java microservices (Spring Boot, Gradle multi-proj
 ├── k8s/                    # Java-specific K8s manifests
 go/                         # Go microservices
 ├── auth-service/           # JWT auth (register, login, refresh), PostgreSQL
-├── ecommerce-service/      # Products, cart, orders, Redis caching, RabbitMQ worker pool
+├── product-service/        # Product catalog CRUD, REST :8095 + gRPC :9095, productdb
+├── ecommerce-service/      # Cart, orders, returns, Redis, RabbitMQ (products extracted)
 ├── ai-service/             # Agent loop over Ollama tool-calling, 9 tools wrapping ecommerce
 ├── analytics-service/      # Kafka consumer — streaming analytics (orders, cart, views)
+├── proto/                  # Protobuf definitions (product/v1/product.proto)
+├── buf.yaml                # buf v2 config for proto linting and generation
 ├── k8s/                    # Go-specific K8s manifests
 frontend/                   # Next.js + shadcn/ui
 ├── src/app/                # Pages: ai/ (rag, debug), java/ (tasks), go/ (ecommerce)
@@ -130,6 +134,46 @@ The Go ai-service (`go/ai-service/`) is the MCP gateway for all AI functionality
 - **Key env vars:** `RAG_CHAT_URL`, `RAG_INGESTION_URL`, `OLLAMA_URL`, `REDIS_URL`, `ECOMMERCE_URL`.
 - **Frontend integration:** POST /chat with SSE streaming. Frontend client in `frontend/src/lib/ai-service.ts` parses event types.
 - **Roadmap (Q2 2026, issue #75):** Phase 1: architecture doc → Phase 2: unified AI assistant UI (#77) → Phase 3: Loki log aggregation (#78) → Phase 4a-c: RAG eval harness, hybrid search, cross-encoder re-ranking (#79-#81).
+
+## gRPC & Proto Toolchain
+
+Decomposed Go services use gRPC for inter-service communication and REST for frontend traffic. Each service runs a dual server (REST + gRPC) from a single binary.
+
+- **Proto toolchain:** `buf` v2 at the `go/` level. `go/buf.yaml` (lint config), `go/buf.gen.yaml` (code generation). Proto files at `go/proto/<service>/v1/<service>.proto`.
+- **Generated code:** lives at `go/<service>/pb/<service>/v1/` (NOT `internal/pb/` — Go's `internal` package visibility blocks cross-module imports).
+- **gRPC features:** reflection (`grpc.reflection`), health checking (`grpc_health_v1`), OTel interceptors (`otelgrpc.NewServerHandler()`).
+- **Inter-service calls:** `grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))` — plaintext within the cluster.
+- **CI:** `buf lint` runs on proto changes. `buf generate` produces `*.pb.go` and `*_grpc.pb.go`.
+
+## Ecommerce Decomposition
+
+Splitting the monolithic `ecommerce-service` into product, cart, and order services with gRPC inter-service communication and a RabbitMQ-based checkout saga. Roadmap spec: `docs/superpowers/specs/2026-04-20-ecommerce-decomposition-grpc-design.md`.
+
+- **Phase 1 (DONE):** Product-service extracted. REST :8095, gRPC :9095, `productdb`. Ecommerce order worker calls product-service via gRPC. Product routes removed from ecommerce-service.
+- **Phase 2 (TODO):** Cart-service extraction. Calls product-service via gRPC for price validation. Own `cartdb`.
+- **Phase 3 (TODO):** Order-service + saga orchestrator. RabbitMQ saga for checkout (reserve → validate → confirm → clear). DLQ with retry. Compensation flows. Retires ecommerce-service.
+- **Database-per-service:** Each service gets its own database on the shared Postgres instance (`productdb`, `cartdb`, `orderdb`). Same logical isolation as enterprise, pragmatic for portfolio infra.
+- **GitHub issues for future enhancements:** #96 (auth gRPC), #97 (DLQ replay), #98 (proto contract testing), #99 (async integration tests), #100 (graceful shutdown), #101 (mTLS).
+
+### Adding a New Decomposed Go Service (checklist)
+
+When extracting a service from ecommerce-service (or adding any new Go service), every item below must be addressed or the QA/prod deploy will fail:
+
+1. **Service code:** Create `go/<service>/` with cmd/server, internal/, go.mod (with `replace ../pkg`), Dockerfile
+2. **Proto:** Add `go/proto/<service>/v1/<service>.proto`, run `buf generate`. Generated code at `go/<service>/pb/<service>/v1/`
+3. **Cross-module imports:** If service A imports service B's proto, add `replace` directive in A's go.mod AND `COPY <service-b>/ /app/<service-b>/` in A's Dockerfile
+4. **Seed data:** Use explicit UUIDs shared across all seed files so FKs work during the transition phase (both databases need matching product/cart/order IDs)
+5. **Kubernetes manifests:** deployment, service, configmap, migration job, HPA, PDB in `go/k8s/`
+6. **QA database:** Create `<dbname>_qa` manually on the Debian server (`kubectl exec -n java-tasks deploy/postgres -- psql -U taskuser -d taskdb -c 'CREATE DATABASE <dbname>_qa OWNER taskuser;'`). The `postgres-initdb` ConfigMap only runs on fresh PVC.
+7. **QA Kustomize overlay:** Add ConfigMap patch in `k8s/overlays/qa-go/kustomization.yaml` pointing DATABASE_URL to `*_qa`, CORS to `qa.kylebradshaw.dev`, Redis to DB index `/1`
+8. **CI matrices:** Add to `go-lint`, `go-tests`, `build-images`, `security-hadolint` matrices in `.github/workflows/ci.yml`
+9. **CI deploy steps:** Add migration job delete+apply+wait to both QA deploy (line ~886) and prod deploy (line ~1003) in ci.yml
+10. **deploy.sh:** Add `kubectl wait` for the new deployment in both QA and prod sections
+11. **Ingress:** Add path in `go/k8s/ingress.yml` and update `go/k8s/kustomization.yaml`
+12. **Frontend:** Add `NEXT_PUBLIC_*` env var to Vercel (both production and preview/qa) BEFORE merging
+13. **Smoke tests:** Update `frontend/e2e/smoke-prod/smoke.spec.ts` if endpoints moved
+14. **Makefile:** Add to `preflight-go` target (lint + test)
+15. **Migration state:** If tables are created manually before the migration job runs, set the `*_schema_migrations` table to the correct version (`INSERT INTO <svc>_schema_migrations (version, dirty) VALUES (<N>, false)`) or the job will fail with "dirty database"
 
 ## Monitoring & Observability
 
