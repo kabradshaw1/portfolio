@@ -6,7 +6,8 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.1
+	github.com/jackc/pgx/v5 v5.9.2
+	github.com/kabradshaw1/portfolio/go/cart-service v0.0.0
 	github.com/kabradshaw1/portfolio/go/pkg v0.0.0
 	github.com/kabradshaw1/portfolio/go/product-service v0.0.0
 	github.com/prometheus/client_golang v1.23.2
@@ -26,6 +27,8 @@ require (
 )
 
 replace github.com/kabradshaw1/portfolio/go/pkg => ../pkg
+
+replace github.com/kabradshaw1/portfolio/go/cart-service => ../cart-service
 
 replace github.com/kabradshaw1/portfolio/go/product-service => ../product-service
 

@@ -1,16 +1,13 @@
 package validate
 
 import (
-	"github.com/google/uuid"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 )
 
 const (
-	minQuantity = 1
-	maxQuantity = 99
-	minPage     = 1
-	minLimit    = 1
-	maxLimit    = 100
+	minPage      = 1
+	minLimit     = 1
+	maxLimit     = 100
 	maxReasonLen = 500
 
 	sortCreatedAtDesc = "created_at_desc"
@@ -24,34 +21,6 @@ var validSortValues = map[string]bool{
 	sortPriceAsc:      true,
 	sortPriceDesc:     true,
 	sortNameAsc:       true,
-}
-
-// AddToCart validates the add-to-cart request fields.
-func AddToCart(productID string, quantity int) []apperror.FieldError {
-	var errs []apperror.FieldError
-
-	if productID == "" {
-		errs = append(errs, apperror.FieldError{Field: "productId", Message: "required"})
-	} else if _, err := uuid.Parse(productID); err != nil {
-		errs = append(errs, apperror.FieldError{Field: "productId", Message: "must be a valid UUID"})
-	}
-
-	if quantity < minQuantity || quantity > maxQuantity {
-		errs = append(errs, apperror.FieldError{Field: "quantity", Message: "must be between 1 and 99"})
-	}
-
-	return errs
-}
-
-// UpdateCart validates the update-cart request fields.
-func UpdateCart(quantity int) []apperror.FieldError {
-	var errs []apperror.FieldError
-
-	if quantity < minQuantity || quantity > maxQuantity {
-		errs = append(errs, apperror.FieldError{Field: "quantity", Message: "must be between 1 and 99"})
-	}
-
-	return errs
 }
 
 // ProductListParams validates product list query parameters.

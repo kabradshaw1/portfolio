@@ -24,24 +24,30 @@ type OrderPublisher interface {
 	PublishOrderCreated(orderID string) error
 }
 
+// CartClient abstracts cart-service gRPC calls for order checkout.
+type CartClient interface {
+	GetByUser(ctx context.Context, userID uuid.UUID) ([]model.CartItem, error)
+	ClearCart(ctx context.Context, userID uuid.UUID) error
+}
+
 type OrderService struct {
 	orderRepo      OrderRepo
-	cartRepo       CartRepo
+	cartClient     CartClient
 	publisher      OrderPublisher
 	kafkaPublisher kafka.Producer
 }
 
-func NewOrderService(orderRepo OrderRepo, cartRepo CartRepo, publisher OrderPublisher, kafkaPub kafka.Producer) *OrderService {
+func NewOrderService(orderRepo OrderRepo, cartClient CartClient, publisher OrderPublisher, kafkaPub kafka.Producer) *OrderService {
 	return &OrderService{
 		orderRepo:      orderRepo,
-		cartRepo:       cartRepo,
+		cartClient:     cartClient,
 		publisher:      publisher,
 		kafkaPublisher: kafkaPub,
 	}
 }
 
 func (s *OrderService) Checkout(ctx context.Context, userID uuid.UUID) (*model.Order, error) {
-	cartItems, err := s.cartRepo.GetByUser(ctx, userID)
+	cartItems, err := s.cartClient.GetByUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +71,7 @@ func (s *OrderService) Checkout(ctx context.Context, userID uuid.UUID) (*model.O
 		return nil, err
 	}
 
-	if err := s.cartRepo.ClearCart(ctx, userID); err != nil {
+	if err := s.cartClient.ClearCart(ctx, userID); err != nil {
 		return nil, err
 	}
 
