@@ -114,6 +114,9 @@ patches:
       - op: replace
         path: /data/KAFKA_BROKERS
         value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
+      - op: replace
+        path: /data/PRODUCT_GRPC_ADDR
+        value: "go-product-service.go-ecommerce-qa.svc.cluster.local:9095"
   # --- Migration jobs ---
   # No Job patches needed: migration jobs read DATABASE_URL via configMapKeyRef
   # from their respective ConfigMaps above. The patches already repoint
