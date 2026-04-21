@@ -20,4 +20,9 @@ var (
 		Name: "cart_product_validation_total",
 		Help: "Product validation via gRPC.",
 	}, []string{"result"})
+
+	IdempotencyOps = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cart_idempotency_operations_total",
+		Help: "Idempotency key operations.",
+	}, []string{"result"}) // hit, miss, conflict, error
 )
