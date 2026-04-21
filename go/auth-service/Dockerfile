@@ -23,5 +23,5 @@ COPY auth-service/migrations/ /migrations/
 
 USER appuser
 
-EXPOSE 8091
+EXPOSE 8091 9091
 ENTRYPOINT ["/auth-service"]
