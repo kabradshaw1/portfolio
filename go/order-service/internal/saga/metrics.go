@@ -21,4 +21,9 @@ var (
 		Name: "saga_dlq_messages_total",
 		Help: "Messages sent to the saga dead letter queue.",
 	})
+
+	SagaDLQReplayed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "saga_dlq_replayed_total",
+		Help: "Messages replayed from the saga dead letter queue.",
+	}, []string{"routing_key", "outcome"})
 )
