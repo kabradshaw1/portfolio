@@ -206,6 +206,32 @@ jobs:
           name: coverage-go-${{ matrix.service }}
           path: go/${{ matrix.service }}/coverage.out
 
+  buf-breaking:
+    name: Proto Breaking Change Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for proto changes
+        id: proto-changes
+        run: |
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^go/proto/'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: bufbuild/buf-setup-action@v1
+        if: steps.proto-changes.outputs.changed == 'true'
+
+      - name: Check for breaking changes
+        if: steps.proto-changes.outputs.changed == 'true'
+        working-directory: go
+        run: buf breaking proto --against '../.git#branch=origin/${{ github.base_ref }},subdir=go/proto'
+
   go-migration-test:
     name: Go Migration Pipeline Test
     runs-on: ubuntu-latest
