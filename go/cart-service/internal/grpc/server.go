@@ -15,6 +15,8 @@ import (
 type CartServicer interface {
 	GetCartRaw(ctx context.Context, userID uuid.UUID) ([]model.CartItem, error)
 	ClearCart(ctx context.Context, userID uuid.UUID) error
+	ReserveItems(ctx context.Context, userID uuid.UUID) error
+	ReleaseItems(ctx context.Context, userID uuid.UUID) error
 }
 
 type CartGRPCServer struct {
@@ -57,12 +59,26 @@ func (s *CartGRPCServer) ClearCart(ctx context.Context, req *pb.ClearCartRequest
 	return &pb.ClearCartResponse{}, nil
 }
 
-func (s *CartGRPCServer) ReserveItems(_ context.Context, _ *pb.ReserveItemsRequest) (*pb.ReserveItemsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "ReserveItems not implemented (Phase 3)")
+func (s *CartGRPCServer) ReserveItems(ctx context.Context, req *pb.ReserveItemsRequest) (*pb.ReserveItemsResponse, error) {
+	userID, err := uuid.Parse(req.UserId)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid user ID: %v", err)
+	}
+	if err := s.svc.ReserveItems(ctx, userID); err != nil {
+		return nil, status.Errorf(codes.Internal, "reserve items: %v", err)
+	}
+	return &pb.ReserveItemsResponse{}, nil
 }
 
-func (s *CartGRPCServer) ReleaseItems(_ context.Context, _ *pb.ReleaseItemsRequest) (*pb.ReleaseItemsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "ReleaseItems not implemented (Phase 3)")
+func (s *CartGRPCServer) ReleaseItems(ctx context.Context, req *pb.ReleaseItemsRequest) (*pb.ReleaseItemsResponse, error) {
+	userID, err := uuid.Parse(req.UserId)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid user ID: %v", err)
+	}
+	if err := s.svc.ReleaseItems(ctx, userID); err != nil {
+		return nil, status.Errorf(codes.Internal, "release items: %v", err)
+	}
+	return &pb.ReleaseItemsResponse{}, nil
 }
 
 func modelToProto(item *model.CartItem) *pb.CartItem {

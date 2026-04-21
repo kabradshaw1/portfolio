@@ -39,11 +39,11 @@ func (r *OrderRepository) Create(ctx context.Context, userID uuid.UUID, total in
 
 		var order model.Order
 		err = tx.QueryRow(ctx,
-			`INSERT INTO orders (id, user_id, status, total, created_at, updated_at)
-			 VALUES ($1, $2, 'pending', $3, NOW(), NOW())
-			 RETURNING id, user_id, status, total, created_at, updated_at`,
+			`INSERT INTO orders (id, user_id, status, saga_step, total, created_at, updated_at)
+			 VALUES ($1, $2, 'pending', 'CREATED', $3, NOW(), NOW())
+			 RETURNING id, user_id, status, saga_step, total, created_at, updated_at`,
 			uuid.New(), userID, total,
-		).Scan(&order.ID, &order.UserID, &order.Status, &order.Total, &order.CreatedAt, &order.UpdatedAt)
+		).Scan(&order.ID, &order.UserID, &order.Status, &order.SagaStep, &order.Total, &order.CreatedAt, &order.UpdatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("insert order: %w", err)
 		}
@@ -72,10 +72,10 @@ func (r *OrderRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Or
 	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) (*model.Order, error) {
 		var order model.Order
 		err := r.pool.QueryRow(ctx,
-			`SELECT id, user_id, status, total, created_at, updated_at
+			`SELECT id, user_id, status, saga_step, total, created_at, updated_at
 			 FROM orders WHERE id = $1`,
 			id,
-		).Scan(&order.ID, &order.UserID, &order.Status, &order.Total, &order.CreatedAt, &order.UpdatedAt)
+		).Scan(&order.ID, &order.UserID, &order.Status, &order.SagaStep, &order.Total, &order.CreatedAt, &order.UpdatedAt)
 		if err != nil {
 			if strings.Contains(err.Error(), "no rows") {
 				return nil, ErrOrderNotFound
@@ -132,7 +132,7 @@ func (r *OrderRepository) ListByUser(ctx context.Context, userID uuid.UUID, para
 				return nil, fmt.Errorf("invalid cursor time: %w", parseErr)
 			}
 			rows, err = r.pool.Query(ctx,
-				`SELECT id, user_id, status, total, created_at, updated_at
+				`SELECT id, user_id, status, saga_step, total, created_at, updated_at
 				 FROM orders
 				 WHERE user_id = $1 AND (created_at, id) < ($2, $3)
 				 ORDER BY created_at DESC, id DESC
@@ -141,7 +141,7 @@ func (r *OrderRepository) ListByUser(ctx context.Context, userID uuid.UUID, para
 			)
 		} else {
 			rows, err = r.pool.Query(ctx,
-				`SELECT id, user_id, status, total, created_at, updated_at
+				`SELECT id, user_id, status, saga_step, total, created_at, updated_at
 				 FROM orders WHERE user_id = $1
 				 ORDER BY created_at DESC, id DESC
 				 LIMIT $2`,
@@ -156,7 +156,7 @@ func (r *OrderRepository) ListByUser(ctx context.Context, userID uuid.UUID, para
 		var orders []model.Order
 		for rows.Next() {
 			var o model.Order
-			if err := rows.Scan(&o.ID, &o.UserID, &o.Status, &o.Total, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			if err := rows.Scan(&o.ID, &o.UserID, &o.Status, &o.SagaStep, &o.Total, &o.CreatedAt, &o.UpdatedAt); err != nil {
 				return nil, fmt.Errorf("scan order: %w", err)
 			}
 			orders = append(orders, o)
@@ -165,6 +165,39 @@ func (r *OrderRepository) ListByUser(ctx context.Context, userID uuid.UUID, para
 			return nil, fmt.Errorf("rows error: %w", err)
 		}
 		return orders, nil
+	})
+}
+
+func (r *OrderRepository) UpdateSagaStep(ctx context.Context, orderID uuid.UUID, step string) error {
+	return resilience.Do(ctx, r.breaker, r.retryCfg, func(ctx context.Context) error {
+		_, err := r.pool.Exec(ctx,
+			"UPDATE orders SET saga_step = $1, updated_at = NOW() WHERE id = $2",
+			step, orderID,
+		)
+		return err
+	})
+}
+
+func (r *OrderRepository) FindIncompleteSagas(ctx context.Context) ([]uuid.UUID, error) {
+	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) ([]uuid.UUID, error) {
+		rows, err := r.pool.Query(ctx,
+			`SELECT id FROM orders WHERE saga_step NOT IN ($1, $2, $3)`,
+			"COMPLETED", "COMPENSATION_COMPLETE", "FAILED",
+		)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		var ids []uuid.UUID
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				return nil, err
+			}
+			ids = append(ids, id)
+		}
+		return ids, nil
 	})
 }
 

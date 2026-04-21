@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"log/slog"
 	"net/http"
@@ -11,47 +10,15 @@ import (
 	"syscall"
 	"time"
 
-	amqp "github.com/rabbitmq/amqp091-go"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/cartclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/handler"
-	"github.com/kabradshaw1/portfolio/go/order-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/productclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/repository"
+	"github.com/kabradshaw1/portfolio/go/order-service/internal/saga"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/service"
-	"github.com/kabradshaw1/portfolio/go/order-service/internal/worker"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
-
-type rabbitPublisher struct {
-	ch *amqp.Channel
-}
-
-func (p *rabbitPublisher) PublishOrderCreated(orderID string) error {
-	body, _ := json.Marshal(model.OrderMessage{OrderID: orderID})
-
-	ctx, span := otel.Tracer("rabbitmq").Start(context.Background(), "rabbitmq.publish",
-		trace.WithAttributes(
-			attribute.String("messaging.system", "rabbitmq"),
-			attribute.String("messaging.destination", "ecommerce"),
-			attribute.String("messaging.routing_key", "order.created"),
-		),
-	)
-	defer span.End()
-
-	headers := make(amqp.Table)
-	tracing.InjectAMQP(ctx, headers)
-
-	return p.ch.Publish("ecommerce", "order.created", false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Headers:     headers,
-		Body:        body,
-	})
-}
 
 func main() {
 	cfg := loadConfig()
@@ -88,8 +55,6 @@ func main() {
 	orderRepo := repository.NewOrderRepository(pool, pgBreaker)
 	returnRepo := repository.NewReturnRepository(pool, pgBreaker)
 
-	publisher := &rabbitPublisher{ch: ch}
-
 	var prodClient *productclient.GRPCClient
 	if cfg.ProductGRPCAddr != "" {
 		var err error
@@ -112,15 +77,28 @@ func main() {
 		slog.Info("connected to cart-service gRPC", "addr", cfg.CartGRPCAddr)
 	}
 
-	orderSvc := service.NewOrderService(orderRepo, cartClient, publisher, kafkaPub)
-	returnSvc := service.NewReturnService(returnRepo, orderSvc)
+	// Declare saga RabbitMQ topology.
+	if err := saga.DeclareTopology(ch); err != nil {
+		log.Fatalf("saga topology: %v", err)
+	}
 
-	processor := worker.NewOrderProcessor(orderRepo, prodClient, kafkaPub)
+	// Create saga orchestrator with stock checker adapter.
+	sagaPub := saga.NewPublisher(ch)
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, kafkaPub)
+
+	// Start saga event consumer.
+	consumer := saga.NewConsumer(orch)
 	go func() {
-		if err := processor.StartConsumer(ctx, ch, cfg.WorkerConcurrency); err != nil {
-			slog.Error("order processor failed", "error", err)
+		if err := consumer.Start(ctx, ch); err != nil {
+			slog.Error("saga consumer failed", "error", err)
 		}
 	}()
+
+	// Recover incomplete sagas from previous crashes.
+	saga.RecoverIncomplete(ctx, orderRepo, orch)
+
+	orderSvc := service.NewOrderService(orderRepo, cartClient, orch)
+	returnSvc := service.NewReturnService(returnRepo, orderSvc)
 
 	router := setupRouter(cfg,
 		handler.NewOrderHandler(orderSvc),

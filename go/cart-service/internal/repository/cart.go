@@ -72,16 +72,47 @@ func (r *CartRepository) AddItem(ctx context.Context, userID, productID uuid.UUI
 	})
 }
 
+var ErrItemReserved = apperror.Conflict("ITEM_RESERVED", "cart item is reserved for checkout")
+
+func (r *CartRepository) Reserve(ctx context.Context, userID uuid.UUID) error {
+	return resilience.Do(ctx, r.breaker, r.retryCfg, func(ctx context.Context) error {
+		_, err := r.pool.Exec(ctx,
+			"UPDATE cart_items SET reserved = true WHERE user_id = $1 AND reserved = false",
+			userID,
+		)
+		return err
+	})
+}
+
+func (r *CartRepository) Release(ctx context.Context, userID uuid.UUID) error {
+	return resilience.Do(ctx, r.breaker, r.retryCfg, func(ctx context.Context) error {
+		_, err := r.pool.Exec(ctx,
+			"UPDATE cart_items SET reserved = false WHERE user_id = $1 AND reserved = true",
+			userID,
+		)
+		return err
+	})
+}
+
 func (r *CartRepository) UpdateQuantity(ctx context.Context, itemID, userID uuid.UUID, quantity int) error {
 	return resilience.Do(ctx, r.breaker, r.retryCfg, func(ctx context.Context) error {
 		result, err := r.pool.Exec(ctx,
-			"UPDATE cart_items SET quantity = $1 WHERE id = $2 AND user_id = $3",
+			"UPDATE cart_items SET quantity = $1 WHERE id = $2 AND user_id = $3 AND reserved = false",
 			quantity, itemID, userID,
 		)
 		if err != nil {
 			return fmt.Errorf("update cart quantity: %w", err)
 		}
 		if result.RowsAffected() == 0 {
+			// Check if it exists but is reserved
+			var exists bool
+			_ = r.pool.QueryRow(ctx,
+				"SELECT EXISTS(SELECT 1 FROM cart_items WHERE id = $1 AND user_id = $2 AND reserved = true)",
+				itemID, userID,
+			).Scan(&exists)
+			if exists {
+				return ErrItemReserved
+			}
 			return ErrCartItemNotFound
 		}
 		return nil
@@ -91,7 +122,7 @@ func (r *CartRepository) UpdateQuantity(ctx context.Context, itemID, userID uuid
 func (r *CartRepository) RemoveItem(ctx context.Context, itemID, userID uuid.UUID) error {
 	return resilience.Do(ctx, r.breaker, r.retryCfg, func(ctx context.Context) error {
 		result, err := r.pool.Exec(ctx,
-			"DELETE FROM cart_items WHERE id = $1 AND user_id = $2",
+			"DELETE FROM cart_items WHERE id = $1 AND user_id = $2 AND reserved = false",
 			itemID, userID,
 		)
 		if err != nil {

@@ -18,11 +18,14 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
+	amqp "github.com/rabbitmq/amqp091-go"
+
 	grpcsrv "github.com/kabradshaw1/portfolio/go/cart-service/internal/grpc"
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/productclient"
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/service"
+	"github.com/kabradshaw1/portfolio/go/cart-service/internal/worker"
 	pb "github.com/kabradshaw1/portfolio/go/cart-service/pb/cart/v1"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
@@ -68,6 +71,29 @@ func main() {
 
 	cartRepo := repository.NewCartRepository(pool, pgBreaker)
 	cartSvc := service.NewCartService(cartRepo, kafkaPub, prodClient)
+
+	// RabbitMQ saga handler (optional)
+	if cfg.RabbitmqURL != "" {
+		conn, err := amqp.Dial(cfg.RabbitmqURL)
+		if err != nil {
+			log.Fatalf("rabbitmq connect: %v", err)
+		}
+		defer conn.Close()
+
+		ch, err := conn.Channel()
+		if err != nil {
+			log.Fatalf("rabbitmq channel: %v", err)
+		}
+		defer ch.Close()
+
+		sagaHandler := worker.NewSagaHandler(cartSvc, ch)
+		go func() {
+			if err := sagaHandler.Start(ctx); err != nil {
+				slog.Error("saga handler failed", "error", err)
+			}
+		}()
+		slog.Info("saga command handler enabled", "url", cfg.RabbitmqURL)
+	}
 
 	// REST server
 	router := setupRouter(cfg,

@@ -120,6 +120,9 @@ patches:
       - op: replace
         path: /data/PRODUCT_GRPC_ADDR
         value: "go-product-service.go-ecommerce-qa.svc.cluster.local:9095"
+      - op: replace
+        path: /data/RABBITMQ_URL
+        value: "amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672"
   # --- Migration jobs ---
   # No Job patches needed: migration jobs read DATABASE_URL via configMapKeyRef
   # from their respective ConfigMaps above. The patches already repoint

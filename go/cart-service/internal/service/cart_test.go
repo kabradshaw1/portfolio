@@ -64,6 +64,10 @@ func (m *mockCartRepo) RemoveItem(_ context.Context, itemID, userID uuid.UUID) e
 	return fmt.Errorf("cart item not found")
 }
 
+func (m *mockCartRepo) Reserve(_ context.Context, _ uuid.UUID) error { return nil }
+
+func (m *mockCartRepo) Release(_ context.Context, _ uuid.UUID) error { return nil }
+
 func (m *mockCartRepo) ClearCart(_ context.Context, userID uuid.UUID) error {
 	var remaining []model.CartItem
 	for _, item := range m.items {

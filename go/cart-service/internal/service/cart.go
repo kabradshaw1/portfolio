@@ -15,6 +15,8 @@ type CartRepo interface {
 	UpdateQuantity(ctx context.Context, itemID, userID uuid.UUID, quantity int) error
 	RemoveItem(ctx context.Context, itemID, userID uuid.UUID) error
 	ClearCart(ctx context.Context, userID uuid.UUID) error
+	Reserve(ctx context.Context, userID uuid.UUID) error
+	Release(ctx context.Context, userID uuid.UUID) error
 }
 
 type ProductClient interface {
@@ -94,4 +96,12 @@ func (s *CartService) RemoveItem(ctx context.Context, itemID, userID uuid.UUID) 
 
 func (s *CartService) ClearCart(ctx context.Context, userID uuid.UUID) error {
 	return s.repo.ClearCart(ctx, userID)
+}
+
+func (s *CartService) ReserveItems(ctx context.Context, userID uuid.UUID) error {
+	return s.repo.Reserve(ctx, userID)
+}
+
+func (s *CartService) ReleaseItems(ctx context.Context, userID uuid.UUID) error {
+	return s.repo.Release(ctx, userID)
 }

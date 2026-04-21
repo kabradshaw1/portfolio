@@ -9,14 +9,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/order-service/internal/saga"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/service"
 )
-
-// nopKafka is a no-op Kafka producer for tests.
-type nopKafka struct{}
-
-func (nopKafka) Publish(context.Context, string, string, kafka.Event) error { return nil }
-func (nopKafka) Close() error                                              { return nil }
 
 // mockOrderRepo is an in-memory order repository for tests.
 type mockOrderRepo struct {
@@ -27,11 +22,12 @@ func newMockOrderRepo() *mockOrderRepo {
 	return &mockOrderRepo{orders: make(map[uuid.UUID]*model.Order)}
 }
 
-func (m *mockOrderRepo) Create(ctx context.Context, userID uuid.UUID, total int, items []model.OrderItem) (*model.Order, error) {
+func (m *mockOrderRepo) Create(_ context.Context, userID uuid.UUID, total int, items []model.OrderItem) (*model.Order, error) {
 	order := &model.Order{
 		ID:        uuid.New(),
 		UserID:    userID,
 		Status:    model.OrderStatusPending,
+		SagaStep:  saga.StepCreated,
 		Total:     total,
 		Items:     items,
 		CreatedAt: time.Now(),
@@ -41,7 +37,7 @@ func (m *mockOrderRepo) Create(ctx context.Context, userID uuid.UUID, total int,
 	return order, nil
 }
 
-func (m *mockOrderRepo) FindByID(ctx context.Context, id uuid.UUID) (*model.Order, error) {
+func (m *mockOrderRepo) FindByID(_ context.Context, id uuid.UUID) (*model.Order, error) {
 	order, ok := m.orders[id]
 	if !ok {
 		return nil, errors.New("order not found")
@@ -49,7 +45,7 @@ func (m *mockOrderRepo) FindByID(ctx context.Context, id uuid.UUID) (*model.Orde
 	return order, nil
 }
 
-func (m *mockOrderRepo) ListByUser(ctx context.Context, userID uuid.UUID, params model.OrderListParams) ([]model.Order, error) {
+func (m *mockOrderRepo) ListByUser(_ context.Context, userID uuid.UUID, _ model.OrderListParams) ([]model.Order, error) {
 	var result []model.Order
 	for _, o := range m.orders {
 		if o.UserID == userID {
@@ -59,20 +55,27 @@ func (m *mockOrderRepo) ListByUser(ctx context.Context, userID uuid.UUID, params
 	return result, nil
 }
 
-func (m *mockOrderRepo) UpdateStatus(ctx context.Context, orderID uuid.UUID, status model.OrderStatus) error {
+func (m *mockOrderRepo) UpdateStatus(_ context.Context, orderID uuid.UUID, status model.OrderStatus) error {
 	order, ok := m.orders[orderID]
 	if !ok {
 		return errors.New("order not found")
 	}
 	order.Status = status
-	order.UpdatedAt = time.Now()
+	return nil
+}
+
+func (m *mockOrderRepo) UpdateSagaStep(_ context.Context, orderID uuid.UUID, step string) error {
+	order, ok := m.orders[orderID]
+	if !ok {
+		return errors.New("order not found")
+	}
+	order.SagaStep = step
 	return nil
 }
 
 // mockCartClient satisfies the CartClient interface for order tests.
 type mockCartClient struct {
-	items   []model.CartItem
-	cleared bool
+	items []model.CartItem
 }
 
 func (m *mockCartClient) GetByUser(_ context.Context, _ uuid.UUID) ([]model.CartItem, error) {
@@ -81,19 +84,33 @@ func (m *mockCartClient) GetByUser(_ context.Context, _ uuid.UUID) ([]model.Cart
 
 func (m *mockCartClient) ClearCart(_ context.Context, _ uuid.UUID) error {
 	m.items = nil
-	m.cleared = true
 	return nil
 }
 
-// mockPublisher tracks published order IDs.
-type mockPublisher struct {
-	publishedIDs []string
+// mockSagaPub captures published saga commands.
+type mockSagaPub struct {
+	commands []saga.Command
 }
 
-func (m *mockPublisher) PublishOrderCreated(orderID string) error {
-	m.publishedIDs = append(m.publishedIDs, orderID)
+func (m *mockSagaPub) PublishCommand(_ context.Context, cmd saga.Command) error {
+	m.commands = append(m.commands, cmd)
 	return nil
 }
+
+// mockStockChecker always returns available.
+type mockStockChecker struct {
+	available bool
+}
+
+func (m *mockStockChecker) CheckAvailability(_ context.Context, _ uuid.UUID, _ int) (bool, error) {
+	return m.available, nil
+}
+
+// nopKafka is a no-op Kafka producer for tests.
+type nopKafka struct{}
+
+func (nopKafka) Publish(context.Context, string, string, kafka.Event) error { return nil }
+func (nopKafka) Close() error                                              { return nil }
 
 func TestCheckout(t *testing.T) {
 	userID := uuid.New()
@@ -112,8 +129,9 @@ func TestCheckout(t *testing.T) {
 		},
 	}
 	orderRepo := newMockOrderRepo()
-	publisher := &mockPublisher{}
-	svc := service.NewOrderService(orderRepo, cartClient, publisher, nopKafka{})
+	sagaPub := &mockSagaPub{}
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, &mockStockChecker{available: true}, nopKafka{})
+	svc := service.NewOrderService(orderRepo, cartClient, orch)
 
 	order, err := svc.Checkout(context.Background(), userID)
 	if err != nil {
@@ -126,24 +144,17 @@ func TestCheckout(t *testing.T) {
 	if order.Total != expectedTotal {
 		t.Errorf("expected total %d, got %d", expectedTotal, order.Total)
 	}
-	if len(publisher.publishedIDs) != 1 {
-		t.Errorf("expected 1 published event, got %d", len(publisher.publishedIDs))
-	}
-	if publisher.publishedIDs[0] != order.ID.String() {
-		t.Errorf("expected published ID %s, got %s", order.ID.String(), publisher.publishedIDs[0])
-	}
 
-	// Cart should be cleared after checkout.
-	if !cartClient.cleared {
-		t.Error("expected cart to be cleared after checkout")
-	}
+	// Saga is kicked off asynchronously — we verify the order was created correctly.
+	// Saga orchestrator tests cover the full state machine.
 }
 
 func TestCheckoutEmptyCart(t *testing.T) {
 	cartClient := &mockCartClient{}
 	orderRepo := newMockOrderRepo()
-	publisher := &mockPublisher{}
-	svc := service.NewOrderService(orderRepo, cartClient, publisher, nopKafka{})
+	sagaPub := &mockSagaPub{}
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, &mockStockChecker{available: true}, nopKafka{})
+	svc := service.NewOrderService(orderRepo, cartClient, orch)
 
 	userID := uuid.New()
 

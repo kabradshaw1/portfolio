@@ -14,6 +14,7 @@ type Config struct {
 	RedisURL        string
 	KafkaBrokers    string
 	ProductGRPCAddr string
+	RabbitmqURL     string
 	OTELEndpoint    string
 }
 
@@ -27,6 +28,7 @@ func loadConfig() Config {
 		RedisURL:        os.Getenv("REDIS_URL"),
 		KafkaBrokers:    os.Getenv("KAFKA_BROKERS"),
 		ProductGRPCAddr: os.Getenv("PRODUCT_GRPC_ADDR"),
+		RabbitmqURL:     os.Getenv("RABBITMQ_URL"),
 		OTELEndpoint:    os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 	}
 

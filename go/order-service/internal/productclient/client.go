@@ -33,6 +33,18 @@ func New(addr string) (*GRPCClient, error) {
 	}, nil
 }
 
+// CheckAvailability calls the product-service CheckAvailability RPC.
+func (c *GRPCClient) CheckAvailability(ctx context.Context, productID uuid.UUID, quantity int) (bool, error) {
+	resp, err := c.client.CheckAvailability(ctx, &pb.CheckAvailabilityRequest{
+		ProductId: productID.String(),
+		Quantity:  int32(quantity),
+	})
+	if err != nil {
+		return false, err
+	}
+	return resp.Available, nil
+}
+
 // DecrementStock calls the product-service DecrementStock RPC.
 func (c *GRPCClient) DecrementStock(ctx context.Context, productID uuid.UUID, qty int) error {
 	_, err := c.client.DecrementStock(ctx, &pb.DecrementStockRequest{
