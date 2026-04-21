@@ -883,7 +883,7 @@ jobs:
           # auth-migrate MUST run before ecommerce-migrate: both services share
           # the same Postgres, and ecommerce-service's migrations reference users(id)
           # which is created by auth-service's migrations.
-          $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
+          $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate go-product-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
 
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
@@ -894,6 +894,12 @@ jobs:
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/ecommerce-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce-qa --tail=200" || true
+            exit 1
+          fi
+
+          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/product-service-migrate.yml | $SSH "kubectl apply -f -"
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-product-migrate -n go-ecommerce-qa"; then
+            $SSH "kubectl logs job/go-product-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
@@ -994,7 +1000,7 @@ jobs:
           if [ "$GO_CHANGED" = "true" ] || [ "$K8S_CHANGED" = "true" ]; then
             echo "Running Go migration Jobs..."
             # Jobs are immutable; delete before re-applying so they re-run on every deploy.
-            $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate -n go-ecommerce --ignore-not-found --wait=true"
+            $SSH "kubectl delete job go-auth-migrate go-ecommerce-migrate go-product-migrate -n go-ecommerce --ignore-not-found --wait=true"
 
             # auth-migrate MUST run before ecommerce-migrate: both services share
             # ecommercedb, and the ecommerce seed inserts into the users table
@@ -1010,6 +1016,13 @@ jobs:
             if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-ecommerce-migrate -n go-ecommerce"; then
               echo "go-ecommerce-migrate failed. Logs follow:"
               $SSH "kubectl logs job/go-ecommerce-migrate -n go-ecommerce --tail=200" || true
+              exit 1
+            fi
+
+            $SSH "kubectl apply -f -" < go/k8s/jobs/product-service-migrate.yml
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-product-migrate -n go-ecommerce"; then
+              echo "go-product-migrate failed. Logs follow:"
+              $SSH "kubectl logs job/go-product-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
 
