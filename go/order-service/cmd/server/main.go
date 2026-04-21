@@ -82,6 +82,9 @@ func main() {
 		log.Fatalf("saga topology: %v", err)
 	}
 
+	// Create DLQ client for admin endpoints.
+	dlqClient := saga.NewDLQClient(ch)
+
 	// Create saga orchestrator with stock checker adapter.
 	sagaPub := saga.NewPublisher(ch)
 	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, kafkaPub)
@@ -104,6 +107,7 @@ func main() {
 		handler.NewOrderHandler(orderSvc),
 		handler.NewReturnHandler(returnSvc),
 		handler.NewHealthHandler(pool, redisClient),
+		handler.NewAdminHandler(dlqClient),
 		redisClient,
 	)
 

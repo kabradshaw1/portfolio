@@ -20,6 +20,7 @@ func setupRouter(
 	orderHandler *handler.OrderHandler,
 	returnHandler *handler.ReturnHandler,
 	healthHandler *handler.HealthHandler,
+	adminHandler *handler.AdminHandler,
 	redisClient *redis.Client,
 ) *gin.Engine {
 	router := gin.New()
@@ -46,6 +47,13 @@ func setupRouter(
 		auth.GET("/orders", orderHandler.List)
 		auth.GET("/orders/:id", orderHandler.GetByID)
 		auth.POST("/orders/:id/returns", returnHandler.Initiate)
+	}
+
+	// Admin routes — no auth, protected by network boundary.
+	admin := router.Group("/admin")
+	{
+		admin.GET("/dlq/messages", adminHandler.ListDLQ)
+		admin.POST("/dlq/replay", adminHandler.ReplayDLQ)
 	}
 
 	return router
