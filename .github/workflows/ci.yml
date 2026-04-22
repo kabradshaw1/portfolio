@@ -423,10 +423,11 @@ jobs:
         run: |
           # Apply every manifest directory recursively. --dry-run=server
           # exercises the real API server's validation and admission.
-          # Skip overlays/ and kustomization.yaml — those are Kustomize fragments.
+          # Skip overlays/, kustomization.yaml, and cert-manager/ (CRDs not in kind cluster).
           for dir in k8s java/k8s go/k8s; do
             find "$dir" -type f \( -name '*.yml' -o -name '*.yaml' \) \
               -not -path '*/overlays/*' \
+              -not -path '*/cert-manager/*' \
               -not -name 'kustomization.yaml' \
               -print0 | xargs -0 -I{} kubectl apply --dry-run=server -f {}
           done
