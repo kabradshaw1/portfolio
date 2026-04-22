@@ -54,9 +54,10 @@ CREATE INDEX idx_orders_created_at ON orders(created_at);
 -- Composite index for cursor pagination (keyset)
 CREATE INDEX idx_orders_user_cursor ON orders(user_id, created_at DESC, id DESC);
 
--- Step 6: Re-create FK from order_items
-ALTER TABLE order_items ADD CONSTRAINT order_items_order_id_fkey
-    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE;
+-- Note: FK from order_items → orders(id) is NOT re-created because partitioned
+-- tables require unique constraints to include the partition key (created_at).
+-- The composite PK (id, created_at) doesn't satisfy a FK on id alone.
+-- Referential integrity is enforced at the application layer.
 
--- Step 7: Drop old table
+-- Step 6: Drop old table
 DROP TABLE orders_old;
