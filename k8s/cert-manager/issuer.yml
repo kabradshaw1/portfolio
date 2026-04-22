@@ -1,0 +1,8 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: grpc-ca-issuer
+  namespace: go-ecommerce
+spec:
+  ca:
+    secretName: grpc-ca-keypair
