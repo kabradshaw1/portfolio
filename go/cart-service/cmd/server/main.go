@@ -72,20 +72,21 @@ func main() {
 	cartSvc := service.NewCartService(cartRepo, kafkaPub, prodClient)
 
 	// RabbitMQ saga handler (optional)
+	var rmqConn *amqp.Connection
+	var rmqCh *amqp.Channel
+	var sagaHandler *worker.SagaHandler
 	if cfg.RabbitmqURL != "" {
-		conn, err := amqp.Dial(cfg.RabbitmqURL)
+		rmqConn, err = amqp.Dial(cfg.RabbitmqURL)
 		if err != nil {
 			log.Fatalf("rabbitmq connect: %v", err)
 		}
-		defer conn.Close()
 
-		ch, err := conn.Channel()
+		rmqCh, err = rmqConn.Channel()
 		if err != nil {
 			log.Fatalf("rabbitmq channel: %v", err)
 		}
-		defer ch.Close()
 
-		sagaHandler := worker.NewSagaHandler(cartSvc, ch)
+		sagaHandler = worker.NewSagaHandler(cartSvc, rmqCh)
 		go func() {
 			if err := sagaHandler.Start(ctx); err != nil {
 				slog.Error("saga handler failed", "error", err)
@@ -158,13 +159,21 @@ func main() {
 		cancel()
 		return nil
 	})
-	sm.Register("grpc-drain", 10, func(_ context.Context) error {
-		grpcServer.GracefulStop()
+	sm.Register("drain-http", 0, shutdown.DrainHTTP("cart-http", httpSrv))
+	sm.Register("drain-grpc", 0, shutdown.DrainGRPC("cart-grpc", grpcServer))
+	if sagaHandler != nil {
+		sm.Register("wait-saga", 10, shutdown.WaitForInflight("cart-saga", sagaHandler.IsIdle, 100*time.Millisecond))
+	}
+	sm.Register("postgres", 20, func(_ context.Context) error {
+		pool.Close()
 		return nil
 	})
-	sm.Register("http", 20, func(ctx context.Context) error {
-		return httpSrv.Shutdown(ctx)
-	})
+	if rmqCh != nil {
+		sm.Register("rabbitmq", 20, func(_ context.Context) error {
+			_ = rmqCh.Close()
+			return rmqConn.Close()
+		})
+	}
 	sm.Register("otel", 30, func(ctx context.Context) error {
 		return shutdownTracer(ctx)
 	})

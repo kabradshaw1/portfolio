@@ -66,11 +66,10 @@ func main() {
 		cancel()
 		return nil
 	})
-	sm.Register("kafka-close", 10, func(_ context.Context) error {
+	sm.Register("drain-http", 0, shutdown.DrainHTTP("analytics-http", srv))
+	sm.Register("wait-kafka", 10, shutdown.WaitForInflight("kafka-consumer", cons.IsIdle, 100*time.Millisecond))
+	sm.Register("kafka-close", 20, func(_ context.Context) error {
 		return cons.Close()
-	})
-	sm.Register("http", 20, func(ctx context.Context) error {
-		return srv.Shutdown(ctx)
 	})
 	sm.Register("otel", 30, func(ctx context.Context) error {
 		return shutdownTracer(ctx)

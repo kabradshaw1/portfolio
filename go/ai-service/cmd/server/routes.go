@@ -24,6 +24,10 @@ import (
 	pkgmw "github.com/kabradshaw1/portfolio/go/pkg/middleware"
 )
 
+// healthClient is reused across health check probes to avoid creating
+// a new transport per call.
+var healthClient = &http.Client{Timeout: 2 * time.Second}
+
 // setupRouter creates the Gin engine with all middleware and routes.
 func setupRouter(
 	cfg Config,
@@ -43,8 +47,7 @@ func setupRouter(
 		"llm": func() error {
 			if cfg.LLMProvider == "ollama" {
 				req, _ := http.NewRequest(http.MethodGet, cfg.OllamaURL+"/api/tags", nil)
-				client := &http.Client{Timeout: 2 * time.Second}
-				resp, err := client.Do(req)
+				resp, err := healthClient.Do(req)
 				if err != nil {
 					return err
 				}
@@ -59,8 +62,7 @@ func setupRouter(
 		},
 		"ecommerce": func() error {
 			req, _ := http.NewRequest(http.MethodGet, cfg.OrderURL+"/health", nil)
-			client := &http.Client{Timeout: 2 * time.Second}
-			resp, err := client.Do(req)
+			resp, err := healthClient.Do(req)
 			if err != nil {
 				return err
 			}

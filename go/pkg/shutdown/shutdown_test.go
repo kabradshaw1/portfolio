@@ -2,6 +2,9 @@ package shutdown
 
 import (
 	"context"
+	"net"
+	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -88,4 +91,112 @@ func TestErrorsAreLoggedNotFatal(t *testing.T) {
 
 	// Should not panic
 	m.runAll()
+}
+
+func TestDrainHTTPCompletesInflightRequests(t *testing.T) {
+	// Handler that takes 500ms to respond — simulates in-flight work.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	srv := &http.Server{Handler: handler}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+
+	addr := "http://" + ln.Addr().String()
+
+	// Start an in-flight request.
+	var resp *http.Response
+	var reqErr error
+	reqDone := make(chan struct{})
+	go func() {
+		resp, reqErr = http.Get(addr)
+		close(reqDone)
+	}()
+
+	// Give the request time to reach the handler.
+	time.Sleep(50 * time.Millisecond)
+
+	// Track shutdown hook execution order.
+	var order []string
+	var mu sync.Mutex
+	record := func(name string) {
+		mu.Lock()
+		order = append(order, name)
+		mu.Unlock()
+	}
+
+	m := New(5 * time.Second)
+	m.Register("drain-http", 0, func(ctx context.Context) error {
+		err := DrainHTTP("test-http", srv)(ctx)
+		record("drain-http")
+		return err
+	})
+	m.Register("close-pool", 20, func(ctx context.Context) error {
+		record("close-pool")
+		return nil
+	})
+	m.Register("flush-otel", 30, func(ctx context.Context) error {
+		record("flush-otel")
+		return nil
+	})
+
+	// Trigger shutdown (bypass signal, call runAll directly).
+	m.runAll()
+
+	// Wait for in-flight request to complete.
+	<-reqDone
+
+	if reqErr != nil {
+		t.Fatalf("in-flight request failed: %v", reqErr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Verify hook execution order.
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) != 3 {
+		t.Fatalf("expected 3 hooks, got %d: %v", len(order), order)
+	}
+	if order[0] != "drain-http" || order[1] != "close-pool" || order[2] != "flush-otel" {
+		t.Fatalf("expected [drain-http close-pool flush-otel], got %v", order)
+	}
+
+	// Verify new requests are rejected after shutdown.
+	_, err = http.Get(addr)
+	if err == nil {
+		t.Fatal("expected error for request after shutdown")
+	}
+}
+
+func TestWaitForInflight(t *testing.T) {
+	var processing atomic.Bool
+	processing.Store(true)
+
+	// Simulate work completing after 200ms.
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		processing.Store(false)
+	}()
+
+	m := New(5 * time.Second)
+	m.Register("wait-inflight", 10, WaitForInflight("test-worker", func() bool {
+		return !processing.Load()
+	}, 50*time.Millisecond))
+
+	start := time.Now()
+	m.runAll()
+	elapsed := time.Since(start)
+
+	if elapsed < 150*time.Millisecond || elapsed > 1*time.Second {
+		t.Fatalf("expected ~200ms wait, got %v", elapsed)
+	}
 }

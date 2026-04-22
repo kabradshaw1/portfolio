@@ -187,7 +187,7 @@ func (r *OrderRepository) UpdateSagaStep(ctx context.Context, orderID uuid.UUID,
 func (r *OrderRepository) FindIncompleteSagas(ctx context.Context) ([]uuid.UUID, error) {
 	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) ([]uuid.UUID, error) {
 		rows, err := r.pool.Query(ctx,
-			`SELECT id FROM orders WHERE saga_step NOT IN ($1, $2, $3)`,
+			`SELECT id FROM orders WHERE saga_step NOT IN ($1, $2, $3) LIMIT 100`,
 			"COMPLETED", "COMPENSATION_COMPLETE", "FAILED",
 		)
 		if err != nil {

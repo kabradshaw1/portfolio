@@ -254,7 +254,7 @@ func (r *ProductRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 
 func (r *ProductRepository) Categories(ctx context.Context) ([]string, error) {
 	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) ([]string, error) {
-		rows, err := r.pool.Query(ctx, "SELECT DISTINCT category FROM products ORDER BY category")
+		rows, err := r.pool.Query(ctx, "SELECT DISTINCT category FROM products ORDER BY category LIMIT 100")
 		if err != nil {
 			return nil, fmt.Errorf("list categories: %w", err)
 		}

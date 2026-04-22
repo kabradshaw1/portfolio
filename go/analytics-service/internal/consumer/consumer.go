@@ -27,7 +27,8 @@ type Consumer struct {
 	orders    *aggregator.OrderAggregator
 	trending  *aggregator.TrendingAggregator
 	carts     *aggregator.CartAggregator
-	connected atomic.Bool
+	connected  atomic.Bool
+	processing atomic.Bool
 }
 
 // New creates a Kafka consumer for the given brokers.
@@ -52,6 +53,11 @@ func New(brokers []string, orders *aggregator.OrderAggregator, trending *aggrega
 // Connected returns whether the consumer has successfully connected to Kafka.
 func (c *Consumer) Connected() bool {
 	return c.connected.Load()
+}
+
+// IsIdle returns true when the consumer is not processing a message.
+func (c *Consumer) IsIdle() bool {
+	return !c.processing.Load()
 }
 
 // Run reads messages until ctx is cancelled.
@@ -79,7 +85,9 @@ func (c *Consumer) Run(ctx context.Context) error {
 		msgCtx := tracing.ExtractKafka(ctx, msg.Headers)
 		_ = msgCtx // available for span creation if tracing is enabled
 
+		c.processing.Store(true)
 		c.route(msg)
+		c.processing.Store(false)
 
 		if err := c.reader.CommitMessages(ctx, msg); err != nil {
 			slog.Error("kafka commit error", "error", err)
