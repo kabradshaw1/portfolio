@@ -24,6 +24,9 @@ patches:
       - op: add
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
+      - op: add
+        path: /data/TLS_CERT_DIR
+        value: /etc/tls
   - target:
       kind: ConfigMap
       name: order-service-config
@@ -52,6 +55,9 @@ patches:
       - op: add
         path: /data/AUTH_GRPC_URL
         value: "go-auth-service.go-ecommerce-qa.svc.cluster.local:9091"
+      - op: add
+        path: /data/TLS_CERT_DIR
+        value: /etc/tls
   - target:
       kind: ConfigMap
       name: ai-service-config
@@ -110,6 +116,9 @@ patches:
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
+      - op: add
+        path: /data/TLS_CERT_DIR
+        value: /etc/tls
   - target:
       kind: ConfigMap
       name: cart-service-config
@@ -135,6 +144,9 @@ patches:
       - op: add
         path: /data/AUTH_GRPC_URL
         value: "go-auth-service.go-ecommerce-qa.svc.cluster.local:9091"
+      - op: add
+        path: /data/TLS_CERT_DIR
+        value: /etc/tls
   # --- Migration jobs ---
   # No Job patches needed: migration jobs read DATABASE_URL via configMapKeyRef
   # from their respective ConfigMaps above. The patches already repoint

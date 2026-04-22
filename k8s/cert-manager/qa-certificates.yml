@@ -1,0 +1,124 @@
+---
+# QA CA Certificate — bootstraps the CA for go-ecommerce-qa namespace
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grpc-ca
+  namespace: go-ecommerce-qa
+spec:
+  isCA: true
+  commonName: grpc-internal-ca
+  secretName: grpc-ca-keypair
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+---
+# QA Issuer — namespace-scoped, uses the CA secret above
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: grpc-ca-issuer
+  namespace: go-ecommerce-qa
+spec:
+  ca:
+    secretName: grpc-ca-keypair
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: auth-grpc-tls
+  namespace: go-ecommerce-qa
+spec:
+  commonName: go-auth-service.go-ecommerce-qa.svc.cluster.local
+  secretName: auth-grpc-tls
+  duration: 720h
+  renewBefore: 480h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  dnsNames:
+    - go-auth-service
+    - go-auth-service.go-ecommerce-qa
+    - go-auth-service.go-ecommerce-qa.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    name: grpc-ca-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: product-grpc-tls
+  namespace: go-ecommerce-qa
+spec:
+  commonName: go-product-service.go-ecommerce-qa.svc.cluster.local
+  secretName: product-grpc-tls
+  duration: 720h
+  renewBefore: 480h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  dnsNames:
+    - go-product-service
+    - go-product-service.go-ecommerce-qa
+    - go-product-service.go-ecommerce-qa.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    name: grpc-ca-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: cart-grpc-tls
+  namespace: go-ecommerce-qa
+spec:
+  commonName: go-cart-service.go-ecommerce-qa.svc.cluster.local
+  secretName: cart-grpc-tls
+  duration: 720h
+  renewBefore: 480h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  dnsNames:
+    - go-cart-service
+    - go-cart-service.go-ecommerce-qa
+    - go-cart-service.go-ecommerce-qa.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    name: grpc-ca-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: order-grpc-tls
+  namespace: go-ecommerce-qa
+spec:
+  commonName: go-order-service.go-ecommerce-qa.svc.cluster.local
+  secretName: order-grpc-tls
+  duration: 720h
+  renewBefore: 480h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  dnsNames:
+    - go-order-service
+    - go-order-service.go-ecommerce-qa
+    - go-order-service.go-ecommerce-qa.svc.cluster.local
+  usages:
+    - client auth
+  issuerRef:
+    name: grpc-ca-issuer
+    kind: Issuer

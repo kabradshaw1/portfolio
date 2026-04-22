@@ -17,9 +17,11 @@ import (
 	pb "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
+	"github.com/kabradshaw1/portfolio/go/pkg/tlsconfig"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -76,10 +78,32 @@ func main() {
 		}
 	}()
 
-	// gRPC server
-	grpcServer := grpc.NewServer(
-		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-	)
+	// gRPC server — mTLS if TLS_CERT_DIR is set, plaintext otherwise
+	var grpcServer *grpc.Server
+	var tlsWatchStop func()
+	if certDir := os.Getenv("TLS_CERT_DIR"); certDir != "" {
+		serverTLS, err := tlsconfig.ServerTLS(certDir)
+		if err != nil {
+			log.Fatalf("tls config: %v", err)
+		}
+		grpcServer = grpc.NewServer(
+			grpc.Creds(credentials.NewTLS(serverTLS)),
+			grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		)
+		certPtr, _, err := tlsconfig.Load(certDir)
+		if err != nil {
+			log.Fatalf("tls cert pointer: %v", err)
+		}
+		tlsWatchStop, err = tlsconfig.Watch(certDir, certPtr)
+		if err != nil {
+			log.Fatalf("tls watcher: %v", err)
+		}
+		slog.Info("mTLS enabled for gRPC server", "certDir", certDir)
+	} else {
+		grpcServer = grpc.NewServer(
+			grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		)
+	}
 	pb.RegisterAuthServiceServer(grpcServer, authgrpc.NewAuthGRPCServer(cfg.JWTSecret, denylist))
 
 	healthSrv := health.NewServer()
@@ -101,6 +125,12 @@ func main() {
 	}()
 
 	sm := shutdown.New(15 * time.Second)
+	if tlsWatchStop != nil {
+		sm.Register("tls-watcher", 0, func(_ context.Context) error {
+			tlsWatchStop()
+			return nil
+		})
+	}
 	sm.Register("drain-http", 0, shutdown.DrainHTTP("auth-http", srv))
 	sm.Register("drain-grpc", 0, shutdown.DrainGRPC("auth-grpc", grpcServer))
 	sm.Register("postgres", 20, func(_ context.Context) error {

@@ -10,3 +10,4 @@ data:
   PORT: "8095"
   GRPC_PORT: "9095"
   OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"
+  TLS_CERT_DIR: /etc/tls

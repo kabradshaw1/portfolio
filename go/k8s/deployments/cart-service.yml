@@ -20,6 +20,10 @@ spec:
       terminationGracePeriodSeconds: 20
       imagePullSecrets:
         - name: ghcr-secret
+      volumes:
+        - name: grpc-tls
+          secret:
+            secretName: cart-grpc-tls
       containers:
         - name: go-cart-service
           image: ghcr.io/kabradshaw1/portfolio/go-cart-service:latest
@@ -65,3 +69,7 @@ spec:
               port: 8096
             initialDelaySeconds: 15
             periodSeconds: 30
+          volumeMounts:
+            - name: grpc-tls
+              mountPath: /etc/tls
+              readOnly: true

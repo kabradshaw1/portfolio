@@ -904,6 +904,13 @@ jobs:
             --from-literal=jwt-secret='dev-secret-key-at-least-32-characters-long' \
             --dry-run=client -o yaml | kubectl apply -f -"
 
+          # Install cert-manager and apply certificate resources for QA.
+          $SSH "kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.2/cert-manager.yaml 2>/dev/null || true"
+          $SSH "kubectl wait --for=condition=available --timeout=120s deployment/cert-manager -n cert-manager 2>/dev/null || true"
+          $SSH "kubectl wait --for=condition=available --timeout=120s deployment/cert-manager-webhook -n cert-manager 2>/dev/null || true"
+          cat k8s/cert-manager/cluster-issuer.yml | $SSH "kubectl apply -f -"
+          cat k8s/cert-manager/qa-certificates.yml | $SSH "kubectl apply -f -"
+
           # Apply Go overlay, excluding Jobs (they must run sequentially below).
           # Split multi-doc YAML on '---', drop any document containing 'kind: Job'.
           kubectl kustomize k8s/overlays/qa-go/ \
@@ -1020,6 +1027,15 @@ jobs:
           for f in $(find k8s/ai-services -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find java/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/monitoring -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          # Install cert-manager and apply certificate resources for prod.
+          $SSH "kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.2/cert-manager.yaml 2>/dev/null || true"
+          $SSH "kubectl wait --for=condition=available --timeout=120s deployment/cert-manager -n cert-manager 2>/dev/null || true"
+          $SSH "kubectl wait --for=condition=available --timeout=120s deployment/cert-manager-webhook -n cert-manager 2>/dev/null || true"
+          cat k8s/cert-manager/cluster-issuer.yml | $SSH "kubectl apply -f -"
+          cat k8s/cert-manager/ca-certificate.yml | $SSH "kubectl apply -f -"
+          cat k8s/cert-manager/issuer.yml | $SSH "kubectl apply -f -"
+          cat k8s/cert-manager/certificates.yml | $SSH "kubectl apply -f -"
+
           for f in $(find go/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*' -not -path '*/jobs/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 
           # Only restart deployments that have new images

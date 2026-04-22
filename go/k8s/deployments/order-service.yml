@@ -20,6 +20,10 @@ spec:
       terminationGracePeriodSeconds: 20
       imagePullSecrets:
         - name: ghcr-secret
+      volumes:
+        - name: grpc-tls
+          secret:
+            secretName: order-grpc-tls
       containers:
         - name: go-order-service
           image: ghcr.io/kabradshaw1/portfolio/go-order-service:latest
@@ -62,3 +66,7 @@ spec:
               port: 8092
             initialDelaySeconds: 15
             periodSeconds: 30
+          volumeMounts:
+            - name: grpc-tls
+              mountPath: /etc/tls
+              readOnly: true
