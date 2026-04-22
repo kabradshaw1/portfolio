@@ -60,7 +60,7 @@ func main() {
 
 	var prodClient *productclient.GRPCClient
 	if cfg.ProductGRPCAddr != "" {
-		prodClient, err = productclient.New(cfg.ProductGRPCAddr)
+		prodClient, err = productclient.New(cfg.ProductGRPCAddr, insecure.NewCredentials())
 		if err != nil {
 			log.Fatalf("product gRPC client: %v", err)
 		}

@@ -59,7 +59,7 @@ func main() {
 	var prodClient *productclient.GRPCClient
 	if cfg.ProductGRPCAddr != "" {
 		var err error
-		prodClient, err = productclient.New(cfg.ProductGRPCAddr)
+		prodClient, err = productclient.New(cfg.ProductGRPCAddr, insecure.NewCredentials())
 		if err != nil {
 			log.Fatalf("product gRPC client: %v", err)
 		}
@@ -70,7 +70,7 @@ func main() {
 	var cartClient *cartclient.GRPCClient
 	if cfg.CartGRPCAddr != "" {
 		var err error
-		cartClient, err = cartclient.New(cfg.CartGRPCAddr, cfg.ProductGRPCAddr)
+		cartClient, err = cartclient.New(cfg.CartGRPCAddr, cfg.ProductGRPCAddr, insecure.NewCredentials())
 		if err != nil {
 			log.Fatalf("cart gRPC client: %v", err)
 		}

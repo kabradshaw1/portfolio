@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 
 	cart "github.com/kabradshaw1/portfolio/go/cart-service/pb/cart/v1"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/model"
@@ -23,16 +23,16 @@ type GRPCClient struct {
 }
 
 // New dials both cart-service and product-service gRPC endpoints.
-func New(cartAddr, productAddr string) (*GRPCClient, error) {
+func New(cartAddr, productAddr string, creds credentials.TransportCredentials) (*GRPCClient, error) {
 	cartConn, err := grpc.NewClient(cartAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("connect to cart-service: %w", err)
 	}
 
 	productConn, err := grpc.NewClient(productAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 	)
 	if err != nil {
 		cartConn.Close()
