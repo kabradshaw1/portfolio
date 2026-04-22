@@ -1,1 +1,1 @@
-ALTER TABLE orders ADD COLUMN checkout_url TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_url TEXT;
