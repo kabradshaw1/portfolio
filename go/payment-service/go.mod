@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kabradshaw1/portfolio/go/pkg v0.0.0
 	github.com/sony/gobreaker/v2 v2.4.0
+	github.com/stripe/stripe-go/v82 v82.5.1
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 )
