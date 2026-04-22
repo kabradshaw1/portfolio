@@ -1,0 +1,193 @@
+package store
+
+import (
+	"context"
+	"sort"
+	"sync"
+	"time"
+)
+
+// MockStore is a thread-safe in-memory Store implementation for testing.
+type MockStore struct {
+	mu          sync.Mutex
+	revenue     map[string]*RevenueWindow
+	trending    map[string]map[string]float64
+	abandonment map[string]*AbandonmentWindow
+	users       map[string]map[string]bool // key: "{windowKey}:{bucket}", value: set of userIDs
+}
+
+// NewMockStore creates an empty MockStore.
+func NewMockStore() *MockStore {
+	return &MockStore{
+		revenue:     make(map[string]*RevenueWindow),
+		trending:    make(map[string]map[string]float64),
+		abandonment: make(map[string]*AbandonmentWindow),
+		users:       make(map[string]map[string]bool),
+	}
+}
+
+// FlushRevenue accumulates revenue data for the given window key.
+func (m *MockStore) FlushRevenue(_ context.Context, windowKey string, totalCents, orderCount int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	w, ok := m.revenue[windowKey]
+	if !ok {
+		t, _ := time.Parse(windowKeyLayout, windowKey)
+		w = &RevenueWindow{
+			WindowStart: t,
+			WindowEnd:   t.Add(time.Hour),
+		}
+		m.revenue[windowKey] = w
+	}
+	w.TotalCents += totalCents
+	w.OrderCount += orderCount
+	if w.OrderCount > 0 {
+		w.AvgCents = w.TotalCents / w.OrderCount
+	}
+	return nil
+}
+
+// GetRevenue returns revenue windows for the last N hours, sorted chronologically.
+func (m *MockStore) GetRevenue(_ context.Context, hours int) ([]RevenueWindow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
+	var result []RevenueWindow
+	for _, w := range m.revenue {
+		if w.WindowStart.After(cutoff) || w.WindowStart.Equal(cutoff) {
+			result = append(result, *w)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].WindowStart.Before(result[j].WindowStart)
+	})
+	return result, nil
+}
+
+// FlushTrending writes product scores for the given window key.
+func (m *MockStore) FlushTrending(_ context.Context, windowKey string, scores map[string]float64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.trending[windowKey] = make(map[string]float64, len(scores))
+	for k, v := range scores {
+		m.trending[windowKey][k] = v
+	}
+	return nil
+}
+
+// GetTrending returns trending products from the most recent window.
+func (m *MockStore) GetTrending(_ context.Context, limit int) (*TrendingResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.trending) == 0 {
+		return nil, nil
+	}
+
+	// Find the most recent window key.
+	var latestKey string
+	var latestTime time.Time
+	for k := range m.trending {
+		t, err := time.Parse(windowKeyLayout, k)
+		if err != nil {
+			continue
+		}
+		if latestKey == "" || t.After(latestTime) {
+			latestKey = k
+			latestTime = t
+		}
+	}
+
+	scores := m.trending[latestKey]
+	products := make([]TrendingProduct, 0, len(scores))
+	for pid, score := range scores {
+		products = append(products, TrendingProduct{
+			ProductID: pid,
+			Score:     score,
+		})
+	}
+	sort.Slice(products, func(i, j int) bool {
+		return products[i].Score > products[j].Score
+	})
+	if limit > 0 && len(products) > limit {
+		products = products[:limit]
+	}
+
+	return &TrendingResult{
+		WindowEnd: latestTime.Add(time.Hour),
+		Products:  products,
+	}, nil
+}
+
+// FlushAbandonment writes cart abandonment metrics for the given window key.
+func (m *MockStore) FlushAbandonment(_ context.Context, windowKey string, started, converted int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	abandoned := started - converted
+	if abandoned < 0 {
+		abandoned = 0
+	}
+	var rate float64
+	if started > 0 {
+		rate = float64(abandoned) / float64(started)
+	}
+
+	t, _ := time.Parse(windowKeyLayout, windowKey)
+	m.abandonment[windowKey] = &AbandonmentWindow{
+		WindowStart:     t,
+		WindowEnd:       t.Add(time.Hour),
+		CartsStarted:    started,
+		CartsConverted:  converted,
+		CartsAbandoned:  abandoned,
+		AbandonmentRate: rate,
+	}
+	return nil
+}
+
+// GetAbandonment returns abandonment windows for the last N hours, sorted chronologically.
+func (m *MockStore) GetAbandonment(_ context.Context, hours int) ([]AbandonmentWindow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
+	var result []AbandonmentWindow
+	for _, w := range m.abandonment {
+		if w.WindowStart.After(cutoff) || w.WindowStart.Equal(cutoff) {
+			result = append(result, *w)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].WindowStart.Before(result[j].WindowStart)
+	})
+	return result, nil
+}
+
+// TrackAbandonmentUser adds a user to the abandonment tracking set.
+func (m *MockStore) TrackAbandonmentUser(_ context.Context, windowKey, userID, bucket string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	setKey := windowKey + ":" + bucket
+	if m.users[setKey] == nil {
+		m.users[setKey] = make(map[string]bool)
+	}
+	m.users[setKey][userID] = true
+	return nil
+}
+
+// CountAbandonmentUsers returns the number of unique users in a given abandonment bucket.
+func (m *MockStore) CountAbandonmentUsers(_ context.Context, windowKey, bucket string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	setKey := windowKey + ":" + bucket
+	return int64(len(m.users[setKey])), nil
+}
+
+// compile-time interface check
+var _ Store = (*MockStore)(nil)
+
