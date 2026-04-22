@@ -283,6 +283,7 @@ Before every commit, run the relevant preflight checks and fix any failures. Onl
 - **Java changes:** `make preflight-java` (checkstyle + unit tests, runs locally)
 - **Java integration tests:** `make preflight-java-integration` (runs over SSH on Debian server, on-demand)
 - **Go changes:** `make preflight-go` (lint + tests)
+- **Go migration changes:** `make preflight-go-migrations` (requires Docker via Colima + `golang-migrate`; spins up Postgres, runs all migrations, verifies tables)
 - **Full sweep:** `make preflight` (runs Python + frontend + security + Java + Go locally)
 
 If a check fails, fix it before committing. If you can't fix it, explain the failure to Kyle before suggesting a push.
