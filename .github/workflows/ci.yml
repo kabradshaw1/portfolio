@@ -952,6 +952,12 @@ jobs:
             exit 1
           fi
 
+          # Restart order-service after its migration so it picks up schema
+          # changes with fresh connection pools and a reset circuit breaker
+          # before other services start generating saga events.
+          $SSH "kubectl rollout restart deployment/go-order-service -n go-ecommerce-qa"
+          $SSH "kubectl rollout status deployment/go-order-service -n go-ecommerce-qa --timeout=60s"
+
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/product-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-product-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-product-migrate -n go-ecommerce-qa --tail=200" || true
@@ -1103,6 +1109,12 @@ jobs:
               $SSH "kubectl logs job/go-order-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
+
+            # Restart order-service after its migration so it picks up schema
+            # changes with fresh connection pools and a reset circuit breaker
+            # before other services start generating saga events.
+            $SSH "kubectl rollout restart deployment/go-order-service -n go-ecommerce"
+            $SSH "kubectl rollout status deployment/go-order-service -n go-ecommerce --timeout=60s"
 
             $SSH "kubectl apply -f -" < go/k8s/jobs/product-service-migrate.yml
             if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-product-migrate -n go-ecommerce"; then
