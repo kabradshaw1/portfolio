@@ -1,4 +1,4 @@
-.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-go-integration preflight-security preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup
+.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-go-integration preflight-go-migrations preflight-security preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup
 
 # Run all CI checks locally before pushing
 preflight: grafana-sync-check preflight-python preflight-frontend preflight-security preflight-java preflight-go
@@ -57,6 +57,65 @@ preflight-go:
 	cd go/ai-service && go test ./... -v -race
 	cd go/product-service && go test ./... -v -race
 	cd go/cart-service && go test ./... -v -race
+
+# --- Go migration pipeline test (requires Docker via Colima + golang-migrate) ---
+# Mirrors the CI "Go Migration Pipeline Test" job: spins up Postgres in Docker,
+# runs all service migrations, applies seeds, and verifies tables exist.
+# Catches FK/index/partition errors before pushing.
+MIGRATE_PG_CONTAINER := preflight-migrate-pg
+MIGRATE_PG_PORT := 54399
+preflight-go-migrations:
+	@echo "\n=== Go: migration pipeline test ==="
+	@if ! docker info >/dev/null 2>&1; then \
+		echo "⚠️  Docker not available (run 'colima start') — skipping migration test"; \
+		exit 0; \
+	fi
+	@if ! command -v migrate >/dev/null 2>&1; then \
+		echo "❌ golang-migrate not found — install with: brew install golang-migrate"; \
+		exit 1; \
+	fi
+	@# Clean up any leftover container from a previous failed run
+	@docker rm -f $(MIGRATE_PG_CONTAINER) >/dev/null 2>&1 || true
+	@echo "  Starting Postgres container..."
+	@docker run -d --name $(MIGRATE_PG_CONTAINER) \
+		-e POSTGRES_USER=taskuser -e POSTGRES_PASSWORD=taskpass -e POSTGRES_DB=taskdb \
+		-p $(MIGRATE_PG_PORT):5432 \
+		postgres:17-alpine >/dev/null
+	@echo "  Waiting for Postgres to be ready..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		docker exec $(MIGRATE_PG_CONTAINER) pg_isready -U taskuser -d taskdb >/dev/null 2>&1 && break; \
+		sleep 1; \
+	done
+	@# Create databases
+	@docker exec $(MIGRATE_PG_CONTAINER) psql -U taskuser -d taskdb -c "CREATE DATABASE ecommercedb;" >/dev/null 2>&1
+	@docker exec $(MIGRATE_PG_CONTAINER) psql -U taskuser -d taskdb -c "CREATE DATABASE productdb;" >/dev/null 2>&1
+	@# Run migrations (same order and flags as CI)
+	@echo "  Running auth-service migrations..."
+	@migrate -path go/auth-service/migrations \
+		-database "postgres://taskuser:taskpass@localhost:$(MIGRATE_PG_PORT)/ecommercedb?sslmode=disable&x-migrations-table=auth_schema_migrations" up
+	@echo "  Running order-service migrations..."
+	@migrate -path go/order-service/migrations \
+		-database "postgres://taskuser:taskpass@localhost:$(MIGRATE_PG_PORT)/ecommercedb?sslmode=disable&x-migrations-table=ecommerce_schema_migrations" up
+	@echo "  Applying order-service seed data..."
+	@PGPASSWORD=taskpass psql -h localhost -p $(MIGRATE_PG_PORT) -U taskuser -d ecommercedb \
+		-v ON_ERROR_STOP=1 -f go/order-service/seed.sql >/dev/null
+	@echo "  Running product-service migrations..."
+	@migrate -path go/product-service/migrations \
+		-database "postgres://taskuser:taskpass@localhost:$(MIGRATE_PG_PORT)/productdb?sslmode=disable&x-migrations-table=product_schema_migrations" up
+	@echo "  Applying product-service seed data..."
+	@PGPASSWORD=taskpass psql -h localhost -p $(MIGRATE_PG_PORT) -U taskuser -d productdb \
+		-v ON_ERROR_STOP=1 -f go/product-service/seed.sql >/dev/null
+	@# Verify tables
+	@echo "  Verifying tables..."
+	@PGPASSWORD=taskpass psql -h localhost -p $(MIGRATE_PG_PORT) -U taskuser -d ecommercedb -c "\dt" | grep -q ' users ' || \
+		(echo "❌ users table missing" && docker rm -f $(MIGRATE_PG_CONTAINER) >/dev/null && exit 1)
+	@PGPASSWORD=taskpass psql -h localhost -p $(MIGRATE_PG_PORT) -U taskuser -d ecommercedb -c "\dt" | grep -q ' orders ' || \
+		(echo "❌ orders table missing" && docker rm -f $(MIGRATE_PG_CONTAINER) >/dev/null && exit 1)
+	@PGPASSWORD=taskpass psql -h localhost -p $(MIGRATE_PG_PORT) -U taskuser -d productdb -c "\dt" | grep -q ' products ' || \
+		(echo "❌ products table missing in productdb" && docker rm -f $(MIGRATE_PG_CONTAINER) >/dev/null && exit 1)
+	@# Cleanup
+	@docker rm -f $(MIGRATE_PG_CONTAINER) >/dev/null
+	@echo "  ✅ All migrations applied and tables verified"
 
 # --- Go integration tests (requires Docker via Colima) ---
 preflight-go-integration:
