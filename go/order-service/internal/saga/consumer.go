@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
@@ -12,12 +13,18 @@ import (
 
 // Consumer listens on the saga.order.events queue and dispatches to the orchestrator.
 type Consumer struct {
-	orch *Orchestrator
+	orch       *Orchestrator
+	processing atomic.Bool
 }
 
 // NewConsumer creates a saga event consumer.
 func NewConsumer(orch *Orchestrator) *Consumer {
 	return &Consumer{orch: orch}
+}
+
+// IsIdle returns true when the consumer is not processing a message.
+func (c *Consumer) IsIdle() bool {
+	return !c.processing.Load()
 }
 
 // Start begins consuming saga events. Blocks until ctx is cancelled.
@@ -37,12 +44,14 @@ func (c *Consumer) Start(ctx context.Context, ch *amqp.Channel) error {
 			if !ok {
 				return nil
 			}
+			c.processing.Store(true)
 			if err := c.handleMessage(ctx, msg); err != nil {
 				slog.Error("saga event handling failed", "error", err)
 				_ = msg.Nack(false, true)
 			} else {
 				_ = msg.Ack(false)
 			}
+			c.processing.Store(false)
 		}
 	}
 }

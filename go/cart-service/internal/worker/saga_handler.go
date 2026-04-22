@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,13 +46,19 @@ type event struct {
 
 // SagaHandler consumes saga commands from RabbitMQ and publishes reply events.
 type SagaHandler struct {
-	svc CartServiceForSaga
-	ch  *amqp.Channel
+	svc        CartServiceForSaga
+	ch         *amqp.Channel
+	processing atomic.Bool
 }
 
 // NewSagaHandler creates a saga command handler.
 func NewSagaHandler(svc CartServiceForSaga, ch *amqp.Channel) *SagaHandler {
 	return &SagaHandler{svc: svc, ch: ch}
+}
+
+// IsIdle returns true when the handler is not processing a message.
+func (h *SagaHandler) IsIdle() bool {
+	return !h.processing.Load()
 }
 
 // Start begins consuming saga commands. Blocks until ctx is cancelled.
@@ -71,12 +78,14 @@ func (h *SagaHandler) Start(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
+			h.processing.Store(true)
 			if err := h.handleMessage(ctx, msg); err != nil {
 				slog.Error("saga command handling failed", "error", err)
 				_ = msg.Nack(false, true)
 			} else {
 				_ = msg.Ack(false)
 			}
+			h.processing.Store(false)
 		}
 	}
 }

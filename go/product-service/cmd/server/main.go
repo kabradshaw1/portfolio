@@ -136,12 +136,11 @@ func main() {
 		cancel()
 		return nil
 	})
-	sm.Register("grpc-drain", 10, func(_ context.Context) error {
-		grpcServer.GracefulStop()
+	sm.Register("drain-http", 0, shutdown.DrainHTTP("product-http", httpSrv))
+	sm.Register("drain-grpc", 0, shutdown.DrainGRPC("product-grpc", grpcServer))
+	sm.Register("postgres", 20, func(_ context.Context) error {
+		pool.Close()
 		return nil
-	})
-	sm.Register("http", 20, func(ctx context.Context) error {
-		return httpSrv.Shutdown(ctx)
 	})
 	sm.Register("otel", 30, func(ctx context.Context) error {
 		return shutdownTracer(ctx)

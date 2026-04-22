@@ -131,18 +131,13 @@ func main() {
 			return nil
 		})
 	}
-	sm.Register("grpc-drain", 10, func(ctx context.Context) error {
-		grpcServer.GracefulStop()
-		return nil
-	})
-	sm.Register("http", 20, func(ctx context.Context) error {
-		return srv.Shutdown(ctx)
-	})
-	sm.Register("postgres", 20, func(ctx context.Context) error {
+	sm.Register("drain-http", 0, shutdown.DrainHTTP("auth-http", srv))
+	sm.Register("drain-grpc", 0, shutdown.DrainGRPC("auth-grpc", grpcServer))
+	sm.Register("postgres", 20, func(_ context.Context) error {
 		pool.Close()
 		return nil
 	})
-	sm.Register("redis", 20, func(ctx context.Context) error {
+	sm.Register("redis", 20, func(_ context.Context) error {
 		if redisClient != nil {
 			return redisClient.Close()
 		}

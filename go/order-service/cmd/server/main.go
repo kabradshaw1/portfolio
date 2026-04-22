@@ -175,8 +175,15 @@ func main() {
 		cancel()
 		return nil
 	})
-	sm.Register("http", 20, func(ctx context.Context) error {
-		return srv.Shutdown(ctx)
+	sm.Register("drain-http", 0, shutdown.DrainHTTP("order-http", srv))
+	sm.Register("wait-saga", 10, shutdown.WaitForInflight("order-saga", consumer.IsIdle, 100*time.Millisecond))
+	sm.Register("postgres", 20, func(_ context.Context) error {
+		pool.Close()
+		return nil
+	})
+	sm.Register("rabbitmq", 20, func(_ context.Context) error {
+		_ = ch.Close()
+		return conn.Close()
 	})
 	sm.Register("otel", 30, func(ctx context.Context) error {
 		return shutdownTracer(ctx)
