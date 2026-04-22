@@ -58,6 +58,9 @@ patches:
       - op: add
         path: /data/TLS_CERT_DIR
         value: /etc/tls
+      - op: add
+        path: /data/PAYMENT_GRPC_ADDR
+        value: "go-payment-service.go-ecommerce-qa.svc.cluster.local:9098"
   - target:
       kind: ConfigMap
       name: ai-service-config
