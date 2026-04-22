@@ -1,5 +1,6 @@
--- Step 1: Rename existing orders table and drop its indexes (they keep their names after rename)
+-- Step 1: Drop all FKs referencing orders, rename table, drop old indexes
 ALTER TABLE order_items DROP CONSTRAINT IF EXISTS order_items_order_id_fkey;
+ALTER TABLE returns DROP CONSTRAINT IF EXISTS returns_order_id_fkey;
 ALTER TABLE orders RENAME TO orders_old;
 
 -- Drop old indexes so names are available for the partitioned table
@@ -54,10 +55,10 @@ CREATE INDEX idx_orders_created_at ON orders(created_at);
 -- Composite index for cursor pagination (keyset)
 CREATE INDEX idx_orders_user_cursor ON orders(user_id, created_at DESC, id DESC);
 
--- Note: FK from order_items → orders(id) is NOT re-created because partitioned
--- tables require unique constraints to include the partition key (created_at).
--- The composite PK (id, created_at) doesn't satisfy a FK on id alone.
--- Referential integrity is enforced at the application layer.
+-- Note: FKs from order_items and returns → orders(id) are NOT re-created because
+-- partitioned tables require unique constraints to include the partition key
+-- (created_at). The composite PK (id, created_at) doesn't satisfy a FK on id
+-- alone. Referential integrity is enforced at the application layer.
 
 -- Step 6: Drop old table
-DROP TABLE orders_old;
+DROP TABLE orders_old CASCADE;

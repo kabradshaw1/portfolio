@@ -23,3 +23,6 @@ CREATE INDEX idx_orders_saga_step ON orders(saga_step);
 
 ALTER TABLE order_items ADD CONSTRAINT order_items_order_id_fkey
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE;
+
+ALTER TABLE returns ADD CONSTRAINT returns_order_id_fkey
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE;
