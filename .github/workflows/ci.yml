@@ -887,6 +887,8 @@ jobs:
       - name: Deploy QA via SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET_QA }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
@@ -910,6 +912,12 @@ jobs:
             --from-literal=google-client-id=placeholder \
             --from-literal=google-client-secret=placeholder \
             --from-literal=jwt-secret='dev-secret-key-at-least-32-characters-long' \
+            --dry-run=client -o yaml | kubectl apply -f -"
+
+          # Seed Stripe secrets for payment-service in QA.
+          $SSH "kubectl create secret generic stripe-secrets -n go-ecommerce-qa \
+            --from-literal=STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY \
+            --from-literal=STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET \
             --dry-run=client -o yaml | kubectl apply -f -"
 
           # Install cert-manager and apply certificate resources for QA.
@@ -1030,6 +1038,8 @@ jobs:
           JAVA_CHANGED: ${{ needs.changes.outputs.java }}
           GO_CHANGED: ${{ needs.changes.outputs.go }}
           K8S_CHANGED: ${{ needs.changes.outputs.k8s }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET_PROD }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
@@ -1041,6 +1051,13 @@ jobs:
           for f in $(find k8s/ai-services -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find java/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/monitoring -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+
+          # Seed Stripe secrets for payment-service in prod.
+          $SSH "kubectl create secret generic stripe-secrets -n go-ecommerce \
+            --from-literal=STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY \
+            --from-literal=STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET \
+            --dry-run=client -o yaml | kubectl apply -f -"
+
           # Install cert-manager and apply certificate resources for prod.
           $SSH "kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.2/cert-manager.yaml 2>/dev/null || true"
           $SSH "kubectl wait --for=condition=available --timeout=120s deployment/cert-manager -n cert-manager 2>/dev/null || true"
