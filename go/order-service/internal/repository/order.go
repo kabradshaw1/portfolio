@@ -77,16 +77,20 @@ func (r *OrderRepository) Create(ctx context.Context, userID uuid.UUID, total in
 func (r *OrderRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Order, error) {
 	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) (*model.Order, error) {
 		var order model.Order
+		var checkoutURL *string
 		err := r.pool.QueryRow(ctx,
-			`SELECT id, user_id, status, saga_step, total, created_at, updated_at
+			`SELECT id, user_id, status, saga_step, checkout_url, total, created_at, updated_at
 			 FROM orders WHERE id = $1`,
 			id,
-		).Scan(&order.ID, &order.UserID, &order.Status, &order.SagaStep, &order.Total, &order.CreatedAt, &order.UpdatedAt)
+		).Scan(&order.ID, &order.UserID, &order.Status, &order.SagaStep, &checkoutURL, &order.Total, &order.CreatedAt, &order.UpdatedAt)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, ErrOrderNotFound
 			}
 			return nil, fmt.Errorf("find order: %w", err)
+		}
+		if checkoutURL != nil {
+			order.CheckoutURL = *checkoutURL
 		}
 
 		rows, err := r.pool.Query(ctx,
@@ -204,6 +208,16 @@ func (r *OrderRepository) FindIncompleteSagas(ctx context.Context) ([]uuid.UUID,
 			ids = append(ids, id)
 		}
 		return ids, nil
+	})
+}
+
+func (r *OrderRepository) UpdateCheckoutURL(ctx context.Context, orderID uuid.UUID, url string) error {
+	return resilience.Do(ctx, r.breaker, r.retryCfg, func(ctx context.Context) error {
+		_, err := r.pool.Exec(ctx,
+			`UPDATE orders SET checkout_url = $1, updated_at = now() WHERE id = $2`,
+			url, orderID,
+		)
+		return err
 	})
 }
 
