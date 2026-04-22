@@ -122,3 +122,27 @@ spec:
   issuerRef:
     name: grpc-ca-issuer
     kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: payment-grpc-tls
+  namespace: go-ecommerce-qa
+spec:
+  commonName: go-payment-service.go-ecommerce-qa.svc.cluster.local
+  secretName: payment-grpc-tls
+  duration: 720h
+  renewBefore: 480h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  dnsNames:
+    - go-payment-service
+    - go-payment-service.go-ecommerce-qa
+    - go-payment-service.go-ecommerce-qa.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    name: grpc-ca-issuer
+    kind: Issuer
