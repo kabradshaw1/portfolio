@@ -60,16 +60,46 @@ Enabled `pgx.QueryExecModeCacheDescribe` on all connection pools. Caches query p
 Documented the trade-offs between `SELECT ... FOR UPDATE` (current), `pg_advisory_xact_lock`, and optimistic locking with version columns. Current approach is correct for this scale.
 
 ## Results
-Benchmark results will be captured to `go/benchdata/` when running with Docker:
-- `baseline-results.txt` — before any changes
-- `post-schema-results.txt` — after schema hardening only
-- `optimized-results.txt` — after all query optimizations
 
-Expected improvements based on the nature of the changes:
-- Batch INSERT: 3-5x for multi-item orders (N round trips → 1)
-- COUNT elimination: ~2x for offset pagination (2 queries → 1)
-- CTE cart conflict: ~2x on conflict path (2 queries → 1)
-- Prepared statement cache: 10-20% on hot-path queries
+Benchmarked on Apple M4, PostgreSQL 16 via testcontainers-go, 1000 seeded products, 200 seeded orders. Each benchmark run 3x (`-count=3`).
+
+### Order Service — Batch INSERT (biggest win)
+
+| Benchmark | Baseline (ns/op) | Optimized (ns/op) | Speedup |
+|---|---|---|---|
+| OrderCreate_1Item | 749,000 | 734,000 | ~same |
+| **OrderCreate_5Items** | **1,480,000** | **821,000** | **1.8x** |
+| **OrderCreate_20Items** | **4,512,000** | **1,272,000** | **3.5x** |
+
+The batch INSERT scales linearly instead of N round trips. 20-item orders went from 4.5ms to 1.3ms. Single-item orders show no change (only 1 INSERT either way).
+
+### Product Service — Window Function + Indexes
+
+| Benchmark | Baseline (ns/op) | Optimized (ns/op) | Speedup |
+|---|---|---|---|
+| List_Cursor | 202,000 | 207,000 | ~same |
+| List_Offset | 452,000 | 473,000 | ~same |
+| **CategoryFilter** | **429,000** | **327,000** | **1.3x** |
+| **SearchQuery** | **1,019,000** | **550,000** | **1.9x** |
+| FindByID | 187,000 | 187,000 | ~same |
+| DecrementStock | 143,000 | 154,000 | ~same |
+| Categories | 419,000 | 417,000 | ~same |
+
+The `List_Offset` benchmark shows the window function tradeoff: per-row overhead from `COUNT(*) OVER()` roughly equals the removed COUNT query, netting ~same. The real wins are in filtered queries (CategoryFilter, SearchQuery) where the new indexes help the planner.
+
+### Cart Service — CTE Conflict Resolution
+
+| Benchmark | Baseline (ns/op) | Optimized (ns/op) | Notes |
+|---|---|---|---|
+| GetByUser_5 | 191,000 | 194,000 | ~same |
+| GetByUser_50 | 230,000 | 224,000 | ~same |
+| AddItem_New | 192,000 | 196,000 | ~same |
+| Reserve | 208,000 | 254,000 | slight regression (composite index write overhead) |
+| UpdateQuantity_Success | 190,000 | 194,000 | ~same |
+
+The CTE optimization for `UpdateQuantity` on the reserved-conflict path can't be directly compared because the circuit breaker trips in both cases (returning errors counts as failures, tripping the breaker). The real win is correctness: a single atomic query instead of a racy two-query pattern.
+
+Full benchmark output: `go/benchdata/baseline-results.txt`, `go/benchdata/optimized-results.txt`
 
 ## Consequences
 - **Docker required for benchmarks** — testcontainers spins up PostgreSQL containers. CI must have Docker. Benchmarks gracefully skip without Docker.

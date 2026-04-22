@@ -1,0 +1,99 @@
+=== OPTIMIZED BENCHMARK RESULTS ===
+Date: 2026-04-22T01:34:00Z
+Commit: 5a21c3e (all optimizations applied)
+
+--- Product Service ---
+goos: darwin
+goarch: arm64
+pkg: github.com/kabradshaw1/portfolio/go/product-service/internal/repository
+cpu: Apple M4
+BenchmarkProductList_Cursor-10            	    5773	    201828 ns/op	   21866 B/op	     227 allocs/op
+BenchmarkProductList_Cursor-10            	    5676	    209405 ns/op	   21868 B/op	     227 allocs/op
+BenchmarkProductList_Cursor-10            	    5498	    209679 ns/op	   21866 B/op	     227 allocs/op
+BenchmarkProductList_Offset-10            	    3097	    455861 ns/op	   20641 B/op	     180 allocs/op
+BenchmarkProductList_Offset-10            	    2556	    480372 ns/op	   20639 B/op	     180 allocs/op
+BenchmarkProductList_Offset-10            	    2482	    484048 ns/op	   20642 B/op	     180 allocs/op
+BenchmarkProductList_CategoryFilter-10    	    3674	    330148 ns/op	   20913 B/op	     186 allocs/op
+BenchmarkProductList_CategoryFilter-10    	    3662	    324675 ns/op	   20911 B/op	     186 allocs/op
+BenchmarkProductList_CategoryFilter-10    	    3691	    327306 ns/op	   20911 B/op	     186 allocs/op
+BenchmarkProductList_SearchQuery-10       	    2164	    547513 ns/op	   20834 B/op	     186 allocs/op
+BenchmarkProductList_SearchQuery-10       	    2196	    551168 ns/op	   20834 B/op	     186 allocs/op
+BenchmarkProductList_SearchQuery-10       	    2173	    552214 ns/op	   20831 B/op	     186 allocs/op
+BenchmarkProductFindByID-10               	    6432	    185923 ns/op	    1765 B/op	      38 allocs/op
+BenchmarkProductFindByID-10               	    6517	    188656 ns/op	    1766 B/op	      38 allocs/op
+BenchmarkProductFindByID-10               	    6481	    185894 ns/op	    1765 B/op	      38 allocs/op
+BenchmarkProductDecrementStock-10         	    7410	    153700 ns/op	    1747 B/op	      54 allocs/op
+BenchmarkProductDecrementStock-10         	    7647	    155217 ns/op	    1747 B/op	      54 allocs/op
+BenchmarkProductDecrementStock-10         	    6685	    153396 ns/op	    1747 B/op	      54 allocs/op
+BenchmarkProductCategories-10             	    3603	    392910 ns/op	     805 B/op	      22 allocs/op
+BenchmarkProductCategories-10             	    2857	    421880 ns/op	     805 B/op	      22 allocs/op
+BenchmarkProductCategories-10             	    2791	    435234 ns/op	     801 B/op	      22 allocs/op
+PASS
+ok  	github.com/kabradshaw1/portfolio/go/product-service/internal/repository	30.432s
+
+--- Order Service ---
+goos: darwin
+goarch: arm64
+pkg: github.com/kabradshaw1/portfolio/go/order-service/internal/repository
+cpu: Apple M4
+BenchmarkOrderCreate_1Item-10           	    1640	    720118 ns/op	    4627 B/op	     139 allocs/op
+BenchmarkOrderCreate_1Item-10           	    1674	    715861 ns/op	    4624 B/op	     139 allocs/op
+BenchmarkOrderCreate_1Item-10           	    1676	    767338 ns/op	    4624 B/op	     139 allocs/op
+BenchmarkOrderCreate_5Items-10          	    1459	    818658 ns/op	   14529 B/op	     405 allocs/op
+BenchmarkOrderCreate_5Items-10          	    1461	    821026 ns/op	   14528 B/op	     405 allocs/op
+BenchmarkOrderCreate_5Items-10          	    1484	    823456 ns/op	   14527 B/op	     405 allocs/op
+BenchmarkOrderCreate_20Items-10         	    1142	   1153555 ns/op	   69678 B/op	    1404 allocs/op
+BenchmarkOrderCreate_20Items-10         	     886	   1341231 ns/op	   69676 B/op	    1404 allocs/op
+BenchmarkOrderCreate_20Items-10         	     892	   1322873 ns/op	   69671 B/op	    1404 allocs/op
+BenchmarkOrderFindByID-10               	    3135	    379714 ns/op	    4970 B/op	     109 allocs/op
+BenchmarkOrderFindByID-10               	    3190	    383678 ns/op	    4973 B/op	     109 allocs/op
+BenchmarkOrderFindByID-10               	    3114	    390565 ns/op	    4972 B/op	     109 allocs/op
+BenchmarkOrderListByUser_Simple-10      	    5092	    227972 ns/op	   21400 B/op	     249 allocs/op
+BenchmarkOrderListByUser_Simple-10      	    5311	    231682 ns/op	   21399 B/op	     249 allocs/op
+BenchmarkOrderListByUser_Simple-10      	    5314	    227714 ns/op	   21398 B/op	     249 allocs/op
+BenchmarkOrderFindIncompleteSagas-10    	     331	   3437418 ns/op	 2519908 B/op	   66890 allocs/op
+BenchmarkOrderFindIncompleteSagas-10    	     352	   3538242 ns/op	 2519880 B/op	   66890 allocs/op
+BenchmarkOrderFindIncompleteSagas-10    	     330	   3490204 ns/op	 2519894 B/op	   66890 allocs/op
+PASS
+ok  	github.com/kabradshaw1/portfolio/go/order-service/internal/repository	26.616s
+
+--- Cart Service ---
+goos: darwin
+goarch: arm64
+pkg: github.com/kabradshaw1/portfolio/go/cart-service/internal/repository
+cpu: Apple M4
+BenchmarkCartGetByUser_5Items-10                   	    6260	    190304 ns/op	    5666 B/op	      90 allocs/op
+BenchmarkCartGetByUser_5Items-10                   	    6160	    194336 ns/op	    5664 B/op	      90 allocs/op
+BenchmarkCartGetByUser_5Items-10                   	    6129	    197539 ns/op	    5664 B/op	      90 allocs/op
+BenchmarkCartGetByUser_50Items-10                  	    5616	    222300 ns/op	   43837 B/op	     588 allocs/op
+BenchmarkCartGetByUser_50Items-10                  	    5316	    228915 ns/op	   43838 B/op	     588 allocs/op
+BenchmarkCartGetByUser_50Items-10                  	    5298	    222081 ns/op	   43836 B/op	     588 allocs/op
+BenchmarkCartAddItem_New-10                        	    6307	    197613 ns/op	    2945 B/op	      84 allocs/op
+BenchmarkCartAddItem_New-10                        	    6267	    195740 ns/op	    2945 B/op	      84 allocs/op
+BenchmarkCartAddItem_New-10                        	    6237	    193596 ns/op	    2944 B/op	      84 allocs/op
+BenchmarkCartAddItem_Upsert-10                     	    6360	    189458 ns/op	    2913 B/op	      82 allocs/op
+BenchmarkCartAddItem_Upsert-10                     	    6007	    199297 ns/op	    2912 B/op	      82 allocs/op
+BenchmarkCartAddItem_Upsert-10                     	    6112	    196346 ns/op	    2913 B/op	      82 allocs/op
+BenchmarkCartReserve-10                            	    4755	    252937 ns/op	     699 B/op	      23 allocs/op
+BenchmarkCartReserve-10                            	    4722	    256405 ns/op	     698 B/op	      23 allocs/op
+BenchmarkCartReserve-10                            	    4911	    253178 ns/op	     699 B/op	      23 allocs/op
+BenchmarkCartUpdateQuantity_Success-10             	    6105	    193093 ns/op	    1653 B/op	      47 allocs/op
+BenchmarkCartUpdateQuantity_Success-10             	    6362	    195168 ns/op	    1653 B/op	      47 allocs/op
+BenchmarkCartUpdateQuantity_Success-10             	    6308	    193971 ns/op	    1652 B/op	      47 allocs/op
+BenchmarkCartUpdateQuantity_ReservedConflict-10    	2026/04/21 19:34:44 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+2026/04/21 19:34:44 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+2026/04/21 19:34:44 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+2026/04/21 19:34:44 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+13581118	        85.97 ns/op	     128 B/op	       2 allocs/op
+BenchmarkCartUpdateQuantity_ReservedConflict-10    	2026/04/21 19:34:45 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+2026/04/21 19:34:45 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+2026/04/21 19:34:45 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+2026/04/21 19:34:45 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+13605487	        85.45 ns/op	     128 B/op	       2 allocs/op
+BenchmarkCartUpdateQuantity_ReservedConflict-10    	2026/04/21 19:34:47 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+2026/04/21 19:34:47 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+2026/04/21 19:34:47 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+2026/04/21 19:34:47 WARN circuit breaker state change breaker=bench-cart from=closed to=open
+13665402	        86.46 ns/op	     128 B/op	       2 allocs/op
+PASS
+ok  	github.com/kabradshaw1/portfolio/go/cart-service/internal/repository	56.929s
