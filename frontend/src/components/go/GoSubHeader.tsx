@@ -10,8 +10,9 @@ export function GoSubHeader() {
   const pathname = usePathname();
   const inStore = pathname.startsWith("/go/ecommerce");
   const inAnalytics = pathname.startsWith("/go/analytics");
+  const inAdmin = pathname.startsWith("/go/admin");
   const onStoreRoot = pathname === "/go/ecommerce";
-  const showNav = inStore || inAnalytics;
+  const showNav = inStore || inAnalytics || inAdmin;
   const { categories, activeCategory, setActiveCategory } = useGoStore();
 
   if (!showNav) return null;
@@ -35,6 +36,14 @@ export function GoSubHeader() {
             }`}
           >
             Analytics
+          </Link>
+          <Link
+            href="/go/admin"
+            className={`text-sm font-medium transition-colors ${
+              inAdmin ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Admin
           </Link>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
