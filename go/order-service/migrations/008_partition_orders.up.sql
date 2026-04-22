@@ -1,6 +1,11 @@
--- Step 1: Rename existing orders table
+-- Step 1: Rename existing orders table and drop its indexes (they keep their names after rename)
 ALTER TABLE order_items DROP CONSTRAINT IF EXISTS order_items_order_id_fkey;
 ALTER TABLE orders RENAME TO orders_old;
+
+-- Drop old indexes so names are available for the partitioned table
+DROP INDEX IF EXISTS idx_orders_user;
+DROP INDEX IF EXISTS idx_orders_status;
+DROP INDEX IF EXISTS idx_orders_saga_step;
 
 -- Step 2: Create partitioned orders table with same schema
 CREATE TABLE orders (
