@@ -61,6 +61,9 @@ patches:
       - op: add
         path: /data/PAYMENT_GRPC_ADDR
         value: "go-payment-service.go-ecommerce-qa.svc.cluster.local:9098"
+      - op: add
+        path: /data/FRONTEND_URL
+        value: "https://qa.kylebradshaw.dev"
   - target:
       kind: ConfigMap
       name: ai-service-config

@@ -73,6 +73,15 @@ func (m *mockOrderRepo) UpdateSagaStep(_ context.Context, orderID uuid.UUID, ste
 	return nil
 }
 
+func (m *mockOrderRepo) UpdateCheckoutURL(_ context.Context, orderID uuid.UUID, url string) error {
+	order, ok := m.orders[orderID]
+	if !ok {
+		return errors.New("order not found")
+	}
+	order.CheckoutURL = url
+	return nil
+}
+
 // mockCartClient satisfies the CartClient interface for order tests.
 type mockCartClient struct {
 	items []model.CartItem
@@ -130,7 +139,7 @@ func TestCheckout(t *testing.T) {
 	}
 	orderRepo := newMockOrderRepo()
 	sagaPub := &mockSagaPub{}
-	orch := saga.NewOrchestrator(orderRepo, sagaPub, &mockStockChecker{available: true}, nil, nopKafka{})
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, &mockStockChecker{available: true}, nil, nopKafka{}, "http://localhost:3000")
 	svc := service.NewOrderService(orderRepo, cartClient, orch)
 
 	order, err := svc.Checkout(context.Background(), userID)
@@ -153,7 +162,7 @@ func TestCheckoutEmptyCart(t *testing.T) {
 	cartClient := &mockCartClient{}
 	orderRepo := newMockOrderRepo()
 	sagaPub := &mockSagaPub{}
-	orch := saga.NewOrchestrator(orderRepo, sagaPub, &mockStockChecker{available: true}, nil, nopKafka{})
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, &mockStockChecker{available: true}, nil, nopKafka{}, "http://localhost:3000")
 	svc := service.NewOrderService(orderRepo, cartClient, orch)
 
 	userID := uuid.New()

@@ -16,3 +16,4 @@ data:
   PAYMENT_GRPC_ADDR: "go-payment-service.go-ecommerce.svc.cluster.local:9098"
   AUTH_GRPC_URL: go-auth-service.go-ecommerce.svc.cluster.local:9091
   TLS_CERT_DIR: /etc/tls
+  FRONTEND_URL: "https://kylebradshaw.dev"
