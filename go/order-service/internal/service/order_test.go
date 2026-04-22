@@ -130,7 +130,7 @@ func TestCheckout(t *testing.T) {
 	}
 	orderRepo := newMockOrderRepo()
 	sagaPub := &mockSagaPub{}
-	orch := saga.NewOrchestrator(orderRepo, sagaPub, &mockStockChecker{available: true}, nopKafka{})
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, &mockStockChecker{available: true}, nil, nopKafka{})
 	svc := service.NewOrderService(orderRepo, cartClient, orch)
 
 	order, err := svc.Checkout(context.Background(), userID)
@@ -153,7 +153,7 @@ func TestCheckoutEmptyCart(t *testing.T) {
 	cartClient := &mockCartClient{}
 	orderRepo := newMockOrderRepo()
 	sagaPub := &mockSagaPub{}
-	orch := saga.NewOrchestrator(orderRepo, sagaPub, &mockStockChecker{available: true}, nopKafka{})
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, &mockStockChecker{available: true}, nil, nopKafka{})
 	svc := service.NewOrderService(orderRepo, cartClient, orch)
 
 	userID := uuid.New()

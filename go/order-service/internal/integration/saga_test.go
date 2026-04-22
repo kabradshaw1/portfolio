@@ -106,7 +106,7 @@ func TestSaga_HappyPath(t *testing.T) {
 
 	sagaPub := saga.NewPublisher(infra.RabbitCh)
 	stock := &alwaysAvailableStock{}
-	orch := saga.NewOrchestrator(orderRepo, sagaPub, stock, kafka.NopProducer{})
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, stock, nil, kafka.NopProducer{})
 
 	cartClient := &testCartClient{
 		items: []model.CartItem{
@@ -301,7 +301,7 @@ func TestSaga_Compensation(t *testing.T) {
 
 	sagaPub := saga.NewPublisher(infra.RabbitCh)
 	stock := &neverAvailableStock{}
-	orch := saga.NewOrchestrator(orderRepo, sagaPub, stock, kafka.NopProducer{})
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, stock, nil, kafka.NopProducer{})
 
 	cartClient := &testCartClient{
 		items: []model.CartItem{

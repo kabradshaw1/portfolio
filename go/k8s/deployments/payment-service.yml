@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-payment-service
+  namespace: go-ecommerce
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: go-payment-service
+  template:
+    metadata:
+      labels:
+        app: go-payment-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8098"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 20
+      imagePullSecrets:
+        - name: ghcr-secret
+      volumes:
+        - name: grpc-tls
+          secret:
+            secretName: payment-grpc-tls
+      containers:
+        - name: go-payment-service
+          image: ghcr.io/kabradshaw1/portfolio/go-payment-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8098
+              name: http
+            - containerPort: 9098
+              name: grpc
+          envFrom:
+            - configMapRef:
+                name: payment-service-config
+          env:
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stripe-secrets
+                  key: STRIPE_SECRET_KEY
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: stripe-secrets
+                  key: STRIPE_WEBHOOK_SECRET
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8098
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8098
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          volumeMounts:
+            - name: grpc-tls
+              mountPath: /etc/tls
+              readOnly: true

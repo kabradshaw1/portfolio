@@ -28,17 +28,24 @@ type StockChecker interface {
 	CheckAvailability(ctx context.Context, productID uuid.UUID, quantity int) (bool, error)
 }
 
+// PaymentCreator abstracts payment-service interactions for the saga.
+type PaymentCreator interface {
+	CreatePayment(ctx context.Context, orderID uuid.UUID, amountCents int, currency, successURL, cancelURL string) (string, error)
+	RefundPayment(ctx context.Context, orderID uuid.UUID, reason string) error
+}
+
 // Orchestrator drives the checkout saga state machine.
 type Orchestrator struct {
 	repo     OrderRepository
 	pub      SagaPublisher
 	stock    StockChecker
+	payment  PaymentCreator
 	kafkaPub kafka.Producer
 }
 
 // NewOrchestrator creates a saga orchestrator.
-func NewOrchestrator(repo OrderRepository, pub SagaPublisher, stock StockChecker, kafkaPub kafka.Producer) *Orchestrator {
-	return &Orchestrator{repo: repo, pub: pub, stock: stock, kafkaPub: kafkaPub}
+func NewOrchestrator(repo OrderRepository, pub SagaPublisher, stock StockChecker, payment PaymentCreator, kafkaPub kafka.Producer) *Orchestrator {
+	return &Orchestrator{repo: repo, pub: pub, stock: stock, payment: payment, kafkaPub: kafkaPub}
 }
 
 // Advance moves the saga forward from its current step.
@@ -57,6 +64,10 @@ func (o *Orchestrator) Advance(ctx context.Context, orderID uuid.UUID) error {
 		return o.handleItemsReserved(ctx, order)
 	case StepStockValidated:
 		return o.handleStockValidated(ctx, order)
+	case StepPaymentCreated:
+		return nil // Waiting for webhook confirmation via outbox poller
+	case StepPaymentConfirmed:
+		return o.handlePaymentConfirmed(ctx, order)
 	case StepCompensating:
 		return nil // Compensation command already sent, waiting for reply
 	case StepCompleted, StepCompensationComplete, StepFailed:
@@ -104,6 +115,36 @@ func (o *Orchestrator) handleItemsReserved(ctx context.Context, order *model.Ord
 	order.SagaStep = StepStockValidated
 	SagaStepsTotal.WithLabelValues(StepStockValidated, "success").Inc()
 
+	return o.Advance(ctx, order.ID)
+}
+
+func (o *Orchestrator) handleStockValidated(ctx context.Context, order *model.Order) error {
+	if o.payment != nil {
+		_, err := o.payment.CreatePayment(ctx, order.ID, order.Total, "usd",
+			"https://kylebradshaw.dev/go/ecommerce/checkout/success?order="+order.ID.String(),
+			"https://kylebradshaw.dev/go/ecommerce/checkout/cancel?order="+order.ID.String(),
+		)
+		if err != nil {
+			slog.ErrorContext(ctx, "create payment failed, compensating",
+				"orderID", order.ID, "error", err)
+			return o.compensate(ctx, order)
+		}
+		if err := o.repo.UpdateSagaStep(ctx, order.ID, StepPaymentCreated); err != nil {
+			return err
+		}
+		SagaStepsTotal.WithLabelValues(StepPaymentCreated, "success").Inc()
+		return nil // Wait for webhook confirmation
+	}
+	// No payment service configured — skip payment (dev mode).
+	return o.handlePaymentConfirmed(ctx, order)
+}
+
+func (o *Orchestrator) handlePaymentConfirmed(ctx context.Context, order *model.Order) error {
+	if err := o.repo.UpdateSagaStep(ctx, order.ID, StepPaymentConfirmed); err != nil {
+		return err
+	}
+	SagaStepsTotal.WithLabelValues(StepPaymentConfirmed, "success").Inc()
+
 	return o.pub.PublishCommand(ctx, Command{
 		Command: CmdClearCart,
 		OrderID: order.ID.String(),
@@ -111,7 +152,12 @@ func (o *Orchestrator) handleItemsReserved(ctx context.Context, order *model.Ord
 	})
 }
 
-func (o *Orchestrator) handleStockValidated(ctx context.Context, order *model.Order) error {
+func (o *Orchestrator) completeOrder(ctx context.Context, orderID uuid.UUID) error {
+	order, err := o.repo.FindByID(ctx, orderID)
+	if err != nil {
+		return fmt.Errorf("find order for completion: %w", err)
+	}
+
 	if err := o.repo.UpdateStatus(ctx, order.ID, model.OrderStatusCompleted); err != nil {
 		return err
 	}
@@ -154,6 +200,14 @@ func (o *Orchestrator) handleStockValidated(ctx context.Context, order *model.Or
 }
 
 func (o *Orchestrator) compensate(ctx context.Context, order *model.Order) error {
+	// Refund if payment was already created or confirmed.
+	if o.payment != nil && (order.SagaStep == StepPaymentConfirmed || order.SagaStep == StepPaymentCreated) {
+		if err := o.payment.RefundPayment(ctx, order.ID, "saga compensation"); err != nil {
+			slog.ErrorContext(ctx, "refund failed during compensation",
+				"orderID", order.ID, "error", err)
+		}
+	}
+
 	if err := o.repo.UpdateStatus(ctx, order.ID, model.OrderStatusFailed); err != nil {
 		return err
 	}
@@ -188,8 +242,22 @@ func (o *Orchestrator) HandleEvent(ctx context.Context, evt Event) error {
 		SagaStepsTotal.WithLabelValues(StepItemsReserved, "success").Inc()
 		return o.Advance(ctx, orderID)
 
-	case EvtCartCleared:
+	case EvtPaymentConfirmed:
+		if err := o.repo.UpdateSagaStep(ctx, orderID, StepPaymentConfirmed); err != nil {
+			return err
+		}
+		SagaStepsTotal.WithLabelValues(StepPaymentConfirmed, "success").Inc()
 		return o.Advance(ctx, orderID)
+
+	case EvtPaymentFailed:
+		order, err := o.repo.FindByID(ctx, orderID)
+		if err != nil {
+			return fmt.Errorf("find order for payment failure: %w", err)
+		}
+		return o.compensate(ctx, order)
+
+	case EvtCartCleared:
+		return o.completeOrder(ctx, orderID)
 
 	case EvtItemsReleased:
 		SagaStepsTotal.WithLabelValues(StepCompensationComplete, "success").Inc()

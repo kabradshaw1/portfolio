@@ -19,6 +19,7 @@ type Config struct {
 	OTELEndpoint      string // optional
 	ProductGRPCAddr   string // optional, address of product-service gRPC
 	CartGRPCAddr      string // optional, address of cart-service gRPC
+	PaymentGRPCAddr   string // optional, address of payment-service gRPC
 	AuthGRPCURL       string // address of auth-service gRPC for denylist checks
 }
 
@@ -36,6 +37,7 @@ func loadConfig() Config {
 		OTELEndpoint:      os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 		ProductGRPCAddr:   os.Getenv("PRODUCT_GRPC_ADDR"),
 		CartGRPCAddr:      os.Getenv("CART_GRPC_ADDR"),
+		PaymentGRPCAddr:   os.Getenv("PAYMENT_GRPC_ADDR"),
 		AuthGRPCURL:       getEnv("AUTH_GRPC_URL", "localhost:9091"),
 		WorkerConcurrency: 3,
 	}
