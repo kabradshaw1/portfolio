@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -30,6 +31,7 @@ import (
 	pb "github.com/kabradshaw1/portfolio/go/cart-service/pb/cart/v1"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
+	"github.com/kabradshaw1/portfolio/go/pkg/tlsconfig"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -58,9 +60,21 @@ func main() {
 		OnStateChange: resilience.ObserveStateChange,
 	})
 
+	// Resolve gRPC client credentials — mTLS if TLS_CERT_DIR is set
+	var grpcClientCreds credentials.TransportCredentials
+	if certDir := os.Getenv("TLS_CERT_DIR"); certDir != "" {
+		var clientTLSErr error
+		grpcClientCreds, clientTLSErr = tlsconfig.ClientTLS(certDir)
+		if clientTLSErr != nil {
+			log.Fatalf("client tls config: %v", clientTLSErr)
+		}
+	} else {
+		grpcClientCreds = insecure.NewCredentials()
+	}
+
 	var prodClient *productclient.GRPCClient
 	if cfg.ProductGRPCAddr != "" {
-		prodClient, err = productclient.New(cfg.ProductGRPCAddr, insecure.NewCredentials())
+		prodClient, err = productclient.New(cfg.ProductGRPCAddr, grpcClientCreds)
 		if err != nil {
 			log.Fatalf("product gRPC client: %v", err)
 		}
@@ -96,7 +110,7 @@ func main() {
 
 	// Auth-service gRPC connection for denylist checks.
 	authConn, err := grpc.NewClient(cfg.AuthGRPCURL,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(grpcClientCreds),
 	)
 	if err != nil {
 		log.Fatalf("auth gRPC dial: %v", err)
@@ -128,10 +142,32 @@ func main() {
 		}
 	}()
 
-	// gRPC server
-	grpcServer := grpc.NewServer(
-		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-	)
+	// gRPC server — mTLS if TLS_CERT_DIR is set, plaintext otherwise
+	var grpcServer *grpc.Server
+	var tlsWatchStop func()
+	if certDir := os.Getenv("TLS_CERT_DIR"); certDir != "" {
+		serverTLS, tlsErr := tlsconfig.ServerTLS(certDir)
+		if tlsErr != nil {
+			log.Fatalf("tls config: %v", tlsErr)
+		}
+		grpcServer = grpc.NewServer(
+			grpc.Creds(credentials.NewTLS(serverTLS)),
+			grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		)
+		certPtr, _, tlsErr := tlsconfig.Load(certDir)
+		if tlsErr != nil {
+			log.Fatalf("tls cert pointer: %v", tlsErr)
+		}
+		tlsWatchStop, tlsErr = tlsconfig.Watch(certDir, certPtr)
+		if tlsErr != nil {
+			log.Fatalf("tls watcher: %v", tlsErr)
+		}
+		slog.Info("mTLS enabled for gRPC server", "certDir", certDir)
+	} else {
+		grpcServer = grpc.NewServer(
+			grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		)
+	}
 	pb.RegisterCartServiceServer(grpcServer, grpcsrv.NewCartGRPCServer(cartSvc))
 
 	healthSrv := health.NewServer()
@@ -154,6 +190,12 @@ func main() {
 
 	// Graceful shutdown
 	sm := shutdown.New(15 * time.Second)
+	if tlsWatchStop != nil {
+		sm.Register("tls-watcher", 0, func(_ context.Context) error {
+			tlsWatchStop()
+			return nil
+		})
+	}
 	sm.Register("cancel-ctx", 0, func(_ context.Context) error {
 		cancel()
 		return nil

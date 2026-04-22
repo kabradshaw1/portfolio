@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -23,6 +24,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/product-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
+	"github.com/kabradshaw1/portfolio/go/pkg/tlsconfig"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -73,10 +75,32 @@ func main() {
 		}
 	}()
 
-	// gRPC server
-	grpcServer := grpc.NewServer(
-		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-	)
+	// gRPC server — mTLS if TLS_CERT_DIR is set, plaintext otherwise
+	var grpcServer *grpc.Server
+	var tlsWatchStop func()
+	if certDir := os.Getenv("TLS_CERT_DIR"); certDir != "" {
+		serverTLS, err := tlsconfig.ServerTLS(certDir)
+		if err != nil {
+			log.Fatalf("tls config: %v", err)
+		}
+		grpcServer = grpc.NewServer(
+			grpc.Creds(credentials.NewTLS(serverTLS)),
+			grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		)
+		certPtr, _, err := tlsconfig.Load(certDir)
+		if err != nil {
+			log.Fatalf("tls cert pointer: %v", err)
+		}
+		tlsWatchStop, err = tlsconfig.Watch(certDir, certPtr)
+		if err != nil {
+			log.Fatalf("tls watcher: %v", err)
+		}
+		slog.Info("mTLS enabled for gRPC server", "certDir", certDir)
+	} else {
+		grpcServer = grpc.NewServer(
+			grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		)
+	}
 	pb.RegisterProductServiceServer(grpcServer, grpcsrv.NewProductGRPCServer(
 		productSvc,
 		grpcsrv.WithStockDecrementer(productRepo),
@@ -102,6 +126,12 @@ func main() {
 
 	// Graceful shutdown
 	sm := shutdown.New(15 * time.Second)
+	if tlsWatchStop != nil {
+		sm.Register("tls-watcher", 0, func(_ context.Context) error {
+			tlsWatchStop()
+			return nil
+		})
+	}
 	sm.Register("cancel-ctx", 0, func(_ context.Context) error {
 		cancel()
 		return nil
