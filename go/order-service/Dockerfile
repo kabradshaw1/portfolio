@@ -7,6 +7,7 @@ COPY pkg/ /app/pkg/
 COPY auth-service/ /app/auth-service/
 COPY product-service/ /app/product-service/
 COPY cart-service/ /app/cart-service/
+COPY payment-service/ /app/payment-service/
 COPY order-service/go.mod order-service/go.sum ./
 RUN go mod download
 COPY order-service/ .

@@ -16,6 +16,7 @@ import (
 	authpb "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/cartclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/handler"
+	"github.com/kabradshaw1/portfolio/go/order-service/internal/paymentclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/productclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/saga"
@@ -102,6 +103,17 @@ func main() {
 		slog.Info("connected to cart-service gRPC", "addr", cfg.CartGRPCAddr)
 	}
 
+	var payClient *paymentclient.GRPCClient
+	if cfg.PaymentGRPCAddr != "" {
+		var err error
+		payClient, err = paymentclient.New(cfg.PaymentGRPCAddr, grpcCreds)
+		if err != nil {
+			log.Fatalf("payment gRPC client: %v", err)
+		}
+		defer payClient.Close()
+		slog.Info("connected to payment-service gRPC", "addr", cfg.PaymentGRPCAddr)
+	}
+
 	// Declare saga RabbitMQ topology.
 	if err := saga.DeclareTopology(ch); err != nil {
 		log.Fatalf("saga topology: %v", err)
@@ -112,7 +124,7 @@ func main() {
 
 	// Create saga orchestrator with stock checker adapter.
 	sagaPub := saga.NewPublisher(ch)
-	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, kafkaPub)
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, payClient, kafkaPub)
 
 	// Start saga event consumer.
 	consumer := saga.NewConsumer(orch)

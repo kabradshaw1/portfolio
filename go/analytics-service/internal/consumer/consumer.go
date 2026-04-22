@@ -16,9 +16,10 @@ import (
 
 // Topics consumed by the analytics service.
 const (
-	TopicOrders = "ecommerce.orders"
-	TopicCart   = "ecommerce.cart"
-	TopicViews  = "ecommerce.views"
+	TopicOrders   = "ecommerce.orders"
+	TopicCart     = "ecommerce.cart"
+	TopicViews    = "ecommerce.views"
+	TopicPayments = "ecommerce.payments"
 )
 
 // Consumer reads messages from Kafka topics and routes them to aggregators.
@@ -39,7 +40,7 @@ func New(brokers []string, orders *aggregator.OrderAggregator, trending *aggrega
 		Topic:    "", // set below via GroupTopics
 		MinBytes: 1,
 		MaxBytes: 10e6, // 10MB
-		GroupTopics: []string{TopicOrders, TopicCart, TopicViews},
+		GroupTopics: []string{TopicOrders, TopicCart, TopicViews, TopicPayments},
 	})
 
 	return &Consumer{
@@ -62,7 +63,7 @@ func (c *Consumer) IsIdle() bool {
 
 // Run reads messages until ctx is cancelled.
 func (c *Consumer) Run(ctx context.Context) error {
-	slog.Info("kafka consumer starting", "topics", []string{TopicOrders, TopicCart, TopicViews})
+	slog.Info("kafka consumer starting", "topics", []string{TopicOrders, TopicCart, TopicViews, TopicPayments})
 
 	for {
 		msg, err := c.reader.FetchMessage(ctx)
@@ -122,6 +123,8 @@ func (c *Consumer) route(msg kafka.Message) {
 		c.handleCart(env)
 	case TopicViews:
 		c.handleView(env)
+	case TopicPayments:
+		c.handlePayment(env)
 	default:
 		slog.Warn("unknown topic", "topic", msg.Topic)
 		return
@@ -187,4 +190,15 @@ func (c *Consumer) handleView(env event) {
 	}
 
 	c.trending.RecordView(data.ProductID, data.ProductName)
+}
+
+func (c *Consumer) handlePayment(env event) {
+	switch env.Type {
+	case "payment.succeeded":
+		slog.Info("payment succeeded", "data", env.Data)
+	case "payment.failed":
+		slog.Info("payment failed", "data", env.Data)
+	case "payment.refunded":
+		slog.Info("payment refunded", "data", env.Data)
+	}
 }
