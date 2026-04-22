@@ -190,12 +190,6 @@ func (r *ProductRepository) listByOffset(ctx context.Context, params model.Produ
 			whereClause = " WHERE " + strings.Join(whereParts, " AND ")
 		}
 
-		countQuery := "SELECT COUNT(*) FROM products" + whereClause
-		var total int
-		if err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
-			return result{}, fmt.Errorf("count products: %w", err)
-		}
-
 		cfg := sortConfigForParam(params.Sort)
 
 		limit := params.Limit
@@ -208,8 +202,11 @@ func (r *ProductRepository) listByOffset(ctx context.Context, params model.Produ
 		}
 		offset := (page - 1) * limit
 
+		// Single query with window function replaces separate COUNT(*) + data query.
 		query := fmt.Sprintf(
-			"SELECT id, name, description, price, category, image_url, stock, created_at, updated_at FROM products%s %s LIMIT $%d OFFSET $%d",
+			`SELECT id, name, description, price, category, image_url, stock, created_at, updated_at,
+			        COUNT(*) OVER() AS total_count
+			 FROM products%s %s LIMIT $%d OFFSET $%d`,
 			whereClause, cfg.orderClause, argIdx, argIdx+1,
 		)
 		args = append(args, limit, offset)
@@ -221,9 +218,10 @@ func (r *ProductRepository) listByOffset(ctx context.Context, params model.Produ
 		defer rows.Close()
 
 		var products []model.Product
+		var total int
 		for rows.Next() {
 			var p model.Product
-			if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.Category, &p.ImageURL, &p.Stock, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.Category, &p.ImageURL, &p.Stock, &p.CreatedAt, &p.UpdatedAt, &total); err != nil {
 				return result{}, fmt.Errorf("scan product: %w", err)
 			}
 			products = append(products, p)
@@ -274,6 +272,25 @@ func (r *ProductRepository) Categories(ctx context.Context) ([]string, error) {
 	})
 }
 
+// DecrementStock atomically decreases a product's stock within a transaction.
+//
+// Locking strategy: pessimistic locking via SELECT ... FOR UPDATE.
+// This acquires a row-level exclusive lock, preventing concurrent transactions
+// from reading or modifying the same row until the lock holder commits/rollbacks.
+//
+// Trade-offs at different scales:
+//   - Current approach (SELECT FOR UPDATE): Correct and simple. Holds the lock
+//     for the duration of the transaction. At low contention (<100 QPS per SKU),
+//     lock wait time is negligible. At high contention, transactions queue.
+//   - pg_advisory_xact_lock(product_id): Application-level lock. Avoids row-lock
+//     overhead but requires all writers to cooperate. Useful when the critical
+//     section spans multiple tables or services.
+//   - Optimistic locking (version column): UPDATE ... WHERE version = $expected.
+//     No locks held during read. Retries on conflict. Better throughput under
+//     moderate contention but wastes work on retry. Requires a version/updated_at
+//     column and retry loop in application code.
+//
+// For this portfolio's scale, pessimistic locking is the right choice.
 func (r *ProductRepository) DecrementStock(ctx context.Context, productID uuid.UUID, qty int) error {
 	return resilience.Do(ctx, r.breaker, r.retryCfg, func(ctx context.Context) error {
 		tx, err := r.pool.Begin(ctx)
