@@ -17,18 +17,18 @@ function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function statusColor(status: string): string {
+function statusBadge(status: string): string {
   switch (status.toLowerCase()) {
     case "completed":
-      return "text-green-500";
+      return "bg-green-500/10 text-green-500";
     case "processing":
-      return "text-yellow-500";
-    case "cancelled":
-      return "text-red-500";
+      return "bg-yellow-500/10 text-yellow-500";
+    case "failed":
+      return "bg-red-500/10 text-red-500";
     case "pending":
-      return "text-blue-500";
+      return "bg-blue-500/10 text-blue-500";
     default:
-      return "text-muted-foreground";
+      return "bg-muted text-muted-foreground";
   }
 }
 
@@ -92,9 +92,9 @@ export default function OrdersPage() {
               </div>
               <div className="text-right">
                 <p className="font-semibold">{formatPrice(order.total)}</p>
-                <p className={`text-sm font-medium ${statusColor(order.status)}`}>
+                <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge(order.status)}`}>
                   {order.status}
-                </p>
+                </span>
               </div>
             </div>
           ))}
