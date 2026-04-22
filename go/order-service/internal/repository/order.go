@@ -2,11 +2,12 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/pagination"
@@ -48,14 +49,19 @@ func (r *OrderRepository) Create(ctx context.Context, userID uuid.UUID, total in
 			return nil, fmt.Errorf("insert order: %w", err)
 		}
 
-		for _, item := range items {
-			_, err = tx.Exec(ctx,
-				`INSERT INTO order_items (id, order_id, product_id, quantity, price_at_purchase)
-				 VALUES ($1, $2, $3, $4, $5)`,
-				uuid.New(), order.ID, item.ProductID, item.Quantity, item.PriceAtPurchase,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("insert order item: %w", err)
+		if len(items) > 0 {
+			query := "INSERT INTO order_items (id, order_id, product_id, quantity, price_at_purchase) VALUES "
+			args := make([]any, 0, len(items)*5)
+			for i, item := range items {
+				if i > 0 {
+					query += ", "
+				}
+				base := i*5 + 1
+				query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)", base, base+1, base+2, base+3, base+4)
+				args = append(args, uuid.New(), order.ID, item.ProductID, item.Quantity, item.PriceAtPurchase)
+			}
+			if _, err = tx.Exec(ctx, query, args...); err != nil {
+				return nil, fmt.Errorf("insert order items: %w", err)
 			}
 		}
 
@@ -77,7 +83,7 @@ func (r *OrderRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Or
 			id,
 		).Scan(&order.ID, &order.UserID, &order.Status, &order.SagaStep, &order.Total, &order.CreatedAt, &order.UpdatedAt)
 		if err != nil {
-			if strings.Contains(err.Error(), "no rows") {
+			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, ErrOrderNotFound
 			}
 			return nil, fmt.Errorf("find order: %w", err)

@@ -96,21 +96,24 @@ func (r *CartRepository) Release(ctx context.Context, userID uuid.UUID) error {
 
 func (r *CartRepository) UpdateQuantity(ctx context.Context, itemID, userID uuid.UUID, quantity int) error {
 	return resilience.Do(ctx, r.breaker, r.retryCfg, func(ctx context.Context) error {
-		result, err := r.pool.Exec(ctx,
-			"UPDATE cart_items SET quantity = $1 WHERE id = $2 AND user_id = $3 AND reserved = false",
+		// Single CTE query replaces UPDATE + fallback SELECT EXISTS.
+		var wasUpdated, isReserved bool
+		err := r.pool.QueryRow(ctx,
+			`WITH updated AS (
+				UPDATE cart_items SET quantity = $1
+				WHERE id = $2 AND user_id = $3 AND reserved = false
+				RETURNING id
+			)
+			SELECT
+				EXISTS(SELECT 1 FROM updated) AS was_updated,
+				EXISTS(SELECT 1 FROM cart_items WHERE id = $2 AND user_id = $3 AND reserved = true) AS is_reserved`,
 			quantity, itemID, userID,
-		)
+		).Scan(&wasUpdated, &isReserved)
 		if err != nil {
 			return fmt.Errorf("update cart quantity: %w", err)
 		}
-		if result.RowsAffected() == 0 {
-			// Check if it exists but is reserved
-			var exists bool
-			_ = r.pool.QueryRow(ctx,
-				"SELECT EXISTS(SELECT 1 FROM cart_items WHERE id = $1 AND user_id = $2 AND reserved = true)",
-				itemID, userID,
-			).Scan(&exists)
-			if exists {
+		if !wasUpdated {
+			if isReserved {
 				return ErrItemReserved
 			}
 			return ErrCartItemNotFound
