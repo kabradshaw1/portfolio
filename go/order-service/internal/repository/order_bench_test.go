@@ -27,16 +27,31 @@ func TestMain(m *testing.M) {
 	var err error
 	benchTDB, err = dbtest.SetupPostgres(ctx, "../../migrations")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "setup postgres: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "WARNING: skipping DB benchmarks (no Docker): %v\n", err)
+	} else {
+		benchPool = benchTDB.Pool
+		seedOrderBenchData(ctx, benchPool)
 	}
 
-	benchPool = benchTDB.Pool
-	seedOrderBenchData(ctx, benchPool)
-
 	code := m.Run()
-	benchTDB.Teardown(ctx)
+	if benchTDB != nil {
+		benchTDB.Teardown(ctx)
+	}
 	os.Exit(code)
+}
+
+func skipIfNoDocker(b *testing.B) {
+	b.Helper()
+	if benchPool == nil {
+		b.Skip("skipping: Docker not available for testcontainers")
+	}
+}
+
+func skipTestIfNoDocker(t *testing.T) {
+	t.Helper()
+	if benchPool == nil {
+		t.Skip("skipping: Docker not available for testcontainers")
+	}
 }
 
 func seedOrderBenchData(ctx context.Context, pool *pgxpool.Pool) {
@@ -114,6 +129,7 @@ func newOrderBenchRepo() *OrderRepository {
 }
 
 func benchOrderCreate(b *testing.B, itemCount int) {
+	skipIfNoDocker(b)
 	repo := newOrderBenchRepo()
 	ctx := context.Background()
 
@@ -140,6 +156,7 @@ func BenchmarkOrderCreate_5Items(b *testing.B)  { benchOrderCreate(b, 5) }
 func BenchmarkOrderCreate_20Items(b *testing.B) { benchOrderCreate(b, 20) }
 
 func BenchmarkOrderFindByID(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newOrderBenchRepo()
 	ctx := context.Background()
 
@@ -160,6 +177,7 @@ func BenchmarkOrderFindByID(b *testing.B) {
 }
 
 func BenchmarkOrderListByUser_Simple(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newOrderBenchRepo()
 	ctx := context.Background()
 
@@ -174,6 +192,7 @@ func BenchmarkOrderListByUser_Simple(b *testing.B) {
 }
 
 func BenchmarkOrderFindIncompleteSagas(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newOrderBenchRepo()
 	ctx := context.Background()
 
@@ -188,6 +207,7 @@ func BenchmarkOrderFindIncompleteSagas(b *testing.B) {
 }
 
 func TestCaptureOrderExplainBaseline(t *testing.T) {
+	skipTestIfNoDocker(t)
 	if testing.Short() {
 		t.Skip("skipping explain capture in short mode")
 	}

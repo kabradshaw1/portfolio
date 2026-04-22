@@ -22,15 +22,30 @@ func TestMain(m *testing.M) {
 	var err error
 	benchTDB, err = dbtest.SetupPostgres(ctx, "../../migrations")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "setup postgres: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "WARNING: skipping DB benchmarks (no Docker): %v\n", err)
+	} else {
+		benchPool = benchTDB.Pool
 	}
 
-	benchPool = benchTDB.Pool
-
 	code := m.Run()
-	benchTDB.Teardown(ctx)
+	if benchTDB != nil {
+		benchTDB.Teardown(ctx)
+	}
 	os.Exit(code)
+}
+
+func skipIfNoDocker(b *testing.B) {
+	b.Helper()
+	if benchPool == nil {
+		b.Skip("skipping: Docker not available for testcontainers")
+	}
+}
+
+func skipTestIfNoDocker(t *testing.T) {
+	t.Helper()
+	if benchPool == nil {
+		t.Skip("skipping: Docker not available for testcontainers")
+	}
 }
 
 func newCartBenchRepo() *CartRepository {
@@ -57,6 +72,7 @@ func seedCartForUser(ctx context.Context, pool *pgxpool.Pool, count int) (uuid.U
 }
 
 func BenchmarkCartGetByUser_5Items(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newCartBenchRepo()
 	ctx := context.Background()
 	userID, _ := seedCartForUser(ctx, benchPool, 5)
@@ -72,6 +88,7 @@ func BenchmarkCartGetByUser_5Items(b *testing.B) {
 }
 
 func BenchmarkCartGetByUser_50Items(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newCartBenchRepo()
 	ctx := context.Background()
 	userID, _ := seedCartForUser(ctx, benchPool, 50)
@@ -87,6 +104,7 @@ func BenchmarkCartGetByUser_50Items(b *testing.B) {
 }
 
 func BenchmarkCartAddItem_New(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newCartBenchRepo()
 	ctx := context.Background()
 
@@ -101,6 +119,7 @@ func BenchmarkCartAddItem_New(b *testing.B) {
 }
 
 func BenchmarkCartAddItem_Upsert(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newCartBenchRepo()
 	ctx := context.Background()
 
@@ -122,6 +141,7 @@ func BenchmarkCartAddItem_Upsert(b *testing.B) {
 }
 
 func BenchmarkCartReserve(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newCartBenchRepo()
 	ctx := context.Background()
 
@@ -140,6 +160,7 @@ func BenchmarkCartReserve(b *testing.B) {
 }
 
 func BenchmarkCartUpdateQuantity_Success(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newCartBenchRepo()
 	ctx := context.Background()
 	userID, itemIDs := seedCartForUser(ctx, benchPool, 10)
@@ -155,6 +176,7 @@ func BenchmarkCartUpdateQuantity_Success(b *testing.B) {
 }
 
 func BenchmarkCartUpdateQuantity_ReservedConflict(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newCartBenchRepo()
 	ctx := context.Background()
 
@@ -169,6 +191,7 @@ func BenchmarkCartUpdateQuantity_ReservedConflict(b *testing.B) {
 }
 
 func TestCaptureCartExplainBaseline(t *testing.T) {
+	skipTestIfNoDocker(t)
 	if testing.Short() {
 		t.Skip("skipping explain capture in short mode")
 	}

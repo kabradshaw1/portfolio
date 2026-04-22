@@ -25,16 +25,31 @@ func TestMain(m *testing.M) {
 	var err error
 	benchTDB, err = dbtest.SetupPostgres(ctx, "../../migrations")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "setup postgres: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "WARNING: skipping DB benchmarks (no Docker): %v\n", err)
+	} else {
+		benchPool = benchTDB.Pool
+		seedBenchData(ctx, benchPool)
 	}
 
-	benchPool = benchTDB.Pool
-	seedBenchData(ctx, benchPool)
-
 	code := m.Run()
-	benchTDB.Teardown(ctx)
+	if benchTDB != nil {
+		benchTDB.Teardown(ctx)
+	}
 	os.Exit(code)
+}
+
+func skipIfNoDocker(b *testing.B) {
+	b.Helper()
+	if benchPool == nil {
+		b.Skip("skipping: Docker not available for testcontainers")
+	}
+}
+
+func skipTestIfNoDocker(t *testing.T) {
+	t.Helper()
+	if benchPool == nil {
+		t.Skip("skipping: Docker not available for testcontainers")
+	}
 }
 
 func seedBenchData(ctx context.Context, pool *pgxpool.Pool) {
@@ -64,6 +79,7 @@ func newBenchRepo() *ProductRepository {
 }
 
 func BenchmarkProductList_Cursor(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newBenchRepo()
 	ctx := context.Background()
 
@@ -89,6 +105,7 @@ func BenchmarkProductList_Cursor(b *testing.B) {
 }
 
 func BenchmarkProductList_Offset(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newBenchRepo()
 	ctx := context.Background()
 
@@ -107,6 +124,7 @@ func BenchmarkProductList_Offset(b *testing.B) {
 }
 
 func BenchmarkProductList_CategoryFilter(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newBenchRepo()
 	ctx := context.Background()
 
@@ -125,6 +143,7 @@ func BenchmarkProductList_CategoryFilter(b *testing.B) {
 }
 
 func BenchmarkProductList_SearchQuery(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newBenchRepo()
 	ctx := context.Background()
 
@@ -143,6 +162,7 @@ func BenchmarkProductList_SearchQuery(b *testing.B) {
 }
 
 func BenchmarkProductFindByID(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newBenchRepo()
 	ctx := context.Background()
 
@@ -163,6 +183,7 @@ func BenchmarkProductFindByID(b *testing.B) {
 }
 
 func BenchmarkProductDecrementStock(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newBenchRepo()
 	ctx := context.Background()
 
@@ -192,6 +213,7 @@ func BenchmarkProductDecrementStock(b *testing.B) {
 }
 
 func BenchmarkProductCategories(b *testing.B) {
+	skipIfNoDocker(b)
 	repo := newBenchRepo()
 	ctx := context.Background()
 
@@ -206,6 +228,7 @@ func BenchmarkProductCategories(b *testing.B) {
 }
 
 func TestCaptureExplainBaseline(t *testing.T) {
+	skipTestIfNoDocker(t)
 	if testing.Short() {
 		t.Skip("skipping explain capture in short mode")
 	}
