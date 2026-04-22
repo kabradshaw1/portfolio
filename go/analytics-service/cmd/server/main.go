@@ -14,6 +14,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -29,6 +30,8 @@ func main() {
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
+
+	redisClient := connectRedis(ctx, cfg.RedisURL)
 
 	orders := aggregator.NewOrderAggregator()
 	trending := aggregator.NewTrendingAggregator()
@@ -71,8 +74,30 @@ func main() {
 	sm.Register("kafka-close", 20, func(_ context.Context) error {
 		return cons.Close()
 	})
+	if redisClient != nil {
+		sm.Register("redis-close", 25, func(_ context.Context) error {
+			return redisClient.Close()
+		})
+	}
 	sm.Register("otel", 30, func(ctx context.Context) error {
 		return shutdownTracer(ctx)
 	})
 	sm.Wait()
+}
+
+func connectRedis(ctx context.Context, redisURL string) *redis.Client {
+	if redisURL == "" {
+		return nil
+	}
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Fatalf("failed to parse REDIS_URL: %v", err)
+	}
+	client := redis.NewClient(opts)
+	if err := client.Ping(ctx).Err(); err != nil {
+		slog.Warn("redis not available, continuing without cache", "error", err)
+		return nil
+	}
+	slog.Info("connected to redis")
+	return client
 }
