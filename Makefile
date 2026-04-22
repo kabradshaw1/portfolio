@@ -51,12 +51,14 @@ preflight-go:
 	cd go/ai-service && golangci-lint run ./...
 	cd go/product-service && golangci-lint run ./...
 	cd go/cart-service && golangci-lint run ./...
+	cd go/payment-service && golangci-lint run ./...
 	@echo "\n=== Go: tests ==="
 	cd go/auth-service && go test ./... -v -race
 	cd go/order-service && go test ./... -v -race
 	cd go/ai-service && go test ./... -v -race
 	cd go/product-service && go test ./... -v -race
 	cd go/cart-service && go test ./... -v -race
+	cd go/payment-service && go test ./... -v -race
 
 # --- Go integration tests (requires Docker via Colima) ---
 preflight-go-integration:

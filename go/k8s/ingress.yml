@@ -53,3 +53,10 @@ spec:
                 name: go-analytics-service
                 port:
                   number: 8094
+          - path: /go-payments(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: go-payment-service
+                port:
+                  number: 8098

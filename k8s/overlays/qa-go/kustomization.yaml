@@ -150,6 +150,25 @@ patches:
       - op: add
         path: /data/TLS_CERT_DIR
         value: /etc/tls
+  - target:
+      kind: ConfigMap
+      name: payment-service-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/DATABASE_URL
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/paymentdb_qa?sslmode=disable"
+      - op: replace
+        path: /data/KAFKA_BROKERS
+        value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
+      - op: replace
+        path: /data/RABBITMQ_URL
+        value: "amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672"
+      - op: add
+        path: /data/TLS_CERT_DIR
+        value: /etc/tls
   # --- Migration jobs ---
   # No Job patches needed: migration jobs read DATABASE_URL via configMapKeyRef
   # from their respective ConfigMaps above. The patches already repoint
