@@ -21,9 +21,9 @@ func setupRouter(cfg Config, analyticsHandler *handler.AnalyticsHandler) *gin.En
 	router.Use(corsMiddleware(cfg.AllowedOrigins))
 	router.Use(apperror.ErrorHandler())
 
-	router.GET("/analytics/dashboard", analyticsHandler.Dashboard)
+	router.GET("/analytics/revenue", analyticsHandler.Revenue)
 	router.GET("/analytics/trending", analyticsHandler.Trending)
-	router.GET("/analytics/orders", analyticsHandler.Orders)
+	router.GET("/analytics/cart-abandonment", analyticsHandler.CartAbandonment)
 	router.GET("/health", analyticsHandler.Health)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 

@@ -93,6 +93,9 @@ patches:
       - op: replace
         path: /data/KAFKA_BROKERS
         value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
+      - op: add
+        path: /data/REDIS_URL
+        value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
   # --- Kafka: fix advertised listeners for QA namespace ---
   - target:
       kind: StatefulSet
