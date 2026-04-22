@@ -38,6 +38,16 @@ if [ "$ENV" = "qa" ]; then
   echo "==> Deploying java-tasks-qa..."
   kubectl apply -k "$SCRIPT_DIR/overlays/qa-java"
 
+  echo "==> Installing cert-manager (if not already present)..."
+  kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.2/cert-manager.yaml 2>/dev/null || true
+  echo "==> Waiting for cert-manager..."
+  kubectl wait --for=condition=available --timeout=120s deployment/cert-manager -n cert-manager 2>/dev/null || true
+  kubectl wait --for=condition=available --timeout=120s deployment/cert-manager-webhook -n cert-manager 2>/dev/null || true
+
+  echo "==> Applying cert-manager resources..."
+  kubectl apply -f "$SCRIPT_DIR/cert-manager/cluster-issuer.yml"
+  kubectl apply -f "$SCRIPT_DIR/cert-manager/qa-certificates.yml"
+
   echo "==> Deploying go-ecommerce-qa..."
   kubectl apply -k "$SCRIPT_DIR/overlays/qa-go"
 
@@ -109,6 +119,18 @@ fi
 
 # --- Deploy go-ecommerce ---
 echo "==> Deploying go-ecommerce..."
+echo "==> Installing cert-manager (if not already present)..."
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.2/cert-manager.yaml 2>/dev/null || true
+echo "==> Waiting for cert-manager..."
+kubectl wait --for=condition=available --timeout=120s deployment/cert-manager -n cert-manager 2>/dev/null || true
+kubectl wait --for=condition=available --timeout=120s deployment/cert-manager-webhook -n cert-manager 2>/dev/null || true
+
+echo "==> Applying cert-manager resources..."
+kubectl apply -f "$SCRIPT_DIR/cert-manager/cluster-issuer.yml"
+kubectl apply -f "$SCRIPT_DIR/cert-manager/ca-certificate.yml"
+kubectl apply -f "$SCRIPT_DIR/cert-manager/issuer.yml"
+kubectl apply -f "$SCRIPT_DIR/cert-manager/certificates.yml"
+
 kubectl apply -k "$REPO_DIR/go/k8s/overlays/$ENV"
 
 echo "==> Waiting for all application services..."
