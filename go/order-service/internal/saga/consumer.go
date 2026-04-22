@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -46,8 +47,14 @@ func (c *Consumer) Start(ctx context.Context, ch *amqp.Channel) error {
 			}
 			c.processing.Store(true)
 			if err := c.handleMessage(ctx, msg); err != nil {
-				slog.Error("saga event handling failed", "error", err)
-				_ = msg.Nack(false, true)
+				// If the circuit breaker is open, nack WITHOUT requeue so the
+				// message goes to the DLQ instead of looping and keeping the
+				// breaker permanently tripped.
+				requeue := !strings.Contains(err.Error(), "CIRCUIT_OPEN") &&
+					!strings.Contains(err.Error(), "circuit breaker is open") &&
+					!strings.Contains(err.Error(), "temporarily unavailable")
+				slog.Error("saga event handling failed", "error", err, "requeue", requeue)
+				_ = msg.Nack(false, requeue)
 			} else {
 				_ = msg.Ack(false)
 			}
