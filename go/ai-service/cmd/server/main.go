@@ -161,9 +161,7 @@ func runServe() {
 
 	// Graceful shutdown
 	sm := shutdown.New(15 * time.Second)
-	sm.Register("http", 20, func(ctx context.Context) error {
-		return srv.Shutdown(ctx)
-	})
+	sm.Register("drain-http", 0, shutdown.DrainHTTP("ai-http", srv))
 	sm.Register("otel", 30, func(sctx context.Context) error {
 		return shutdownTracer(sctx)
 	})
