@@ -57,7 +57,7 @@ func (f *flushRecorder) FlushRevenue(_ context.Context, key string, totalCents, 
 	return nil
 }
 
-func (f *flushRecorder) FlushTrending(_ context.Context, key string, scores map[string]float64) error {
+func (f *flushRecorder) FlushTrending(_ context.Context, key string, scores map[string]float64, _ map[string]string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	cp := make(map[string]float64, len(scores))

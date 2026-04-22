@@ -98,7 +98,7 @@ func TestFlushAndGetTrendingRoundTrip(t *testing.T) {
 		"product-c": 5.0,
 	}
 
-	if err := s.FlushTrending(ctx, key, scores); err != nil {
+	if err := s.FlushTrending(ctx, key, scores, nil); err != nil {
 		t.Fatalf("FlushTrending: %v", err)
 	}
 
@@ -125,7 +125,7 @@ func TestGetTrendingReturnsTopByScore(t *testing.T) {
 		"product-b": 25.0,
 		"product-c": 5.0,
 	}
-	_ = s.FlushTrending(ctx, key, scores)
+	_ = s.FlushTrending(ctx, key, scores, nil)
 
 	result, _ := s.GetTrending(ctx, 2)
 	if result == nil {
@@ -139,6 +139,45 @@ func TestGetTrendingReturnsTopByScore(t *testing.T) {
 	}
 	if result.Products[1].ProductID != "product-a" {
 		t.Errorf("expected product-a second (score 10), got %s", result.Products[1].ProductID)
+	}
+}
+
+func TestFlushAndGetTrendingNamesRoundTrip(t *testing.T) {
+	t.Parallel()
+	s := NewMockStore()
+	ctx := context.Background()
+
+	key := time.Now().UTC().Format(windowKeyLayout)
+	scores := map[string]float64{
+		"product-a": 10.0,
+		"product-b": 25.0,
+	}
+	names := map[string]string{
+		"product-a": "Alpha Widget",
+		"product-b": "Beta Widget",
+	}
+
+	if err := s.FlushTrending(ctx, key, scores, names); err != nil {
+		t.Fatalf("FlushTrending: %v", err)
+	}
+
+	result, err := s.GetTrending(ctx, 10)
+	if err != nil {
+		t.Fatalf("GetTrending: %v", err)
+	}
+	if result == nil {
+		t.Fatal("GetTrending returned nil")
+	}
+
+	nameMap := make(map[string]string)
+	for _, p := range result.Products {
+		nameMap[p.ProductID] = p.ProductName
+	}
+	if nameMap["product-a"] != "Alpha Widget" {
+		t.Errorf("product-a name = %q, want %q", nameMap["product-a"], "Alpha Widget")
+	}
+	if nameMap["product-b"] != "Beta Widget" {
+		t.Errorf("product-b name = %q, want %q", nameMap["product-b"], "Beta Widget")
 	}
 }
 

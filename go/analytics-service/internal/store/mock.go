@@ -12,6 +12,7 @@ type MockStore struct {
 	mu          sync.Mutex
 	revenue     map[string]*RevenueWindow
 	trending    map[string]map[string]float64
+	trendNames  map[string]map[string]string // windowKey -> productID -> productName
 	abandonment map[string]*AbandonmentWindow
 	users       map[string]map[string]bool // key: "{windowKey}:{bucket}", value: set of userIDs
 }
@@ -21,6 +22,7 @@ func NewMockStore() *MockStore {
 	return &MockStore{
 		revenue:     make(map[string]*RevenueWindow),
 		trending:    make(map[string]map[string]float64),
+		trendNames:  make(map[string]map[string]string),
 		abandonment: make(map[string]*AbandonmentWindow),
 		users:       make(map[string]map[string]bool),
 	}
@@ -66,14 +68,21 @@ func (m *MockStore) GetRevenue(_ context.Context, hours int) ([]RevenueWindow, e
 	return result, nil
 }
 
-// FlushTrending writes product scores for the given window key.
-func (m *MockStore) FlushTrending(_ context.Context, windowKey string, scores map[string]float64) error {
+// FlushTrending writes product scores and names for the given window key.
+func (m *MockStore) FlushTrending(_ context.Context, windowKey string, scores map[string]float64, names map[string]string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.trending[windowKey] = make(map[string]float64, len(scores))
 	for k, v := range scores {
 		m.trending[windowKey][k] = v
+	}
+
+	if len(names) > 0 {
+		m.trendNames[windowKey] = make(map[string]string, len(names))
+		for k, v := range names {
+			m.trendNames[windowKey][k] = v
+		}
 	}
 	return nil
 }
@@ -102,11 +111,13 @@ func (m *MockStore) GetTrending(_ context.Context, limit int) (*TrendingResult, 
 	}
 
 	scores := m.trending[latestKey]
+	nameMap := m.trendNames[latestKey]
 	products := make([]TrendingProduct, 0, len(scores))
 	for pid, score := range scores {
 		products = append(products, TrendingProduct{
-			ProductID: pid,
-			Score:     score,
+			ProductID:   pid,
+			ProductName: nameMap[pid],
+			Score:       score,
 		})
 	}
 	sort.Slice(products, func(i, j int) bool {
@@ -269,6 +280,20 @@ func (m *MockStore) TotalCartsConverted() int64 {
 		total += w.CartsConverted
 	}
 	return total
+}
+
+// TrendingNames returns a merged map of all product names across all windows.
+func (m *MockStore) TrendingNames() map[string]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	merged := make(map[string]string)
+	for _, names := range m.trendNames {
+		for pid, name := range names {
+			merged[pid] = name
+		}
+	}
+	return merged
 }
 
 // compile-time interface check

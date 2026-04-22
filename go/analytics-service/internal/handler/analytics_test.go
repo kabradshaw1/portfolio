@@ -40,6 +40,9 @@ func newSeededStore() *stubStore {
 	_ = s.FlushTrending(ctx, key, map[string]float64{
 		"prod-1": 10.0,
 		"prod-2": 5.0,
+	}, map[string]string{
+		"prod-1": "Widget Alpha",
+		"prod-2": "Widget Beta",
 	})
 
 	// Seed abandonment data.

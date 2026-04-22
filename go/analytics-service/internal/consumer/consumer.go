@@ -249,7 +249,7 @@ func (c *Consumer) handleView(env event, eventTime time.Time) {
 		return
 	}
 
-	c.trending.HandleView(eventTime, data.ProductID)
+	c.trending.HandleView(eventTime, data.ProductID, data.ProductName)
 }
 
 func (c *Consumer) handlePayment(env event) {

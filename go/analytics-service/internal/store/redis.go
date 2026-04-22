@@ -120,9 +120,10 @@ func (s *RedisStore) GetRevenue(ctx context.Context, hours int) ([]RevenueWindow
 	return result.([]RevenueWindow), nil
 }
 
-// FlushTrending writes product scores to a sorted set for the given window.
-func (s *RedisStore) FlushTrending(ctx context.Context, windowKey string, scores map[string]float64) error {
+// FlushTrending writes product scores to a sorted set and product names to a hash for the given window.
+func (s *RedisStore) FlushTrending(ctx context.Context, windowKey string, scores map[string]float64, names map[string]string) error {
 	key := trendingPrefix + windowKey
+	namesKey := trendingPrefix + "names:" + windowKey
 
 	_, err := s.breaker.Execute(func() (any, error) {
 		ctx2, span := tracing.RedisSpan(ctx, "FlushTrending", key)
@@ -136,6 +137,16 @@ func (s *RedisStore) FlushTrending(ctx context.Context, windowKey string, scores
 		pipe := s.client.Pipeline()
 		pipe.ZAdd(ctx2, key, members...)
 		pipe.Expire(ctx2, key, trendingTTL)
+
+		if len(names) > 0 {
+			fields := make([]string, 0, len(names)*2)
+			for pid, name := range names {
+				fields = append(fields, pid, name)
+			}
+			pipe.HSet(ctx2, namesKey, fields)
+			pipe.Expire(ctx2, namesKey, trendingTTL)
+		}
+
 		_, err := pipe.Exec(ctx2)
 		if err != nil {
 			return nil, fmt.Errorf("flush trending pipeline: %w", err)
@@ -176,16 +187,28 @@ func (s *RedisStore) GetTrending(ctx context.Context, limit int) (*TrendingResul
 			return (*TrendingResult)(nil), nil
 		}
 
+		// Extract the windowKey by stripping the prefix from the latest key.
+		windowKey := latestKey[len(trendingPrefix):]
+		namesKey := trendingPrefix + "names:" + windowKey
+
 		members, err := s.client.ZRevRangeWithScores(ctx2, latestKey, 0, int64(limit-1)).Result()
 		if err != nil {
 			return nil, fmt.Errorf("get trending zrevrange: %w", err)
 		}
 
+		// Fetch product names from the names hash.
+		nameMap, err := s.client.HGetAll(ctx2, namesKey).Result()
+		if err != nil {
+			return nil, fmt.Errorf("get trending names: %w", err)
+		}
+
 		products := make([]TrendingProduct, len(members))
 		for i, m := range members {
+			pid := m.Member.(string)
 			products[i] = TrendingProduct{
-				ProductID: m.Member.(string),
-				Score:     m.Score,
+				ProductID:   pid,
+				ProductName: nameMap[pid],
+				Score:       m.Score,
 			}
 		}
 

@@ -19,7 +19,7 @@ func TestTrendingAggregator_HandleView(t *testing.T) {
 	s := store.NewMockStore()
 	agg := NewTrendingAggregator(time.Hour, 5*time.Minute, 5*time.Minute, clock, s)
 
-	ok := agg.HandleView(now.Add(1*time.Minute), "prod-1")
+	ok := agg.HandleView(now.Add(1*time.Minute), "prod-1", "Product One")
 	assert.True(t, ok, "view event should not be dropped")
 
 	// Advance past the slide interval to trigger a flush result.
@@ -78,8 +78,8 @@ func TestTrendingAggregator_CombinedScoring(t *testing.T) {
 
 	// All events in the same minute sub-bucket: 2 views (weight 1 each) + 1 cart add (weight 3).
 	eventTime := now.Add(1 * time.Minute)
-	agg.HandleView(eventTime, "prod-3")
-	agg.HandleView(eventTime, "prod-3")
+	agg.HandleView(eventTime, "prod-3", "Product Three")
+	agg.HandleView(eventTime, "prod-3", "Product Three")
 	agg.HandleCartAdd(eventTime, "prod-3")
 
 	// Advance past slide interval.
@@ -110,7 +110,7 @@ func TestTrendingAggregator_FlushSendsScoresToStore(t *testing.T) {
 	s := store.NewMockStore()
 	agg := NewTrendingAggregator(time.Hour, 5*time.Minute, 5*time.Minute, clock, s)
 
-	agg.HandleView(now.Add(1*time.Minute), "prod-A")
+	agg.HandleView(now.Add(1*time.Minute), "prod-A", "Product A")
 	agg.HandleCartAdd(now.Add(2*time.Minute), "prod-B")
 
 	// Advance past the slide interval.
@@ -125,6 +125,33 @@ func TestTrendingAggregator_FlushSendsScoresToStore(t *testing.T) {
 	// meaning FlushTrending was called on the store successfully.
 }
 
+func TestTrendingAggregator_NamesTrackedThroughFlush(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 22, 14, 0, 0, 0, time.UTC)
+	clock := window.NewMockClock(now)
+	s := store.NewMockStore()
+	agg := NewTrendingAggregator(time.Hour, 5*time.Minute, 5*time.Minute, clock, s)
+
+	agg.HandleView(now.Add(1*time.Minute), "prod-N", "Named Product")
+	agg.HandleView(now.Add(1*time.Minute), "prod-E", "") // no name
+
+	clock.Advance(10 * time.Minute)
+
+	err := agg.Flush(context.Background())
+	require.NoError(t, err)
+
+	// Verify names were flushed to the store via the helper method.
+	names := s.TrendingNames()
+	assert.Equal(t, "Named Product", names["prod-N"], "product name should be tracked")
+	assert.Empty(t, names["prod-E"], "empty name should not be stored")
+
+	// Verify scores were also flushed.
+	scores := s.TrendingScores()
+	assert.Contains(t, scores, "prod-N", "prod-N should have a score")
+	assert.Contains(t, scores, "prod-E", "prod-E should have a score")
+}
+
 func TestTrendingAggregator_DroppedEvent(t *testing.T) {
 	t.Parallel()
 
@@ -135,6 +162,6 @@ func TestTrendingAggregator_DroppedEvent(t *testing.T) {
 
 	// Event from 2 hours ago should be dropped (beyond windowSize + grace).
 	oldEvent := now.Add(-2 * time.Hour)
-	ok := agg.HandleView(oldEvent, "prod-old")
+	ok := agg.HandleView(oldEvent, "prod-old", "")
 	assert.False(t, ok, "stale event should be dropped")
 }

@@ -16,10 +16,11 @@ type RevenueWindow struct {
 
 // TrendingProduct holds a single product's trending score and interaction counts.
 type TrendingProduct struct {
-	ProductID string  `json:"product_id"`
-	Score     float64 `json:"score"`
-	Views     int     `json:"views"`
-	CartAdds  int     `json:"cart_adds"`
+	ProductID   string  `json:"product_id"`
+	ProductName string  `json:"product_name"`
+	Score       float64 `json:"score"`
+	Views       int     `json:"views"`
+	CartAdds    int     `json:"cart_adds"`
 }
 
 // TrendingResult holds the trending products for a given window.
@@ -45,7 +46,7 @@ type Store interface {
 	GetRevenue(ctx context.Context, hours int) ([]RevenueWindow, error)
 
 	// Trending
-	FlushTrending(ctx context.Context, windowKey string, scores map[string]float64) error
+	FlushTrending(ctx context.Context, windowKey string, scores map[string]float64, names map[string]string) error
 	GetTrending(ctx context.Context, limit int) (*TrendingResult, error)
 
 	// Abandonment
