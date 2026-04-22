@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kabradshaw1/portfolio/go/auth-service v0.0.0
 	github.com/kabradshaw1/portfolio/go/cart-service v0.0.0
+	github.com/kabradshaw1/portfolio/go/payment-service v0.0.0-00010101000000-000000000000
 	github.com/kabradshaw1/portfolio/go/pkg v0.0.0
 	github.com/kabradshaw1/portfolio/go/product-service v0.0.0
 	github.com/prometheus/client_golang v1.23.2
@@ -33,6 +34,8 @@ replace github.com/kabradshaw1/portfolio/go/auth-service => ../auth-service
 replace github.com/kabradshaw1/portfolio/go/cart-service => ../cart-service
 
 replace github.com/kabradshaw1/portfolio/go/product-service => ../product-service
+
+replace github.com/kabradshaw1/portfolio/go/payment-service => ../payment-service
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

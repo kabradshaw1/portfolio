@@ -262,13 +262,11 @@ Current ADRs:
      Use the spec filename without the date prefix or `.md` extension (e.g., `restore-e2e-prestaging-design`).
   2. **Plan + execute** — Write the implementation plan and execute it. Don't ask to approve the plan — just do it.
   3. **Push** — Commit and push. Don't ask before pushing.
-  4. **Watch CI** — Monitor the GitHub Actions run. Wait for all checks to complete.
-  5. **If CI passes** — Create the PR to `qa` and notify Kyle.
-  6. **If CI fails** — Debug the failure. Before fixing, check that the fix still complies with the spec that started this work. Push the fix and go back to step 4. Repeat until all checks are green, then create the PR.
+  4. **Create the PR** to `qa` and notify Kyle.
   
-  Don't ask for approval at any point in this flow. The spec review is the gate — everything after that is autonomous.
-- **On `qa`:** commit and push autonomously. Don't ask before pushing. Watch CI after pushing and debug failures. For CI fixes: lint errors, formatting, type errors, and config issues are fine to fix autonomously. For anything that changes application behavior (logic, API contracts, data flow), stop and check with Kyle before fixing.
-- **On `main`:** never push autonomously. When Kyle explicitly says to merge/ship to main, handle the full flow: merge `qa` into `main`, push, watch CI, debug minor failures, clean up worktree, delete feature branch (local + remote).
+  Don't ask for approval at any point in this flow. The spec review is the gate — everything after that is autonomous. Do NOT watch or monitor CI — Kyle will check CI results himself and report back if there are failures to fix.
+- **On `qa`:** commit and push autonomously. Don't ask before pushing. Do NOT watch CI after pushing. For CI fixes Kyle reports: lint errors, formatting, type errors, and config issues are fine to fix autonomously. For anything that changes application behavior (logic, API contracts, data flow), stop and check with Kyle before fixing.
+- **On `main`:** never push autonomously. When Kyle explicitly says to merge/ship to main, handle the full flow: merge `qa` into `main`, push, clean up worktree, delete feature branch (local + remote). Do NOT watch CI.
 
 Claude Code determines the current branch via `git branch --show-current` and follows the rules for that branch. No special mode or prompt needed.
 
@@ -283,6 +281,7 @@ Before every commit, run the relevant preflight checks and fix any failures. Onl
 - **Java changes:** `make preflight-java` (checkstyle + unit tests, runs locally)
 - **Java integration tests:** `make preflight-java-integration` (runs over SSH on Debian server, on-demand)
 - **Go changes:** `make preflight-go` (lint + tests)
+- **Go migration changes:** `make preflight-go-migrations` (requires Docker via Colima + `golang-migrate`; spins up Postgres, runs all migrations, verifies tables)
 - **Full sweep:** `make preflight` (runs Python + frontend + security + Java + Go locally)
 
 If a check fails, fix it before committing. If you can't fix it, explain the failure to Kyle before suggesting a push.
