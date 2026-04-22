@@ -187,7 +187,7 @@ func (o *Orchestrator) completeOrder(ctx context.Context, orderID uuid.UUID) err
 				PriceCents: oi.PriceAtPurchase,
 			}
 		}
-		kafka.SafePublish(ctx, o.kafkaPub, "ecommerce.orders", order.ID.String(), kafka.Event{
+		kafka.SafePublish(ctx, o.kafkaPub, "ecommerce.orders", order.UserID.String(), kafka.Event{
 			Type: "order.completed",
 			Data: map[string]any{
 				"orderID":    order.ID.String(),

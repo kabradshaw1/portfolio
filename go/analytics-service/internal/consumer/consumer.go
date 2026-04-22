@@ -22,32 +22,40 @@ const (
 	TopicPayments = "ecommerce.payments"
 )
 
-// Consumer reads messages from Kafka topics and routes them to aggregators.
+// Consumer reads messages from Kafka topics and routes them to windowed aggregators.
 type Consumer struct {
-	reader    *kafka.Reader
-	orders    *aggregator.OrderAggregator
-	trending  *aggregator.TrendingAggregator
-	carts     *aggregator.CartAggregator
-	connected  atomic.Bool
-	processing atomic.Bool
+	reader        *kafka.Reader
+	revenue       *aggregator.RevenueAggregator
+	trending      *aggregator.TrendingAggregator
+	abandonment   *aggregator.AbandonmentAggregator
+	connected     atomic.Bool
+	processing    atomic.Bool
+	flushInterval time.Duration
 }
 
-// New creates a Kafka consumer for the given brokers.
-func New(brokers []string, orders *aggregator.OrderAggregator, trending *aggregator.TrendingAggregator, carts *aggregator.CartAggregator) *Consumer {
+// New creates a Kafka consumer for the given brokers with windowed aggregators.
+func New(
+	brokers []string,
+	revenue *aggregator.RevenueAggregator,
+	trending *aggregator.TrendingAggregator,
+	abandonment *aggregator.AbandonmentAggregator,
+	flushInterval time.Duration,
+) *Consumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:  brokers,
-		GroupID:  "analytics-group",
-		Topic:    "", // set below via GroupTopics
-		MinBytes: 1,
-		MaxBytes: 10e6, // 10MB
+		Brokers:     brokers,
+		GroupID:     "analytics-group",
+		Topic:       "", // set below via GroupTopics
+		MinBytes:    1,
+		MaxBytes:    10e6, // 10MB
 		GroupTopics: []string{TopicOrders, TopicCart, TopicViews, TopicPayments},
 	})
 
 	return &Consumer{
-		reader:   reader,
-		orders:   orders,
-		trending: trending,
-		carts:    carts,
+		reader:        reader,
+		revenue:       revenue,
+		trending:      trending,
+		abandonment:   abandonment,
+		flushInterval: flushInterval,
 	}
 }
 
@@ -61,15 +69,23 @@ func (c *Consumer) IsIdle() bool {
 	return !c.processing.Load()
 }
 
-// Run reads messages until ctx is cancelled.
+// Run reads messages until ctx is cancelled, flushing aggregators periodically.
 func (c *Consumer) Run(ctx context.Context) error {
-	slog.Info("kafka consumer starting", "topics", []string{TopicOrders, TopicCart, TopicViews, TopicPayments})
+	slog.Info("kafka consumer starting",
+		"topics", []string{TopicOrders, TopicCart, TopicViews, TopicPayments},
+		"flushInterval", c.flushInterval,
+	)
+
+	// Start the periodic flush ticker in a background goroutine.
+	go c.flushLoop(ctx)
 
 	for {
 		msg, err := c.reader.FetchMessage(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil // shutting down
+				// Shutting down — perform a final flush before returning.
+				c.finalFlush()
+				return nil
 			}
 			slog.Error("kafka fetch error", "error", err)
 			metrics.ConsumerErrors.Inc()
@@ -96,6 +112,42 @@ func (c *Consumer) Run(ctx context.Context) error {
 	}
 }
 
+// flushLoop periodically flushes all aggregators until the context is cancelled.
+func (c *Consumer) flushLoop(ctx context.Context) {
+	ticker := time.NewTicker(c.flushInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			c.flushAll(ctx)
+		}
+	}
+}
+
+// flushAll calls Flush on every aggregator, logging errors but continuing.
+func (c *Consumer) flushAll(ctx context.Context) {
+	if err := c.revenue.Flush(ctx); err != nil {
+		slog.Error("revenue flush error", "error", err)
+	}
+	if err := c.trending.Flush(ctx); err != nil {
+		slog.Error("trending flush error", "error", err)
+	}
+	if err := c.abandonment.Flush(ctx); err != nil {
+		slog.Error("abandonment flush error", "error", err)
+	}
+}
+
+// finalFlush performs one last flush with a fresh context on shutdown.
+func (c *Consumer) finalFlush() {
+	slog.Info("performing final flush on shutdown")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) //nolint:mnd // shutdown timeout
+	defer cancel()
+	c.flushAll(ctx)
+}
+
 // Close shuts down the Kafka reader.
 func (c *Consumer) Close() error {
 	return c.reader.Close()
@@ -103,8 +155,9 @@ func (c *Consumer) Close() error {
 
 // event is the envelope all Kafka messages use.
 type event struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
+	Type      string          `json:"type"`
+	Timestamp time.Time       `json:"timestamp"`
+	Data      json.RawMessage `json:"data"`
 }
 
 func (c *Consumer) route(msg kafka.Message) {
@@ -114,15 +167,20 @@ func (c *Consumer) route(msg kafka.Message) {
 		return
 	}
 
+	eventTime := env.Timestamp
+	if eventTime.IsZero() {
+		eventTime = time.Now()
+	}
+
 	start := time.Now()
 
 	switch msg.Topic {
 	case TopicOrders:
-		c.handleOrder(env)
+		c.handleOrder(env, eventTime)
 	case TopicCart:
-		c.handleCart(env)
+		c.handleCart(env, eventTime)
 	case TopicViews:
-		c.handleView(env)
+		c.handleView(env, eventTime)
 	case TopicPayments:
 		c.handlePayment(env)
 	default:
@@ -140,7 +198,7 @@ type orderData struct {
 	TotalCents int    `json:"totalCents"`
 }
 
-func (c *Consumer) handleOrder(env event) {
+func (c *Consumer) handleOrder(env event, eventTime time.Time) {
 	var data orderData
 	if err := json.Unmarshal(env.Data, &data); err != nil {
 		slog.Error("unmarshal order data", "error", err)
@@ -148,20 +206,22 @@ func (c *Consumer) handleOrder(env event) {
 	}
 
 	switch env.Type {
-	case "order.created":
-		c.orders.RecordCreated(data.TotalCents)
 	case "order.completed":
-		c.orders.RecordCompleted(data.TotalCents)
-	case "order.failed":
-		c.orders.RecordFailed()
+		if !c.revenue.HandleOrderCompleted(eventTime, int64(data.TotalCents)) {
+			slog.Debug("late order event dropped", "orderID", data.OrderID)
+		}
+		if !c.abandonment.HandleOrderCompleted(eventTime, data.UserID) {
+			slog.Debug("late abandonment order event dropped", "orderID", data.OrderID)
+		}
 	}
 }
 
 type cartData struct {
 	ProductID string `json:"productID"`
+	UserID    string `json:"userID"`
 }
 
-func (c *Consumer) handleCart(env event) {
+func (c *Consumer) handleCart(env event, eventTime time.Time) {
 	var data cartData
 	if err := json.Unmarshal(env.Data, &data); err != nil {
 		slog.Error("unmarshal cart data", "error", err)
@@ -170,10 +230,10 @@ func (c *Consumer) handleCart(env event) {
 
 	switch env.Type {
 	case "cart.item_added":
-		c.carts.RecordItemAdded(data.ProductID)
-		c.trending.RecordPurchase(data.ProductID, "")
-	case "cart.item_removed":
-		c.carts.RecordItemRemoved()
+		c.trending.HandleCartAdd(eventTime, data.ProductID)
+		if data.UserID != "" {
+			c.abandonment.HandleCartItemAdded(eventTime, data.UserID)
+		}
 	}
 }
 
@@ -182,14 +242,14 @@ type viewData struct {
 	ProductName string `json:"productName"`
 }
 
-func (c *Consumer) handleView(env event) {
+func (c *Consumer) handleView(env event, eventTime time.Time) {
 	var data viewData
 	if err := json.Unmarshal(env.Data, &data); err != nil {
 		slog.Error("unmarshal view data", "error", err)
 		return
 	}
 
-	c.trending.RecordView(data.ProductID, data.ProductName)
+	c.trending.HandleView(eventTime, data.ProductID)
 }
 
 func (c *Consumer) handlePayment(env event) {

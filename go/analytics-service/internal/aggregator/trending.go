@@ -1,125 +1,78 @@
 package aggregator
 
 import (
-	"sort"
+	"context"
 	"time"
+
+	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/store"
+	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/window"
 )
 
-// TrendingSlot holds per-minute product interaction data.
-type TrendingSlot struct {
-	Views     map[string]int // productID → count
-	Purchases map[string]int // productID → count
-	Names     map[string]string // productID → name
+type trendingData struct {
+	Scores map[string]float64 // productID -> weighted score
 }
 
-func newTrendingSlot() TrendingSlot {
-	return TrendingSlot{
-		Views:     make(map[string]int),
-		Purchases: make(map[string]int),
-		Names:     make(map[string]string),
-	}
-}
-
-// TrendingAggregator tracks product views and purchases in a 1-hour window.
+// TrendingAggregator tracks product trending scores in sliding windows.
 type TrendingAggregator struct {
-	window *Window[TrendingSlot]
-}
-
-const trendingWindowDuration = 1 * time.Hour
-
-// NewTrendingAggregator creates an aggregator with a 1-hour window.
-func NewTrendingAggregator() *TrendingAggregator {
-	return &TrendingAggregator{
-		window: NewWindow(trendingWindowDuration, newTrendingSlot),
-	}
-}
-
-// RecordView records a product view.
-func (a *TrendingAggregator) RecordView(productID, productName string) {
-	a.window.Update(func(s *TrendingSlot) {
-		s.Views[productID]++
-		if productName != "" {
-			s.Names[productID] = productName
-		}
-	})
-}
-
-// RecordPurchase records a product purchase.
-func (a *TrendingAggregator) RecordPurchase(productID, productName string) {
-	a.window.Update(func(s *TrendingSlot) {
-		s.Purchases[productID]++
-		if productName != "" {
-			s.Names[productID] = productName
-		}
-	})
+	window *window.SlidingWindow[trendingData]
+	store  store.Store
 }
 
 const (
-	purchaseWeight = 5
-	maxTrending    = 10
+	trendingViewWeight    = 1.0
+	trendingCartAddWeight = 3.0
 )
 
-// TrendingProduct is a single product's trending score.
-type TrendingProduct struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Score     int    `json:"score"`
-	Views     int    `json:"views"`
-	Purchases int    `json:"purchases"`
+// NewTrendingAggregator creates a trending aggregator with the given sliding window parameters.
+func NewTrendingAggregator(
+	windowSize, slideInterval, grace time.Duration,
+	clock window.Clock,
+	s store.Store,
+) *TrendingAggregator {
+	return &TrendingAggregator{
+		window: window.NewSlidingWindow(
+			windowSize, slideInterval, grace, clock,
+			func() trendingData {
+				return trendingData{Scores: make(map[string]float64)}
+			},
+			func(dst, src *trendingData) {
+				for pid, score := range src.Scores {
+					dst.Scores[pid] += score
+				}
+			},
+		),
+		store: s,
+	}
 }
 
-// TopProducts returns the top 10 trending products by score.
-func (a *TrendingAggregator) TopProducts() []TrendingProduct {
-	entries := a.window.Get()
+// HandleView records a product view event with weight 1. Returns false if dropped.
+func (a *TrendingAggregator) HandleView(eventTime time.Time, productID string) bool {
+	return a.window.Add(eventTime, func(d *trendingData) {
+		d.Scores[productID] += trendingViewWeight
+	})
+}
 
-	views := make(map[string]int)
-	purchases := make(map[string]int)
-	names := make(map[string]string)
+// HandleCartAdd records a cart-add event with weight 3. Returns false if dropped.
+func (a *TrendingAggregator) HandleCartAdd(eventTime time.Time, productID string) bool {
+	return a.window.Add(eventTime, func(d *trendingData) {
+		d.Scores[productID] += trendingCartAddWeight
+	})
+}
 
-	for _, e := range entries {
-		for pid, count := range e.Value.Views {
-			views[pid] += count
+// Flush writes all expired sliding windows to the store and evicts old sub-buckets.
+// Returns the first error encountered but continues evicting after successful flushes.
+func (a *TrendingAggregator) Flush(ctx context.Context) error {
+	results := a.window.Tick()
+
+	var firstErr error
+	for _, r := range results {
+		if err := a.store.FlushTrending(ctx, r.Key, r.Data.Scores); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
-		for pid, count := range e.Value.Purchases {
-			purchases[pid] += count
-		}
-		for pid, name := range e.Value.Names {
-			names[pid] = name
-		}
+		a.window.Evict(r.Key)
 	}
-
-	// Merge into scored list.
-	type scored struct {
-		id    string
-		score int
-	}
-	var all []scored
-	seen := make(map[string]bool)
-	for pid := range views {
-		seen[pid] = true
-		all = append(all, scored{id: pid, score: views[pid] + purchases[pid]*purchaseWeight})
-	}
-	for pid := range purchases {
-		if !seen[pid] {
-			all = append(all, scored{id: pid, score: purchases[pid] * purchaseWeight})
-		}
-	}
-
-	sort.Slice(all, func(i, j int) bool { return all[i].score > all[j].score })
-
-	if len(all) > maxTrending {
-		all = all[:maxTrending]
-	}
-
-	result := make([]TrendingProduct, len(all))
-	for i, s := range all {
-		result[i] = TrendingProduct{
-			ID:        s.id,
-			Name:      names[s.id],
-			Score:     s.score,
-			Views:     views[s.id],
-			Purchases: purchases[s.id],
-		}
-	}
-	return result
+	return firstErr
 }

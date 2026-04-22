@@ -12,6 +12,9 @@ import (
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/aggregator"
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/consumer"
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/handler"
+	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/store"
+	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/window"
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 	"github.com/redis/go-redis/v9"
@@ -31,21 +34,38 @@ func main() {
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
 
+	// Redis (optional — service works without it).
 	redisClient := connectRedis(ctx, cfg.RedisURL)
 
-	orders := aggregator.NewOrderAggregator()
-	trending := aggregator.NewTrendingAggregator()
-	carts := aggregator.NewCartAggregator()
+	// Store: use Redis if available, in-memory MockStore otherwise.
+	var analyticsStore store.Store
+	if redisClient != nil {
+		breaker := resilience.NewBreaker(resilience.BreakerConfig{Name: "analytics-redis"})
+		analyticsStore = store.NewRedisStore(redisClient, breaker)
+	} else {
+		slog.Warn("redis not configured, using in-memory store (data will not persist across restarts)")
+		analyticsStore = store.NewMockStore()
+	}
 
+	// Clock for windowed aggregators.
+	clock := window.RealClock{}
+
+	// Aggregators.
+	revenue := aggregator.NewRevenueAggregator(cfg.RevenueWindowSize, cfg.LateEventGrace, clock, analyticsStore)
+	trending := aggregator.NewTrendingAggregator(cfg.TrendingWindowSize, cfg.TrendingSlideInterval, cfg.LateEventGrace, clock, analyticsStore)
+	abandonment := aggregator.NewAbandonmentAggregator(cfg.AbandonmentWindowSize, cfg.LateEventGrace, clock, analyticsStore)
+
+	// Kafka consumer.
 	brokers := strings.Split(cfg.KafkaBrokers, ",")
-	cons := consumer.New(brokers, orders, trending, carts)
+	cons := consumer.New(brokers, revenue, trending, abandonment, cfg.WindowFlushInterval)
 	go func() {
 		if err := cons.Run(ctx); err != nil {
 			slog.Error("kafka consumer failed", "error", err)
 		}
 	}()
 
-	analyticsHandler := handler.NewAnalyticsHandler(orders, trending, carts, cons)
+	// Handler and router.
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsStore, cons)
 	router := setupRouter(cfg, analyticsHandler)
 
 	srv := &http.Server{
@@ -63,7 +83,7 @@ func main() {
 		}
 	}()
 
-	// Graceful shutdown
+	// Graceful shutdown.
 	sm := shutdown.New(15 * time.Second)
 	sm.Register("cancel-ctx", 0, func(_ context.Context) error {
 		cancel()

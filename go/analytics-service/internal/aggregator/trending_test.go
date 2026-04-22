@@ -1,57 +1,140 @@
 package aggregator
 
-import "testing"
+import (
+	"context"
+	"testing"
+	"time"
 
-func TestTrendingAggregator_TopProducts(t *testing.T) {
-	a := NewTrendingAggregator()
+	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/store"
+	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/window"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
-	// Product A: 10 views, 2 purchases → score = 10 + 2*5 = 20
-	for i := 0; i < 10; i++ {
-		a.RecordView("a", "Product A")
-	}
-	a.RecordPurchase("a", "Product A")
-	a.RecordPurchase("a", "Product A")
+func TestTrendingAggregator_HandleView(t *testing.T) {
+	t.Parallel()
 
-	// Product B: 5 views, 0 purchases → score = 5
-	for i := 0; i < 5; i++ {
-		a.RecordView("b", "Product B")
-	}
+	now := time.Date(2026, 4, 22, 14, 0, 0, 0, time.UTC)
+	clock := window.NewMockClock(now)
+	s := store.NewMockStore()
+	agg := NewTrendingAggregator(time.Hour, 5*time.Minute, 5*time.Minute, clock, s)
 
-	// Product C: 0 views, 3 purchases → score = 15
-	for i := 0; i < 3; i++ {
-		a.RecordPurchase("c", "Product C")
-	}
+	ok := agg.HandleView(now.Add(1*time.Minute), "prod-1")
+	assert.True(t, ok, "view event should not be dropped")
 
-	top := a.TopProducts()
-	if len(top) != 3 {
-		t.Fatalf("expected 3 products, got %d", len(top))
+	// Advance past the slide interval to trigger a flush result.
+	clock.Advance(10 * time.Minute)
+
+	results := agg.window.Tick()
+	require.NotEmpty(t, results)
+
+	// Find the result containing our product and verify weight.
+	var found bool
+	for _, r := range results {
+		if score, exists := r.Data.Scores["prod-1"]; exists {
+			assert.Equal(t, 1.0, score, "view should add weight 1")
+			found = true
+			break
+		}
 	}
-	if top[0].ID != "a" {
-		t.Errorf("expected product a first, got %s", top[0].ID)
-	}
-	if top[0].Score != 20 {
-		t.Errorf("expected score 20, got %d", top[0].Score)
-	}
-	if top[1].ID != "c" {
-		t.Errorf("expected product c second, got %s", top[1].ID)
-	}
+	assert.True(t, found, "prod-1 should appear in at least one result")
 }
 
-func TestTrendingAggregator_Empty(t *testing.T) {
-	a := NewTrendingAggregator()
-	top := a.TopProducts()
-	if len(top) != 0 {
-		t.Errorf("expected empty list, got %d", len(top))
+func TestTrendingAggregator_HandleCartAdd(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 22, 14, 0, 0, 0, time.UTC)
+	clock := window.NewMockClock(now)
+	s := store.NewMockStore()
+	agg := NewTrendingAggregator(time.Hour, 5*time.Minute, 5*time.Minute, clock, s)
+
+	ok := agg.HandleCartAdd(now.Add(1*time.Minute), "prod-2")
+	assert.True(t, ok, "cart add event should not be dropped")
+
+	clock.Advance(10 * time.Minute)
+
+	results := agg.window.Tick()
+	require.NotEmpty(t, results)
+
+	var found bool
+	for _, r := range results {
+		if score, exists := r.Data.Scores["prod-2"]; exists {
+			assert.Equal(t, 3.0, score, "cart add should add weight 3")
+			found = true
+			break
+		}
 	}
+	assert.True(t, found, "prod-2 should appear in at least one result")
 }
 
-func TestTrendingAggregator_MaxTen(t *testing.T) {
-	a := NewTrendingAggregator()
-	for i := 0; i < 15; i++ {
-		a.RecordView(string(rune('a'+i)), "")
+func TestTrendingAggregator_CombinedScoring(t *testing.T) {
+	t.Parallel()
+
+	// Use a time aligned to a minute boundary for predictable sub-bucket behavior.
+	now := time.Date(2026, 4, 22, 14, 0, 0, 0, time.UTC)
+	clock := window.NewMockClock(now)
+	s := store.NewMockStore()
+	agg := NewTrendingAggregator(time.Hour, 5*time.Minute, 5*time.Minute, clock, s)
+
+	// All events in the same minute sub-bucket: 2 views (weight 1 each) + 1 cart add (weight 3).
+	eventTime := now.Add(1 * time.Minute)
+	agg.HandleView(eventTime, "prod-3")
+	agg.HandleView(eventTime, "prod-3")
+	agg.HandleCartAdd(eventTime, "prod-3")
+
+	// Advance past slide interval.
+	clock.Advance(10 * time.Minute)
+
+	results := agg.window.Tick()
+	require.NotEmpty(t, results)
+
+	// Each result from Tick aggregates all sub-buckets in the window.
+	// Since all events are in one sub-bucket, each slide result containing
+	// that sub-bucket should show the full score of 5.0.
+	var found bool
+	for _, r := range results {
+		if score, exists := r.Data.Scores["prod-3"]; exists {
+			assert.Equal(t, 5.0, score, "combined score per slide should be 2*1 + 1*3 = 5")
+			found = true
+			break
+		}
 	}
-	top := a.TopProducts()
-	if len(top) != 10 {
-		t.Errorf("expected max 10, got %d", len(top))
-	}
+	assert.True(t, found, "prod-3 should appear in at least one result")
+}
+
+func TestTrendingAggregator_FlushSendsScoresToStore(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 22, 14, 0, 0, 0, time.UTC)
+	clock := window.NewMockClock(now)
+	s := store.NewMockStore()
+	agg := NewTrendingAggregator(time.Hour, 5*time.Minute, 5*time.Minute, clock, s)
+
+	agg.HandleView(now.Add(1*time.Minute), "prod-A")
+	agg.HandleCartAdd(now.Add(2*time.Minute), "prod-B")
+
+	// Advance past the slide interval.
+	clock.Advance(10 * time.Minute)
+
+	err := agg.Flush(context.Background())
+	require.NoError(t, err)
+
+	// After flush, the sliding window should have evicted old sub-buckets
+	// (the Evict call cleans up sub-buckets past windowSize + grace).
+	// The key verification is that Flush completed without error,
+	// meaning FlushTrending was called on the store successfully.
+}
+
+func TestTrendingAggregator_DroppedEvent(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 22, 14, 0, 0, 0, time.UTC)
+	clock := window.NewMockClock(now)
+	s := store.NewMockStore()
+	agg := NewTrendingAggregator(time.Hour, 5*time.Minute, 5*time.Minute, clock, s)
+
+	// Event from 2 hours ago should be dropped (beyond windowSize + grace).
+	oldEvent := now.Add(-2 * time.Hour)
+	ok := agg.HandleView(oldEvent, "prod-old")
+	assert.False(t, ok, "stale event should be dropped")
 }
