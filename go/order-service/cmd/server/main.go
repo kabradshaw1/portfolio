@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/kabradshaw1/portfolio/go/auth-service/authmiddleware"
@@ -21,6 +22,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
+	"github.com/kabradshaw1/portfolio/go/pkg/tlsconfig"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -56,10 +58,32 @@ func main() {
 	orderRepo := repository.NewOrderRepository(pool, pgBreaker)
 	returnRepo := repository.NewReturnRepository(pool, pgBreaker)
 
+	// Resolve gRPC transport credentials — mTLS if TLS_CERT_DIR is set
+	var grpcCreds credentials.TransportCredentials
+	var tlsWatchStop func()
+	if certDir := os.Getenv("TLS_CERT_DIR"); certDir != "" {
+		var tlsErr error
+		grpcCreds, tlsErr = tlsconfig.ClientTLS(certDir)
+		if tlsErr != nil {
+			log.Fatalf("tls config: %v", tlsErr)
+		}
+		certPtr, _, tlsErr := tlsconfig.Load(certDir)
+		if tlsErr != nil {
+			log.Fatalf("tls cert pointer: %v", tlsErr)
+		}
+		tlsWatchStop, tlsErr = tlsconfig.Watch(certDir, certPtr)
+		if tlsErr != nil {
+			log.Fatalf("tls watcher: %v", tlsErr)
+		}
+		slog.Info("mTLS enabled for gRPC clients", "certDir", certDir)
+	} else {
+		grpcCreds = insecure.NewCredentials()
+	}
+
 	var prodClient *productclient.GRPCClient
 	if cfg.ProductGRPCAddr != "" {
 		var err error
-		prodClient, err = productclient.New(cfg.ProductGRPCAddr, insecure.NewCredentials())
+		prodClient, err = productclient.New(cfg.ProductGRPCAddr, grpcCreds)
 		if err != nil {
 			log.Fatalf("product gRPC client: %v", err)
 		}
@@ -70,7 +94,7 @@ func main() {
 	var cartClient *cartclient.GRPCClient
 	if cfg.CartGRPCAddr != "" {
 		var err error
-		cartClient, err = cartclient.New(cfg.CartGRPCAddr, cfg.ProductGRPCAddr, insecure.NewCredentials())
+		cartClient, err = cartclient.New(cfg.CartGRPCAddr, cfg.ProductGRPCAddr, grpcCreds)
 		if err != nil {
 			log.Fatalf("cart gRPC client: %v", err)
 		}
@@ -106,7 +130,7 @@ func main() {
 
 	// Auth-service gRPC connection for denylist checks.
 	authConn, err := grpc.NewClient(cfg.AuthGRPCURL,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(grpcCreds),
 	)
 	if err != nil {
 		log.Fatalf("auth gRPC dial: %v", err)
@@ -141,6 +165,12 @@ func main() {
 
 	// Graceful shutdown
 	sm := shutdown.New(15 * time.Second)
+	if tlsWatchStop != nil {
+		sm.Register("tls-watcher", 0, func(_ context.Context) error {
+			tlsWatchStop()
+			return nil
+		})
+	}
 	sm.Register("cancel-ctx", 0, func(_ context.Context) error {
 		cancel()
 		return nil
