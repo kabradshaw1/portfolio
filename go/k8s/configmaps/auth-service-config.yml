@@ -13,3 +13,4 @@ data:
   COOKIE_SAMESITE: "none"
   GRPC_PORT: "9091"
   REDIS_URL: redis://redis.java-tasks.svc.cluster.local:6379
+  TLS_CERT_DIR: /etc/tls

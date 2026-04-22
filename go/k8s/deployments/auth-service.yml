@@ -20,6 +20,10 @@ spec:
       terminationGracePeriodSeconds: 20
       imagePullSecrets:
         - name: ghcr-secret
+      volumes:
+        - name: grpc-tls
+          secret:
+            secretName: auth-grpc-tls
       containers:
         - name: go-auth-service
           image: ghcr.io/kabradshaw1/portfolio/go-auth-service:latest
@@ -75,3 +79,7 @@ spec:
               port: 8091
             initialDelaySeconds: 15
             periodSeconds: 30
+          volumeMounts:
+            - name: grpc-tls
+              mountPath: /etc/tls
+              readOnly: true
