@@ -22,6 +22,7 @@ func setupRouter(
 	returnHandler *handler.ReturnHandler,
 	healthHandler *handler.HealthHandler,
 	adminHandler *handler.AdminHandler,
+	reportingHandler *handler.ReportingHandler,
 	redisClient *redis.Client,
 	authMw gin.HandlerFunc,
 ) *gin.Engine {
@@ -56,6 +57,15 @@ func setupRouter(
 	{
 		admin.GET("/dlq/messages", adminHandler.ListDLQ)
 		admin.POST("/dlq/replay", adminHandler.ReplayDLQ)
+	}
+
+	// Reporting routes — no auth, read-only analytics
+	report := router.Group("/reporting")
+	{
+		report.GET("/sales-trends", reportingHandler.SalesTrends)
+		report.GET("/inventory-turnover", reportingHandler.InventoryTurnover)
+		report.GET("/top-customers", reportingHandler.TopCustomers)
+		report.GET("/product-performance", reportingHandler.ProductPerformance)
 	}
 
 	return router

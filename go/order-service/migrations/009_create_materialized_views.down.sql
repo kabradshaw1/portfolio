@@ -1,0 +1,3 @@
+DROP MATERIALIZED VIEW IF EXISTS mv_customer_summary;
+DROP MATERIALIZED VIEW IF EXISTS mv_product_performance;
+DROP MATERIALIZED VIEW IF EXISTS mv_daily_revenue;

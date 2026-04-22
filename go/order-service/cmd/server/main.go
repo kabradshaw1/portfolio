@@ -16,8 +16,10 @@ import (
 	authpb "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/cartclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/handler"
+	"github.com/kabradshaw1/portfolio/go/order-service/internal/partition"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/paymentclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/productclient"
+	"github.com/kabradshaw1/portfolio/go/order-service/internal/reporting"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/saga"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/service"
@@ -137,6 +139,17 @@ func main() {
 	// Recover incomplete sagas from previous crashes.
 	saga.RecoverIncomplete(ctx, orderRepo, orch)
 
+	// Start partition maintenance
+	partition.RunMaintenance(ctx, pool)
+
+	// Start materialized view refresher
+	refresher := reporting.NewRefresher(pool, 15*time.Minute)
+	go refresher.Run(ctx)
+
+	// Create reporting repository and handler
+	reportingRepo := reporting.NewRepository(pool, pgBreaker)
+	reportingHandler := handler.NewReportingHandler(reportingRepo)
+
 	orderSvc := service.NewOrderService(orderRepo, cartClient, orch)
 	returnSvc := service.NewReturnService(returnRepo, orderSvc)
 
@@ -156,6 +169,7 @@ func main() {
 		handler.NewReturnHandler(returnSvc),
 		handler.NewHealthHandler(pool, redisClient),
 		handler.NewAdminHandler(dlqClient),
+		reportingHandler,
 		redisClient,
 		authMw,
 	)
