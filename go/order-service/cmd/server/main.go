@@ -16,7 +16,10 @@ import (
 	authpb "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/cartclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/handler"
+	"github.com/kabradshaw1/portfolio/go/order-service/internal/partition"
+	"github.com/kabradshaw1/portfolio/go/order-service/internal/paymentclient"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/productclient"
+	"github.com/kabradshaw1/portfolio/go/order-service/internal/reporting"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/saga"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/service"
@@ -102,6 +105,17 @@ func main() {
 		slog.Info("connected to cart-service gRPC", "addr", cfg.CartGRPCAddr)
 	}
 
+	var payClient *paymentclient.GRPCClient
+	if cfg.PaymentGRPCAddr != "" {
+		var err error
+		payClient, err = paymentclient.New(cfg.PaymentGRPCAddr, grpcCreds)
+		if err != nil {
+			log.Fatalf("payment gRPC client: %v", err)
+		}
+		defer payClient.Close()
+		slog.Info("connected to payment-service gRPC", "addr", cfg.PaymentGRPCAddr)
+	}
+
 	// Declare saga RabbitMQ topology.
 	if err := saga.DeclareTopology(ch); err != nil {
 		log.Fatalf("saga topology: %v", err)
@@ -112,7 +126,7 @@ func main() {
 
 	// Create saga orchestrator with stock checker adapter.
 	sagaPub := saga.NewPublisher(ch)
-	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, kafkaPub, cfg.FrontendURL)
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, payClient, kafkaPub, cfg.FrontendURL)
 
 	// Start saga event consumer.
 	consumer := saga.NewConsumer(orch)
@@ -124,6 +138,17 @@ func main() {
 
 	// Recover incomplete sagas from previous crashes.
 	saga.RecoverIncomplete(ctx, orderRepo, orch)
+
+	// Start partition maintenance
+	partition.RunMaintenance(ctx, pool)
+
+	// Start materialized view refresher
+	refresher := reporting.NewRefresher(pool, 15*time.Minute)
+	go refresher.Run(ctx)
+
+	// Create reporting repository and handler
+	reportingRepo := reporting.NewRepository(pool, pgBreaker)
+	reportingHandler := handler.NewReportingHandler(reportingRepo)
 
 	orderSvc := service.NewOrderService(orderRepo, cartClient, orch)
 	returnSvc := service.NewReturnService(returnRepo, orderSvc)
@@ -144,6 +169,7 @@ func main() {
 		handler.NewReturnHandler(returnSvc),
 		handler.NewHealthHandler(pool, redisClient),
 		handler.NewAdminHandler(dlqClient),
+		reportingHandler,
 		redisClient,
 		authMw,
 	)

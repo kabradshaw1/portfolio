@@ -7,6 +7,8 @@ const (
 	StepCreated              = "CREATED"
 	StepItemsReserved        = "ITEMS_RESERVED"
 	StepStockValidated       = "STOCK_VALIDATED"
+	StepPaymentCreated       = "PAYMENT_CREATED"
+	StepPaymentConfirmed     = "PAYMENT_CONFIRMED"
 	StepCompleted            = "COMPLETED"
 	StepCompensating         = "COMPENSATING"
 	StepCompensationComplete = "COMPENSATION_COMPLETE"
@@ -45,14 +47,17 @@ type Event struct {
 
 // Commands
 const (
-	CmdReserveItems = "reserve.items"
-	CmdReleaseItems = "release.items"
-	CmdClearCart    = "clear.cart"
+	CmdReserveItems  = "reserve.items"
+	CmdReleaseItems  = "release.items"
+	CmdClearCart     = "clear.cart"
+	CmdCreatePayment = "create.payment"
 )
 
 // Events
 const (
-	EvtItemsReserved = "items.reserved"
-	EvtItemsReleased = "items.released"
-	EvtCartCleared   = "cart.cleared"
+	EvtItemsReserved    = "items.reserved"
+	EvtItemsReleased    = "items.released"
+	EvtCartCleared      = "cart.cleared"
+	EvtPaymentConfirmed = "payment.confirmed"
+	EvtPaymentFailed    = "payment.failed"
 )
