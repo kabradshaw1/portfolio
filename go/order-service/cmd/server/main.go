@@ -112,7 +112,7 @@ func main() {
 
 	// Create saga orchestrator with stock checker adapter.
 	sagaPub := saga.NewPublisher(ch)
-	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, kafkaPub)
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, kafkaPub, cfg.FrontendURL)
 
 	// Start saga event consumer.
 	consumer := saga.NewConsumer(orch)

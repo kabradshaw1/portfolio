@@ -20,6 +20,7 @@ type Config struct {
 	ProductGRPCAddr   string // optional, address of product-service gRPC
 	CartGRPCAddr      string // optional, address of cart-service gRPC
 	AuthGRPCURL       string // address of auth-service gRPC for denylist checks
+	FrontendURL       string // default "http://localhost:3000", used for Stripe redirect URLs
 }
 
 // loadConfig reads environment variables and returns a validated Config.
@@ -37,6 +38,7 @@ func loadConfig() Config {
 		ProductGRPCAddr:   os.Getenv("PRODUCT_GRPC_ADDR"),
 		CartGRPCAddr:      os.Getenv("CART_GRPC_ADDR"),
 		AuthGRPCURL:       getEnv("AUTH_GRPC_URL", "localhost:9091"),
+		FrontendURL:       getEnv("FRONTEND_URL", "http://localhost:3000"),
 		WorkerConcurrency: 3,
 	}
 

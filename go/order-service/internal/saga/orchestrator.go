@@ -16,6 +16,7 @@ type OrderRepository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*model.Order, error)
 	UpdateSagaStep(ctx context.Context, orderID uuid.UUID, step string) error
 	UpdateStatus(ctx context.Context, orderID uuid.UUID, status model.OrderStatus) error
+	UpdateCheckoutURL(ctx context.Context, orderID uuid.UUID, url string) error
 }
 
 // SagaPublisher abstracts RabbitMQ command publishing.
@@ -30,15 +31,16 @@ type StockChecker interface {
 
 // Orchestrator drives the checkout saga state machine.
 type Orchestrator struct {
-	repo     OrderRepository
-	pub      SagaPublisher
-	stock    StockChecker
-	kafkaPub kafka.Producer
+	repo        OrderRepository
+	pub         SagaPublisher
+	stock       StockChecker
+	kafkaPub    kafka.Producer
+	frontendURL string // used to build Stripe success/cancel redirect URLs
 }
 
 // NewOrchestrator creates a saga orchestrator.
-func NewOrchestrator(repo OrderRepository, pub SagaPublisher, stock StockChecker, kafkaPub kafka.Producer) *Orchestrator {
-	return &Orchestrator{repo: repo, pub: pub, stock: stock, kafkaPub: kafkaPub}
+func NewOrchestrator(repo OrderRepository, pub SagaPublisher, stock StockChecker, kafkaPub kafka.Producer, frontendURL string) *Orchestrator {
+	return &Orchestrator{repo: repo, pub: pub, stock: stock, kafkaPub: kafkaPub, frontendURL: frontendURL}
 }
 
 // Advance moves the saga forward from its current step.

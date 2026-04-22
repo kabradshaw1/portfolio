@@ -58,6 +58,9 @@ patches:
       - op: add
         path: /data/TLS_CERT_DIR
         value: /etc/tls
+      - op: add
+        path: /data/FRONTEND_URL
+        value: "https://qa.kylebradshaw.dev"
   - target:
       kind: ConfigMap
       name: ai-service-config

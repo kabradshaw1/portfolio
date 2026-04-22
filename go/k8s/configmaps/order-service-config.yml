@@ -15,3 +15,4 @@ data:
   CART_GRPC_ADDR: "go-cart-service.go-ecommerce.svc.cluster.local:9096"
   AUTH_GRPC_URL: go-auth-service.go-ecommerce.svc.cluster.local:9091
   TLS_CERT_DIR: /etc/tls
+  FRONTEND_URL: "https://kylebradshaw.dev"
