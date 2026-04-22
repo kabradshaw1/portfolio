@@ -188,6 +188,89 @@ func (m *MockStore) CountAbandonmentUsers(_ context.Context, windowKey, bucket s
 	return int64(len(m.users[setKey])), nil
 }
 
+// RevenueLen returns the number of revenue window entries.
+func (m *MockStore) RevenueLen() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.revenue)
+}
+
+// TotalRevenueCents sums all revenue across all windows.
+func (m *MockStore) TotalRevenueCents() int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var total int64
+	for _, w := range m.revenue {
+		total += w.TotalCents
+	}
+	return total
+}
+
+// TotalOrderCount sums all order counts across all windows.
+func (m *MockStore) TotalOrderCount() int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var total int64
+	for _, w := range m.revenue {
+		total += w.OrderCount
+	}
+	return total
+}
+
+// TrendingLen returns the number of trending window entries.
+func (m *MockStore) TrendingLen() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.trending)
+}
+
+// TrendingScores returns a merged map of all product scores across all windows.
+func (m *MockStore) TrendingScores() map[string]float64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	merged := make(map[string]float64)
+	for _, scores := range m.trending {
+		for pid, score := range scores {
+			merged[pid] += score
+		}
+	}
+	return merged
+}
+
+// AbandonmentLen returns the number of abandonment window entries.
+func (m *MockStore) AbandonmentLen() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.abandonment)
+}
+
+// TotalCartsStarted sums all carts started across all windows.
+func (m *MockStore) TotalCartsStarted() int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var total int64
+	for _, w := range m.abandonment {
+		total += w.CartsStarted
+	}
+	return total
+}
+
+// TotalCartsConverted sums all carts converted across all windows.
+func (m *MockStore) TotalCartsConverted() int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var total int64
+	for _, w := range m.abandonment {
+		total += w.CartsConverted
+	}
+	return total
+}
+
 // compile-time interface check
 var _ Store = (*MockStore)(nil)
 
