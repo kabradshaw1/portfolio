@@ -218,7 +218,12 @@ ssh debian 'kubectl exec -n java-tasks deploy/postgres -- psql -U taskuser -d ta
     - op: replace
       path: /data/REDIS_URL
       value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
+    - op: replace
+      path: /data/RABBITMQ_URL
+      value: "amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672/qa"
 ```
+
+**CRITICAL:** QA RABBITMQ_URL must include the `/qa` vhost. Without it, QA consumers compete with production consumers for the same messages. This caused a checkout bug where production cart-service consumed QA saga commands.
 
 3. **Ingress** — Add path in `go/k8s/ingress.yml` and update `go/k8s/kustomization.yaml`
 

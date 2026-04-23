@@ -7,6 +7,13 @@ description: Debug Go service issues using Loki, Jaeger, and Grafana. Use when e
 
 **Rule: Use Grafana/Loki/Jaeger before SSH.** Every runtime issue should be diagnosable from the observability stack. SSH + `kubectl logs` is a last resort.
 
+## Key Facts
+
+- **5xx errors are always logged.** The `apperror.ErrorHandler()` middleware logs all AppErrors with `HTTPStatus >= 500` via `slog.Error` with code, message, status, and request_id. If you see a 500 in request logs, there will be a corresponding "server error" log entry.
+- **QA uses a separate RabbitMQ vhost.** QA services connect to `amqp://...5672/qa` while prod uses the default vhost. Queues and exchanges are fully isolated between environments.
+- **Webhook dashboard shows per-event-type breakdown.** The "Payment Webhooks" panel groups by `event_type` and `outcome` — check which specific Stripe event type is failing.
+- **Saga stalled alert exists.** `saga-order-stalled` fires when orders reach `PAYMENT_CREATED` but none complete within 30 minutes.
+
 ## Step 1: Verify the Right Build is Deployed
 
 Before investigating any issue, confirm the service is running the expected code. Query buildinfo from Loki:
