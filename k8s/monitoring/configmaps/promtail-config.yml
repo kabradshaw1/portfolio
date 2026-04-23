@@ -31,6 +31,12 @@ data:
                 level: level
                 msg: msg
                 traceID: traceID
+          - json:
+              expressions:
+                trace_id: trace_id
+          - template:
+              source: traceID
+              template: '{{ if .trace_id }}{{ .trace_id }}{{ else }}{{ .traceID }}{{ end }}'
           - labels:
               level:
           - output:
