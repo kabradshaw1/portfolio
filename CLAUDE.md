@@ -210,22 +210,56 @@ Three pillars deployed in the `monitoring` namespace (`k8s/monitoring/`):
 
 ### Loki Log Queries
 
-Access via Grafana (Explore → Loki datasource) or via CLI:
+Access via Grafana (Explore → Loki datasource) or via CLI.
+
+**CLI queries use `kubectl exec` into the Loki pod** — this is more reliable than SSH port-forwarding, which requires a double hop (SSH tunnel + kubectl port-forward) and frequently drops:
 
 ```bash
-# Port-forward to Loki
-ssh debian 'kubectl port-forward svc/loki 3100:3100 -n monitoring &'
+# Compute nanosecond timestamps (Loki requires these) — use python3 since macOS date lacks -d
+START=$(python3 -c 'import time; print(int((time.time()-3600)*1e9))')  # 1 hour ago
+END=$(python3 -c 'import time; print(int(time.time()*1e9))')
 
-# Query by order ID across all services
-curl -sG http://localhost:3100/loki/api/v1/query_range \
-  --data-urlencode 'query={namespace=~"go-ecommerce.*"} |= "<orderID>" | json' \
-  --data-urlencode 'limit=50'
+# Query errors across all go-ecommerce namespaces (prod + QA)
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
+  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D~%22go-ecommerce.*%22%7D+%7C+json+%7C+level%3D%22ERROR%22&limit=50&start=${START}&end=${END}'"
 
-# Query errors for a specific service
-curl -sG http://localhost:3100/loki/api/v1/query_range \
-  --data-urlencode 'query={namespace="go-ecommerce-qa",app="go-order-service"} | json | level="ERROR"' \
-  --data-urlencode 'limit=20'
+# Query by order ID
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
+  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D~%22go-ecommerce.*%22%7D+%7C%3D+%22<orderID>%22+%7C+json&limit=50&start=${START}&end=${END}'"
+
+# Query errors for a specific QA service
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
+  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22go-order-service%22%7D+%7C+json+%7C+level%3D%22ERROR%22&limit=20&start=${START}&end=${END}'"
 ```
+
+**Parsing Loki JSON output** — pipe through python3 to extract structured fields:
+```bash
+... | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for stream in data.get('data', {}).get('result', []):
+    app = stream.get('stream', {}).get('app', 'unknown')
+    for ts, line in stream.get('values', []):
+        try:
+            p = json.loads(line)
+            msg = p.get('msg', p.get('message', line[:300]))
+            err = p.get('error', '')
+            tid = p.get('traceID', '')
+            print(f'[{app}] [{p.get(\"level\",\"\")}] {msg}')
+            if err: print(f'  error: {err}')
+            if tid: print(f'  traceID: {tid}')
+        except: print(f'[{app}] {line[:200]}')
+"
+```
+
+**URL-encoding reference** for common LogQL queries:
+| LogQL | URL-encoded |
+|-------|-------------|
+| `{namespace="X"}` | `%7Bnamespace%3D%22X%22%7D` |
+| `\| json` | `+%7C+json` |
+| `\| level="ERROR"` | `+%7C+level%3D%22ERROR%22` |
+| `\|= "text"` | `+%7C%3D+%22text%22` |
+| `{namespace=~"go-ecommerce.*"}` | `%7Bnamespace%3D~%22go-ecommerce.*%22%7D` |
 
 In Grafana Explore (Loki datasource):
 - **By order ID:** `{namespace=~"go-ecommerce.*"} |= "<orderID>" | json`
