@@ -5,16 +5,12 @@ import Link from "next/link";
 import {
   BarChart,
   Bar,
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from "recharts";
-import { goOrderFetch } from "@/lib/go-order-api";
 
 const ANALYTICS_URL =
   process.env.NEXT_PUBLIC_GO_ANALYTICS_URL || "http://localhost:8094";
@@ -52,35 +48,12 @@ interface AbandonmentWindow {
   abandonment_rate: number;
 }
 
-interface SalesTrend {
-  day: string;
-  dailyRevenue: number;
-  rolling7Day: number;
-  rolling30Day: number;
-}
-
-interface ProductPerf {
-  productId: string;
-  productName: string;
-  category: string;
-  currentStock: number;
-  totalUnitsSold: number;
-  totalRevenueCents: number;
-  totalOrders: number;
-  avgOrderValueCents: number;
-  returnCount: number;
-  returnRatePct: number;
-}
-
 export default function AnalyticsPage() {
   const [revenue, setRevenue] = useState<RevenueWindow[]>([]);
   const [trending, setTrending] = useState<TrendingData | null>(null);
   const [abandonment, setAbandonment] = useState<AbandonmentWindow[]>([]);
   const [stale, setStale] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [salesTrends, setSalesTrends] = useState<SalesTrend[]>([]);
-  const [productPerf, setProductPerf] = useState<ProductPerf[]>([]);
-  const [reportingError, setReportingError] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -126,28 +99,6 @@ export default function AnalyticsPage() {
     };
   }, [fetchAll]);
 
-  useEffect(() => {
-    async function fetchReporting() {
-      try {
-        const [trendsRes, perfRes] = await Promise.all([
-          goOrderFetch("/reporting/sales-trends?days=30"),
-          goOrderFetch("/reporting/product-performance"),
-        ]);
-        if (trendsRes.ok) {
-          const data = await trendsRes.json();
-          setSalesTrends(data.trends ?? []);
-        }
-        if (perfRes.ok) {
-          const data = await perfRes.json();
-          setProductPerf(data.products ?? []);
-        }
-      } catch {
-        setReportingError("Unable to load reporting data");
-      }
-    }
-    fetchReporting();
-  }, []);
-
   const totalRevenue = revenue.reduce((sum, w) => sum + w.total_cents, 0);
   const totalOrders = revenue.reduce((sum, w) => sum + w.order_count, 0);
   const avgOrderValue =
@@ -171,7 +122,10 @@ export default function AnalyticsPage() {
       <h1 className="mb-2 text-2xl font-bold">Kafka Streaming Analytics</h1>
       <p className="mb-6 text-sm text-muted-foreground">
         Real-time ecommerce metrics powered by Apache Kafka consumer groups and
-        in-memory sliding window aggregation.
+        in-memory sliding window aggregation. Events are published by the
+        order-service and cart-service as part of normal operations, consumed by
+        the analytics-service, and aggregated into the dashboards below. Data
+        refreshes every 30 seconds.
       </p>
 
       {stale && (
@@ -339,121 +293,6 @@ export default function AnalyticsPage() {
               No cart abandonment data yet
             </p>
           )}
-        </div>
-      </div>
-
-      {/* Historical Reporting */}
-      <div className="mt-12 border-t border-foreground/10 pt-8">
-        <h2 className="mb-2 text-xl font-bold">Historical Reporting</h2>
-        <p className="mb-6 text-sm text-muted-foreground">
-          Pre-computed analytics from PostgreSQL materialized views with concurrent refresh.
-          Revenue trends use rolling window functions over range-partitioned order data.
-        </p>
-
-        {reportingError && (
-          <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-600 dark:text-red-400">
-            {reportingError}
-          </div>
-        )}
-
-        {/* Sales Trends Chart */}
-        <div className="mb-8">
-          <h3 className="mb-3 text-lg font-semibold">Revenue Trends (30 Days)</h3>
-          <div className="rounded border bg-card p-4">
-            {salesTrends.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={salesTrends}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="day"
-                    tickFormatter={(v: string) =>
-                      new Date(v).toLocaleDateString([], { month: "short", day: "numeric" })
-                    }
-                    fontSize={12}
-                  />
-                  <YAxis
-                    tickFormatter={(v: number) => `$${(v / 100).toFixed(0)}`}
-                    fontSize={12}
-                  />
-                  <Tooltip
-                    labelFormatter={(v) => new Date(String(v)).toLocaleDateString()}
-                    formatter={(value, name) => [
-                      typeof value === "number" ? `$${(value / 100).toFixed(2)}` : String(value ?? ""),
-                      name === "rolling7Day" ? "7-Day Rolling" : "30-Day Rolling",
-                    ]}
-                  />
-                  <Legend
-                    formatter={(value: string) =>
-                      value === "rolling7Day" ? "7-Day Rolling" : "30-Day Rolling"
-                    }
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="rolling30Day"
-                    stroke="hsl(var(--muted-foreground))"
-                    fill="hsl(var(--muted-foreground) / 0.1)"
-                    strokeWidth={1.5}
-                    dot={false}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="rolling7Day"
-                    stroke="hsl(var(--primary))"
-                    fill="hsl(var(--primary) / 0.15)"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="py-8 text-center text-muted-foreground">
-                No revenue data yet
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Product Performance Table */}
-        <div>
-          <h3 className="mb-3 text-lg font-semibold">Product Performance</h3>
-          <div className="rounded border bg-card">
-            {productPerf.length > 0 ? (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="px-4 py-2">Product</th>
-                    <th className="px-4 py-2">Category</th>
-                    <th className="px-4 py-2 text-right">Units Sold</th>
-                    <th className="px-4 py-2 text-right">Revenue</th>
-                    <th className="px-4 py-2 text-right">Avg Order</th>
-                    <th className="px-4 py-2 text-right">Return Rate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {productPerf.map((p) => (
-                    <tr key={p.productId} className="border-b last:border-0">
-                      <td className="px-4 py-2 font-medium">{p.productName}</td>
-                      <td className="px-4 py-2 text-muted-foreground">{p.category}</td>
-                      <td className="px-4 py-2 text-right">{p.totalUnitsSold}</td>
-                      <td className="px-4 py-2 text-right">
-                        ${(p.totalRevenueCents / 100).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        ${(p.avgOrderValueCents / 100).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        {p.returnRatePct.toFixed(1)}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <p className="px-4 py-8 text-center text-muted-foreground">
-                No product data yet
-              </p>
-            )}
-          </div>
         </div>
       </div>
     </div>
