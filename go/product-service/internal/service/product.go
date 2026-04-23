@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -73,6 +74,8 @@ func (s *ProductService) List(ctx context.Context, params model.ProductListParam
 		return resp.Products, resp.Total, nil
 	}
 
+	slog.InfoContext(ctx, "product list cache miss", "cacheKey", cacheKey)
+
 	products, total, err := s.repo.List(ctx, params)
 	if err != nil {
 		return nil, 0, err
@@ -91,6 +94,8 @@ func (s *ProductService) GetByID(ctx context.Context, id uuid.UUID) (*model.Prod
 	if p, ok := getFromCache[model.Product](ctx, s.redis, cacheKey); ok {
 		return &p, nil
 	}
+
+	slog.InfoContext(ctx, "product cache miss", "productID", id, "cacheKey", cacheKey)
 
 	product, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -123,6 +128,7 @@ func (s *ProductService) InvalidateCache(ctx context.Context) error {
 	}
 
 	var cursor uint64
+	var deleted int
 	for {
 		keys, nextCursor, err := s.redis.Scan(ctx, cursor, "product:*", 100).Result()
 		if err != nil {
@@ -130,6 +136,7 @@ func (s *ProductService) InvalidateCache(ctx context.Context) error {
 		}
 		if len(keys) > 0 {
 			s.redis.Del(ctx, keys...)
+			deleted += len(keys)
 		}
 		cursor = nextCursor
 		if cursor == 0 {
@@ -138,5 +145,6 @@ func (s *ProductService) InvalidateCache(ctx context.Context) error {
 	}
 
 	s.redis.Del(ctx, "product:categories")
+	slog.InfoContext(ctx, "product cache invalidated", "keysDeleted", deleted+1)
 	return nil
 }
