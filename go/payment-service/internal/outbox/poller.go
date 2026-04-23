@@ -9,7 +9,9 @@ import (
 	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 
+	"github.com/kabradshaw1/portfolio/go/payment-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/payment-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
 // OutboxFetcher reads unpublished outbox messages and marks them published.
@@ -73,6 +75,9 @@ func (p *Poller) poll(ctx context.Context) {
 	}
 
 	for _, msg := range messages {
+		headers := make(amqp.Table)
+		tracing.InjectAMQP(ctx, headers)
+
 		err := p.ch.PublishWithContext(
 			ctx,
 			msg.Exchange,
@@ -83,6 +88,7 @@ func (p *Poller) poll(ctx context.Context) {
 				ContentType:  "application/json",
 				DeliveryMode: amqp.Persistent,
 				MessageId:    msg.ID.String(),
+				Headers:      headers,
 				Body:         msg.Payload,
 			},
 		)
@@ -93,8 +99,11 @@ func (p *Poller) poll(ctx context.Context) {
 				"routingKey", msg.RoutingKey,
 				"error", err,
 			)
+			metrics.OutboxPublish.WithLabelValues("error").Inc()
 			continue
 		}
+
+		metrics.OutboxPublish.WithLabelValues("success").Inc()
 
 		if markErr := p.fetcher.MarkPublished(ctx, msg.ID); markErr != nil {
 			slog.ErrorContext(ctx, "outbox poller: failed to mark message published",
