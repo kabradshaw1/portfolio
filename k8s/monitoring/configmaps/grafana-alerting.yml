@@ -1079,6 +1079,95 @@ data:
             annotations:
               summary: "Go product-service p95 latency is above 2s"
 
+          - uid: saga-dlq-accumulating
+            title: Saga DLQ Messages Accumulating
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: increase(saga_dlq_messages_total[10m])
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 0
+                  refId: C
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Saga DLQ is accumulating messages — check order-service saga consumer for failures"
+
+          - uid: saga-step-error-rate
+            title: Saga Step Error Rate High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    sum(rate(saga_steps_total{outcome="error"}[5m]))
+                    / sum(rate(saga_steps_total[5m]))
+                    * 100
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 10
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Saga step error rate is above 10% — orders may be failing"
+
       - orgId: 1
         name: Streaming Analytics
         folder: Infrastructure Alerts

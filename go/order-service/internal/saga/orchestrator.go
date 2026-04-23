@@ -75,6 +75,7 @@ func (o *Orchestrator) Advance(ctx context.Context, orderID uuid.UUID) error {
 	case StepCompleted, StepCompensationComplete, StepFailed:
 		return nil // Terminal states
 	default:
+		SagaStepsTotal.WithLabelValues(order.SagaStep, "error").Inc()
 		return fmt.Errorf("unknown saga step: %s", order.SagaStep)
 	}
 }
@@ -107,6 +108,7 @@ func (o *Orchestrator) handleItemsReserved(ctx context.Context, order *model.Ord
 		if !available {
 			slog.WarnContext(ctx, "stock insufficient, compensating",
 				"orderID", order.ID, "productID", item.ProductID)
+			SagaStepsTotal.WithLabelValues(StepItemsReserved, "error").Inc()
 			return o.compensate(ctx, order)
 		}
 	}
@@ -129,6 +131,7 @@ func (o *Orchestrator) handleStockValidated(ctx context.Context, order *model.Or
 		if err != nil {
 			slog.ErrorContext(ctx, "create payment failed, compensating",
 				"orderID", order.ID, "error", err)
+			SagaStepsTotal.WithLabelValues(StepStockValidated, "error").Inc()
 			return o.compensate(ctx, order)
 		}
 		if err := o.repo.UpdateSagaStep(ctx, order.ID, StepPaymentCreated); err != nil {
@@ -207,6 +210,7 @@ func (o *Orchestrator) compensate(ctx context.Context, order *model.Order) error
 		if err := o.payment.RefundPayment(ctx, order.ID, "saga compensation"); err != nil {
 			slog.ErrorContext(ctx, "refund failed during compensation",
 				"orderID", order.ID, "error", err)
+			SagaStepsTotal.WithLabelValues("refund", "error").Inc()
 		}
 	}
 
@@ -252,6 +256,7 @@ func (o *Orchestrator) HandleEvent(ctx context.Context, evt Event) error {
 		return o.Advance(ctx, orderID)
 
 	case EvtPaymentFailed:
+		SagaStepsTotal.WithLabelValues(StepPaymentCreated, "error").Inc()
 		order, err := o.repo.FindByID(ctx, orderID)
 		if err != nil {
 			return fmt.Errorf("find order for payment failure: %w", err)
@@ -266,6 +271,7 @@ func (o *Orchestrator) HandleEvent(ctx context.Context, evt Event) error {
 		return o.repo.UpdateSagaStep(ctx, orderID, StepCompensationComplete)
 
 	default:
+		SagaStepsTotal.WithLabelValues("unknown_event", "error").Inc()
 		return fmt.Errorf("unknown saga event: %s", evt.Event)
 	}
 }
