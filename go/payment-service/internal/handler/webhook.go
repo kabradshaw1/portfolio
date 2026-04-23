@@ -13,14 +13,14 @@ import (
 
 // WebhookService processes validated Stripe webhook events.
 type WebhookService interface {
-	HandlePaymentSucceeded(ctx context.Context, eventID, intentID string) error
-	HandlePaymentFailed(ctx context.Context, eventID, intentID string) error
+	HandlePaymentSucceeded(ctx context.Context, eventID, intentID string, metadata map[string]string) error
+	HandlePaymentFailed(ctx context.Context, eventID, intentID string, metadata map[string]string) error
 	HandleRefund(ctx context.Context, eventID, intentID string) error
 }
 
 // EventVerifier validates the Stripe-Signature header and extracts event fields.
 type EventVerifier interface {
-	VerifyAndParse(payload []byte, sigHeader string) (eventType, eventID, intentID string, err error)
+	VerifyAndParse(payload []byte, sigHeader string) (eventType, eventID, intentID string, metadata map[string]string, err error)
 }
 
 // WebhookHandler handles incoming Stripe webhook events.
@@ -44,7 +44,7 @@ func (h *WebhookHandler) HandleWebhook(c *gin.Context) {
 	}
 
 	sigHeader := c.GetHeader("Stripe-Signature")
-	eventType, eventID, intentID, err := h.verifier.VerifyAndParse(payload, sigHeader)
+	eventType, eventID, intentID, metadata, err := h.verifier.VerifyAndParse(payload, sigHeader)
 	if err != nil {
 		_ = c.Error(apperror.BadRequest("WEBHOOK_INVALID_SIGNATURE", "webhook signature verification failed"))
 		return
@@ -55,14 +55,14 @@ func (h *WebhookHandler) HandleWebhook(c *gin.Context) {
 
 	switch eventType {
 	case "payment_intent.succeeded":
-		if err := h.svc.HandlePaymentSucceeded(ctx, eventID, intentID); err != nil {
+		if err := h.svc.HandlePaymentSucceeded(ctx, eventID, intentID, metadata); err != nil {
 			metrics.WebhookEvents.WithLabelValues(eventType, "error").Inc()
 			_ = c.Error(err)
 			return
 		}
 		metrics.WebhookEvents.WithLabelValues(eventType, "processed").Inc()
 	case "payment_intent.payment_failed":
-		if err := h.svc.HandlePaymentFailed(ctx, eventID, intentID); err != nil {
+		if err := h.svc.HandlePaymentFailed(ctx, eventID, intentID, metadata); err != nil {
 			metrics.WebhookEvents.WithLabelValues(eventType, "error").Inc()
 			_ = c.Error(err)
 			return
