@@ -28,6 +28,9 @@ func ErrorHandler() gin.HandlerFunc {
 
 		var ae *AppError
 		if errors.As(err, &ae) {
+			if ae.HTTPStatus >= http.StatusInternalServerError {
+				slog.Error("server error", "code", ae.Code, "message", ae.Message, "status", ae.HTTPStatus, "request_id", rid)
+			}
 			if len(ae.Fields) > 0 {
 				c.JSON(ae.HTTPStatus, ValidationErrorResponse{
 					Error: ValidationErrorBody{

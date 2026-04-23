@@ -10,5 +10,5 @@ data:
   RABBITMQ_URL: "amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672"
   KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
   ALLOWED_ORIGINS: "https://kylebradshaw.dev,http://localhost:3000"
-  OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger-collector.monitoring.svc.cluster.local:4317"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"
   TLS_CERT_DIR: "/etc/tls"

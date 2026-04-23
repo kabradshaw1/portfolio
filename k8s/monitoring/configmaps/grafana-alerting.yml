@@ -1168,6 +1168,64 @@ data:
             annotations:
               summary: "Saga step error rate is above 10% — orders may be failing"
 
+          - uid: saga-order-stalled
+            title: Saga Orders Stalled
+            condition: D
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 1800
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: increase(saga_steps_total{step="PAYMENT_CREATED",outcome="success"}[30m])
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 1800
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    increase(saga_steps_total{step="COMPLETED",outcome="success"}[30m])
+                    + increase(saga_steps_total{step="COMPENSATION_COMPLETE",outcome="success"}[30m])
+                  instant: true
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 1800
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 0
+                  refId: C
+              - refId: D
+                relativeTimeRange:
+                  from: 1800
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: lt
+                        params:
+                          - 1
+                  refId: D
+            for: 30m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Orders reached PAYMENT_CREATED but none completed in 30 minutes — check payment webhook and saga flow"
+
       - orgId: 1
         name: Streaming Analytics
         folder: Infrastructure Alerts
