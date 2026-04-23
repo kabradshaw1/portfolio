@@ -152,8 +152,8 @@ Decomposed Go services use gRPC for inter-service communication and REST for fro
 Splitting the monolithic `ecommerce-service` into product, cart, and order services with gRPC inter-service communication and a RabbitMQ-based checkout saga. Roadmap spec: `docs/superpowers/specs/2026-04-20-ecommerce-decomposition-grpc-design.md`.
 
 - **Phase 1 (DONE):** Product-service extracted. REST :8095, gRPC :9095, `productdb`. Ecommerce order worker calls product-service via gRPC. Product routes removed from ecommerce-service.
-- **Phase 2 (TODO):** Cart-service extraction. Calls product-service via gRPC for price validation. Own `cartdb`.
-- **Phase 3 (TODO):** Order-service + saga orchestrator. RabbitMQ saga for checkout (reserve → validate → confirm → clear). DLQ with retry. Compensation flows. Retires ecommerce-service.
+- **Phase 2 (DONE):** Cart-service extraction. Calls product-service via gRPC for price validation. Own `cartdb`.
+- **Phase 3 (DONE):** Order-service + saga orchestrator. RabbitMQ saga for checkout (reserve → validate → confirm → clear). DLQ with retry. Compensation flows. Retires ecommerce-service.
 - **Database-per-service:** Each service gets its own database on the shared Postgres instance (`productdb`, `cartdb`, `orderdb`). Same logical isolation as enterprise, pragmatic for portfolio infra.
 - **GitHub issues for future enhancements:** #96 (auth gRPC), #97 (DLQ replay), #98 (proto contract testing), #99 (async integration tests), #100 (graceful shutdown), #101 (mTLS).
 
@@ -366,13 +366,6 @@ Java services use `-Xmx512m` heap cap (set in Dockerfiles) with 768Mi container 
 
 **`make preflight-java` fails on Mac** — requires JDK 21 which is not installed locally. Java compilation and tests run correctly in CI (Debian server has JDK 21). This is a known limitation of the local dev setup.
 
-## Kyle's Background
-
-- Strong in Go and TypeScript (full-stack web apps)
-- Experienced with Docker, Kubernetes, GitHub Actions, SQL/NoSQL
-- Has used Ollama and built web services to interact with it
-- Limited hands-on experience with Python data processing, LLM workflows, RAG, prompt engineering
-- Has written Python for Django, taken tutorials, but limited production Python experience
 
 ## Architecture Decision Records (ADRs)
 
