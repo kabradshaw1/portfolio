@@ -124,7 +124,9 @@ func (o *Orchestrator) handleItemsReserved(ctx context.Context, order *model.Ord
 
 func (o *Orchestrator) handleStockValidated(ctx context.Context, order *model.Order) error {
 	if o.payment != nil {
-		_, err := o.payment.CreatePayment(ctx, order.ID, order.Total, "usd",
+		payCtx, payCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer payCancel()
+		_, err := o.payment.CreatePayment(payCtx, order.ID, order.Total, "usd",
 			"https://kylebradshaw.dev/go/ecommerce/checkout/success?order="+order.ID.String(),
 			"https://kylebradshaw.dev/go/ecommerce/checkout/cancel?order="+order.ID.String(),
 		)
