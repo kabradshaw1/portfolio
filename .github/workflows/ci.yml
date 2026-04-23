@@ -848,6 +848,9 @@ jobs:
           file: ${{ matrix.file }}
           push: true
           tags: ${{ steps.tag.outputs.tags }}
+          build-args: |
+            BUILD_VERSION=${{ github.sha }}
+            BUILD_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

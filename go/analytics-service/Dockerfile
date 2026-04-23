@@ -5,7 +5,11 @@ COPY pkg/ /app/pkg/
 COPY analytics-service/go.mod analytics-service/go.sum ./
 RUN go mod download
 COPY analytics-service/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /analytics-service ./cmd/server
+ARG BUILD_VERSION=dev
+ARG BUILD_COMMIT=unknown
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-X github.com/kabradshaw1/portfolio/go/pkg/buildinfo.Version=${BUILD_VERSION} -X github.com/kabradshaw1/portfolio/go/pkg/buildinfo.GitSHA=${BUILD_COMMIT}" \
+    -o /analytics-service ./cmd/server
 
 FROM alpine:3.19
 

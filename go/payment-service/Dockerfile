@@ -8,7 +8,11 @@ COPY pkg/ /app/pkg/
 COPY payment-service/go.mod payment-service/go.sum ./
 RUN go mod download
 COPY payment-service/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /payment-service ./cmd/server
+ARG BUILD_VERSION=dev
+ARG BUILD_COMMIT=unknown
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-X github.com/kabradshaw1/portfolio/go/pkg/buildinfo.Version=${BUILD_VERSION} -X github.com/kabradshaw1/portfolio/go/pkg/buildinfo.GitSHA=${BUILD_COMMIT}" \
+    -o /payment-service ./cmd/server
 
 FROM alpine:3.19
 
