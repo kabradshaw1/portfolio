@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/kabradshaw1/portfolio/go/payment-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/payment-service/internal/model"
@@ -51,7 +52,7 @@ func NewWebhookService(
 
 // HandlePaymentSucceeded deduplicates the event, updates payment status to succeeded,
 // and writes a saga confirmation event to the outbox.
-func (s *WebhookService) HandlePaymentSucceeded(ctx context.Context, eventID, intentID string) error {
+func (s *WebhookService) HandlePaymentSucceeded(ctx context.Context, eventID, intentID string, metadata map[string]string) error {
 	inserted, err := s.eventRepo.TryInsert(ctx, nil, eventID, "payment_intent.succeeded")
 	if err != nil {
 		return fmt.Errorf("dedup payment succeeded: %w", err)
@@ -62,9 +63,21 @@ func (s *WebhookService) HandlePaymentSucceeded(ctx context.Context, eventID, in
 		return nil
 	}
 
-	payment, err := s.paymentRepo.FindByStripeIntentID(ctx, intentID)
+	orderID, err := orderIDFromMetadata(metadata)
+	if err != nil {
+		return fmt.Errorf("payment succeeded metadata: %w", err)
+	}
+
+	payment, err := s.paymentRepo.FindByOrderID(ctx, orderID)
 	if err != nil {
 		return fmt.Errorf("find payment for succeeded event: %w", err)
+	}
+
+	// Backfill Stripe intent ID for future refund lookups.
+	if intentID != "" {
+		if backfillErr := s.paymentRepo.UpdateStripeIDs(ctx, orderID, intentID, payment.StripeCheckoutSessionID); backfillErr != nil {
+			slog.ErrorContext(ctx, "failed to backfill stripe intent ID", "orderID", orderID, "intentID", intentID, "error", backfillErr)
+		}
 	}
 
 	if err := s.paymentRepo.UpdateStatus(ctx, payment.OrderID, model.PaymentStatusSucceeded); err != nil {
@@ -90,7 +103,7 @@ func (s *WebhookService) HandlePaymentSucceeded(ctx context.Context, eventID, in
 
 // HandlePaymentFailed deduplicates the event, updates payment status to failed,
 // and writes a saga failure event to the outbox.
-func (s *WebhookService) HandlePaymentFailed(ctx context.Context, eventID, intentID string) error {
+func (s *WebhookService) HandlePaymentFailed(ctx context.Context, eventID, intentID string, metadata map[string]string) error {
 	inserted, err := s.eventRepo.TryInsert(ctx, nil, eventID, "payment_intent.payment_failed")
 	if err != nil {
 		return fmt.Errorf("dedup payment failed: %w", err)
@@ -101,9 +114,21 @@ func (s *WebhookService) HandlePaymentFailed(ctx context.Context, eventID, inten
 		return nil
 	}
 
-	payment, err := s.paymentRepo.FindByStripeIntentID(ctx, intentID)
+	orderID, err := orderIDFromMetadata(metadata)
+	if err != nil {
+		return fmt.Errorf("payment failed metadata: %w", err)
+	}
+
+	payment, err := s.paymentRepo.FindByOrderID(ctx, orderID)
 	if err != nil {
 		return fmt.Errorf("find payment for failed event: %w", err)
+	}
+
+	// Backfill Stripe intent ID for future refund lookups.
+	if intentID != "" {
+		if backfillErr := s.paymentRepo.UpdateStripeIDs(ctx, orderID, intentID, payment.StripeCheckoutSessionID); backfillErr != nil {
+			slog.ErrorContext(ctx, "failed to backfill stripe intent ID", "orderID", orderID, "intentID", intentID, "error", backfillErr)
+		}
 	}
 
 	if err := s.paymentRepo.UpdateStatus(ctx, payment.OrderID, model.PaymentStatusFailed); err != nil {
@@ -152,4 +177,17 @@ func (s *WebhookService) HandleRefund(ctx context.Context, eventID, intentID str
 
 	slog.InfoContext(ctx, "payment refunded", "orderID", payment.OrderID, "intentID", intentID)
 	return nil
+}
+
+// orderIDFromMetadata extracts and parses the order_id UUID from PaymentIntent metadata.
+func orderIDFromMetadata(metadata map[string]string) (uuid.UUID, error) {
+	raw, ok := metadata["order_id"]
+	if !ok || raw == "" {
+		return uuid.Nil, fmt.Errorf("order_id not found in payment intent metadata")
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid order_id in metadata: %w", err)
+	}
+	return id, nil
 }

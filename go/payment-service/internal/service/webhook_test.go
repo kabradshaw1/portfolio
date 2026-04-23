@@ -31,9 +31,14 @@ func (m *mockOutboxRepo) Insert(_ context.Context, _ pgx.Tx, _, _ string, _ []by
 }
 
 type mockPaymentRepoForWebhook struct {
-	findErr    error
-	updateErr  error
-	findCalled int
+	findByOrderPayment *model.Payment
+	findByOrderErr     error
+	findByIntentErr    error
+	updateStatusErr    error
+	updateStripeIDsErr error
+	findByOrderCalled  int
+	findByIntentCalled int
+	updateStripeCalled int
 }
 
 func (m *mockPaymentRepoForWebhook) Create(_ context.Context, _ uuid.UUID, _ int, _ string) (*model.Payment, error) {
@@ -41,23 +46,56 @@ func (m *mockPaymentRepoForWebhook) Create(_ context.Context, _ uuid.UUID, _ int
 }
 
 func (m *mockPaymentRepoForWebhook) FindByOrderID(_ context.Context, _ uuid.UUID) (*model.Payment, error) {
-	return nil, nil
+	m.findByOrderCalled++
+	return m.findByOrderPayment, m.findByOrderErr
 }
 
 func (m *mockPaymentRepoForWebhook) FindByStripeIntentID(_ context.Context, _ string) (*model.Payment, error) {
-	m.findCalled++
-	return nil, m.findErr
+	m.findByIntentCalled++
+	return nil, m.findByIntentErr
 }
 
 func (m *mockPaymentRepoForWebhook) UpdateStatus(_ context.Context, _ uuid.UUID, _ model.PaymentStatus) error {
-	return m.updateErr
+	return m.updateStatusErr
 }
 
 func (m *mockPaymentRepoForWebhook) UpdateStripeIDs(_ context.Context, _ uuid.UUID, _, _ string) error {
-	return nil
+	m.updateStripeCalled++
+	return m.updateStripeIDsErr
 }
 
 // --- tests ---
+
+func TestWebhookService_HandlePaymentSucceeded_MetadataLookup(t *testing.T) {
+	orderID := uuid.MustParse("f5cd888c-c661-41ad-a2fd-e14fdeac800d")
+	eventRepo := &mockProcessedEventRepo{inserted: true, err: nil}
+	outboxRepo := &mockOutboxRepo{}
+	paymentRepo := &mockPaymentRepoForWebhook{
+		findByOrderPayment: &model.Payment{
+			OrderID:                 orderID,
+			StripeCheckoutSessionID: "cs_test_abc",
+		},
+	}
+	svc := NewWebhookService(paymentRepo, eventRepo, outboxRepo, nil)
+
+	metadata := map[string]string{"order_id": orderID.String()}
+	err := svc.HandlePaymentSucceeded(context.Background(), "evt_123", "pi_new_123", metadata)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if paymentRepo.findByOrderCalled != 1 {
+		t.Errorf("expected FindByOrderID called once, got %d", paymentRepo.findByOrderCalled)
+	}
+	if paymentRepo.findByIntentCalled != 0 {
+		t.Errorf("expected FindByStripeIntentID not called, got %d", paymentRepo.findByIntentCalled)
+	}
+	if paymentRepo.updateStripeCalled != 1 {
+		t.Errorf("expected UpdateStripeIDs called once to backfill, got %d", paymentRepo.updateStripeCalled)
+	}
+	if outboxRepo.calls != 1 {
+		t.Errorf("expected 1 outbox insert, got %d", outboxRepo.calls)
+	}
+}
 
 func TestWebhookService_HandlePaymentSucceeded_DuplicateEvent(t *testing.T) {
 	eventRepo := &mockProcessedEventRepo{inserted: false, err: nil}
@@ -66,14 +104,27 @@ func TestWebhookService_HandlePaymentSucceeded_DuplicateEvent(t *testing.T) {
 
 	svc := NewWebhookService(paymentRepo, eventRepo, outboxRepo, nil)
 
-	err := svc.HandlePaymentSucceeded(context.Background(), "evt_dup", "pi_123")
+	err := svc.HandlePaymentSucceeded(context.Background(), "evt_dup", "pi_123", map[string]string{"order_id": "f5cd888c-c661-41ad-a2fd-e14fdeac800d"})
 	if err != nil {
 		t.Errorf("expected nil error for duplicate event, got %v", err)
 	}
-	if paymentRepo.findCalled != 0 {
-		t.Errorf("expected no FindByStripeIntentID call for duplicate, got %d", paymentRepo.findCalled)
+	if paymentRepo.findByOrderCalled != 0 {
+		t.Errorf("expected no FindByOrderID call for duplicate, got %d", paymentRepo.findByOrderCalled)
 	}
 	if outboxRepo.calls != 0 {
 		t.Errorf("expected no outbox insert for duplicate event, got %d", outboxRepo.calls)
+	}
+}
+
+func TestWebhookService_HandlePaymentSucceeded_MissingOrderID(t *testing.T) {
+	eventRepo := &mockProcessedEventRepo{inserted: true, err: nil}
+	outboxRepo := &mockOutboxRepo{}
+	paymentRepo := &mockPaymentRepoForWebhook{}
+
+	svc := NewWebhookService(paymentRepo, eventRepo, outboxRepo, nil)
+
+	err := svc.HandlePaymentSucceeded(context.Background(), "evt_123", "pi_123", map[string]string{})
+	if err == nil {
+		t.Fatal("expected error for missing order_id in metadata")
 	}
 }
