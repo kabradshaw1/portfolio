@@ -85,6 +85,11 @@ func (r *OutboxRepository) FetchUnpublished(ctx context.Context, limit int) ([]m
 	})
 }
 
+// Ping checks whether the database connection is alive.
+func (r *OutboxRepository) Ping(ctx context.Context) error {
+	return r.pool.Ping(ctx)
+}
+
 // MarkPublished sets the published flag to true for the given outbox message ID.
 func (r *OutboxRepository) MarkPublished(ctx context.Context, id uuid.UUID) error {
 	if r.pool == nil {

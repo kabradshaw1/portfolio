@@ -21,12 +21,12 @@ type mockWebhookService struct {
 	calls        []string
 }
 
-func (m *mockWebhookService) HandlePaymentSucceeded(_ context.Context, _, _ string) error {
+func (m *mockWebhookService) HandlePaymentSucceeded(_ context.Context, _, _ string, _ map[string]string) error {
 	m.calls = append(m.calls, "succeeded")
 	return m.succeededErr
 }
 
-func (m *mockWebhookService) HandlePaymentFailed(_ context.Context, _, _ string) error {
+func (m *mockWebhookService) HandlePaymentFailed(_ context.Context, _, _ string, _ map[string]string) error {
 	m.calls = append(m.calls, "failed")
 	return m.failedErr
 }
@@ -40,11 +40,12 @@ type mockEventVerifier struct {
 	eventType string
 	eventID   string
 	intentID  string
+	metadata  map[string]string
 	err       error
 }
 
-func (m *mockEventVerifier) VerifyAndParse(_ []byte, _ string) (string, string, string, error) {
-	return m.eventType, m.eventID, m.intentID, m.err
+func (m *mockEventVerifier) VerifyAndParse(_ []byte, _ string) (string, string, string, map[string]string, error) {
+	return m.eventType, m.eventID, m.intentID, m.metadata, m.err
 }
 
 // --- helpers ---
@@ -82,6 +83,7 @@ func TestWebhookHandler_PaymentSucceeded(t *testing.T) {
 		eventType: "payment_intent.succeeded",
 		eventID:   "evt_123",
 		intentID:  "pi_123",
+		metadata:  map[string]string{"order_id": "f5cd888c-c661-41ad-a2fd-e14fdeac800d"},
 	}
 	router := setupWebhookRouter(svc, verifier)
 
