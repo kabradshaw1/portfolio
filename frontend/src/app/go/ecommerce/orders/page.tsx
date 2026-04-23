@@ -48,7 +48,7 @@ export default function OrdersPage() {
         return r.json();
       })
       .then((data) => {
-        if (data) setOrders(data ?? []);
+        if (data) setOrders(data.orders ?? []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
