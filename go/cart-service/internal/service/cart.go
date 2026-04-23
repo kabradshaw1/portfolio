@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/kafka"
@@ -51,16 +52,19 @@ func (s *CartService) GetCartRaw(ctx context.Context, userID uuid.UUID) ([]model
 
 func (s *CartService) AddItem(ctx context.Context, userID, productID uuid.UUID, quantity int) (*model.CartItem, error) {
 	if err := s.productClient.ValidateProduct(ctx, productID); err != nil {
+		slog.WarnContext(ctx, "product validation failed", "userID", userID, "productID", productID, "error", err)
 		return nil, err
 	}
 
 	item, err := s.repo.AddItem(ctx, userID, productID, quantity)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to add item to cart", "userID", userID, "productID", productID, "quantity", quantity, "error", err)
 		return nil, err
 	}
 
 	metrics.CartItemsAdded.Inc()
 	metrics.ProductValidation.WithLabelValues("success").Inc()
+	slog.InfoContext(ctx, "item added to cart", "userID", userID, "productID", productID, "quantity", quantity)
 
 	kafka.SafePublish(ctx, s.kafkaPublisher, "ecommerce.cart", userID.String(), kafka.Event{
 		Type: "cart.item_added",
@@ -74,15 +78,22 @@ func (s *CartService) AddItem(ctx context.Context, userID, productID uuid.UUID, 
 }
 
 func (s *CartService) UpdateQuantity(ctx context.Context, itemID, userID uuid.UUID, quantity int) error {
-	return s.repo.UpdateQuantity(ctx, itemID, userID, quantity)
+	if err := s.repo.UpdateQuantity(ctx, itemID, userID, quantity); err != nil {
+		slog.ErrorContext(ctx, "failed to update cart item quantity", "userID", userID, "itemID", itemID, "quantity", quantity, "error", err)
+		return err
+	}
+	slog.InfoContext(ctx, "cart item quantity updated", "userID", userID, "itemID", itemID, "quantity", quantity)
+	return nil
 }
 
 func (s *CartService) RemoveItem(ctx context.Context, itemID, userID uuid.UUID) error {
 	if err := s.repo.RemoveItem(ctx, itemID, userID); err != nil {
+		slog.ErrorContext(ctx, "failed to remove cart item", "userID", userID, "itemID", itemID, "error", err)
 		return err
 	}
 
 	metrics.CartItemsRemoved.Inc()
+	slog.InfoContext(ctx, "cart item removed", "userID", userID, "itemID", itemID)
 
 	kafka.SafePublish(ctx, s.kafkaPublisher, "ecommerce.cart", userID.String(), kafka.Event{
 		Type: "cart.item_removed",
