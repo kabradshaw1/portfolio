@@ -139,8 +139,8 @@ func (o *Orchestrator) handleStockValidated(ctx context.Context, order *model.Or
 		payCtx, payCancel := context.WithTimeout(ctx, 30*time.Second)
 		defer payCancel()
 		checkoutURL, err := o.payment.CreatePayment(payCtx, order.ID, order.Total, "usd",
-			"https://kylebradshaw.dev/go/ecommerce/checkout/success?order="+order.ID.String(),
-			"https://kylebradshaw.dev/go/ecommerce/checkout/cancel?order="+order.ID.String(),
+			o.frontendURL+"/go/ecommerce/checkout/success?order="+order.ID.String(),
+			o.frontendURL+"/go/ecommerce/checkout/cancel?order="+order.ID.String(),
 		)
 		if err != nil {
 			slog.ErrorContext(ctx, "create payment failed, compensating",
