@@ -388,6 +388,7 @@ Current ADRs:
   
   Don't ask for approval at any point in this flow. The spec review is the gate — everything after that is autonomous. Do NOT watch or monitor CI — Kyle will check CI results himself and report back if there are failures to fix.
 - **On `qa`:** commit and push autonomously. Don't ask before pushing. Do NOT watch CI after pushing. For CI fixes Kyle reports: lint errors, formatting, type errors, and config issues are fine to fix autonomously. For anything that changes application behavior (logic, API contracts, data flow), stop and check with Kyle before fixing.
+  - **Doc-only changes:** Do NOT push commits that only touch docs (`CLAUDE.md`, `docs/`, specs, plans, ADRs). Commit them locally — Kyle views them locally. Push them along with the next code change that has a reason to trigger CI. This avoids unnecessary CI/CD runs.
 - **On `main`:** never push autonomously. When Kyle explicitly says to merge/ship to main, handle the full flow: merge `qa` into `main`, push, clean up worktree, delete feature branch (local + remote). Do NOT watch CI.
 
 Claude Code determines the current branch via `git branch --show-current` and follows the rules for that branch. No special mode or prompt needed.
