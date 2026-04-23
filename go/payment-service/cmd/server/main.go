@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log" //nolint:depguard // stdlib log for fatal-before-slog-init
 	"log/slog"
 	"net"
 	"net/http"
