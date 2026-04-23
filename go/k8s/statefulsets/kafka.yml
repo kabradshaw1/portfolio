@@ -46,6 +46,8 @@ spec:
               value: "/tmp/kraft-combined-logs"
             - name: CLUSTER_ID
               value: "MkU3OEVBNTcwNTJENDM2Qk"
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xmx512m -Xms512m"
           volumeMounts:
             - name: kafka-data
               mountPath: /tmp/kraft-combined-logs
@@ -61,10 +63,10 @@ spec:
             periodSeconds: 30
           resources:
             requests:
-              memory: "256Mi"
+              memory: "512Mi"
               cpu: "250m"
             limits:
-              memory: "512Mi"
+              memory: "1Gi"
               cpu: "500m"
   volumeClaimTemplates:
     - metadata:
