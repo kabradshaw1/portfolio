@@ -951,6 +951,17 @@ jobs:
           # which is created by auth-service's migrations.
           $SSH "kubectl delete job go-auth-migrate go-order-migrate go-product-migrate go-cart-migrate go-payment-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
 
+          # Wait for Postgres to accept connections after restart
+          echo "Waiting for Postgres to accept connections..."
+          for i in $(seq 1 30); do
+            if $SSH "kubectl exec -n java-tasks deploy/postgres -- pg_isready -U taskuser" 2>/dev/null; then
+              echo "Postgres ready."
+              break
+            fi
+            echo "  attempt $i/30..."
+            sleep 2
+          done
+
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce-qa --tail=200" || true
@@ -1119,6 +1130,17 @@ jobs:
             echo "Running Go migration Jobs..."
             # Jobs are immutable; delete before re-applying so they re-run on every deploy.
             $SSH "kubectl delete job go-auth-migrate go-order-migrate go-product-migrate go-cart-migrate go-payment-migrate -n go-ecommerce --ignore-not-found --wait=true"
+
+            # Wait for Postgres to accept connections after restart
+            echo "Waiting for Postgres to accept connections..."
+            for i in $(seq 1 30); do
+              if $SSH "kubectl exec -n java-tasks deploy/postgres -- pg_isready -U taskuser" 2>/dev/null; then
+                echo "Postgres ready."
+                break
+              fi
+              echo "  attempt $i/30..."
+              sleep 2
+            done
 
             # auth-migrate MUST run before order-migrate: both services share
             # ecommercedb, and the order-service seed inserts into the users table
