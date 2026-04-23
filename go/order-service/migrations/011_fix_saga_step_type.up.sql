@@ -1,0 +1,1 @@
+ALTER TABLE orders ALTER COLUMN saga_step TYPE TEXT;
