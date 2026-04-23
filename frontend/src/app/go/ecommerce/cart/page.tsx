@@ -74,14 +74,41 @@ export default function CartPage() {
         router.replace("/go/login?next=/go/ecommerce/cart");
         return;
       }
-      if (res.ok) {
-        setItems([]);
-        await refresh();
-        setMessage("Order placed successfully!");
-      } else {
+      if (!res.ok) {
         const text = await res.text();
         setMessage(text || "Checkout failed");
+        return;
       }
+
+      const order = await res.json();
+      await refresh();
+
+      // Poll for checkout URL (saga creates payment asynchronously)
+      const pollInterval = 1500;
+      const maxAttempts = 10;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise((r) => setTimeout(r, pollInterval));
+        const pollRes = await goOrderFetch(`/orders/${order.id}`);
+        if (!pollRes.ok) continue;
+        const updated = await pollRes.json();
+
+        if (updated.checkoutUrl) {
+          window.location.href = updated.checkoutUrl;
+          return;
+        }
+        if (updated.status === "completed") {
+          setItems([]);
+          router.push(`/go/ecommerce/checkout/success?order=${order.id}`);
+          return;
+        }
+        if (updated.status === "failed") {
+          setMessage("Order failed. Please try again.");
+          return;
+        }
+      }
+
+      setMessage("Payment is taking longer than expected. Check your orders page for status.");
     } finally {
       setCheckingOut(false);
     }
@@ -148,7 +175,7 @@ export default function CartPage() {
               disabled={checkingOut}
               className="rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
-              {checkingOut ? "Placing order..." : "Checkout"}
+              {checkingOut ? "Processing payment..." : "Checkout"}
             </button>
           </div>
 

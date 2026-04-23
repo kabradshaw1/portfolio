@@ -10,7 +10,11 @@ COPY product-service/ /app/product-service/
 COPY cart-service/go.mod cart-service/go.sum ./
 RUN go mod download
 COPY cart-service/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /cart-service ./cmd/server
+ARG BUILD_VERSION=dev
+ARG BUILD_COMMIT=unknown
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-X github.com/kabradshaw1/portfolio/go/pkg/buildinfo.Version=${BUILD_VERSION} -X github.com/kabradshaw1/portfolio/go/pkg/buildinfo.GitSHA=${BUILD_COMMIT}" \
+    -o /cart-service ./cmd/server
 
 FROM alpine:3.19
 

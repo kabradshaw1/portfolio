@@ -13,7 +13,7 @@ CREATE TABLE orders (
     id         UUID NOT NULL,
     user_id    UUID NOT NULL,
     status     VARCHAR(20) NOT NULL DEFAULT 'pending',
-    saga_step  VARCHAR(20),
+    saga_step  TEXT,
     total      INTEGER NOT NULL CHECK (total > 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

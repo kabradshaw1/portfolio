@@ -16,6 +16,7 @@ type OrderRepository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*model.Order, error)
 	UpdateSagaStep(ctx context.Context, orderID uuid.UUID, step string) error
 	UpdateStatus(ctx context.Context, orderID uuid.UUID, status model.OrderStatus) error
+	UpdateCheckoutURL(ctx context.Context, orderID uuid.UUID, url string) error
 }
 
 // SagaPublisher abstracts RabbitMQ command publishing.
@@ -36,16 +37,17 @@ type PaymentCreator interface {
 
 // Orchestrator drives the checkout saga state machine.
 type Orchestrator struct {
-	repo     OrderRepository
-	pub      SagaPublisher
-	stock    StockChecker
-	payment  PaymentCreator
-	kafkaPub kafka.Producer
+	repo        OrderRepository
+	pub         SagaPublisher
+	stock       StockChecker
+	payment     PaymentCreator
+	kafkaPub    kafka.Producer
+	frontendURL string // used to build Stripe success/cancel redirect URLs
 }
 
 // NewOrchestrator creates a saga orchestrator.
-func NewOrchestrator(repo OrderRepository, pub SagaPublisher, stock StockChecker, payment PaymentCreator, kafkaPub kafka.Producer) *Orchestrator {
-	return &Orchestrator{repo: repo, pub: pub, stock: stock, payment: payment, kafkaPub: kafkaPub}
+func NewOrchestrator(repo OrderRepository, pub SagaPublisher, stock StockChecker, payment PaymentCreator, kafkaPub kafka.Producer, frontendURL string) *Orchestrator {
+	return &Orchestrator{repo: repo, pub: pub, stock: stock, payment: payment, kafkaPub: kafkaPub, frontendURL: frontendURL}
 }
 
 // Advance moves the saga forward from its current step.
@@ -57,24 +59,37 @@ func (o *Orchestrator) Advance(ctx context.Context, orderID uuid.UUID) error {
 
 	slog.InfoContext(ctx, "advancing saga", "orderID", orderID, "currentStep", order.SagaStep)
 
+	start := time.Now()
+	var stepErr error
+
 	switch order.SagaStep {
 	case StepCreated:
-		return o.handleCreated(ctx, order)
+		stepErr = o.handleCreated(ctx, order)
 	case StepItemsReserved:
-		return o.handleItemsReserved(ctx, order)
+		stepErr = o.handleItemsReserved(ctx, order)
 	case StepStockValidated:
-		return o.handleStockValidated(ctx, order)
+		stepErr = o.handleStockValidated(ctx, order)
 	case StepPaymentCreated:
 		return nil // Waiting for webhook confirmation via outbox poller
 	case StepPaymentConfirmed:
-		return o.handlePaymentConfirmed(ctx, order)
+		stepErr = o.handlePaymentConfirmed(ctx, order)
 	case StepCompensating:
 		return nil // Compensation command already sent, waiting for reply
 	case StepCompleted, StepCompensationComplete, StepFailed:
 		return nil // Terminal states
 	default:
+		SagaStepsTotal.WithLabelValues(order.SagaStep, "error").Inc()
 		return fmt.Errorf("unknown saga step: %s", order.SagaStep)
 	}
+
+	elapsed := time.Since(start)
+	outcome := "success"
+	if stepErr != nil {
+		outcome = "error"
+	}
+	SagaStepDuration.WithLabelValues(order.SagaStep, outcome).Observe(elapsed.Seconds())
+
+	return stepErr
 }
 
 func (o *Orchestrator) handleCreated(ctx context.Context, order *model.Order) error {
@@ -105,6 +120,7 @@ func (o *Orchestrator) handleItemsReserved(ctx context.Context, order *model.Ord
 		if !available {
 			slog.WarnContext(ctx, "stock insufficient, compensating",
 				"orderID", order.ID, "productID", item.ProductID)
+			SagaStepsTotal.WithLabelValues(StepItemsReserved, "error").Inc()
 			return o.compensate(ctx, order)
 		}
 	}
@@ -120,14 +136,22 @@ func (o *Orchestrator) handleItemsReserved(ctx context.Context, order *model.Ord
 
 func (o *Orchestrator) handleStockValidated(ctx context.Context, order *model.Order) error {
 	if o.payment != nil {
-		_, err := o.payment.CreatePayment(ctx, order.ID, order.Total, "usd",
-			"https://kylebradshaw.dev/go/ecommerce/checkout/success?order="+order.ID.String(),
-			"https://kylebradshaw.dev/go/ecommerce/checkout/cancel?order="+order.ID.String(),
+		payCtx, payCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer payCancel()
+		checkoutURL, err := o.payment.CreatePayment(payCtx, order.ID, order.Total, "usd",
+			o.frontendURL+"/go/ecommerce/checkout/success?order="+order.ID.String(),
+			o.frontendURL+"/go/ecommerce/checkout/cancel?order="+order.ID.String(),
 		)
 		if err != nil {
 			slog.ErrorContext(ctx, "create payment failed, compensating",
 				"orderID", order.ID, "error", err)
+			SagaStepsTotal.WithLabelValues(StepStockValidated, "error").Inc()
 			return o.compensate(ctx, order)
+		}
+		if checkoutURL != "" {
+			if err := o.repo.UpdateCheckoutURL(ctx, order.ID, checkoutURL); err != nil {
+				slog.ErrorContext(ctx, "failed to persist checkout URL", "orderID", order.ID, "error", err)
+			}
 		}
 		if err := o.repo.UpdateSagaStep(ctx, order.ID, StepPaymentCreated); err != nil {
 			return err
@@ -185,7 +209,7 @@ func (o *Orchestrator) completeOrder(ctx context.Context, orderID uuid.UUID) err
 				PriceCents: oi.PriceAtPurchase,
 			}
 		}
-		kafka.SafePublish(ctx, o.kafkaPub, "ecommerce.orders", order.ID.String(), kafka.Event{
+		kafka.SafePublish(ctx, o.kafkaPub, "ecommerce.orders", order.UserID.String(), kafka.Event{
 			Type: "order.completed",
 			Data: map[string]any{
 				"orderID":    order.ID.String(),
@@ -205,6 +229,7 @@ func (o *Orchestrator) compensate(ctx context.Context, order *model.Order) error
 		if err := o.payment.RefundPayment(ctx, order.ID, "saga compensation"); err != nil {
 			slog.ErrorContext(ctx, "refund failed during compensation",
 				"orderID", order.ID, "error", err)
+			SagaStepsTotal.WithLabelValues("refund", "error").Inc()
 		}
 	}
 
@@ -250,6 +275,7 @@ func (o *Orchestrator) HandleEvent(ctx context.Context, evt Event) error {
 		return o.Advance(ctx, orderID)
 
 	case EvtPaymentFailed:
+		SagaStepsTotal.WithLabelValues(StepPaymentCreated, "error").Inc()
 		order, err := o.repo.FindByID(ctx, orderID)
 		if err != nil {
 			return fmt.Errorf("find order for payment failure: %w", err)
@@ -264,6 +290,7 @@ func (o *Orchestrator) HandleEvent(ctx context.Context, evt Event) error {
 		return o.repo.UpdateSagaStep(ctx, orderID, StepCompensationComplete)
 
 	default:
+		SagaStepsTotal.WithLabelValues("unknown_event", "error").Inc()
 		return fmt.Errorf("unknown saga event: %s", evt.Event)
 	}
 }

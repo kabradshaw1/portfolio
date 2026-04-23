@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/kabradshaw1/portfolio/go/payment-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/payment-service/internal/model"
 	"github.com/kabradshaw1/portfolio/go/payment-service/internal/service"
 	pb "github.com/kabradshaw1/portfolio/go/payment-service/pb/payment/v1"
@@ -47,8 +48,11 @@ func (s *Server) CreatePayment(ctx context.Context, req *pb.CreatePaymentRequest
 		req.GetCancelUrl(),
 	)
 	if err != nil {
+		metrics.PaymentsCreated.WithLabelValues("failed").Inc()
 		return nil, status.Errorf(codes.Internal, "create payment: %v", err)
 	}
+
+	metrics.PaymentsCreated.WithLabelValues("succeeded").Inc()
 
 	return &pb.CreatePaymentResponse{
 		PaymentId:          result.Payment.ID.String(),

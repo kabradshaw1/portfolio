@@ -17,6 +17,12 @@ var (
 		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60},
 	})
 
+	SagaStepDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "saga_step_duration_seconds",
+		Help:    "Duration of each saga step handler.",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30},
+	}, []string{"step", "outcome"})
+
 	SagaDLQTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "saga_dlq_messages_total",
 		Help: "Messages sent to the saga dead letter queue.",

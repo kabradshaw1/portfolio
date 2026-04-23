@@ -22,6 +22,7 @@ import (
 	pb "github.com/kabradshaw1/portfolio/go/product-service/pb/product/v1"
 	"github.com/kabradshaw1/portfolio/go/product-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/product-service/internal/service"
+	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tlsconfig"
@@ -42,6 +43,7 @@ func main() {
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
+	buildinfo.Log()
 
 	pool := connectPostgres(ctx, cfg.DatabaseURL)
 

@@ -19,8 +19,9 @@ type Order struct {
 	ID        uuid.UUID   `json:"id"`
 	UserID    uuid.UUID   `json:"userId"`
 	Status    OrderStatus `json:"status"`
-	SagaStep  string      `json:"sagaStep"`
-	Total     int         `json:"total"`
+	SagaStep    string      `json:"sagaStep"`
+	CheckoutURL string      `json:"checkoutUrl,omitempty"`
+	Total       int         `json:"total"`
 	CreatedAt time.Time   `json:"createdAt"`
 	UpdatedAt time.Time   `json:"updatedAt"`
 	Items     []OrderItem `json:"items,omitempty"`

@@ -23,6 +23,8 @@ import (
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/saga"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/service"
+	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
+	"github.com/kabradshaw1/portfolio/go/pkg/grpcmetrics"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tlsconfig"
@@ -42,6 +44,7 @@ func main() {
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
+	buildinfo.Log()
 
 	pool := connectPostgres(ctx, cfg.DatabaseURL)
 
@@ -126,7 +129,7 @@ func main() {
 
 	// Create saga orchestrator with stock checker adapter.
 	sagaPub := saga.NewPublisher(ch)
-	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, payClient, kafkaPub)
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, payClient, kafkaPub, cfg.FrontendURL)
 
 	// Start saga event consumer.
 	consumer := saga.NewConsumer(orch)
@@ -156,6 +159,7 @@ func main() {
 	// Auth-service gRPC connection for denylist checks.
 	authConn, err := grpc.NewClient(cfg.AuthGRPCURL,
 		grpc.WithTransportCredentials(grpcCreds),
+		grpc.WithUnaryInterceptor(grpcmetrics.UnaryClientInterceptor("auth-service")),
 	)
 	if err != nil {
 		log.Fatalf("auth gRPC dial: %v", err)

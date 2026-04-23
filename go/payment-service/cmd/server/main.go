@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log" //nolint:depguard // stdlib log for fatal-before-slog-init
 	"log/slog"
 	"net"
 	"net/http"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -23,8 +24,10 @@ import (
 	"github.com/kabradshaw1/portfolio/go/payment-service/internal/service"
 	stripeClient "github.com/kabradshaw1/portfolio/go/payment-service/internal/stripe"
 	pb "github.com/kabradshaw1/portfolio/go/payment-service/pb/payment/v1"
+	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
+	"github.com/kabradshaw1/portfolio/go/pkg/tlsconfig"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -48,6 +51,7 @@ func main() {
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
+	buildinfo.Log()
 
 	// Infrastructure connections.
 	pool := connectPostgres(ctx, cfg.DatabaseURL)
@@ -103,8 +107,17 @@ func main() {
 		}
 	}()
 
-	// gRPC server.
-	grpcSrv := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
+	// gRPC server — mTLS if TLS_CERT_DIR is set, insecure otherwise.
+	grpcOpts := []grpc.ServerOption{grpc.StatsHandler(otelgrpc.NewServerHandler())}
+	if certDir := os.Getenv("TLS_CERT_DIR"); certDir != "" {
+		tlsCfg, tlsErr := tlsconfig.ServerTLS(certDir)
+		if tlsErr != nil {
+			log.Fatalf("server tls: %v", tlsErr)
+		}
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+		slog.Info("mTLS enabled for gRPC server", "certDir", certDir)
+	}
+	grpcSrv := grpc.NewServer(grpcOpts...)
 	pb.RegisterPaymentServiceServer(grpcSrv, grpcserver.NewServer(paymentSvc))
 	healthSrv := health.NewServer()
 	healthpb.RegisterHealthServer(grpcSrv, healthSrv)

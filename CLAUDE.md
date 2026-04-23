@@ -143,6 +143,8 @@ Decomposed Go services use gRPC for inter-service communication and REST for fro
 - **Generated code:** lives at `go/<service>/pb/<service>/v1/` (NOT `internal/pb/` — Go's `internal` package visibility blocks cross-module imports).
 - **gRPC features:** reflection (`grpc.reflection`), health checking (`grpc_health_v1`), OTel interceptors (`otelgrpc.NewServerHandler()`).
 - **Inter-service calls:** `grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))` — plaintext within the cluster.
+- **mTLS (cert-manager):** All gRPC services use mTLS in both QA and prod. cert-manager v1.17.2 is installed by CI and `deploy.sh`. Certificate resources live in `k8s/cert-manager/` (prod) and `k8s/cert-manager/qa-certificates.yml` (QA). Each service gets a per-service secret (e.g., `payment-grpc-tls`) mounted at `/etc/tls/`. Services check `TLS_CERT_DIR` env var at startup — if set, servers call `tlsconfig.ServerTLS(certDir)` and clients call `tlsconfig.ClientTLS(certDir)` from `go/pkg/tlsconfig/`. If unset, both fall back to `insecure.NewCredentials()`.
+- **mTLS debugging:** If a gRPC call fails with `"transport: authentication handshake failed"`: (1) check cert-manager is running: `kubectl get pods -n cert-manager`, (2) check certificates are Ready: `kubectl get certificates -n <namespace>`, (3) check the service image is up to date with mTLS server code — grep startup logs for `"mTLS enabled"`. A stale image that predates the mTLS fix will serve insecure gRPC while the client connects with TLS.
 - **CI:** `buf lint` runs on proto changes. `buf generate` produces `*.pb.go` and `*_grpc.pb.go`.
 
 ## Ecommerce Decomposition
@@ -150,30 +152,14 @@ Decomposed Go services use gRPC for inter-service communication and REST for fro
 Splitting the monolithic `ecommerce-service` into product, cart, and order services with gRPC inter-service communication and a RabbitMQ-based checkout saga. Roadmap spec: `docs/superpowers/specs/2026-04-20-ecommerce-decomposition-grpc-design.md`.
 
 - **Phase 1 (DONE):** Product-service extracted. REST :8095, gRPC :9095, `productdb`. Ecommerce order worker calls product-service via gRPC. Product routes removed from ecommerce-service.
-- **Phase 2 (TODO):** Cart-service extraction. Calls product-service via gRPC for price validation. Own `cartdb`.
-- **Phase 3 (TODO):** Order-service + saga orchestrator. RabbitMQ saga for checkout (reserve → validate → confirm → clear). DLQ with retry. Compensation flows. Retires ecommerce-service.
+- **Phase 2 (DONE):** Cart-service extraction. Calls product-service via gRPC for price validation. Own `cartdb`.
+- **Phase 3 (DONE):** Order-service + saga orchestrator. RabbitMQ saga for checkout (reserve → validate → confirm → clear). DLQ with retry. Compensation flows. Retires ecommerce-service.
 - **Database-per-service:** Each service gets its own database on the shared Postgres instance (`productdb`, `cartdb`, `orderdb`). Same logical isolation as enterprise, pragmatic for portfolio infra.
 - **GitHub issues for future enhancements:** #96 (auth gRPC), #97 (DLQ replay), #98 (proto contract testing), #99 (async integration tests), #100 (graceful shutdown), #101 (mTLS).
 
-### Adding a New Decomposed Go Service (checklist)
+### Adding a New Decomposed Go Service
 
-When extracting a service from ecommerce-service (or adding any new Go service), every item below must be addressed or the QA/prod deploy will fail:
-
-1. **Service code:** Create `go/<service>/` with cmd/server, internal/, go.mod (with `replace ../pkg`), Dockerfile
-2. **Proto:** Add `go/proto/<service>/v1/<service>.proto`, run `buf generate`. Generated code at `go/<service>/pb/<service>/v1/`
-3. **Cross-module imports:** If service A imports service B's proto, add `replace` directive in A's go.mod AND `COPY <service-b>/ /app/<service-b>/` in A's Dockerfile
-4. **Seed data:** Use explicit UUIDs shared across all seed files so FKs work during the transition phase (both databases need matching product/cart/order IDs)
-5. **Kubernetes manifests:** deployment, service, configmap, migration job, HPA, PDB in `go/k8s/`
-6. **QA database:** Create `<dbname>_qa` manually on the Debian server (`kubectl exec -n java-tasks deploy/postgres -- psql -U taskuser -d taskdb -c 'CREATE DATABASE <dbname>_qa OWNER taskuser;'`). The `postgres-initdb` ConfigMap only runs on fresh PVC.
-7. **QA Kustomize overlay:** Add ConfigMap patch in `k8s/overlays/qa-go/kustomization.yaml` pointing DATABASE_URL to `*_qa`, CORS to `qa.kylebradshaw.dev`, Redis to DB index `/1`
-8. **CI matrices:** Add to `go-lint`, `go-tests`, `build-images`, `security-hadolint` matrices in `.github/workflows/ci.yml`
-9. **CI deploy steps:** Add migration job delete+apply+wait to both QA deploy (line ~886) and prod deploy (line ~1003) in ci.yml
-10. **deploy.sh:** Add `kubectl wait` for the new deployment in both QA and prod sections
-11. **Ingress:** Add path in `go/k8s/ingress.yml` and update `go/k8s/kustomization.yaml`
-12. **Frontend:** Add `NEXT_PUBLIC_*` env var to Vercel (both production and preview/qa) BEFORE merging
-13. **Smoke tests:** Update `frontend/e2e/smoke-prod/smoke.spec.ts` if endpoints moved
-14. **Makefile:** Add to `preflight-go` target (lint + test)
-15. **Migration state:** If tables are created manually before the migration job runs, set the `*_schema_migrations` table to the correct version (`INSERT INTO <svc>_schema_migrations (version, dirty) VALUES (<N>, false)`) or the job will fail with "dirty database"
+**Use the `/scaffold-go-service` skill** (`.claude/skills/scaffold-go-service/`) for the full checklist including service code templates, observability boilerplate, K8s manifests, cert-manager certificates, CI matrix entries, QA setup, and verification gate. The skill covers all 15+ items needed for a new Go service to deploy successfully.
 
 ## Monitoring & Observability
 
@@ -204,6 +190,164 @@ Three pillars deployed in the `monitoring` namespace (`k8s/monitoring/`):
 
 **Minikube:** Allocated 16Gi memory (cannot increase without `minikube delete` which wipes all cluster state). Currently sufficient.
 
+## Debugging with Observability Tools
+
+**Use the `/debug-observability` skill** (`.claude/skills/debug-observability/`) for Loki query recipes, Jaeger trace lookups, saga debugging flows, circuit breaker diagnosis, and cert-manager checks. The skill has ready-to-use commands with the correct CRI JSON parser.
+
+**Rule: Use Loki/Jaeger before SSH.** Query the observability stack first. SSH + `kubectl logs` is a last resort.
+
+### Loki Log Queries
+
+Access via Grafana (Explore → Loki datasource) or via CLI.
+
+**CLI queries use `kubectl exec` into the Loki pod** — this is more reliable than SSH port-forwarding, which requires a double hop (SSH tunnel + kubectl port-forward) and frequently drops:
+
+```bash
+# Compute nanosecond timestamps (Loki requires these) — use python3 since macOS date lacks -d
+START=$(python3 -c 'import time; print(int((time.time()-3600)*1e9))')  # 1 hour ago
+END=$(python3 -c 'import time; print(int(time.time()*1e9))')
+
+# Query errors across all go-ecommerce namespaces (prod + QA)
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
+  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D~%22go-ecommerce.*%22%7D+%7C+json+%7C+level%3D%22ERROR%22&limit=50&start=${START}&end=${END}'"
+
+# Query by order ID
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
+  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D~%22go-ecommerce.*%22%7D+%7C%3D+%22<orderID>%22+%7C+json&limit=50&start=${START}&end=${END}'"
+
+# Query errors for a specific QA service
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
+  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22go-order-service%22%7D+%7C+json+%7C+level%3D%22ERROR%22&limit=20&start=${START}&end=${END}'"
+```
+
+**Parsing Loki JSON output** — Loki returns CRI-wrapped JSON where the actual log is inside a `log` field. You MUST unwrap it:
+```bash
+... | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for stream in data.get('data', {}).get('result', []):
+    app = stream.get('stream', {}).get('app', 'unknown')
+    for ts, line in stream.get('values', []):
+        try:
+            outer = json.loads(line)
+            inner = outer.get('log', line)
+            p = json.loads(inner.strip()) if isinstance(inner, str) else outer
+        except:
+            p = {}
+        msg = p.get('msg', p.get('message', line[:200] if not p else ''))
+        if not msg: continue
+        level = p.get('level', '')
+        err = p.get('error', '')
+        tid = p.get('traceID', '')
+        extras = ' '.join(f'{k}={p[k]}' for k in ['orderID','target','method','status','duration','currentStep','event'] if p.get(k))
+        print(f'[{app}] [{level}] {msg}' + (f' {extras}' if extras else ''))
+        if err: print(f'  error: {err[:250]}')
+        if tid: print(f'  traceID: {tid}')
+"
+```
+
+**URL-encoding reference** for common LogQL queries:
+| LogQL | URL-encoded |
+|-------|-------------|
+| `{namespace="X"}` | `%7Bnamespace%3D%22X%22%7D` |
+| `\| json` | `+%7C+json` |
+| `\| level="ERROR"` | `+%7C+level%3D%22ERROR%22` |
+| `\|= "text"` | `+%7C%3D+%22text%22` |
+| `{namespace=~"go-ecommerce.*"}` | `%7Bnamespace%3D~%22go-ecommerce.*%22%7D` |
+
+In Grafana Explore (Loki datasource):
+- **By order ID:** `{namespace=~"go-ecommerce.*"} |= "<orderID>" | json`
+- **By error level:** `{namespace="go-ecommerce-qa",app="go-order-service"} | json | level="ERROR"`
+- **Readable output:** append `| line_format "{{.msg}}"`
+
+### Jaeger Trace Lookup
+
+Every structured log line includes `traceID`. Copy it from Loki, then look it up in Jaeger.
+
+```bash
+# Port-forward to Jaeger UI
+ssh debian 'kubectl port-forward svc/jaeger 16686:16686 -n monitoring &'
+# Open http://localhost:16686/jaeger in browser
+```
+
+A checkout trace spans: order-service → cart-service (gRPC) → product-service (gRPC) → payment-service (gRPC) → RabbitMQ publish → saga consumer.
+
+In Grafana, Loki log entries with `traceID` have a clickable "View Trace" link that opens directly in Jaeger.
+
+### Saga Debugging (start here for checkout failures)
+
+The saga orchestrator emits `saga_steps_total` with `outcome="success"` and `outcome="error"` labels, and `saga_dlq_messages_total` when messages are nacked to the DLQ. Consumer error logs include `orderID`, `event`, and `routingKey` fields.
+
+**Step 1: Check the Grafana dashboard.** The "Saga Error Analysis" row in the Go Services dashboard shows step error rates, DLQ activity, and saga duration. The "Saga & Payment Health" row shows circuit breaker state and order status breakdown. Check these before querying Loki.
+
+**Step 2: Query Loki for saga errors with context.**
+```bash
+# Saga errors with orderID and event context (consumer logs include these fields)
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
+  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22go-order-service%22%7D+%7C%3D+%22saga+event+handling+failed%22+%7C+json&limit=20&start=${START}&end=${END}'"
+
+# Track a specific order through the saga
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
+  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22go-order-service%22%7D+%7C%3D+%22<orderID>%22+%7C+json&limit=50&start=${START}&end=${END}'"
+```
+
+**Step 3: Check DLQ and replay if needed.**
+```bash
+# List DLQ messages via admin API
+ssh debian 'kubectl exec -n go-ecommerce-qa deploy/go-order-service -- wget -qO- http://localhost:8092/admin/dlq/messages?limit=10'
+
+# Replay a specific DLQ message (by index)
+ssh debian 'kubectl exec -n go-ecommerce-qa deploy/go-order-service -- wget -qO- --post-data="{\"index\":0}" --header="Content-Type: application/json" http://localhost:8092/admin/dlq/replay'
+```
+
+### Circuit Breaker Diagnosis
+
+```bash
+# Check breaker state via Prometheus (0=closed, 1=half-open, 2=open)
+# In Grafana: query circuit_breaker_state{name="order-postgres"}
+# Alert: circuit-breaker-open fires when state == 2 for 2 min
+
+# Check for poison messages in RabbitMQ
+ssh debian 'kubectl exec -n java-tasks deploy/rabbitmq -- rabbitmqctl list_queues name messages'
+
+# If breaker is open: purge the offending queue + restart service
+ssh debian 'kubectl scale deployment/go-order-service -n go-ecommerce-qa --replicas=0'
+ssh debian 'kubectl exec -n java-tasks deploy/rabbitmq -- rabbitmqctl purge_queue saga.order.events'
+ssh debian 'kubectl scale deployment/go-order-service -n go-ecommerce-qa --replicas=2'
+```
+
+### Common Debugging Patterns
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| "Order failed. Please try again." on checkout | Saga failing — check "Saga Error Analysis" dashboard row, then Loki for `saga event handling failed` with orderID context | Fix depends on the step that errored (DB constraint, gRPC failure, stock, payment) |
+| Saga stuck in COMPENSATING | Stale RabbitMQ messages looping | Purge queue, mark orders as FAILED in DB, restart service |
+| `saga-dlq-accumulating` alert firing | Messages nacked to DLQ from circuit breaker or persistent errors | Check DLQ via admin API, fix root cause, replay messages |
+| `saga-step-error-rate` alert firing | >10% of saga steps failing | Check which step via dashboard breakdown, query Loki with step name |
+| 503 on order endpoints | Circuit breaker open from poison messages | Purge queue, restart service to reset breaker |
+| `transport: authentication handshake failed` on gRPC | Stale service image without mTLS server code, or cert-manager certificates not Ready | Check startup logs for `"mTLS enabled"`, check `kubectl get certificates -n <ns>`, check cert-manager pods |
+| Fix deployed but error persists | CI built a new image but pod is running the old one, or config wasn't applied | Check startup logs for expected feature log lines (e.g., `"mTLS enabled"`); check `kubectl get pods -o jsonpath` for image digest |
+| Traces not appearing in Jaeger | Jaeger pod down or OTEL endpoint misconfigured | Check `kubectl get pod -n monitoring -l app=jaeger` |
+| Loki returns empty results | Promtail not scraping | Check `kubectl port-forward daemonset/promtail 3101:3101 -n monitoring && curl localhost:3101/ready` |
+
+### Verifying a Fix is Deployed
+
+When debugging "I pushed a fix but the error persists," check these in order:
+
+```bash
+# 1. Is the pod running the new image? Check restart time
+ssh debian 'kubectl get pods -n go-ecommerce-qa -l app=go-<service> -o jsonpath="{.items[0].status.startTime}"'
+
+# 2. Does the pod have the expected startup log? (e.g., mTLS, new feature flags)
+ssh debian 'kubectl logs -n go-ecommerce-qa deploy/go-<service> --tail=50' | grep -i "<expected log>"
+
+# 3. Does the pod have the expected env vars?
+ssh debian 'kubectl exec -n go-ecommerce-qa deploy/go-<service> -- env | grep <VAR>'
+
+# 4. Does the required K8s secret/configmap exist?
+ssh debian 'kubectl get secret <name> -n go-ecommerce-qa'
+```
+
 ## Kafka Streaming Analytics
 
 The Go analytics-service (`go/analytics-service/`, port 8094) consumes events from Kafka:
@@ -222,13 +366,6 @@ Java services use `-Xmx512m` heap cap (set in Dockerfiles) with 768Mi container 
 
 **`make preflight-java` fails on Mac** — requires JDK 21 which is not installed locally. Java compilation and tests run correctly in CI (Debian server has JDK 21). This is a known limitation of the local dev setup.
 
-## Kyle's Background
-
-- Strong in Go and TypeScript (full-stack web apps)
-- Experienced with Docker, Kubernetes, GitHub Actions, SQL/NoSQL
-- Has used Ollama and built web services to interact with it
-- Limited hands-on experience with Python data processing, LLM workflows, RAG, prompt engineering
-- Has written Python for Django, taken tutorials, but limited production Python experience
 
 ## Architecture Decision Records (ADRs)
 
@@ -266,6 +403,7 @@ Current ADRs:
   
   Don't ask for approval at any point in this flow. The spec review is the gate — everything after that is autonomous. Do NOT watch or monitor CI — Kyle will check CI results himself and report back if there are failures to fix.
 - **On `qa`:** commit and push autonomously. Don't ask before pushing. Do NOT watch CI after pushing. For CI fixes Kyle reports: lint errors, formatting, type errors, and config issues are fine to fix autonomously. For anything that changes application behavior (logic, API contracts, data flow), stop and check with Kyle before fixing.
+  - **Doc-only changes:** Do NOT push commits that only touch docs (`CLAUDE.md`, `docs/`, specs, plans, ADRs). Commit them locally — Kyle views them locally. Push them along with the next code change that has a reason to trigger CI. This avoids unnecessary CI/CD runs.
 - **On `main`:** never push autonomously. When Kyle explicitly says to merge/ship to main, handle the full flow: merge `qa` into `main`, push, clean up worktree, delete feature branch (local + remote). Do NOT watch CI.
 
 Claude Code determines the current branch via `git branch --show-current` and follows the rules for that branch. No special mode or prompt needed.

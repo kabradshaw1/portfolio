@@ -24,9 +24,6 @@ patches:
       - op: add
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
-      - op: add
-        path: /data/TLS_CERT_DIR
-        value: /etc/tls
   - target:
       kind: ConfigMap
       name: order-service-config
@@ -56,11 +53,11 @@ patches:
         path: /data/AUTH_GRPC_URL
         value: "go-auth-service.go-ecommerce-qa.svc.cluster.local:9091"
       - op: add
-        path: /data/TLS_CERT_DIR
-        value: /etc/tls
-      - op: add
         path: /data/PAYMENT_GRPC_ADDR
         value: "go-payment-service.go-ecommerce-qa.svc.cluster.local:9098"
+      - op: add
+        path: /data/FRONTEND_URL
+        value: "https://qa.kylebradshaw.dev"
   - target:
       kind: ConfigMap
       name: ai-service-config
@@ -90,6 +87,9 @@ patches:
       - op: replace
         path: /data/KAFKA_BROKERS
         value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
+      - op: add
+        path: /data/REDIS_URL
+        value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
   # --- Kafka: fix advertised listeners for QA namespace ---
   - target:
       kind: StatefulSet
@@ -119,9 +119,6 @@ patches:
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
-      - op: add
-        path: /data/TLS_CERT_DIR
-        value: /etc/tls
   - target:
       kind: ConfigMap
       name: cart-service-config
@@ -147,9 +144,6 @@ patches:
       - op: add
         path: /data/AUTH_GRPC_URL
         value: "go-auth-service.go-ecommerce-qa.svc.cluster.local:9091"
-      - op: add
-        path: /data/TLS_CERT_DIR
-        value: /etc/tls
   - target:
       kind: ConfigMap
       name: payment-service-config
@@ -166,9 +160,6 @@ patches:
       - op: replace
         path: /data/RABBITMQ_URL
         value: "amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672"
-      - op: add
-        path: /data/TLS_CERT_DIR
-        value: /etc/tls
   # --- Migration jobs ---
   # No Job patches needed: migration jobs read DATABASE_URL via configMapKeyRef
   # from their respective ConfigMaps above. The patches already repoint

@@ -3,74 +3,108 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
 } from "recharts";
+import { goOrderFetch } from "@/lib/go-order-api";
 
 const ANALYTICS_URL =
   process.env.NEXT_PUBLIC_GO_ANALYTICS_URL || "http://localhost:8094";
 
-const POLL_INTERVAL = 5000; // 5 seconds
+const POLL_INTERVAL = 30_000; // 30 seconds
 
-interface DashboardData {
-  ordersPerHour: number;
-  revenuePerHour: number;
-  completionRate: number;
-  activeCarts: number;
-  stale: boolean;
+interface RevenueWindow {
+  window_start: string;
+  window_end: string;
+  total_cents: number;
+  order_count: number;
+  avg_order_value_cents: number;
 }
 
 interface TrendingProduct {
-  id: string;
-  name: string;
+  product_id: string;
+  product_name: string;
   score: number;
   views: number;
-  purchases: number;
+  cart_adds: number;
 }
 
 interface TrendingData {
+  window_end: string;
   products: TrendingProduct[];
   stale: boolean;
 }
 
-interface HourlyBucket {
-  hour: string;
-  count: number;
-  revenue: number;
+interface AbandonmentWindow {
+  window_start: string;
+  window_end: string;
+  carts_started: number;
+  carts_converted: number;
+  carts_abandoned: number;
+  abandonment_rate: number;
 }
 
-interface OrdersData {
-  hourly: HourlyBucket[];
-  statusBreakdown: {
-    created: number;
-    completed: number;
-    failed: number;
-  };
-  stale: boolean;
+interface SalesTrend {
+  day: string;
+  dailyRevenue: number;
+  rolling7Day: number;
+  rolling30Day: number;
+}
+
+interface ProductPerf {
+  productId: string;
+  productName: string;
+  category: string;
+  currentStock: number;
+  totalUnitsSold: number;
+  totalRevenueCents: number;
+  totalOrders: number;
+  avgOrderValueCents: number;
+  returnCount: number;
+  returnRatePct: number;
 }
 
 export default function AnalyticsPage() {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [revenue, setRevenue] = useState<RevenueWindow[]>([]);
   const [trending, setTrending] = useState<TrendingData | null>(null);
-  const [orders, setOrders] = useState<OrdersData | null>(null);
+  const [abandonment, setAbandonment] = useState<AbandonmentWindow[]>([]);
+  const [stale, setStale] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [salesTrends, setSalesTrends] = useState<SalesTrend[]>([]);
+  const [productPerf, setProductPerf] = useState<ProductPerf[]>([]);
+  const [reportingError, setReportingError] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
-      const [dashRes, trendRes, ordersRes] = await Promise.all([
-        fetch(`${ANALYTICS_URL}/analytics/dashboard`),
-        fetch(`${ANALYTICS_URL}/analytics/trending`),
-        fetch(`${ANALYTICS_URL}/analytics/orders`),
+      const [revRes, trendRes, abandRes] = await Promise.all([
+        fetch(`${ANALYTICS_URL}/analytics/revenue?hours=24`),
+        fetch(`${ANALYTICS_URL}/analytics/trending?limit=10`),
+        fetch(`${ANALYTICS_URL}/analytics/cart-abandonment?hours=12`),
       ]);
 
-      if (dashRes.ok) setDashboard(await dashRes.json());
-      if (trendRes.ok) setTrending(await trendRes.json());
-      if (ordersRes.ok) setOrders(await ordersRes.json());
+      if (revRes.ok) {
+        const data = await revRes.json();
+        setRevenue(data.windows ?? []);
+        if (data.stale) setStale(true);
+      }
+      if (trendRes.ok) {
+        const data = await trendRes.json();
+        setTrending(data);
+        if (data.stale) setStale(true);
+      }
+      if (abandRes.ok) {
+        const data = await abandRes.json();
+        setAbandonment(data.windows ?? []);
+        if (data.stale) setStale(true);
+      }
       setError(null);
     } catch {
       setError("Unable to reach analytics service");
@@ -92,7 +126,45 @@ export default function AnalyticsPage() {
     };
   }, [fetchAll]);
 
-  const isStale = dashboard?.stale || trending?.stale || orders?.stale;
+  useEffect(() => {
+    async function fetchReporting() {
+      try {
+        const [trendsRes, perfRes] = await Promise.all([
+          goOrderFetch("/reporting/sales-trends?days=30"),
+          goOrderFetch("/reporting/product-performance"),
+        ]);
+        if (trendsRes.ok) {
+          const data = await trendsRes.json();
+          setSalesTrends(data.trends ?? []);
+        }
+        if (perfRes.ok) {
+          const data = await perfRes.json();
+          setProductPerf(data.products ?? []);
+        }
+      } catch {
+        setReportingError("Unable to load reporting data");
+      }
+    }
+    fetchReporting();
+  }, []);
+
+  const totalRevenue = revenue.reduce((sum, w) => sum + w.total_cents, 0);
+  const totalOrders = revenue.reduce((sum, w) => sum + w.order_count, 0);
+  const avgOrderValue =
+    totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+  const latestAbandonment =
+    abandonment.length > 0 ? abandonment[abandonment.length - 1] : null;
+
+  const revenueChartData = revenue.map((w) => ({
+    hour: w.window_start,
+    revenue: w.total_cents / 100,
+  }));
+
+  const abandonmentChartData = abandonment.map((w) => ({
+    slot: w.window_start,
+    rate: w.abandonment_rate * 100,
+  }));
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
@@ -102,7 +174,7 @@ export default function AnalyticsPage() {
         in-memory sliding window aggregation.
       </p>
 
-      {isStale && (
+      {stale && (
         <div className="mb-4 rounded border border-muted-foreground/20 bg-muted px-4 py-3 text-sm text-muted-foreground">
           No recent activity. Place orders in the{" "}
           <Link href="/go/ecommerce" className="underline hover:text-foreground">Store</Link>{" "}
@@ -116,41 +188,27 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* Dashboard Cards */}
-      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard
-          label="Orders / Hour"
-          value={dashboard?.ordersPerHour?.toFixed(1) ?? "—"}
-        />
-        <StatCard
-          label="Revenue / Hour"
-          value={
-            dashboard?.revenuePerHour != null
-              ? `$${dashboard.revenuePerHour.toFixed(2)}`
-              : "—"
-          }
-        />
-        <StatCard
-          label="Completion Rate"
-          value={
-            dashboard?.completionRate != null
-              ? `${(dashboard.completionRate * 100).toFixed(0)}%`
-              : "—"
-          }
-        />
-        <StatCard
-          label="Active Carts"
-          value={dashboard?.activeCarts?.toString() ?? "—"}
-        />
-      </div>
-
-      {/* Order Volume Chart */}
+      {/* Revenue per Hour */}
       <div className="mb-8">
-        <h2 className="mb-3 text-lg font-semibold">Order Volume (Hourly)</h2>
+        <h2 className="mb-3 text-lg font-semibold">Revenue per Hour</h2>
+        <div className="mb-4 grid grid-cols-3 gap-4">
+          <StatCard
+            label="Total Revenue (24h)"
+            value={`$${(totalRevenue / 100).toFixed(2)}`}
+          />
+          <StatCard
+            label="Total Orders (24h)"
+            value={totalOrders.toString()}
+          />
+          <StatCard
+            label="Avg Order Value"
+            value={`$${(avgOrderValue / 100).toFixed(2)}`}
+          />
+        </div>
         <div className="rounded border bg-card p-4">
-          {orders?.hourly && orders.hourly.length > 0 ? (
+          {revenueChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={orders.hourly}>
+              <BarChart data={revenueChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="hour"
@@ -162,50 +220,30 @@ export default function AnalyticsPage() {
                   }
                   fontSize={12}
                 />
-                <YAxis fontSize={12} />
+                <YAxis
+                  tickFormatter={(v: number) => `$${v.toFixed(0)}`}
+                  fontSize={12}
+                />
                 <Tooltip
                   labelFormatter={(v) => new Date(String(v)).toLocaleString()}
+                  formatter={(value) => [`$${Number(value).toFixed(2)}`, "Revenue"]}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="count"
-                  stroke="hsl(var(--primary))"
-                  strokeWidth={2}
-                  dot={false}
+                <Bar
+                  dataKey="revenue"
+                  fill="hsl(var(--primary))"
                 />
-              </LineChart>
+              </BarChart>
             </ResponsiveContainer>
           ) : (
             <p className="py-8 text-center text-muted-foreground">
-              No order data yet
+              No revenue data yet
             </p>
           )}
         </div>
       </div>
 
-      {/* Status Breakdown */}
-      {orders?.statusBreakdown && (
-        <div className="mb-8">
-          <h2 className="mb-3 text-lg font-semibold">Order Status Breakdown</h2>
-          <div className="grid grid-cols-3 gap-4">
-            <StatCard
-              label="Created"
-              value={orders.statusBreakdown.created.toString()}
-            />
-            <StatCard
-              label="Completed"
-              value={orders.statusBreakdown.completed.toString()}
-            />
-            <StatCard
-              label="Failed"
-              value={orders.statusBreakdown.failed.toString()}
-            />
-          </div>
-        </div>
-      )}
-
       {/* Trending Products */}
-      <div>
+      <div className="mb-8">
         <h2 className="mb-3 text-lg font-semibold">Trending Products</h2>
         <div className="rounded border bg-card">
           {trending?.products && trending.products.length > 0 ? (
@@ -214,25 +252,25 @@ export default function AnalyticsPage() {
                 <tr className="border-b text-left text-muted-foreground">
                   <th className="px-4 py-2">#</th>
                   <th className="px-4 py-2">Product</th>
-                  <th className="px-4 py-2 text-right">Views</th>
-                  <th className="px-4 py-2 text-right">Purchases</th>
                   <th className="px-4 py-2 text-right">Score</th>
+                  <th className="px-4 py-2 text-right">Views</th>
+                  <th className="px-4 py-2 text-right">Cart Adds</th>
                 </tr>
               </thead>
               <tbody>
                 {trending.products.map((p, i) => (
-                  <tr key={p.id} className="border-b last:border-0">
+                  <tr key={p.product_id} className="border-b last:border-0">
                     <td className="px-4 py-2 text-muted-foreground">
                       {i + 1}
                     </td>
                     <td className="px-4 py-2 font-medium">
-                      {p.name || p.id}
+                      {p.product_name || p.product_id}
                     </td>
-                    <td className="px-4 py-2 text-right">{p.views}</td>
-                    <td className="px-4 py-2 text-right">{p.purchases}</td>
                     <td className="px-4 py-2 text-right font-semibold">
                       {p.score}
                     </td>
+                    <td className="px-4 py-2 text-right">{p.views}</td>
+                    <td className="px-4 py-2 text-right">{p.cart_adds}</td>
                   </tr>
                 ))}
               </tbody>
@@ -244,15 +282,197 @@ export default function AnalyticsPage() {
           )}
         </div>
       </div>
+
+      {/* Cart Abandonment */}
+      <div className="mb-8">
+        <h2 className="mb-3 text-lg font-semibold">Cart Abandonment</h2>
+        <div className="mb-4 grid grid-cols-3 gap-4">
+          <StatCard
+            label="Abandonment Rate"
+            value={
+              latestAbandonment
+                ? `${(latestAbandonment.abandonment_rate * 100).toFixed(1)}%`
+                : "---"
+            }
+            className="text-amber-500"
+          />
+          <StatCard
+            label="Carts Started"
+            value={latestAbandonment?.carts_started.toString() ?? "---"}
+          />
+          <StatCard
+            label="Carts Converted"
+            value={latestAbandonment?.carts_converted.toString() ?? "---"}
+          />
+        </div>
+        <div className="rounded border bg-card p-4">
+          {abandonmentChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={abandonmentChartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="slot"
+                  tickFormatter={(v: string) =>
+                    new Date(v).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  }
+                  fontSize={12}
+                />
+                <YAxis
+                  tickFormatter={(v: number) => `${v.toFixed(0)}%`}
+                  fontSize={12}
+                />
+                <Tooltip
+                  labelFormatter={(v) => new Date(String(v)).toLocaleString()}
+                  formatter={(value) => [`${Number(value).toFixed(1)}%`, "Abandonment Rate"]}
+                />
+                <Bar
+                  dataKey="rate"
+                  fill="#f59e0b"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="py-8 text-center text-muted-foreground">
+              No cart abandonment data yet
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Historical Reporting */}
+      <div className="mt-12 border-t border-foreground/10 pt-8">
+        <h2 className="mb-2 text-xl font-bold">Historical Reporting</h2>
+        <p className="mb-6 text-sm text-muted-foreground">
+          Pre-computed analytics from PostgreSQL materialized views with concurrent refresh.
+          Revenue trends use rolling window functions over range-partitioned order data.
+        </p>
+
+        {reportingError && (
+          <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-600 dark:text-red-400">
+            {reportingError}
+          </div>
+        )}
+
+        {/* Sales Trends Chart */}
+        <div className="mb-8">
+          <h3 className="mb-3 text-lg font-semibold">Revenue Trends (30 Days)</h3>
+          <div className="rounded border bg-card p-4">
+            {salesTrends.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={salesTrends}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="day"
+                    tickFormatter={(v: string) =>
+                      new Date(v).toLocaleDateString([], { month: "short", day: "numeric" })
+                    }
+                    fontSize={12}
+                  />
+                  <YAxis
+                    tickFormatter={(v: number) => `$${(v / 100).toFixed(0)}`}
+                    fontSize={12}
+                  />
+                  <Tooltip
+                    labelFormatter={(v) => new Date(String(v)).toLocaleDateString()}
+                    formatter={(value, name) => [
+                      typeof value === "number" ? `$${(value / 100).toFixed(2)}` : String(value ?? ""),
+                      name === "rolling7Day" ? "7-Day Rolling" : "30-Day Rolling",
+                    ]}
+                  />
+                  <Legend
+                    formatter={(value: string) =>
+                      value === "rolling7Day" ? "7-Day Rolling" : "30-Day Rolling"
+                    }
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="rolling30Day"
+                    stroke="hsl(var(--muted-foreground))"
+                    fill="hsl(var(--muted-foreground) / 0.1)"
+                    strokeWidth={1.5}
+                    dot={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="rolling7Day"
+                    stroke="hsl(var(--primary))"
+                    fill="hsl(var(--primary) / 0.15)"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="py-8 text-center text-muted-foreground">
+                No revenue data yet
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Product Performance Table */}
+        <div>
+          <h3 className="mb-3 text-lg font-semibold">Product Performance</h3>
+          <div className="rounded border bg-card">
+            {productPerf.length > 0 ? (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="px-4 py-2">Product</th>
+                    <th className="px-4 py-2">Category</th>
+                    <th className="px-4 py-2 text-right">Units Sold</th>
+                    <th className="px-4 py-2 text-right">Revenue</th>
+                    <th className="px-4 py-2 text-right">Avg Order</th>
+                    <th className="px-4 py-2 text-right">Return Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productPerf.map((p) => (
+                    <tr key={p.productId} className="border-b last:border-0">
+                      <td className="px-4 py-2 font-medium">{p.productName}</td>
+                      <td className="px-4 py-2 text-muted-foreground">{p.category}</td>
+                      <td className="px-4 py-2 text-right">{p.totalUnitsSold}</td>
+                      <td className="px-4 py-2 text-right">
+                        ${(p.totalRevenueCents / 100).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        ${(p.avgOrderValueCents / 100).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {p.returnRatePct.toFixed(1)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="px-4 py-8 text-center text-muted-foreground">
+                No product data yet
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
   return (
     <div className="rounded border bg-card px-4 py-3">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-bold">{value}</p>
+      <p className={`mt-1 text-2xl font-bold ${className ?? ""}`}>{value}</p>
     </div>
   );
 }
