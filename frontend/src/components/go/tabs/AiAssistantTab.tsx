@@ -62,7 +62,7 @@ export function AiAssistantTab() {
         The agent runs a synchronous ReAct-style loop &mdash; call the LLM,
         dispatch any requested tools, feed results back into the
         conversation, and repeat until the LLM produces a final answer.
-        Bounded by 8 steps and a 30-second wall-clock timeout. Tool errors
+        Bounded by 8 steps and a 90-second wall-clock timeout. Tool errors
         become conversation context for the LLM to handle, not hard failures.
       </p>
       <div className="mt-6">
