@@ -4,10 +4,16 @@ metadata:
   name: postgres-initdb
   namespace: java-tasks
 data:
-  # Runs once, on first boot against a fresh PVC. Creates the database used
-  # by the Go auth/ecommerce services. Schemas and seed data are owned by
-  # per-service Kubernetes Jobs (golang-migrate) — see go/k8s/jobs/.
-  01-create-ecommercedb.sql: |
-    CREATE DATABASE ecommercedb OWNER taskuser;
-  02-create-productdb.sql: |
+  # Runs once, on first boot against a fresh PVC. Creates databases used
+  # by Go services. Schemas and seed data are owned by per-service
+  # Kubernetes Jobs (golang-migrate) — see go/k8s/jobs/.
+  01-create-authdb.sql: |
+    CREATE DATABASE authdb OWNER taskuser;
+  02-create-orderdb.sql: |
+    CREATE DATABASE orderdb OWNER taskuser;
+  03-create-productdb.sql: |
     CREATE DATABASE productdb OWNER taskuser;
+  04-create-cartdb.sql: |
+    CREATE DATABASE cartdb OWNER taskuser;
+  05-create-paymentdb.sql: |
+    CREATE DATABASE paymentdb OWNER taskuser;

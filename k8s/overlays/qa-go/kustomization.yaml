@@ -17,7 +17,7 @@ patches:
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
       - op: replace
         path: /data/DATABASE_URL
-        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/ecommercedb_qa?sslmode=disable"
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/authdb_qa?sslmode=disable"
       - op: add
         path: /data/GRPC_PORT
         value: "9091"
@@ -33,7 +33,7 @@ patches:
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
       - op: replace
         path: /data/DATABASE_URL
-        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/ecommercedb_qa?sslmode=disable"
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb_qa?sslmode=disable"
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"

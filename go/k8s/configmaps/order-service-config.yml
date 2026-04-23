@@ -4,7 +4,7 @@ metadata:
   name: order-service-config
   namespace: go-ecommerce
 data:
-  DATABASE_URL: postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/ecommercedb?sslmode=disable
+  DATABASE_URL: postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb?sslmode=disable
   REDIS_URL: redis://redis.java-tasks.svc.cluster.local:6379
   RABBITMQ_URL: amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev

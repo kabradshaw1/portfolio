@@ -127,7 +127,7 @@ Decomposed Go services use gRPC for inter-service communication and REST for fro
 
 ## Ecommerce Architecture
 
-Decomposed ecommerce: order-service, cart-service, product-service, payment-service with gRPC inter-service communication and a RabbitMQ-based checkout saga. Database-per-service on shared Postgres (`productdb`, `cartdb`, `paymentdb`, `ecommercedb` for orders+auth). QA uses a separate RabbitMQ `/qa` vhost for queue isolation.
+Decomposed ecommerce: order-service, cart-service, product-service, payment-service with gRPC inter-service communication and a RabbitMQ-based checkout saga. Database-per-service on shared Postgres (`authdb`, `orderdb`, `productdb`, `cartdb`, `paymentdb`). QA uses a separate RabbitMQ `/qa` vhost for queue isolation.
 
 **Adding a new Go service:** Use the `/scaffold-go-service` skill for the full 15-item checklist.
 
