@@ -986,6 +986,22 @@ jobs:
           $SSH "kubectl rollout status deployment -n java-tasks-qa --timeout=180s"
           $SSH "kubectl rollout status deployment -n go-ecommerce-qa --timeout=180s"
 
+          # Verify monitoring stack health
+          echo "Checking monitoring stack health..."
+          if ! $SSH "kubectl get pod -n monitoring -l app=jaeger -o jsonpath='{.items[0].status.phase}'" | grep -q Running; then
+            echo "::error::Jaeger is not running"
+            exit 1
+          fi
+          if ! $SSH "kubectl get pod -n monitoring -l app=grafana -o jsonpath='{.items[0].status.phase}'" | grep -q Running; then
+            echo "::error::Grafana is not running"
+            exit 1
+          fi
+          if ! $SSH "kubectl get pod -n monitoring -l app=promtail -o jsonpath='{.items[0].status.phase}'" | grep -q Running; then
+            echo "::error::Promtail is not running"
+            exit 1
+          fi
+          echo "Monitoring stack healthy"
+
           rm -f ~/.ssh/deploy_key
 
   # ---------- Deploy Production ----------
@@ -1142,6 +1158,22 @@ jobs:
             $SSH "kubectl rollout restart deployment -n go-ecommerce"
             $SSH "kubectl rollout status deployment -n go-ecommerce --timeout=180s"
           fi
+
+          # Verify monitoring stack health
+          echo "Checking monitoring stack health..."
+          if ! $SSH "kubectl get pod -n monitoring -l app=jaeger -o jsonpath='{.items[0].status.phase}'" | grep -q Running; then
+            echo "::error::Jaeger is not running"
+            exit 1
+          fi
+          if ! $SSH "kubectl get pod -n monitoring -l app=grafana -o jsonpath='{.items[0].status.phase}'" | grep -q Running; then
+            echo "::error::Grafana is not running"
+            exit 1
+          fi
+          if ! $SSH "kubectl get pod -n monitoring -l app=promtail -o jsonpath='{.items[0].status.phase}'" | grep -q Running; then
+            echo "::error::Promtail is not running"
+            exit 1
+          fi
+          echo "Monitoring stack healthy"
 
           rm -f ~/.ssh/deploy_key
 
