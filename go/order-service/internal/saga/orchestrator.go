@@ -59,17 +59,20 @@ func (o *Orchestrator) Advance(ctx context.Context, orderID uuid.UUID) error {
 
 	slog.InfoContext(ctx, "advancing saga", "orderID", orderID, "currentStep", order.SagaStep)
 
+	start := time.Now()
+	var stepErr error
+
 	switch order.SagaStep {
 	case StepCreated:
-		return o.handleCreated(ctx, order)
+		stepErr = o.handleCreated(ctx, order)
 	case StepItemsReserved:
-		return o.handleItemsReserved(ctx, order)
+		stepErr = o.handleItemsReserved(ctx, order)
 	case StepStockValidated:
-		return o.handleStockValidated(ctx, order)
+		stepErr = o.handleStockValidated(ctx, order)
 	case StepPaymentCreated:
 		return nil // Waiting for webhook confirmation via outbox poller
 	case StepPaymentConfirmed:
-		return o.handlePaymentConfirmed(ctx, order)
+		stepErr = o.handlePaymentConfirmed(ctx, order)
 	case StepCompensating:
 		return nil // Compensation command already sent, waiting for reply
 	case StepCompleted, StepCompensationComplete, StepFailed:
@@ -78,6 +81,15 @@ func (o *Orchestrator) Advance(ctx context.Context, orderID uuid.UUID) error {
 		SagaStepsTotal.WithLabelValues(order.SagaStep, "error").Inc()
 		return fmt.Errorf("unknown saga step: %s", order.SagaStep)
 	}
+
+	elapsed := time.Since(start)
+	outcome := "success"
+	if stepErr != nil {
+		outcome = "error"
+	}
+	SagaStepDuration.WithLabelValues(order.SagaStep, outcome).Observe(elapsed.Seconds())
+
+	return stepErr
 }
 
 func (o *Orchestrator) handleCreated(ctx context.Context, order *model.Order) error {
