@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kabradshaw1/portfolio/go/payment-service/internal/model"
@@ -81,12 +83,16 @@ func (s *PaymentService) CreatePayment(
 		CancelURL:      cancelURL,
 	}
 
+	slog.InfoContext(ctx, "calling Stripe API", "operation", "create_checkout", "orderID", orderID, "amountCents", amountCents)
+	stripeStart := time.Now()
 	result, err := s.stripe.CreateCheckoutSession(ctx, params)
+	stripeElapsed := time.Since(stripeStart)
 	if err != nil {
-		// Best-effort: mark the record failed so the caller can surface the right status.
+		slog.ErrorContext(ctx, "Stripe API failed", "operation", "create_checkout", "orderID", orderID, "duration", stripeElapsed, "error", err)
 		_ = s.repo.UpdateStatus(ctx, orderID, model.PaymentStatusFailed)
 		return nil, fmt.Errorf("create stripe checkout session: %w", err)
 	}
+	slog.InfoContext(ctx, "Stripe API responded", "operation", "create_checkout", "orderID", orderID, "duration", stripeElapsed)
 
 	if updateErr := s.repo.UpdateStripeIDs(ctx, orderID, result.PaymentIntentID, result.SessionID); updateErr != nil {
 		return nil, fmt.Errorf("persist stripe ids: %w", updateErr)
@@ -118,10 +124,15 @@ func (s *PaymentService) RefundPayment(
 		return nil, "", fmt.Errorf("find payment for refund: %w", err)
 	}
 
+	slog.InfoContext(ctx, "calling Stripe API", "operation", "refund", "orderID", orderID, "intentID", payment.StripePaymentIntentID)
+	refundStart := time.Now()
 	refundID, err := s.stripe.Refund(ctx, payment.StripePaymentIntentID, reason)
+	refundElapsed := time.Since(refundStart)
 	if err != nil {
+		slog.ErrorContext(ctx, "Stripe API failed", "operation", "refund", "orderID", orderID, "duration", refundElapsed, "error", err)
 		return nil, "", fmt.Errorf("stripe refund: %w", err)
 	}
+	slog.InfoContext(ctx, "Stripe API responded", "operation", "refund", "orderID", orderID, "refundID", refundID, "duration", refundElapsed)
 
 	if updateErr := s.repo.UpdateStatus(ctx, orderID, model.PaymentStatusRefunded); updateErr != nil {
 		return nil, "", fmt.Errorf("update refunded status: %w", updateErr)
