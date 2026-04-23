@@ -143,8 +143,8 @@ Decomposed Go services use gRPC for inter-service communication and REST for fro
 - **Generated code:** lives at `go/<service>/pb/<service>/v1/` (NOT `internal/pb/` — Go's `internal` package visibility blocks cross-module imports).
 - **gRPC features:** reflection (`grpc.reflection`), health checking (`grpc_health_v1`), OTel interceptors (`otelgrpc.NewServerHandler()`).
 - **Inter-service calls:** `grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))` — plaintext within the cluster.
-- **mTLS opt-in:** Services check `TLS_CERT_DIR` env var at startup. If set, servers call `tlsconfig.ServerTLS(certDir)` and clients call `tlsconfig.ClientTLS(certDir)` from `go/pkg/tlsconfig/`. If unset, both fall back to `insecure.NewCredentials()`. The `grpc-tls` K8s secret must exist and be mounted for mTLS to work.
-- **QA has no mTLS** — the `grpc-tls` secret does not exist in `go-ecommerce-qa`. Do NOT set `TLS_CERT_DIR` in the QA overlay (`k8s/overlays/qa-go/kustomization.yaml`) unless the secret is created first. Setting `TLS_CERT_DIR` without the secret causes every gRPC call to fail with `"transport: authentication handshake failed"`.
+- **mTLS (cert-manager):** All gRPC services use mTLS in both QA and prod. cert-manager v1.17.2 is installed by CI and `deploy.sh`. Certificate resources live in `k8s/cert-manager/` (prod) and `k8s/cert-manager/qa-certificates.yml` (QA). Each service gets a per-service secret (e.g., `payment-grpc-tls`) mounted at `/etc/tls/`. Services check `TLS_CERT_DIR` env var at startup — if set, servers call `tlsconfig.ServerTLS(certDir)` and clients call `tlsconfig.ClientTLS(certDir)` from `go/pkg/tlsconfig/`. If unset, both fall back to `insecure.NewCredentials()`.
+- **mTLS debugging:** If a gRPC call fails with `"transport: authentication handshake failed"`: (1) check cert-manager is running: `kubectl get pods -n cert-manager`, (2) check certificates are Ready: `kubectl get certificates -n <namespace>`, (3) check the service image is up to date with mTLS server code — grep startup logs for `"mTLS enabled"`. A stale image that predates the mTLS fix will serve insecure gRPC while the client connects with TLS.
 - **CI:** `buf lint` runs on proto changes. `buf generate` produces `*.pb.go` and `*_grpc.pb.go`.
 
 ## Ecommerce Decomposition
@@ -303,7 +303,7 @@ ssh debian 'kubectl scale deployment/go-order-service -n go-ecommerce-qa --repli
 |---------|-------------|-----|
 | Saga stuck in COMPENSATING | Stale RabbitMQ messages looping | Purge queue, mark orders as FAILED in DB, restart service |
 | 503 on order endpoints | Circuit breaker open from poison messages | Purge queue, restart service to reset breaker |
-| `transport: authentication handshake failed` on gRPC | `TLS_CERT_DIR` is set but `grpc-tls` secret doesn't exist | Remove `TLS_CERT_DIR` from the namespace's ConfigMap overlay, or create the secret |
+| `transport: authentication handshake failed` on gRPC | Stale service image without mTLS server code, or cert-manager certificates not Ready | Check startup logs for `"mTLS enabled"`, check `kubectl get certificates -n <ns>`, check cert-manager pods |
 | Fix deployed but error persists | CI built a new image but pod is running the old one, or config wasn't applied | Check startup logs for expected feature log lines (e.g., `"mTLS enabled"`); check `kubectl get pods -o jsonpath` for image digest |
 | Traces not appearing in Jaeger | Jaeger pod down or OTEL endpoint misconfigured | Check `kubectl get pod -n monitoring -l app=jaeger` |
 | Loki returns empty results | Promtail not scraping | Check `kubectl port-forward daemonset/promtail 3101:3101 -n monitoring && curl localhost:3101/ready` |
