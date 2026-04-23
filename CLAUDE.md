@@ -204,6 +204,72 @@ Three pillars deployed in the `monitoring` namespace (`k8s/monitoring/`):
 
 **Minikube:** Allocated 16Gi memory (cannot increase without `minikube delete` which wipes all cluster state). Currently sufficient.
 
+## Debugging with Observability Tools
+
+**Rule: Use Loki/Jaeger before SSH.** When debugging service issues, query the observability stack first. SSH + `kubectl logs` is a last resort for when the monitoring stack is unavailable.
+
+### Loki Log Queries
+
+Access via Grafana (Explore → Loki datasource) or via CLI:
+
+```bash
+# Port-forward to Loki
+ssh debian 'kubectl port-forward svc/loki 3100:3100 -n monitoring &'
+
+# Query by order ID across all services
+curl -sG http://localhost:3100/loki/api/v1/query_range \
+  --data-urlencode 'query={namespace=~"go-ecommerce.*"} |= "<orderID>" | json' \
+  --data-urlencode 'limit=50'
+
+# Query errors for a specific service
+curl -sG http://localhost:3100/loki/api/v1/query_range \
+  --data-urlencode 'query={namespace="go-ecommerce-qa",app="go-order-service"} | json | level="ERROR"' \
+  --data-urlencode 'limit=20'
+```
+
+In Grafana Explore (Loki datasource):
+- **By order ID:** `{namespace=~"go-ecommerce.*"} |= "<orderID>" | json`
+- **By error level:** `{namespace="go-ecommerce-qa",app="go-order-service"} | json | level="ERROR"`
+- **Readable output:** append `| line_format "{{.msg}}"`
+
+### Jaeger Trace Lookup
+
+Every structured log line includes `traceID`. Copy it from Loki, then look it up in Jaeger.
+
+```bash
+# Port-forward to Jaeger UI
+ssh debian 'kubectl port-forward svc/jaeger 16686:16686 -n monitoring &'
+# Open http://localhost:16686/jaeger in browser
+```
+
+A checkout trace spans: order-service → cart-service (gRPC) → product-service (gRPC) → payment-service (gRPC) → RabbitMQ publish → saga consumer.
+
+In Grafana, Loki log entries with `traceID` have a clickable "View Trace" link that opens directly in Jaeger.
+
+### Circuit Breaker Diagnosis
+
+```bash
+# Check breaker state via Prometheus (0=closed, 1=half-open, 2=open)
+# In Grafana: query circuit_breaker_state{name="order-postgres"}
+
+# Check for poison messages in RabbitMQ
+ssh debian 'kubectl exec -n java-tasks deploy/rabbitmq -- rabbitmqctl list_queues name messages'
+
+# If breaker is open: purge the offending queue + restart service
+ssh debian 'kubectl scale deployment/go-order-service -n go-ecommerce-qa --replicas=0'
+ssh debian 'kubectl exec -n java-tasks deploy/rabbitmq -- rabbitmqctl purge_queue saga.order.events'
+ssh debian 'kubectl scale deployment/go-order-service -n go-ecommerce-qa --replicas=2'
+```
+
+### Common Debugging Patterns
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| Saga stuck in COMPENSATING | Stale RabbitMQ messages looping | Purge queue, mark orders as FAILED in DB, restart service |
+| 503 on order endpoints | Circuit breaker open from poison messages | Purge queue, restart service to reset breaker |
+| Traces not appearing in Jaeger | Jaeger pod down or OTEL endpoint misconfigured | Check `kubectl get pod -n monitoring -l app=jaeger` |
+| Loki returns empty results | Promtail not scraping | Check `kubectl port-forward daemonset/promtail 3101:3101 -n monitoring && curl localhost:3101/ready` |
+
 ## Kafka Streaming Analytics
 
 The Go analytics-service (`go/analytics-service/`, port 8094) consumes events from Kafka:
