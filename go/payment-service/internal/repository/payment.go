@@ -44,6 +44,7 @@ func (r *PaymentRepository) Create(ctx context.Context, orderID uuid.UUID, amoun
 		err := r.pool.QueryRow(ctx,
 			`INSERT INTO payments (id, order_id, amount_cents, currency, status, idempotency_key, created_at, updated_at)
 			 VALUES ($1, $2, $3, $4, 'pending', $5, NOW(), NOW())
+			 ON CONFLICT (order_id) DO UPDATE SET updated_at = NOW()
 			 RETURNING id, order_id, COALESCE(stripe_payment_intent_id, ''), COALESCE(stripe_checkout_session_id, ''),
 			           amount_cents, currency, status, idempotency_key, created_at, updated_at`,
 			uuid.New(), orderID, amountCents, currency, IdempotencyKey(orderID),
