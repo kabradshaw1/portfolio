@@ -757,6 +757,328 @@ data:
             annotations:
               summary: "Java gateway p95 latency is above 3s"
 
+          - uid: go-cart-error-rate
+            title: Go Cart Service Error Rate High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    sum(rate(http_requests_total{service="go-cart-service",status=~"5.."}[5m]))
+                    / sum(rate(http_requests_total{service="go-cart-service"}[5m]))
+                    * 100
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 2
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go cart-service error rate is above 2%"
+
+          - uid: go-payment-error-rate
+            title: Go Payment Service Error Rate High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    sum(rate(http_requests_total{service="go-payment-service",status=~"5.."}[5m]))
+                    / sum(rate(http_requests_total{service="go-payment-service"}[5m]))
+                    * 100
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 2
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go payment-service error rate is above 2%"
+
+          - uid: go-product-error-rate
+            title: Go Product Service Error Rate High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    sum(rate(http_requests_total{service="go-product-service",status=~"5.."}[5m]))
+                    / sum(rate(http_requests_total{service="go-product-service"}[5m]))
+                    * 100
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 2
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go product-service error rate is above 2%"
+
+          - uid: go-auth-error-rate
+            title: Go Auth Service Error Rate High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    sum(rate(http_requests_total{service="go-auth-service",status=~"5.."}[5m]))
+                    / sum(rate(http_requests_total{service="go-auth-service"}[5m]))
+                    * 100
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 2
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go auth-service error rate is above 2%"
+
+          - uid: go-cart-latency-high
+            title: Go Cart Service Latency High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    histogram_quantile(0.95,
+                      sum by (le) (rate(http_request_duration_seconds_bucket{service="go-cart-service"}[5m]))
+                    )
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 2
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go cart-service p95 latency is above 2s"
+
+          - uid: go-payment-latency-high
+            title: Go Payment Service Latency High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    histogram_quantile(0.95,
+                      sum by (le) (rate(http_request_duration_seconds_bucket{service="go-payment-service"}[5m]))
+                    )
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 2
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go payment-service p95 latency is above 2s"
+
+          - uid: go-product-latency-high
+            title: Go Product Service Latency High
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    histogram_quantile(0.95,
+                      sum by (le) (rate(http_request_duration_seconds_bucket{service="go-product-service"}[5m]))
+                    )
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 2
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Go product-service p95 latency is above 2s"
+
       - orgId: 1
         name: Streaming Analytics
         folder: Infrastructure Alerts
@@ -804,3 +1126,51 @@ data:
               severity: warning
             annotations:
               summary: "Kafka consumer lag is above 1000 messages"
+
+      - orgId: 1
+        name: Operational
+        folder: Infrastructure Alerts
+        interval: 1m
+        rules:
+          - uid: circuit-breaker-open
+            title: Circuit Breaker Open
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: circuit_breaker_state == 2
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 0
+                  refId: C
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Circuit breaker is OPEN — a dependency is unavailable"
