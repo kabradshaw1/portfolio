@@ -29,6 +29,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/cart-service/internal/worker"
 	pb "github.com/kabradshaw1/portfolio/go/cart-service/pb/cart/v1"
+	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
 	"github.com/kabradshaw1/portfolio/go/pkg/grpcmetrics"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
@@ -49,6 +50,7 @@ func main() {
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
+	buildinfo.Log()
 
 	pool := connectPostgres(ctx, cfg.DatabaseURL)
 

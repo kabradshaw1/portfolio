@@ -23,6 +23,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/saga"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/service"
+	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
 	"github.com/kabradshaw1/portfolio/go/pkg/grpcmetrics"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
@@ -43,6 +44,7 @@ func main() {
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
+	buildinfo.Log()
 
 	pool := connectPostgres(ctx, cfg.DatabaseURL)
 

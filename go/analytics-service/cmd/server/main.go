@@ -14,6 +14,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/store"
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/window"
+	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
@@ -33,6 +34,7 @@ func main() {
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
+	buildinfo.Log()
 
 	// Redis (optional — service works without it).
 	redisClient := connectRedis(ctx, cfg.RedisURL)

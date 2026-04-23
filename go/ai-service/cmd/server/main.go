@@ -23,6 +23,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
+	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
@@ -55,6 +56,7 @@ func runServe() {
 	slog.SetDefault(slog.New(
 		tracing.NewLogHandler(slog.NewJSONHandler(os.Stdout, nil)),
 	))
+	buildinfo.Log()
 
 	// Circuit breakers
 	ollamaBreaker := newCircuitBreaker("ai-ollama")
