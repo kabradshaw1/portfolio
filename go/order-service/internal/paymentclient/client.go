@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	"github.com/kabradshaw1/portfolio/go/pkg/grpcmetrics"
 	pb "github.com/kabradshaw1/portfolio/go/payment-service/pb/payment/v1"
 )
 
@@ -20,7 +21,10 @@ type GRPCClient struct {
 
 // New dials the payment-service gRPC endpoint and returns a ready client.
 func New(addr string, creds credentials.TransportCredentials) (*GRPCClient, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(creds),
+		grpc.WithUnaryInterceptor(grpcmetrics.UnaryClientInterceptor("payment-service")),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("payment grpc dial: %w", err)
 	}

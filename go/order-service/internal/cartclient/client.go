@@ -10,6 +10,7 @@ import (
 
 	cart "github.com/kabradshaw1/portfolio/go/cart-service/pb/cart/v1"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/model"
+	"github.com/kabradshaw1/portfolio/go/pkg/grpcmetrics"
 	pb "github.com/kabradshaw1/portfolio/go/product-service/pb/product/v1"
 )
 
@@ -26,6 +27,7 @@ type GRPCClient struct {
 func New(cartAddr, productAddr string, creds credentials.TransportCredentials) (*GRPCClient, error) {
 	cartConn, err := grpc.NewClient(cartAddr,
 		grpc.WithTransportCredentials(creds),
+		grpc.WithUnaryInterceptor(grpcmetrics.UnaryClientInterceptor("cart-service")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("connect to cart-service: %w", err)
@@ -33,6 +35,7 @@ func New(cartAddr, productAddr string, creds credentials.TransportCredentials) (
 
 	productConn, err := grpc.NewClient(productAddr,
 		grpc.WithTransportCredentials(creds),
+		grpc.WithUnaryInterceptor(grpcmetrics.UnaryClientInterceptor("product-service")),
 	)
 	if err != nil {
 		cartConn.Close()

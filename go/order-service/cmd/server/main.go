@@ -23,6 +23,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/saga"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/service"
+	"github.com/kabradshaw1/portfolio/go/pkg/grpcmetrics"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tlsconfig"
@@ -156,6 +157,7 @@ func main() {
 	// Auth-service gRPC connection for denylist checks.
 	authConn, err := grpc.NewClient(cfg.AuthGRPCURL,
 		grpc.WithTransportCredentials(grpcCreds),
+		grpc.WithUnaryInterceptor(grpcmetrics.UnaryClientInterceptor("auth-service")),
 	)
 	if err != nil {
 		log.Fatalf("auth gRPC dial: %v", err)
