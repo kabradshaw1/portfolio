@@ -16,6 +16,7 @@ export default function GoEcommerceLayout({
       endpoint={`${goOrderUrl}/health`}
       stack="Go Ecommerce"
       docsHref="/go"
+      degraded
     >
       {children}
       <AiAssistantDrawer />

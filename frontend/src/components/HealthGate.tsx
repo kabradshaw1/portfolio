@@ -8,9 +8,10 @@ interface HealthGateProps {
   stack: string;
   docsHref: string;
   children: React.ReactNode;
+  degraded?: boolean;
 }
 
-export function HealthGate({ endpoint, stack, docsHref, children }: HealthGateProps) {
+export function HealthGate({ endpoint, stack, docsHref, children, degraded }: HealthGateProps) {
   const [status, setStatus] = useState<"checking" | "healthy" | "unhealthy">("checking");
 
   useEffect(() => {
@@ -42,7 +43,7 @@ export function HealthGate({ endpoint, stack, docsHref, children }: HealthGatePr
     );
   }
 
-  if (status === "unhealthy") {
+  if (status === "unhealthy" && !degraded) {
     const message =
       process.env.NEXT_PUBLIC_MAINTENANCE_MESSAGE ||
       "The backend services are currently offline for maintenance. Please check back later.";
@@ -70,5 +71,14 @@ export function HealthGate({ endpoint, stack, docsHref, children }: HealthGatePr
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {status === "unhealthy" && degraded && (
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-sm text-amber-700 dark:text-amber-400">
+          <strong>{stack}</strong> is currently unavailable &mdash; some features may not work.
+        </div>
+      )}
+      {children}
+    </>
+  );
 }
