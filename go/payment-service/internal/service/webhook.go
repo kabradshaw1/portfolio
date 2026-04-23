@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/kabradshaw1/portfolio/go/payment-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/payment-service/internal/model"
 )
 
@@ -56,6 +57,7 @@ func (s *WebhookService) HandlePaymentSucceeded(ctx context.Context, eventID, in
 		return fmt.Errorf("dedup payment succeeded: %w", err)
 	}
 	if !inserted {
+		metrics.WebhookEvents.WithLabelValues("payment_intent.succeeded", "duplicate").Inc()
 		slog.InfoContext(ctx, "duplicate payment_intent.succeeded event, skipping", "eventID", eventID)
 		return nil
 	}
@@ -66,6 +68,7 @@ func (s *WebhookService) HandlePaymentSucceeded(ctx context.Context, eventID, in
 	}
 
 	if err := s.paymentRepo.UpdateStatus(ctx, payment.OrderID, model.PaymentStatusSucceeded); err != nil {
+		slog.ErrorContext(ctx, "failed to update payment status", "orderID", payment.OrderID, "status", "succeeded", "error", err)
 		return fmt.Errorf("update payment status to succeeded: %w", err)
 	}
 
@@ -81,6 +84,7 @@ func (s *WebhookService) HandlePaymentSucceeded(ctx context.Context, eventID, in
 		return fmt.Errorf("insert payment confirmed outbox message: %w", err)
 	}
 
+	slog.InfoContext(ctx, "payment succeeded", "orderID", payment.OrderID, "intentID", intentID)
 	return nil
 }
 
@@ -92,6 +96,7 @@ func (s *WebhookService) HandlePaymentFailed(ctx context.Context, eventID, inten
 		return fmt.Errorf("dedup payment failed: %w", err)
 	}
 	if !inserted {
+		metrics.WebhookEvents.WithLabelValues("payment_intent.payment_failed", "duplicate").Inc()
 		slog.InfoContext(ctx, "duplicate payment_intent.payment_failed event, skipping", "eventID", eventID)
 		return nil
 	}
@@ -102,6 +107,7 @@ func (s *WebhookService) HandlePaymentFailed(ctx context.Context, eventID, inten
 	}
 
 	if err := s.paymentRepo.UpdateStatus(ctx, payment.OrderID, model.PaymentStatusFailed); err != nil {
+		slog.ErrorContext(ctx, "failed to update payment status", "orderID", payment.OrderID, "status", "failed", "error", err)
 		return fmt.Errorf("update payment status to failed: %w", err)
 	}
 
@@ -117,6 +123,7 @@ func (s *WebhookService) HandlePaymentFailed(ctx context.Context, eventID, inten
 		return fmt.Errorf("insert payment failed outbox message: %w", err)
 	}
 
+	slog.InfoContext(ctx, "payment failed", "orderID", payment.OrderID, "intentID", intentID)
 	return nil
 }
 
@@ -128,6 +135,7 @@ func (s *WebhookService) HandleRefund(ctx context.Context, eventID, intentID str
 		return fmt.Errorf("dedup refund: %w", err)
 	}
 	if !inserted {
+		metrics.WebhookEvents.WithLabelValues("charge.refunded", "duplicate").Inc()
 		slog.InfoContext(ctx, "duplicate charge.refunded event, skipping", "eventID", eventID)
 		return nil
 	}
@@ -138,8 +146,10 @@ func (s *WebhookService) HandleRefund(ctx context.Context, eventID, intentID str
 	}
 
 	if err := s.paymentRepo.UpdateStatus(ctx, payment.OrderID, model.PaymentStatusRefunded); err != nil {
+		slog.ErrorContext(ctx, "failed to update payment status", "orderID", payment.OrderID, "status", "refunded", "error", err)
 		return fmt.Errorf("update payment status to refunded: %w", err)
 	}
 
+	slog.InfoContext(ctx, "payment refunded", "orderID", payment.OrderID, "intentID", intentID)
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kabradshaw1/portfolio/go/payment-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 )
 
@@ -50,23 +51,30 @@ func (h *WebhookHandler) HandleWebhook(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	slog.InfoContext(ctx, "webhook event received", "eventType", eventType, "eventID", eventID, "intentID", intentID)
 
 	switch eventType {
 	case "payment_intent.succeeded":
 		if err := h.svc.HandlePaymentSucceeded(ctx, eventID, intentID); err != nil {
+			metrics.WebhookEvents.WithLabelValues(eventType, "error").Inc()
 			_ = c.Error(err)
 			return
 		}
+		metrics.WebhookEvents.WithLabelValues(eventType, "processed").Inc()
 	case "payment_intent.payment_failed":
 		if err := h.svc.HandlePaymentFailed(ctx, eventID, intentID); err != nil {
+			metrics.WebhookEvents.WithLabelValues(eventType, "error").Inc()
 			_ = c.Error(err)
 			return
 		}
+		metrics.WebhookEvents.WithLabelValues(eventType, "processed").Inc()
 	case "charge.refunded":
 		if err := h.svc.HandleRefund(ctx, eventID, intentID); err != nil {
+			metrics.WebhookEvents.WithLabelValues(eventType, "error").Inc()
 			_ = c.Error(err)
 			return
 		}
+		metrics.WebhookEvents.WithLabelValues(eventType, "processed").Inc()
 	default:
 		slog.InfoContext(ctx, "received unknown webhook event type, ignoring", "eventType", eventType, "eventID", eventID)
 	}
