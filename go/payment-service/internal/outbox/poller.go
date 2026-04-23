@@ -3,6 +3,7 @@ package outbox
 import (
 	"context"
 	"log/slog"
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 type OutboxFetcher interface {
 	FetchUnpublished(ctx context.Context, limit int) ([]model.OutboxMessage, error)
 	MarkPublished(ctx context.Context, id uuid.UUID) error
+	Ping(ctx context.Context) error
 }
 
 // Poller periodically fetches unpublished outbox messages and publishes them to RabbitMQ.
@@ -46,9 +48,38 @@ func (p *Poller) IsIdle() bool {
 	return p.idle.Load()
 }
 
+const (
+	waitForDBInitialBackoff = 1 * time.Second
+	waitForDBMaxBackoff     = 30 * time.Second
+)
+
+// waitForDB blocks until the database is reachable or the context is cancelled.
+// Uses exponential backoff starting at 1s, capped at 30s.
+func (p *Poller) waitForDB(ctx context.Context) {
+	backoff := waitForDBInitialBackoff
+	for {
+		if err := p.fetcher.Ping(ctx); err == nil {
+			slog.InfoContext(ctx, "outbox poller: database ready")
+			return
+		}
+
+		slog.WarnContext(ctx, "outbox poller: database not ready, retrying", "backoff", backoff)
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+
+		backoff = time.Duration(math.Min(float64(backoff*2), float64(waitForDBMaxBackoff)))
+	}
+}
+
 // Run starts the polling loop. It ticks at the configured interval and calls poll on each tick.
 // It stops when the context is cancelled.
 func (p *Poller) Run(ctx context.Context) {
+	p.waitForDB(ctx)
+
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 
