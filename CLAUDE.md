@@ -282,11 +282,38 @@ A checkout trace spans: order-service → cart-service (gRPC) → product-servic
 
 In Grafana, Loki log entries with `traceID` have a clickable "View Trace" link that opens directly in Jaeger.
 
+### Saga Debugging (start here for checkout failures)
+
+The saga orchestrator emits `saga_steps_total` with `outcome="success"` and `outcome="error"` labels, and `saga_dlq_messages_total` when messages are nacked to the DLQ. Consumer error logs include `orderID`, `event`, and `routingKey` fields.
+
+**Step 1: Check the Grafana dashboard.** The "Saga Error Analysis" row in the Go Services dashboard shows step error rates, DLQ activity, and saga duration. The "Saga & Payment Health" row shows circuit breaker state and order status breakdown. Check these before querying Loki.
+
+**Step 2: Query Loki for saga errors with context.**
+```bash
+# Saga errors with orderID and event context (consumer logs include these fields)
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
+  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22go-order-service%22%7D+%7C%3D+%22saga+event+handling+failed%22+%7C+json&limit=20&start=${START}&end=${END}'"
+
+# Track a specific order through the saga
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
+  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22go-order-service%22%7D+%7C%3D+%22<orderID>%22+%7C+json&limit=50&start=${START}&end=${END}'"
+```
+
+**Step 3: Check DLQ and replay if needed.**
+```bash
+# List DLQ messages via admin API
+ssh debian 'kubectl exec -n go-ecommerce-qa deploy/go-order-service -- wget -qO- http://localhost:8092/admin/dlq/messages?limit=10'
+
+# Replay a specific DLQ message (by index)
+ssh debian 'kubectl exec -n go-ecommerce-qa deploy/go-order-service -- wget -qO- --post-data="{\"index\":0}" --header="Content-Type: application/json" http://localhost:8092/admin/dlq/replay'
+```
+
 ### Circuit Breaker Diagnosis
 
 ```bash
 # Check breaker state via Prometheus (0=closed, 1=half-open, 2=open)
 # In Grafana: query circuit_breaker_state{name="order-postgres"}
+# Alert: circuit-breaker-open fires when state == 2 for 2 min
 
 # Check for poison messages in RabbitMQ
 ssh debian 'kubectl exec -n java-tasks deploy/rabbitmq -- rabbitmqctl list_queues name messages'
@@ -301,7 +328,10 @@ ssh debian 'kubectl scale deployment/go-order-service -n go-ecommerce-qa --repli
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
+| "Order failed. Please try again." on checkout | Saga failing — check "Saga Error Analysis" dashboard row, then Loki for `saga event handling failed` with orderID context | Fix depends on the step that errored (DB constraint, gRPC failure, stock, payment) |
 | Saga stuck in COMPENSATING | Stale RabbitMQ messages looping | Purge queue, mark orders as FAILED in DB, restart service |
+| `saga-dlq-accumulating` alert firing | Messages nacked to DLQ from circuit breaker or persistent errors | Check DLQ via admin API, fix root cause, replay messages |
+| `saga-step-error-rate` alert firing | >10% of saga steps failing | Check which step via dashboard breakdown, query Loki with step name |
 | 503 on order endpoints | Circuit breaker open from poison messages | Purge queue, restart service to reset breaker |
 | `transport: authentication handshake failed` on gRPC | Stale service image without mTLS server code, or cert-manager certificates not Ready | Check startup logs for `"mTLS enabled"`, check `kubectl get certificates -n <ns>`, check cert-manager pods |
 | Fix deployed but error persists | CI built a new image but pod is running the old one, or config wasn't applied | Check startup logs for expected feature log lines (e.g., `"mTLS enabled"`); check `kubectl get pods -o jsonpath` for image digest |
