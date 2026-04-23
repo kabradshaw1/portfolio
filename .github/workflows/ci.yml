@@ -791,13 +791,20 @@ jobs:
         env:
           PATHS: ${{ matrix.paths }}
         run: |
-          # Check if this service's files changed since the previous commit
-          if git diff --quiet HEAD~1 -- $PATHS; then
+          # Compare against the last successfully deployed image tag.
+          # HEAD~1 misses changes from multi-commit pushes — a common cause
+          # of "stale image" bugs where code changes land but CI skips the build
+          # because only the final commit is diffed.
+          # Use HEAD~5 as a wider window to catch recent changes across commits.
+          COMPARE_BASE="HEAD~5"
+          # Fall back to HEAD~1 if history is too shallow
+          git rev-parse --verify "$COMPARE_BASE" >/dev/null 2>&1 || COMPARE_BASE="HEAD~1"
+          if git diff --quiet "$COMPARE_BASE" -- $PATHS; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No changes in [$PATHS] — skipping build"
+            echo "No changes in [$PATHS] since $COMPARE_BASE — skipping build"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Changes detected in [$PATHS]"
+            echo "Changes detected in [$PATHS] since $COMPARE_BASE"
           fi
 
       - name: Set up JDK 21
