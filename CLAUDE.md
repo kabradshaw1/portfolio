@@ -234,7 +234,7 @@ ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
   'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22go-order-service%22%7D+%7C+json+%7C+level%3D%22ERROR%22&limit=20&start=${START}&end=${END}'"
 ```
 
-**Parsing Loki JSON output** — pipe through python3 to extract structured fields:
+**Parsing Loki JSON output** — Loki returns CRI-wrapped JSON where the actual log is inside a `log` field. You MUST unwrap it:
 ```bash
 ... | python3 -c "
 import json, sys
@@ -243,14 +243,20 @@ for stream in data.get('data', {}).get('result', []):
     app = stream.get('stream', {}).get('app', 'unknown')
     for ts, line in stream.get('values', []):
         try:
-            p = json.loads(line)
-            msg = p.get('msg', p.get('message', line[:300]))
-            err = p.get('error', '')
-            tid = p.get('traceID', '')
-            print(f'[{app}] [{p.get(\"level\",\"\")}] {msg}')
-            if err: print(f'  error: {err}')
-            if tid: print(f'  traceID: {tid}')
-        except: print(f'[{app}] {line[:200]}')
+            outer = json.loads(line)
+            inner = outer.get('log', line)
+            p = json.loads(inner.strip()) if isinstance(inner, str) else outer
+        except:
+            p = {}
+        msg = p.get('msg', p.get('message', line[:200] if not p else ''))
+        if not msg: continue
+        level = p.get('level', '')
+        err = p.get('error', '')
+        tid = p.get('traceID', '')
+        extras = ' '.join(f'{k}={p[k]}' for k in ['orderID','target','method','status','duration','currentStep','event'] if p.get(k))
+        print(f'[{app}] [{level}] {msg}' + (f' {extras}' if extras else ''))
+        if err: print(f'  error: {err[:250]}')
+        if tid: print(f'  traceID: {tid}')
 "
 ```
 
