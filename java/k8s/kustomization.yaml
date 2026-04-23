@@ -7,6 +7,7 @@ resources:
   - configmaps/gateway-service-config.yml
   - configmaps/notification-service-config.yml
   - configmaps/postgres-initdb.yml
+  - configmaps/rabbitmq-definitions.yml
   - configmaps/task-service-config.yml
   - deployments/activity-service.yml
   - deployments/gateway-service.yml

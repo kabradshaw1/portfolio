@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-definitions
+  namespace: java-tasks
+data:
+  definitions.json: |
+    {
+      "vhosts": [
+        {"name": "/"},
+        {"name": "qa"}
+      ],
+      "permissions": [
+        {"user": "guest", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*"},
+        {"user": "guest", "vhost": "qa", "configure": ".*", "write": ".*", "read": ".*"}
+      ]
+    }
+  rabbitmq.conf: |
+    management.load_definitions = /etc/rabbitmq/definitions.json

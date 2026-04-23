@@ -19,6 +19,13 @@ spec:
           ports:
             - containerPort: 5672
             - containerPort: 15672
+          volumeMounts:
+            - name: definitions
+              mountPath: /etc/rabbitmq/definitions.json
+              subPath: definitions.json
+            - name: definitions
+              mountPath: /etc/rabbitmq/conf.d/20-definitions.conf
+              subPath: rabbitmq.conf
           resources:
             requests:
               memory: "128Mi"
@@ -26,3 +33,7 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+      volumes:
+        - name: definitions
+          configMap:
+            name: rabbitmq-definitions
