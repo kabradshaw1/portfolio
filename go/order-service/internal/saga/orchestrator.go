@@ -138,7 +138,7 @@ func (o *Orchestrator) handleStockValidated(ctx context.Context, order *model.Or
 	if o.payment != nil {
 		payCtx, payCancel := context.WithTimeout(ctx, 30*time.Second)
 		defer payCancel()
-		_, err := o.payment.CreatePayment(payCtx, order.ID, order.Total, "usd",
+		checkoutURL, err := o.payment.CreatePayment(payCtx, order.ID, order.Total, "usd",
 			"https://kylebradshaw.dev/go/ecommerce/checkout/success?order="+order.ID.String(),
 			"https://kylebradshaw.dev/go/ecommerce/checkout/cancel?order="+order.ID.String(),
 		)
@@ -147,6 +147,11 @@ func (o *Orchestrator) handleStockValidated(ctx context.Context, order *model.Or
 				"orderID", order.ID, "error", err)
 			SagaStepsTotal.WithLabelValues(StepStockValidated, "error").Inc()
 			return o.compensate(ctx, order)
+		}
+		if checkoutURL != "" {
+			if err := o.repo.UpdateCheckoutURL(ctx, order.ID, checkoutURL); err != nil {
+				slog.ErrorContext(ctx, "failed to persist checkout URL", "orderID", order.ID, "error", err)
+			}
 		}
 		if err := o.repo.UpdateSagaStep(ctx, order.ID, StepPaymentCreated); err != nil {
 			return err
