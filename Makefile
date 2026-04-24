@@ -53,6 +53,7 @@ preflight-go:
 	cd go/cart-service && golangci-lint run ./...
 	cd go/payment-service && golangci-lint run ./...
 	cd go/analytics-service && golangci-lint run ./...
+	cd go/order-projector && golangci-lint run ./...
 	@echo "\n=== Go: tests ==="
 	cd go/auth-service && go test ./... -v -race
 	cd go/order-service && go test ./... -v -race
@@ -61,6 +62,7 @@ preflight-go:
 	cd go/cart-service && go test ./... -v -race
 	cd go/payment-service && go test ./... -v -race
 	cd go/analytics-service && go test ./... -v -race
+	cd go/order-projector && go test ./... -v -race
 
 # --- Go migration pipeline test (requires Docker via Colima + golang-migrate) ---
 # Mirrors the CI "Go Migration Pipeline Test" job: spins up Postgres in Docker,
