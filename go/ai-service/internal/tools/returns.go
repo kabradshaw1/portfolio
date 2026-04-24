@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/jwtctx"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
@@ -44,6 +46,7 @@ func (t *initiateReturnTool) Call(ctx context.Context, args json.RawMessage, use
 	if userID == "" {
 		return Result{}, errors.New("initiate_return: authenticated user required")
 	}
+	start := time.Now()
 	var a initiateReturnArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return Result{}, fmt.Errorf("initiate_return: bad args: %w", err)
@@ -60,8 +63,10 @@ func (t *initiateReturnTool) Call(ctx context.Context, args json.RawMessage, use
 
 	ret, err := t.api.InitiateReturn(ctx, jwtctx.FromContext(ctx), a.OrderID, a.ItemIDs, a.Reason)
 	if err != nil {
+		slog.WarnContext(ctx, "tool error", "tool", "initiate_return", "order_id", a.OrderID, "error", err.Error())
 		return Result{}, fmt.Errorf("initiate_return: %w", err)
 	}
+	slog.InfoContext(ctx, "tool result", "tool", "initiate_return", "order_id", a.OrderID, "item_count", len(a.ItemIDs), "duration_ms", time.Since(start).Milliseconds())
 	content := map[string]any{
 		"id":       ret.ID,
 		"order_id": ret.OrderID,

@@ -31,5 +31,19 @@ class Settings(BaseSettings):
             return self.embedding_base_url or self.ollama_base_url
         return self.embedding_base_url
 
+    def validate(self) -> None:
+        """Fail fast if provider-required secrets are missing."""
+        api_key_providers = ("openai", "anthropic")
+        if self.llm_provider in api_key_providers and not self.llm_api_key:
+            raise ValueError(
+                f"llm_api_key is required when llm_provider is '{self.llm_provider}'"
+            )
+        if self.embedding_provider in api_key_providers and not self.embedding_api_key:
+            raise ValueError(
+                f"embedding_api_key is required when embedding_provider is "
+                f"'{self.embedding_provider}'"
+            )
+
 
 settings = Settings()
+settings.validate()
