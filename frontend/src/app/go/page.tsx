@@ -6,15 +6,17 @@ import { MicroservicesTab } from "@/components/go/tabs/MicroservicesTab";
 import { OriginalTab } from "@/components/go/tabs/OriginalTab";
 import { AiAssistantTab } from "@/components/go/tabs/AiAssistantTab";
 import { AnalyticsTab } from "@/components/go/tabs/AnalyticsTab";
+import { EventSourcingTab } from "@/components/go/tabs/EventSourcingTab";
 import { AdminTab } from "@/components/go/tabs/AdminTab";
 
-type Tab = "microservices" | "original" | "ai-assistant" | "analytics" | "admin";
+type Tab = "microservices" | "original" | "ai-assistant" | "analytics" | "event-sourcing" | "admin";
 
 const tabs: { key: Tab; label: string }[] = [
   { key: "microservices", label: "Microservices" },
   { key: "original", label: "Original" },
   { key: "ai-assistant", label: "AI Assistant" },
   { key: "analytics", label: "Analytics" },
+  { key: "event-sourcing", label: "Event Sourcing" },
   { key: "admin", label: "Admin" },
 ];
 
@@ -45,7 +47,7 @@ export default function GoPage() {
           command-line tools with a focus on clean, efficient design.
         </p>
         <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-          All seven Go services expose Prometheus metrics to a live{" "}
+          All eight Go services expose Prometheus metrics to a live{" "}
           <a
             href="https://grafana.kylebradshaw.dev/d/system-overview/system-overview?orgId=1&from=now-1h&to=now&timezone=browser"
             target="_blank"
@@ -84,10 +86,11 @@ export default function GoPage() {
         {activeTab === "original" && <OriginalTab />}
         {activeTab === "ai-assistant" && <AiAssistantTab />}
         {activeTab === "analytics" && <AnalyticsTab />}
+        {activeTab === "event-sourcing" && <EventSourcingTab />}
         {activeTab === "admin" && <AdminTab />}
 
         {/* CTA Buttons */}
-        <div className="mt-8 flex gap-3">
+        <div className="mt-8 flex flex-wrap gap-3">
           <Link
             href="/go/ecommerce"
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -99,6 +102,12 @@ export default function GoPage() {
             className="inline-flex items-center gap-2 rounded-lg border px-6 py-3 text-sm font-medium hover:bg-accent transition-colors"
           >
             Streaming Analytics &rarr;
+          </Link>
+          <Link
+            href="/go/ecommerce/orders"
+            className="inline-flex items-center gap-2 rounded-lg border px-6 py-3 text-sm font-medium hover:bg-accent transition-colors"
+          >
+            Order Timeline &rarr;
           </Link>
           <Link
             href="/go/admin"
