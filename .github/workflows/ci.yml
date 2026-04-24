@@ -525,6 +525,149 @@ jobs:
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
 
+  compose-smoke-go:
+    name: Compose Smoke (Go stack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Go service images
+        working-directory: go
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml build \
+            auth-service order-service product-service cart-service analytics-service
+
+      - name: Start Go compose stack (skip ai-service)
+        working-directory: go
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d \
+            postgres redis rabbitmq kafka \
+            auth-service order-service product-service cart-service analytics-service
+
+      - name: Wait for services to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8091/health >/dev/null 2>&1 && \
+               curl -fsS http://localhost:8095/health >/dev/null 2>&1 && \
+               curl -fsS http://localhost:8096/health >/dev/null 2>&1; then
+              echo "Go services ready after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Go services did not come up within 120s" >&2
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=50
+          exit 1
+
+      - name: Run migrations and seed data
+        working-directory: go
+        run: |
+          # Run migrations for each service that has them
+          for svc in auth-service order-service product-service cart-service; do
+            DB_NAME="ecommercedb"
+            if [ "$svc" = "product-service" ]; then DB_NAME="productdb"; fi
+            if [ "$svc" = "cart-service" ]; then DB_NAME="cartdb"; fi
+            docker compose -f docker-compose.yml -f docker-compose.ci.yml exec -T "$svc" \
+              migrate -path /migrations -database "postgres://taskuser:taskpass@postgres:5432/${DB_NAME}?sslmode=disable" up || true
+          done
+
+          # Seed product data
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml exec -T postgres \
+            psql -U taskuser -d productdb -f /docker-entrypoint-initdb.d/01-ci-init.sql 2>/dev/null || true
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml exec -T product-service \
+            sh -c 'cat /seed.sql | PGPASSWORD=taskpass psql -h postgres -U taskuser -d productdb' || true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Go smoke Playwright tests
+        working-directory: frontend
+        run: npx playwright test --config=playwright.smoke-go.config.ts
+
+      - name: Dump compose logs on failure
+        if: failure()
+        working-directory: go
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=200
+
+      - name: Tear down compose stack
+        if: always()
+        working-directory: go
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+
+  compose-smoke-java:
+    name: Compose Smoke (Java stack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Java service images
+        working-directory: java
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml build
+
+      - name: Start Java compose stack
+        working-directory: java
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+
+      - name: Wait for gateway to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/graphql \
+              -H 'Content-Type: application/json' \
+              -d '{"query":"{ __typename }"}' >/dev/null 2>&1; then
+              echo "Java gateway ready after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Java gateway did not come up within 120s" >&2
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=50
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Java smoke Playwright tests
+        working-directory: frontend
+        run: npx playwright test --config=playwright.smoke-java.config.ts
+
+      - name: Dump compose logs on failure
+        if: failure()
+        working-directory: java
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=200
+
+      - name: Tear down compose stack
+        if: always()
+        working-directory: java
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+
   security-bandit:
     name: Security - Bandit (Python SAST)
     runs-on: ubuntu-latest
