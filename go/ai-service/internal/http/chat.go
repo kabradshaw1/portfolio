@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -71,6 +73,20 @@ func RegisterChatRoutes(r *gin.Engine, runner Runner, jwtSecret string, limiter 
 			userID = uid
 		}
 
+		authSource := "anonymous"
+		if authHeader != "" {
+			authSource = "header"
+		} else if cookieErr == nil && cookieToken != "" {
+			authSource = "cookie"
+		}
+		slog.InfoContext(c.Request.Context(), "chat request",
+			"user_id", userID,
+			"message_count", len(req.Messages),
+			"auth_source", authSource,
+		)
+		requestStart := time.Now()
+		eventsEmitted := 0
+
 		// Beyond this point we stream SSE — errors go via emit, not c.Error().
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
 		c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -80,6 +96,7 @@ func RegisterChatRoutes(r *gin.Engine, runner Runner, jwtSecret string, limiter 
 		flusher, _ := c.Writer.(http.Flusher)
 
 		emit := func(e agent.Event) {
+			eventsEmitted++
 			name, payload := eventName(e)
 			data, _ := json.Marshal(payload)
 			_, _ = c.Writer.WriteString("event: " + name + "\n")
@@ -100,6 +117,11 @@ func RegisterChatRoutes(r *gin.Engine, runner Runner, jwtSecret string, limiter 
 		if err := runner.Run(ctx, turn, emit); err != nil {
 			emit(agent.Event{Error: &agent.ErrorEvent{Reason: err.Error()}})
 		}
+		slog.InfoContext(c.Request.Context(), "chat complete",
+			"user_id", userID,
+			"duration_ms", time.Since(requestStart).Milliseconds(),
+			"events_emitted", eventsEmitted,
+		)
 	})
 }
 
