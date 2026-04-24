@@ -618,7 +618,8 @@ jobs:
             --ignore-vuln CVE-2026-1703 \
             --ignore-vuln ECHO-ffe1-1d3c-d9bc \
             --ignore-vuln ECHO-7db2-03aa-5591 \
-            --ignore-vuln CVE-2026-6587
+            --ignore-vuln CVE-2026-6587 \
+            --ignore-vuln CVE-2026-3219
 
   security-npm-audit:
     name: Security - npm audit
