@@ -81,7 +81,6 @@ export default function CartPage() {
       }
 
       const order = await res.json();
-      await refresh();
 
       // Poll for checkout URL (saga creates payment asynchronously)
       const pollInterval = 1500;
@@ -98,7 +97,7 @@ export default function CartPage() {
           return;
         }
         if (updated.status === "completed") {
-          setItems([]);
+          await refresh();
           router.push(`/go/ecommerce/checkout/success?order=${order.id}`);
           return;
         }

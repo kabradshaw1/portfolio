@@ -1,12 +1,19 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle } from "lucide-react";
+import { useGoCart } from "@/components/go/GoCartProvider";
 
 export default function CheckoutSuccessPage() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("order");
+  const { refresh } = useGoCart();
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   return (
     <div className="mx-auto max-w-lg px-6 py-20 text-center">
