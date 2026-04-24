@@ -927,8 +927,9 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           SSH="ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key kyle@100.82.52.82"
 
-          # Create QA database if not exists
+          # Create QA databases if not exists
           $SSH "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"SELECT 1 FROM pg_database WHERE datname='ecommercedb_qa'\" | grep -q 1 || kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"CREATE DATABASE ecommercedb_qa;\""
+          $SSH "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"SELECT 1 FROM pg_database WHERE datname='projectordb_qa'\" | grep -q 1 || kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"CREATE DATABASE projectordb_qa;\""
 
           # Apply QA Kustomize overlays.
           # Images use :latest tag — all builds push both :qa-<sha> and :latest,
@@ -1155,6 +1156,10 @@ jobs:
 
           if [ "$GO_CHANGED" = "true" ] || [ "$K8S_CHANGED" = "true" ]; then
             echo "Running Go migration Jobs..."
+
+            # Create projectordb if not exists (new database for CQRS read models)
+            $SSH "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"SELECT 1 FROM pg_database WHERE datname='projectordb'\" | grep -q 1 || kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"CREATE DATABASE projectordb;\""
+
             # Jobs are immutable; delete before re-applying so they re-run on every deploy.
             $SSH "kubectl delete job go-auth-migrate go-order-migrate go-product-migrate go-cart-migrate go-payment-migrate go-projector-migrate -n go-ecommerce --ignore-not-found --wait=true"
 
