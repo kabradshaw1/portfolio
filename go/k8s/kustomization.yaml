@@ -10,6 +10,7 @@ resources:
   - configmaps/product-service-config.yml
   - configmaps/cart-service-config.yml
   - configmaps/payment-service-config.yml
+  - configmaps/order-projector-config.yml
   - deployments/ai-service.yml
   - deployments/auth-service.yml
   - deployments/order-service.yml
@@ -17,6 +18,7 @@ resources:
   - deployments/product-service.yml
   - deployments/cart-service.yml
   - deployments/payment-service.yml
+  - deployments/order-projector.yml
   - statefulsets/kafka.yml
   - hpa/auth-hpa.yml
   - hpa/order-hpa.yml
@@ -27,6 +29,7 @@ resources:
   - jobs/product-service-migrate.yml
   - jobs/cart-service-migrate.yml
   - jobs/payment-service-migrate.yml
+  - jobs/order-projector-migrate.yml
   - services/ai-service.yml
   - services/auth-service.yml
   - services/order-service.yml
@@ -35,6 +38,7 @@ resources:
   - services/product-service.yml
   - services/cart-service.yml
   - services/payment-service-svc.yml
+  - services/order-projector.yml
   - pdb/auth-pdb.yml
   - pdb/order-pdb.yml
   - pdb/ai-pdb.yml

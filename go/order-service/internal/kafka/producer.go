@@ -16,6 +16,7 @@ import (
 type Event struct {
 	ID        string    `json:"id"`
 	Type      string    `json:"type"`
+	Version   int       `json:"version,omitempty"`
 	Source    string    `json:"source"`
 	Timestamp time.Time `json:"timestamp"`
 	TraceID   string    `json:"traceID"`

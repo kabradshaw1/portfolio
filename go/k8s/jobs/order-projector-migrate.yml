@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: go-projector-migrate
+  namespace: go-ecommerce
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 120
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: migrate
+          image: ghcr.io/kabradshaw1/portfolio/go-order-projector:latest
+          imagePullPolicy: Always
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "Running order-projector migrations..."
+              /usr/local/bin/migrate -path=/migrations -database="${DATABASE_URL}&x-migrations-table=projector_schema_migrations" up
+              echo "Done."
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: order-projector-config
+                  key: DATABASE_URL
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
