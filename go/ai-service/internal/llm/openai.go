@@ -6,8 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // OpenAIClient talks to any OpenAI-compatible API (OpenAI, Groq, Together, OpenRouter).
@@ -24,23 +30,23 @@ func NewOpenAIClient(baseURL, model, apiKey string) *OpenAIClient {
 		baseURL: baseURL,
 		model:   model,
 		apiKey:  apiKey,
-		http:    &http.Client{Timeout: 60 * time.Second},
+		http:    &http.Client{Timeout: 60 * time.Second, Transport: otelhttp.NewTransport(http.DefaultTransport)},
 	}
 }
 
 type openaiReq struct {
-	Model    string        `json:"model"`
-	Messages []openaiMsg   `json:"messages"`
-	Tools    []openaiTool  `json:"tools,omitempty"`
-	Stream   bool          `json:"stream"`
+	Model    string       `json:"model"`
+	Messages []openaiMsg  `json:"messages"`
+	Tools    []openaiTool `json:"tools,omitempty"`
+	Stream   bool         `json:"stream"`
 }
 
 type openaiMsg struct {
-	Role       string          `json:"role"`
-	Content    string          `json:"content,omitempty"`
-	ToolCalls  []openaiTC      `json:"tool_calls,omitempty"`
-	ToolCallID string          `json:"tool_call_id,omitempty"`
-	Name       string          `json:"name,omitempty"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content,omitempty"`
+	ToolCalls  []openaiTC `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+	Name       string     `json:"name,omitempty"`
 }
 
 type openaiTC struct {
@@ -80,6 +86,11 @@ type openaiResp struct {
 }
 
 func (c *OpenAIClient) Chat(ctx context.Context, messages []Message, tools []ToolSchema) (ChatResponse, error) {
+	ctx, span := otel.Tracer("llm").Start(ctx, "openai.chat",
+		trace.WithAttributes(attribute.String("llm.model", c.model)),
+	)
+	defer span.End()
+
 	// Convert messages to OpenAI format
 	oaiMsgs := make([]openaiMsg, 0, len(messages))
 	for _, m := range messages {
@@ -135,6 +146,16 @@ func (c *OpenAIClient) Chat(ctx context.Context, messages []Message, tools []Too
 
 	if resp.StatusCode >= 400 {
 		payload, _ := io.ReadAll(resp.Body)
+		bodyPreview := string(payload)
+		if len(bodyPreview) > 200 {
+			bodyPreview = bodyPreview[:200] + "..."
+		}
+		slog.WarnContext(ctx, "llm http error",
+			"provider", "openai",
+			"model", c.model,
+			"status", resp.StatusCode,
+			"body_preview", bodyPreview,
+		)
 		return ChatResponse{}, fmt.Errorf("openai status %d: %s", resp.StatusCode, string(payload))
 	}
 
@@ -146,6 +167,19 @@ func (c *OpenAIClient) Chat(ctx context.Context, messages []Message, tools []Too
 	if len(parsed.Choices) == 0 {
 		return ChatResponse{}, fmt.Errorf("openai returned no choices")
 	}
+
+	span.SetAttributes(
+		attribute.Int("llm.prompt_tokens", parsed.Usage.PromptTokens),
+		attribute.Int("llm.completion_tokens", parsed.Usage.CompletionTokens),
+	)
+	slog.InfoContext(ctx, "llm response",
+		"provider", "openai",
+		"model", c.model,
+		"prompt_tokens", parsed.Usage.PromptTokens,
+		"completion_tokens", parsed.Usage.CompletionTokens,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"tool_call_count", len(parsed.Choices[0].Message.ToolCalls),
+	)
 
 	choice := parsed.Choices[0]
 	out := ChatResponse{
