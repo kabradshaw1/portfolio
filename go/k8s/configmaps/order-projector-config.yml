@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-projector-config
+  namespace: go-ecommerce
+data:
+  DATABASE_URL: "postgres://postgres:postgres@postgres.go-ecommerce.svc.cluster.local:5432/projectordb?sslmode=disable"
+  KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
+  PORT: "8097"
+  ALLOWED_ORIGINS: "http://localhost:3000,https://kylebradshaw.dev"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"
