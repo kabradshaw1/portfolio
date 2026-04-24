@@ -48,7 +48,7 @@ require_auth = create_auth_dependency(settings.jwt_secret)
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    return JSONResponse(status_code=429, content={"error": "Rate limit exceeded"})
+    return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
 
 
 _llm_provider = get_llm_provider(

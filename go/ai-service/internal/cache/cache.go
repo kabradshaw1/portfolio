@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -53,6 +54,10 @@ func (c *RedisCache) Get(ctx context.Context, key string) ([]byte, bool, error) 
 	})
 	if err != nil {
 		// Fail open: breaker open or Redis error → treat as cache miss.
+		slog.WarnContext(ctx, "cache get fail-open",
+			"key_prefix", key[:min(len(key), 16)],
+			"error", err.Error(),
+		)
 		return nil, false, nil
 	}
 	if result == nil {
@@ -69,6 +74,10 @@ func (c *RedisCache) Set(ctx context.Context, key string, value []byte, ttl time
 	})
 	if err != nil {
 		// Fail open: skip write silently.
+		slog.WarnContext(ctx, "cache set fail-open",
+			"key_prefix", key[:min(len(key), 16)],
+			"error", err.Error(),
+		)
 		return nil
 	}
 	return nil

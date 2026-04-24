@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
@@ -49,6 +51,7 @@ type getProductArgs struct {
 }
 
 func (t *getProductTool) Call(ctx context.Context, args json.RawMessage, userID string) (Result, error) {
+	start := time.Now()
 	var a getProductArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return Result{}, fmt.Errorf("get_product: bad args: %w", err)
@@ -58,8 +61,10 @@ func (t *getProductTool) Call(ctx context.Context, args json.RawMessage, userID 
 	}
 	p, err := t.api.GetProduct(ctx, a.ProductID)
 	if err != nil {
+		slog.WarnContext(ctx, "tool error", "tool", "get_product", "product_id", a.ProductID, "error", err.Error())
 		return Result{}, fmt.Errorf("get_product: %w", err)
 	}
+	slog.InfoContext(ctx, "tool result", "tool", "get_product", "product_id", a.ProductID, "duration_ms", time.Since(start).Milliseconds())
 	if t.kafkaPub != nil {
 		kafka.SafePublish(ctx, t.kafkaPub, "ecommerce.views", p.ID, kafka.Event{
 			Type: "product.viewed",
@@ -112,6 +117,7 @@ type searchArgs struct {
 const maxSearchResults = 10
 
 func (t *searchProductsTool) Call(ctx context.Context, args json.RawMessage, userID string) (Result, error) {
+	start := time.Now()
 	var a searchArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return Result{}, fmt.Errorf("search_products: bad args: %w", err)
@@ -126,6 +132,7 @@ func (t *searchProductsTool) Call(ctx context.Context, args json.RawMessage, use
 
 	prods, err := t.api.ListProducts(ctx, a.Query, limit)
 	if err != nil {
+		slog.WarnContext(ctx, "tool error", "tool", "search_products", "query", truncate(a.Query, 200), "error", err.Error())
 		return Result{}, fmt.Errorf("search_products: %w", err)
 	}
 
@@ -141,6 +148,7 @@ func (t *searchProductsTool) Call(ctx context.Context, args json.RawMessage, use
 			break
 		}
 	}
+	slog.InfoContext(ctx, "tool result", "tool", "search_products", "query", truncate(a.Query, 200), "result_count", len(out), "duration_ms", time.Since(start).Milliseconds())
 	if t.kafkaPub != nil {
 		for _, p := range prods {
 			kafka.SafePublish(ctx, t.kafkaPub, "ecommerce.views", p.ID, kafka.Event{
@@ -178,6 +186,7 @@ func (t *checkInventoryTool) Schema() json.RawMessage {
 }
 
 func (t *checkInventoryTool) Call(ctx context.Context, args json.RawMessage, userID string) (Result, error) {
+	start := time.Now()
 	var a getProductArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return Result{}, fmt.Errorf("check_inventory: bad args: %w", err)
@@ -187,8 +196,10 @@ func (t *checkInventoryTool) Call(ctx context.Context, args json.RawMessage, use
 	}
 	p, err := t.api.GetProduct(ctx, a.ProductID)
 	if err != nil {
+		slog.WarnContext(ctx, "tool error", "tool", "check_inventory", "product_id", a.ProductID, "error", err.Error())
 		return Result{}, fmt.Errorf("check_inventory: %w", err)
 	}
+	slog.InfoContext(ctx, "tool result", "tool", "check_inventory", "product_id", a.ProductID, "in_stock", p.Stock > 0, "duration_ms", time.Since(start).Milliseconds())
 	content := map[string]any{
 		"product_id": p.ID,
 		"stock":      p.Stock,
@@ -198,4 +209,11 @@ func (t *checkInventoryTool) Call(ctx context.Context, args json.RawMessage, use
 		Content: content,
 		Display: map[string]any{"kind": "inventory", "product_id": p.ID, "stock": p.Stock, "in_stock": p.Stock > 0},
 	}, nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
