@@ -4,7 +4,9 @@
 
 CREATE DATABASE productdb;
 CREATE DATABASE cartdb;
+CREATE DATABASE orderdb;
 
 -- Grant access to the default user
 GRANT ALL PRIVILEGES ON DATABASE productdb TO taskuser;
 GRANT ALL PRIVILEGES ON DATABASE cartdb TO taskuser;
+GRANT ALL PRIVILEGES ON DATABASE orderdb TO taskuser;

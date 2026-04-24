@@ -15,7 +15,7 @@ services:
     environment:
       JWT_SECRET: ci-test-secret
       ALLOWED_ORIGINS: "*"
-      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable
+      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/orderdb?sslmode=disable
 
   product-service:
     build:

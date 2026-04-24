@@ -564,20 +564,32 @@ jobs:
       - name: Run migrations and seed data
         working-directory: go
         run: |
-          # Run migrations for each service that has them
-          for svc in auth-service order-service product-service cart-service; do
-            DB_NAME="ecommercedb"
-            if [ "$svc" = "product-service" ]; then DB_NAME="productdb"; fi
-            if [ "$svc" = "cart-service" ]; then DB_NAME="cartdb"; fi
-            docker compose -f docker-compose.yml -f docker-compose.ci.yml exec -T "$svc" \
-              migrate -path /migrations -database "postgres://taskuser:taskpass@postgres:5432/${DB_NAME}?sslmode=disable" up || true
-          done
+          DC="docker compose -f docker-compose.yml -f docker-compose.ci.yml"
 
-          # Seed product data
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml exec -T postgres \
-            psql -U taskuser -d productdb -f /docker-entrypoint-initdb.d/01-ci-init.sql 2>/dev/null || true
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml exec -T product-service \
-            sh -c 'cat /seed.sql | PGPASSWORD=taskpass psql -h postgres -U taskuser -d productdb' || true
+          # Each service has its own DB and needs its own migrations table
+          # to avoid version conflicts (matches K8s migration jobs).
+          $DC exec -T auth-service \
+            migrate -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable" up
+
+          $DC exec -T product-service \
+            migrate -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/productdb?sslmode=disable" up
+
+          $DC exec -T order-service \
+            migrate -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/orderdb?sslmode=disable&x-migrations-table=ecommerce_schema_migrations" up
+
+          $DC exec -T cart-service \
+            migrate -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/cartdb?sslmode=disable" up
+
+          # Seed product catalog and smoke test data
+          $DC exec -T product-service \
+            sh -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d productdb -f /seed.sql'
+
+          $DC exec -T order-service \
+            sh -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d orderdb -f /seed.sql'
 
       - uses: actions/setup-node@v4
         with:
