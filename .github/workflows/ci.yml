@@ -569,28 +569,30 @@ jobs:
           # Run migrations using the migrate binary baked into each image.
           # Order matters: auth first (ecommercedb), then order (shares ecommercedb
           # with separate migrations table), then product/cart in their own DBs.
-          $DC run --rm --no-deps auth-service \
-            migrate -path /migrations \
+          # --entrypoint overrides the Go binary ENTRYPOINT so we run
+          # the migrate CLI directly instead of starting the service.
+          $DC run --rm --no-deps --entrypoint migrate auth-service \
+            -path /migrations \
             -database "postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable" up
 
-          $DC run --rm --no-deps order-service \
-            migrate -path /migrations \
+          $DC run --rm --no-deps --entrypoint migrate order-service \
+            -path /migrations \
             -database "postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable&x-migrations-table=ecommerce_schema_migrations" up
 
-          $DC run --rm --no-deps product-service \
-            migrate -path /migrations \
+          $DC run --rm --no-deps --entrypoint migrate product-service \
+            -path /migrations \
             -database "postgres://taskuser:taskpass@postgres:5432/productdb?sslmode=disable" up
 
-          $DC run --rm --no-deps cart-service \
-            migrate -path /migrations \
+          $DC run --rm --no-deps --entrypoint migrate cart-service \
+            -path /migrations \
             -database "postgres://taskuser:taskpass@postgres:5432/cartdb?sslmode=disable" up
 
-          # Seed data
-          $DC run --rm --no-deps product-service \
-            sh -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d productdb -f /seed.sql'
+          # Seed data — override entrypoint to run psql via sh
+          $DC run --rm --no-deps --entrypoint sh product-service \
+            -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d productdb -f /seed.sql'
 
-          $DC run --rm --no-deps order-service \
-            sh -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d ecommercedb -f /seed.sql'
+          $DC run --rm --no-deps --entrypoint sh order-service \
+            -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d ecommercedb -f /seed.sql'
 
       - name: Start application services
         working-directory: go
