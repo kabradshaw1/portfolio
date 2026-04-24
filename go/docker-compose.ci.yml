@@ -16,6 +16,9 @@ services:
       JWT_SECRET: ci-test-secret
       ALLOWED_ORIGINS: "*"
       DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable
+      AUTH_GRPC_URL: auth-service:9091
+      PRODUCT_GRPC_ADDR: product-service:9095
+      CART_GRPC_ADDR: cart-service:9096
 
   product-service:
     build:
