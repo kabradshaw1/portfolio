@@ -1321,3 +1321,46 @@ data:
               severity: critical
             annotations:
               summary: "Circuit breaker is OPEN — a dependency is unavailable"
+
+          - uid: circuit-breaker-flapping
+            title: Circuit Breaker Flapping
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: changes(circuit_breaker_state[5m]) > 5
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 0
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Circuit breaker {{ $labels.name }} is flapping — dependency errors may be recurring"
