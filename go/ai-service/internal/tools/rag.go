@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
 )
@@ -50,6 +52,7 @@ type searchDocumentsArgs struct {
 const maxDocSearchResults = 20
 
 func (t *searchDocumentsTool) Call(ctx context.Context, args json.RawMessage, userID string) (Result, error) {
+	start := time.Now()
 	var a searchDocumentsArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return Result{}, fmt.Errorf("search_documents: bad args: %w", err)
@@ -67,6 +70,7 @@ func (t *searchDocumentsTool) Call(ctx context.Context, args json.RawMessage, us
 
 	results, err := t.api.Search(ctx, a.Query, a.Collection, limit)
 	if err != nil {
+		slog.WarnContext(ctx, "tool error", "tool", "search_documents", "query", truncate(a.Query, 200), "error", err.Error())
 		return Result{}, fmt.Errorf("search_documents: %w", err)
 	}
 
@@ -79,6 +83,7 @@ func (t *searchDocumentsTool) Call(ctx context.Context, args json.RawMessage, us
 			"score":       r.Score,
 		})
 	}
+	slog.InfoContext(ctx, "tool result", "tool", "search_documents", "query", truncate(a.Query, 200), "collection", a.Collection, "result_count", len(out), "duration_ms", time.Since(start).Milliseconds())
 	return Result{
 		Content: out,
 		Display: map[string]any{"kind": "search_results", "results": out},
@@ -114,6 +119,7 @@ type askDocumentArgs struct {
 }
 
 func (t *askDocumentTool) Call(ctx context.Context, args json.RawMessage, userID string) (Result, error) {
+	start := time.Now()
 	var a askDocumentArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return Result{}, fmt.Errorf("ask_document: bad args: %w", err)
@@ -124,6 +130,7 @@ func (t *askDocumentTool) Call(ctx context.Context, args json.RawMessage, userID
 
 	ans, err := t.api.Ask(ctx, a.Question, a.Collection)
 	if err != nil {
+		slog.WarnContext(ctx, "tool error", "tool", "ask_document", "question", truncate(a.Question, 200), "error", err.Error())
 		return Result{}, fmt.Errorf("ask_document: %w", err)
 	}
 
@@ -138,6 +145,7 @@ func (t *askDocumentTool) Call(ctx context.Context, args json.RawMessage, userID
 		"answer":  ans.Answer,
 		"sources": sources,
 	}
+	slog.InfoContext(ctx, "tool result", "tool", "ask_document", "question", truncate(a.Question, 200), "collection", a.Collection, "duration_ms", time.Since(start).Milliseconds())
 	return Result{
 		Content: content,
 		Display: map[string]any{"kind": "rag_answer", "answer": ans.Answer, "sources": sources},
@@ -161,8 +169,10 @@ func (t *listCollectionsTool) Schema() json.RawMessage {
 }
 
 func (t *listCollectionsTool) Call(ctx context.Context, args json.RawMessage, userID string) (Result, error) {
+	start := time.Now()
 	cols, err := t.api.ListCollections(ctx)
 	if err != nil {
+		slog.WarnContext(ctx, "tool error", "tool", "list_collections", "error", err.Error())
 		return Result{}, fmt.Errorf("list_collections: %w", err)
 	}
 
@@ -173,6 +183,7 @@ func (t *listCollectionsTool) Call(ctx context.Context, args json.RawMessage, us
 			"point_count": c.PointCount,
 		})
 	}
+	slog.InfoContext(ctx, "tool result", "tool", "list_collections", "collection_count", len(out), "duration_ms", time.Since(start).Milliseconds())
 	return Result{
 		Content: out,
 		Display: map[string]any{"kind": "collections_list", "collections": out},

@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, order-service, ai-service, analytics-service, product-service, cart-service]
+        service: [auth-service, order-service, ai-service, analytics-service, product-service, cart-service, order-projector]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -190,7 +190,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, order-service, ai-service, analytics-service, product-service, cart-service]
+        service: [auth-service, order-service, ai-service, analytics-service, product-service, cart-service, order-projector]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -277,6 +277,12 @@ jobs:
         run: |
           psql -h localhost -U taskuser -d taskdb -c "CREATE DATABASE productdb;"
 
+      - name: Create projectordb
+        env:
+          PGPASSWORD: taskpass
+        run: |
+          psql -h localhost -U taskuser -d taskdb -c "CREATE DATABASE projectordb;"
+
       # Per-service x-migrations-table matches go/k8s/jobs/*.yml exactly.
       # Without this, both services share the default schema_migrations table
       # and whichever runs first claims the version counter, causing the other
@@ -308,10 +314,20 @@ jobs:
           grep -q ' products ' /tmp/tables.txt || (echo "products table missing" && exit 1)
           grep -q ' orders ' /tmp/tables.txt || (echo "orders table missing" && exit 1)
 
+      - name: Run order-projector migrations
+        run: |
+          migrate -path go/order-projector/migrations -database "postgres://taskuser:taskpass@localhost:5432/projectordb?sslmode=disable&x-migrations-table=projector_schema_migrations" up
+
       - name: Verify product tables exist
         run: |
           psql "postgres://taskuser:taskpass@localhost:5432/productdb?sslmode=disable" -c "\dt" | tee /tmp/product-tables.txt
           grep -q ' products ' /tmp/product-tables.txt || (echo "products table missing in productdb" && exit 1)
+
+      - name: Verify projector tables exist
+        run: |
+          psql "postgres://taskuser:taskpass@localhost:5432/projectordb?sslmode=disable" -c "\dt" | tee /tmp/projector-tables.txt
+          grep -q ' order_timeline ' /tmp/projector-tables.txt || (echo "order_timeline table missing in projectordb" && exit 1)
+          grep -q ' order_summary ' /tmp/projector-tables.txt || (echo "order_summary table missing in projectordb" && exit 1)
 
   frontend-checks:
     name: Frontend Checks
@@ -658,7 +674,7 @@ jobs:
           - go/product-service/Dockerfile
           - go/cart-service/Dockerfile
           - go/payment-service/Dockerfile
-          - go/payment-service/Dockerfile
+          - go/order-projector/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -781,6 +797,11 @@ jobs:
             file: go/payment-service/Dockerfile
             image: go-payment-service
             paths: go/payment-service go/pkg go/go.work
+          - service: go-order-projector
+            context: go
+            file: go/order-projector/Dockerfile
+            image: go-order-projector
+            paths: go/order-projector go/pkg go/go.work
     steps:
       - uses: actions/checkout@v4
         with:
@@ -906,8 +927,9 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           SSH="ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key kyle@100.82.52.82"
 
-          # Create QA database if not exists
+          # Create QA databases if not exists
           $SSH "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"SELECT 1 FROM pg_database WHERE datname='ecommercedb_qa'\" | grep -q 1 || kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"CREATE DATABASE ecommercedb_qa;\""
+          $SSH "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"SELECT 1 FROM pg_database WHERE datname='projectordb_qa'\" | grep -q 1 || kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"CREATE DATABASE projectordb_qa;\""
 
           # Apply QA Kustomize overlays.
           # Images use :latest tag — all builds push both :qa-<sha> and :latest,
@@ -949,7 +971,7 @@ jobs:
           # auth-migrate MUST run before order-migrate: both services share
           # the same Postgres, and order-service's migrations reference users(id)
           # which is created by auth-service's migrations.
-          $SSH "kubectl delete job go-auth-migrate go-order-migrate go-product-migrate go-cart-migrate go-payment-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
+          $SSH "kubectl delete job go-auth-migrate go-order-migrate go-product-migrate go-cart-migrate go-payment-migrate go-projector-migrate -n go-ecommerce-qa --ignore-not-found --wait=true"
 
           # Wait for Postgres to accept connections after restart
           echo "Waiting for Postgres to accept connections..."
@@ -995,6 +1017,12 @@ jobs:
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/payment-service-migrate.yml | $SSH "kubectl apply -f -"
           if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-payment-migrate -n go-ecommerce-qa"; then
             $SSH "kubectl logs job/go-payment-migrate -n go-ecommerce-qa --tail=200" || true
+            exit 1
+          fi
+
+          sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/order-projector-migrate.yml | $SSH "kubectl apply -f -"
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-projector-migrate -n go-ecommerce-qa"; then
+            $SSH "kubectl logs job/go-projector-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
@@ -1128,8 +1156,12 @@ jobs:
 
           if [ "$GO_CHANGED" = "true" ] || [ "$K8S_CHANGED" = "true" ]; then
             echo "Running Go migration Jobs..."
+
+            # Create projectordb if not exists (new database for CQRS read models)
+            $SSH "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"SELECT 1 FROM pg_database WHERE datname='projectordb'\" | grep -q 1 || kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"CREATE DATABASE projectordb;\""
+
             # Jobs are immutable; delete before re-applying so they re-run on every deploy.
-            $SSH "kubectl delete job go-auth-migrate go-order-migrate go-product-migrate go-cart-migrate go-payment-migrate -n go-ecommerce --ignore-not-found --wait=true"
+            $SSH "kubectl delete job go-auth-migrate go-order-migrate go-product-migrate go-cart-migrate go-payment-migrate go-projector-migrate -n go-ecommerce --ignore-not-found --wait=true"
 
             # Wait for Postgres to accept connections after restart
             echo "Waiting for Postgres to accept connections..."
@@ -1183,6 +1215,13 @@ jobs:
             if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-payment-migrate -n go-ecommerce"; then
               echo "go-payment-migrate failed. Logs follow:"
               $SSH "kubectl logs job/go-payment-migrate -n go-ecommerce --tail=200" || true
+              exit 1
+            fi
+
+            $SSH "kubectl apply -f -" < go/k8s/jobs/order-projector-migrate.yml
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-projector-migrate -n go-ecommerce"; then
+              echo "go-projector-migrate failed. Logs follow:"
+              $SSH "kubectl logs job/go-projector-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
 

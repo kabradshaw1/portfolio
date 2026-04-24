@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { goOrderFetch } from "@/lib/go-order-api";
+import ProjectionLagBanner from "@/components/go/ProjectionLagBanner";
+import OrderStatsCard from "@/components/go/OrderStatsCard";
 
 interface Order {
   id: string;
@@ -73,14 +75,20 @@ export default function OrdersPage() {
       </Link>
       <h1 className="mt-6 text-2xl font-bold">Orders</h1>
 
+      <div className="mt-4 space-y-4">
+        <ProjectionLagBanner />
+        <OrderStatsCard />
+      </div>
+
       {orders.length === 0 ? (
         <p className="mt-8 text-muted-foreground">No orders yet.</p>
       ) : (
         <div className="mt-8 space-y-4">
           {orders.map((order) => (
-            <div
+            <Link
               key={order.id}
-              className="flex items-center justify-between rounded-lg border border-foreground/10 p-4"
+              href={`/go/ecommerce/orders/${order.id}`}
+              className="flex items-center justify-between rounded-lg border border-foreground/10 p-4 transition-colors hover:bg-foreground/5"
             >
               <div>
                 <p className="font-mono text-sm">
@@ -96,7 +104,7 @@ export default function OrdersPage() {
                   {order.status}
                 </span>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

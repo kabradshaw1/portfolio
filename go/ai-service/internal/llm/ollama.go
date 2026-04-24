@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -127,6 +128,16 @@ func (c *OllamaClient) Chat(ctx context.Context, messages []Message, tools []Too
 
 		if resp.StatusCode >= 400 {
 			payload, _ := io.ReadAll(resp.Body)
+			bodyPreview := string(payload)
+			if len(bodyPreview) > 200 {
+				bodyPreview = bodyPreview[:200] + "..."
+			}
+			slog.WarnContext(ctx, "llm http error",
+				"provider", "ollama",
+				"model", c.model,
+				"status", resp.StatusCode,
+				"body_preview", bodyPreview,
+			)
 			return ChatResponse{}, fmt.Errorf("ollama status %d: %s", resp.StatusCode, string(payload))
 		}
 
@@ -135,6 +146,14 @@ func (c *OllamaClient) Chat(ctx context.Context, messages []Message, tools []Too
 			return ChatResponse{}, fmt.Errorf("decode response: %w", err)
 		}
 
+		slog.InfoContext(ctx, "llm response",
+			"provider", "ollama",
+			"model", c.model,
+			"prompt_tokens", parsed.PromptEvalCount,
+			"completion_tokens", parsed.EvalCount,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"tool_call_count", len(parsed.Message.ToolCalls),
+		)
 		span.SetAttributes(
 			attribute.Int("llm.prompt_eval_count", parsed.PromptEvalCount),
 			attribute.Int("llm.eval_count", parsed.EvalCount),

@@ -6,6 +6,9 @@ metadata:
 data:
   definitions.json: |
     {
+      "users": [
+        {"name": "guest", "password": "guest", "tags": ["administrator"]}
+      ],
       "vhosts": [
         {"name": "/"},
         {"name": "qa"}

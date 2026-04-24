@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kabradshaw1/portfolio/go/order-service/internal/events"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/model"
 )
@@ -42,12 +43,13 @@ type Orchestrator struct {
 	stock       StockChecker
 	payment     PaymentCreator
 	kafkaPub    kafka.Producer
+	eventPub    *events.Publisher
 	frontendURL string // used to build Stripe success/cancel redirect URLs
 }
 
 // NewOrchestrator creates a saga orchestrator.
 func NewOrchestrator(repo OrderRepository, pub SagaPublisher, stock StockChecker, payment PaymentCreator, kafkaPub kafka.Producer, frontendURL string) *Orchestrator {
-	return &Orchestrator{repo: repo, pub: pub, stock: stock, payment: payment, kafkaPub: kafkaPub, frontendURL: frontendURL}
+	return &Orchestrator{repo: repo, pub: pub, stock: stock, payment: payment, kafkaPub: kafkaPub, eventPub: events.NewPublisher(kafkaPub), frontendURL: frontendURL}
 }
 
 // Advance moves the saga forward from its current step.
@@ -94,12 +96,25 @@ func (o *Orchestrator) Advance(ctx context.Context, orderID uuid.UUID) error {
 
 func (o *Orchestrator) handleCreated(ctx context.Context, order *model.Order) error {
 	items := make([]CommandItem, len(order.Items))
+	eventItems := make([]events.OrderItemData, len(order.Items))
 	for i, item := range order.Items {
 		items[i] = CommandItem{
 			ProductID: item.ProductID.String(),
 			Quantity:  item.Quantity,
 		}
+		eventItems[i] = events.OrderItemData{
+			ProductID:  item.ProductID.String(),
+			Quantity:   item.Quantity,
+			PriceCents: item.PriceAtPurchase,
+		}
 	}
+
+	o.eventPub.Publish(ctx, order.ID.String(), events.OrderCreated, events.OrderCreatedData{
+		UserID:     order.UserID.String(),
+		TotalCents: order.Total,
+		Currency:   "USD",
+		Items:      eventItems,
+	})
 
 	SagaStepsTotal.WithLabelValues(StepCreated, "success").Inc()
 
@@ -156,6 +171,10 @@ func (o *Orchestrator) handleStockValidated(ctx context.Context, order *model.Or
 		if err := o.repo.UpdateSagaStep(ctx, order.ID, StepPaymentCreated); err != nil {
 			return err
 		}
+		o.eventPub.Publish(ctx, order.ID.String(), events.OrderPaymentInitiated, events.OrderPaymentInitiatedData{
+			CheckoutURL:     checkoutURL,
+			PaymentProvider: "stripe",
+		})
 		SagaStepsTotal.WithLabelValues(StepPaymentCreated, "success").Inc()
 		return nil // Wait for webhook confirmation
 	}
@@ -193,6 +212,10 @@ func (o *Orchestrator) completeOrder(ctx context.Context, orderID uuid.UUID) err
 	SagaDuration.Observe(time.Since(order.CreatedAt).Seconds())
 
 	slog.InfoContext(ctx, "saga completed", "orderID", order.ID)
+
+	o.eventPub.Publish(ctx, order.ID.String(), events.OrderCompleted, events.OrderCompletedData{
+		CompletedAt: time.Now().UTC().Format(time.RFC3339),
+	})
 
 	// Publish Kafka analytics event (fire-and-forget).
 	if o.kafkaPub != nil {
@@ -236,6 +259,10 @@ func (o *Orchestrator) compensate(ctx context.Context, order *model.Order) error
 	if err := o.repo.UpdateStatus(ctx, order.ID, model.OrderStatusFailed); err != nil {
 		return err
 	}
+	o.eventPub.Publish(ctx, order.ID.String(), events.OrderFailed, events.OrderFailedData{
+		FailureReason: "saga compensation",
+		FailedStep:    order.SagaStep,
+	})
 	if err := o.repo.UpdateSagaStep(ctx, order.ID, StepCompensating); err != nil {
 		return err
 	}
@@ -264,12 +291,28 @@ func (o *Orchestrator) HandleEvent(ctx context.Context, evt Event) error {
 		if err := o.repo.UpdateSagaStep(ctx, orderID, StepItemsReserved); err != nil {
 			return err
 		}
+		order, findErr := o.repo.FindByID(ctx, orderID)
+		if findErr == nil {
+			productIDs := make([]string, len(order.Items))
+			for i, item := range order.Items {
+				productIDs[i] = item.ProductID.String()
+			}
+			o.eventPub.Publish(ctx, orderID.String(), events.OrderReserved, events.OrderReservedData{
+				ReservedItems: productIDs,
+			})
+		}
 		SagaStepsTotal.WithLabelValues(StepItemsReserved, "success").Inc()
 		return o.Advance(ctx, orderID)
 
 	case EvtPaymentConfirmed:
 		if err := o.repo.UpdateSagaStep(ctx, orderID, StepPaymentConfirmed); err != nil {
 			return err
+		}
+		order, findErr := o.repo.FindByID(ctx, orderID)
+		if findErr == nil {
+			o.eventPub.Publish(ctx, orderID.String(), events.OrderPaymentCompleted, events.OrderPaymentCompletedData{
+				AmountCents: order.Total,
+			})
 		}
 		SagaStepsTotal.WithLabelValues(StepPaymentConfirmed, "success").Inc()
 		return o.Advance(ctx, orderID)
@@ -286,6 +329,10 @@ func (o *Orchestrator) HandleEvent(ctx context.Context, evt Event) error {
 		return o.completeOrder(ctx, orderID)
 
 	case EvtItemsReleased:
+		o.eventPub.Publish(ctx, orderID.String(), events.OrderCancelled, events.OrderCancelledData{
+			CancelReason: "saga compensation complete",
+			RefundStatus: "items_released",
+		})
 		SagaStepsTotal.WithLabelValues(StepCompensationComplete, "success").Inc()
 		return o.repo.UpdateSagaStep(ctx, orderID, StepCompensationComplete)
 

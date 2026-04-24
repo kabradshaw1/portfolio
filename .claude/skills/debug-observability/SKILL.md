@@ -9,27 +9,23 @@ description: Debug Go service issues using Loki, Jaeger, and Grafana. Use when e
 
 ## Key Facts
 
-- **5xx errors are always logged.** The `apperror.ErrorHandler()` middleware logs all AppErrors with `HTTPStatus >= 500` via `slog.Error` with code, message, status, and request_id. If you see a 500 in request logs, there will be a corresponding "server error" log entry.
-- **QA uses a separate RabbitMQ vhost.** QA services connect to `amqp://...5672/qa` while prod uses the default vhost. Queues and exchanges are fully isolated between environments.
-- **Webhook dashboard shows per-event-type breakdown.** The "Payment Webhooks" panel groups by `event_type` and `outcome` — check which specific Stripe event type is failing.
+- **5xx errors are always logged.** The `apperror.ErrorHandler()` middleware logs all AppErrors with `HTTPStatus >= 500` via `slog.Error` with code, message, status, and request_id.
+- **QA uses a separate RabbitMQ vhost.** QA services connect to `amqp://...5672/qa` while prod uses the default vhost. Queues and exchanges are fully isolated.
+- **Webhook dashboard shows per-event-type breakdown.** The "Payment Webhooks" panel groups by `event_type` and `outcome`.
 - **Saga stalled alert exists.** `saga-order-stalled` fires when orders reach `PAYMENT_CREATED` but none complete within 30 minutes.
 
 ## Step 1: Verify the Right Build is Deployed
 
-Before investigating any issue, confirm the service is running the expected code. Query buildinfo from Loki:
-
 ```bash
-START=$(python3 -c 'import time; print(int((time.time()-300)*1e9))')
-END=$(python3 -c 'import time; print(int(time.time()*1e9))')
-
-ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
-  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22<SERVICE>%22%7D+%7C%3D+%22service+started%22+%7C+json&limit=5&start=${START}&end=${END}'"
+scripts/loki-query --ns go-ecommerce --app <SERVICE> --filter "service started" --hours 1 --limit 5
 ```
 
-If no `"service started"` log exists, the image predates the buildinfo change. Check pod restart time:
+If no results, the image predates buildinfo. Check pod creation time:
 ```bash
-ssh debian 'kubectl get pods -n go-ecommerce-qa -l app=<SERVICE> -o jsonpath="{.items[0].metadata.creationTimestamp}"'
+ssh debian 'kubectl get pods -n go-ecommerce -l app=<SERVICE> -o jsonpath="{.items[0].metadata.creationTimestamp}"'
 ```
+
+For QA, use `--ns go-ecommerce-qa`.
 
 ## Step 2: Check Grafana Dashboards
 
@@ -42,87 +38,56 @@ Open the Go Services dashboard. Key rows:
 
 ## Step 3: Query Loki
 
-All queries use `kubectl exec` into the Loki pod (reliable, no port-forwarding needed).
+Use the `scripts/loki-query` wrapper. It handles SSH, kubectl exec, URL encoding, and CRI JSON parsing.
 
-**Compute timestamps first:**
-```bash
-START=$(python3 -c 'import time; print(int((time.time()-3600)*1e9))')  # 1 hour ago
-END=$(python3 -c 'import time; print(int(time.time()*1e9))')
+```
+scripts/loki-query --ns <namespace> [--app <app>] [--filter <text>] [--level <level>] [--limit <n>] [--hours <n>]
 ```
 
-### Query: Errors by service
-```bash
-ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
-  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22<SERVICE>%22%7D+%7C+json+%7C+level%3D%22ERROR%22&limit=30&start=${START}&end=${END}'"
-```
+**Flags:**
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ns` | (required) | K8s namespace: `go-ecommerce`, `go-ecommerce-qa`, `java-tasks`, `ai-services`, etc. |
+| `--app` | all apps | Service name: `go-order-service`, `go-cart-service`, `go-analytics-service`, etc. |
+| `--filter` | none | Text match in log line (order ID, error message, etc.) |
+| `--level` | all | Log level: `ERROR`, `WARN`, `INFO`, `DEBUG` |
+| `--limit` | 30 | Max results from Loki |
+| `--hours` | 1 | Time window to search |
 
-### Query: Trace a specific order through the saga
-```bash
-ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
-  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%7D+%7C%3D+%22<ORDER_ID>%22+%7C+json&limit=50&start=${START}&end=${END}'"
-```
-
-### Query: gRPC client failures (from interceptor)
-```bash
-ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
-  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%7D+%7C%3D+%22gRPC+client+call+failed%22+%7C+json&limit=20&start=${START}&end=${END}'"
-```
-
-### Query: Stripe API calls
-```bash
-ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
-  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22go-payment-service%22%7D+%7C%3D+%22Stripe+API%22+%7C+json&limit=10&start=${START}&end=${END}'"
-```
-
-### Query: Saga events for a specific order
-```bash
-ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
-  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22go-order-service%22%7D+%7C%3D+%22<ORDER_ID>%22+%7C+json&limit=50&start=${START}&end=${END}'"
-```
-
-## Parsing Loki Output
-
-Loki returns CRI-wrapped JSON. The actual log is nested inside a `log` field. **Always use this parser:**
+### Common queries
 
 ```bash
-| python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for stream in data.get('data', {}).get('result', []):
-    app = stream.get('stream', {}).get('app', 'unknown')
-    for ts, line in stream.get('values', []):
-        try:
-            outer = json.loads(line)
-            inner = outer.get('log', line)
-            p = json.loads(inner.strip()) if isinstance(inner, str) else outer
-        except:
-            p = {}
-        msg = p.get('msg', p.get('message', line[:200] if not p else ''))
-        if not msg: continue
-        level = p.get('level', '')
-        err = p.get('error', '')
-        tid = p.get('traceID', '')
-        extras = ' '.join(f'{k}={p[k]}' for k in ['orderID','target','method','status','duration','currentStep','event','operation','gitSHA'] if p.get(k))
-        print(f'[{app}] [{level}] {msg}' + (f' {extras}' if extras else ''))
-        if err: print(f'  error: {err[:250]}')
-        if tid: print(f'  traceID: {tid}')
-"
+# Errors across all Go services (prod)
+scripts/loki-query --ns go-ecommerce --level ERROR
+
+# Trace a specific order through the saga
+scripts/loki-query --ns go-ecommerce --filter "55e8be50-3afe-4461-82a8-cfada8b7f7a2"
+
+# Saga failures in QA
+scripts/loki-query --ns go-ecommerce-qa --app go-order-service --filter "saga event handling failed"
+
+# gRPC client errors
+scripts/loki-query --ns go-ecommerce --filter "gRPC client call failed"
+
+# Stripe API calls
+scripts/loki-query --ns go-ecommerce --app go-payment-service --filter "Stripe API"
+
+# Analytics service over last 4 hours
+scripts/loki-query --ns go-ecommerce --app go-analytics-service --hours 4 --limit 50
 ```
 
-## URL-Encoding Reference
+### Output format
 
-| LogQL | URL-encoded |
-|-------|-------------|
-| `{namespace="X"}` | `%7Bnamespace%3D%22X%22%7D` |
-| `{namespace="X",app="Y"}` | `%7Bnamespace%3D%22X%22%2Capp%3D%22Y%22%7D` |
-| `\| json` | `+%7C+json` |
-| `\| level="ERROR"` | `+%7C+level%3D%22ERROR%22` |
-| `\|= "text"` | `+%7C%3D+%22text%22` |
-| `{namespace=~"go-ecommerce.*"}` | `%7Bnamespace%3D~%22go-ecommerce.*%22%7D` |
+Each log line is printed as:
+```
+[app] [LEVEL] message key=value key=value ...
+  error: <error detail if present>
+  traceID: <trace ID if present>
+```
 
 ## Jaeger Trace Lookup
 
-Every structured log line includes `traceID`. Copy it from Loki output, then look up in Jaeger:
+Every structured log line includes `traceID`. Copy it from loki-query output, then look up in Jaeger:
 
 ```bash
 ssh debian 'kubectl port-forward svc/jaeger 16686:16686 -n monitoring &'
@@ -133,45 +98,38 @@ A checkout trace spans: order-service -> cart-service (gRPC) -> product-service 
 
 ## Saga Debugging Flow
 
-### Step 1: Check the dashboard
-The "Saga & Payment Health" and "Saga Step Duration" rows in the Go Services dashboard show step error rates, duration, and order status breakdown.
+1. **Check the dashboard:** "Saga & Payment Health" and "Saga Step Duration" rows show step error rates, duration, and order status breakdown.
 
-### Step 2: Query Loki for saga errors
-```bash
-ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- \
-  'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22go-ecommerce-qa%22%2Capp%3D%22go-order-service%22%7D+%7C%3D+%22saga+event+handling+failed%22+%7C+json&limit=20&start=${START}&end=${END}'"
-```
+2. **Query saga errors:**
+   ```bash
+   scripts/loki-query --ns go-ecommerce --app go-order-service --filter "saga event handling failed"
+   ```
 
-### Step 3: Check DLQ
-```bash
-ssh debian 'kubectl exec -n go-ecommerce-qa deploy/go-order-service -- wget -qO- http://localhost:8092/admin/dlq/messages?limit=10'
-```
+3. **Check DLQ:**
+   ```bash
+   ssh debian 'kubectl exec -n go-ecommerce deploy/go-order-service -- wget -qO- http://localhost:8092/admin/dlq/messages?limit=10'
+   ```
 
 ## Circuit Breaker Diagnosis
 
 ```bash
 # Check breaker state via Prometheus (0=closed, 1=half-open, 2=open)
 # In Grafana: query circuit_breaker_state{name="order-postgres"}
-# Alert: circuit-breaker-open fires when state == 2 for 2 min
+# Alerts: circuit-breaker-open (sustained open), circuit-breaker-flapping (rapid state changes)
 
 # Check for poison messages in RabbitMQ
 ssh debian 'kubectl exec -n java-tasks deploy/rabbitmq -- rabbitmqctl list_queues name messages'
 
 # If breaker is open: purge the offending queue + restart service
-ssh debian 'kubectl scale deployment/go-order-service -n go-ecommerce-qa --replicas=0'
+ssh debian 'kubectl scale deployment/go-order-service -n go-ecommerce --replicas=0'
 ssh debian 'kubectl exec -n java-tasks deploy/rabbitmq -- rabbitmqctl purge_queue saga.order.events'
-ssh debian 'kubectl scale deployment/go-order-service -n go-ecommerce-qa --replicas=2'
+ssh debian 'kubectl scale deployment/go-order-service -n go-ecommerce --replicas=2'
 ```
 
 ## cert-manager Diagnosis
 
 ```bash
-# Check if certificates are Ready
-ssh debian 'kubectl get certificates -n go-ecommerce-qa'
-
-# Check cert-manager pods
+ssh debian 'kubectl get certificates -n go-ecommerce'
 ssh debian 'kubectl get pods -n cert-manager'
-
-# Check specific cert details
-ssh debian 'kubectl describe certificate payment-grpc-tls -n go-ecommerce-qa'
+ssh debian 'kubectl describe certificate payment-grpc-tls -n go-ecommerce'
 ```

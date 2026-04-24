@@ -6,8 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // AnthropicClient talks to the Anthropic Messages API.
@@ -22,7 +28,7 @@ func NewAnthropicClient(model, apiKey string) *AnthropicClient {
 	return &AnthropicClient{
 		apiKey: apiKey,
 		model:  model,
-		http:   &http.Client{Timeout: 60 * time.Second},
+		http:   &http.Client{Timeout: 60 * time.Second, Transport: otelhttp.NewTransport(http.DefaultTransport)},
 	}
 }
 
@@ -70,6 +76,11 @@ type anthropicResp struct {
 }
 
 func (c *AnthropicClient) Chat(ctx context.Context, messages []Message, tools []ToolSchema) (ChatResponse, error) {
+	ctx, span := otel.Tracer("llm").Start(ctx, "anthropic.chat",
+		trace.WithAttributes(attribute.String("llm.model", c.model)),
+	)
+	defer span.End()
+
 	// Separate system from conversation messages
 	var system string
 	var anthropicMsgs []anthropicMsg
@@ -147,6 +158,16 @@ func (c *AnthropicClient) Chat(ctx context.Context, messages []Message, tools []
 
 	if resp.StatusCode >= 400 {
 		payload, _ := io.ReadAll(resp.Body)
+		bodyPreview := string(payload)
+		if len(bodyPreview) > 200 {
+			bodyPreview = bodyPreview[:200] + "..."
+		}
+		slog.WarnContext(ctx, "llm http error",
+			"provider", "anthropic",
+			"model", c.model,
+			"status", resp.StatusCode,
+			"body_preview", bodyPreview,
+		)
 		return ChatResponse{}, fmt.Errorf("anthropic status %d: %s", resp.StatusCode, string(payload))
 	}
 
@@ -172,5 +193,17 @@ func (c *AnthropicClient) Chat(ctx context.Context, messages []Message, tools []
 			})
 		}
 	}
+	span.SetAttributes(
+		attribute.Int("llm.prompt_tokens", parsed.Usage.InputTokens),
+		attribute.Int("llm.completion_tokens", parsed.Usage.OutputTokens),
+	)
+	slog.InfoContext(ctx, "llm response",
+		"provider", "anthropic",
+		"model", c.model,
+		"prompt_tokens", parsed.Usage.InputTokens,
+		"completion_tokens", parsed.Usage.OutputTokens,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"tool_call_count", len(out.ToolCalls),
+	)
 	return out, nil
 }

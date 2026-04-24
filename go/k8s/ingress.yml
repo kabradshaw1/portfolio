@@ -60,3 +60,10 @@ spec:
                 name: go-payment-service
                 port:
                   number: 8098
+          - path: /go-projector(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: go-order-projector
+                port:
+                  number: 8097

@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# loki-query — query Loki via SSH + kubectl exec with human-readable arguments.
+#
+# Usage:
+#   loki-query --ns <namespace> [--app <app>] [--filter <text>] [--level <level>] [--limit <n>] [--hours <n>]
+#
+# Examples:
+#   loki-query --ns go-ecommerce --level ERROR
+#   loki-query --ns go-ecommerce --app go-order-service --filter "saga event handling failed"
+#   loki-query --ns go-ecommerce --filter "ORDER-ID-HERE"
+#   loki-query --ns go-ecommerce --app go-analytics-service --hours 4 --limit 50
+
+NS=""
+APP=""
+FILTER=""
+LEVEL=""
+LIMIT=30
+HOURS=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --ns)        NS="$2";     shift 2 ;;
+    --app)       APP="$2";    shift 2 ;;
+    --filter)    FILTER="$2"; shift 2 ;;
+    --level)     LEVEL="$2";  shift 2 ;;
+    --limit)     LIMIT="$2";  shift 2 ;;
+    --hours)     HOURS="$2";  shift 2 ;;
+    -h|--help)
+      sed -n '3,/^$/p' "$0"
+      exit 0
+      ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+
+if [[ -z "$NS" ]]; then
+  echo "Error: --ns <namespace> is required" >&2
+  exit 1
+fi
+
+# Build Loki URL locally in Python — avoids bash quoting issues with LogQL
+URL=$(python3 -c "
+import urllib.parse, time, sys
+
+ns, app, filt, limit, hours = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
+
+q = '{namespace=\"' + ns + '\"'
+if app:
+    q += ',app=\"' + app + '\"'
+q += '}'
+if filt:
+    q += ' |= \"' + filt + '\"'
+q += ' | json'
+
+start = int((time.time() - hours * 3600) * 1e9)
+end   = int(time.time() * 1e9)
+print(f'http://localhost:3100/loki/api/v1/query_range?query={urllib.parse.quote(q)}&limit={limit}&start={start}&end={end}')
+" "$NS" "$APP" "$FILTER" "$LIMIT" "$HOURS")
+
+# Query Loki, parse CRI-wrapped JSON, apply client-side level filter.
+# Level filtering is done client-side because CRI wraps app JSON with escaped
+# quotes, making server-side LogQL level matching unreliable.
+ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- '${URL}'" | python3 -c "
+import json, sys
+
+level_filter = sys.argv[1].upper() if len(sys.argv) > 1 else ''
+
+data = json.load(sys.stdin)
+results = data.get('data', {}).get('result', [])
+if not results:
+    print('(no results)')
+    sys.exit(0)
+
+count = 0
+for stream in results:
+    app = stream.get('stream', {}).get('app', 'unknown')
+    for ts, line in stream.get('values', []):
+        try:
+            outer = json.loads(line)
+            inner = outer.get('log', line)
+            p = json.loads(inner.strip()) if isinstance(inner, str) else outer
+        except Exception:
+            p = {}
+        msg = p.get('msg', p.get('message', line[:200] if not p else ''))
+        if not msg:
+            continue
+        level = p.get('level', '')
+        if level_filter and level.upper() != level_filter:
+            continue
+        err = p.get('error', '')
+        tid = p.get('traceID', '')
+        extras = ' '.join(
+            f'{k}={p[k]}' for k in [
+                'orderID', 'target', 'method', 'status', 'duration',
+                'currentStep', 'event', 'operation', 'gitSHA',
+                'breaker', 'from', 'to', 'topic', 'partition',
+            ] if p.get(k)
+        )
+        print(f'[{app}] [{level}] {msg}' + (f' {extras}' if extras else ''))
+        if err:
+            print(f'  error: {err[:250]}')
+        if tid:
+            print(f'  traceID: {tid}')
+        count += 1
+
+if count == 0:
+    print('(no results)')
+" "$LEVEL"

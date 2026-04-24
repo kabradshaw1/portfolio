@@ -122,6 +122,10 @@ func (s *RedisStore) GetRevenue(ctx context.Context, hours int) ([]RevenueWindow
 
 // FlushTrending writes product scores to a sorted set and product names to a hash for the given window.
 func (s *RedisStore) FlushTrending(ctx context.Context, windowKey string, scores map[string]float64, names map[string]string) error {
+	if len(scores) == 0 {
+		return nil
+	}
+
 	key := trendingPrefix + windowKey
 	namesKey := trendingPrefix + "names:" + windowKey
 

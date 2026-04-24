@@ -13,11 +13,16 @@ spec:
       labels:
         app: postgres
     spec:
+      terminationGracePeriodSeconds: 90
       containers:
         - name: postgres
           image: postgres:17-alpine
           ports:
             - containerPort: 5432
+          lifecycle:
+            preStop:
+              exec:
+                command: ["gosu", "postgres", "pg_ctl", "stop", "-m", "fast", "-D", "/var/lib/postgresql/data"]
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "taskuser", "-d", "taskdb"]
@@ -53,7 +58,7 @@ spec:
               memory: "128Mi"
               cpu: "100m"
             limits:
-              memory: "512Mi"
+              memory: "768Mi"
               cpu: "500m"
       volumes:
         - name: initdb
