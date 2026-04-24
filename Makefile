@@ -95,6 +95,7 @@ preflight-go-migrations:
 	@# Create databases
 	@docker exec $(MIGRATE_PG_CONTAINER) psql -U taskuser -d taskdb -c "CREATE DATABASE ecommercedb;" >/dev/null 2>&1
 	@docker exec $(MIGRATE_PG_CONTAINER) psql -U taskuser -d taskdb -c "CREATE DATABASE productdb;" >/dev/null 2>&1
+	@docker exec $(MIGRATE_PG_CONTAINER) psql -U taskuser -d taskdb -c "CREATE DATABASE projectordb;" >/dev/null 2>&1
 	@# Run migrations (same order and flags as CI)
 	@echo "  Running auth-service migrations..."
 	@migrate -path go/auth-service/migrations \
@@ -111,6 +112,9 @@ preflight-go-migrations:
 	@echo "  Applying product-service seed data..."
 	@PGPASSWORD=taskpass psql -h localhost -p $(MIGRATE_PG_PORT) -U taskuser -d productdb \
 		-v ON_ERROR_STOP=1 -f go/product-service/seed.sql >/dev/null
+	@echo "  Running order-projector migrations..."
+	@migrate -path go/order-projector/migrations \
+		-database "postgres://taskuser:taskpass@localhost:$(MIGRATE_PG_PORT)/projectordb?sslmode=disable&x-migrations-table=projector_schema_migrations" up
 	@# Verify tables
 	@echo "  Verifying tables..."
 	@PGPASSWORD=taskpass psql -h localhost -p $(MIGRATE_PG_PORT) -U taskuser -d ecommercedb -c "\dt" | grep -q ' users ' || \
@@ -119,6 +123,10 @@ preflight-go-migrations:
 		(echo "❌ orders table missing" && docker rm -f $(MIGRATE_PG_CONTAINER) >/dev/null && exit 1)
 	@PGPASSWORD=taskpass psql -h localhost -p $(MIGRATE_PG_PORT) -U taskuser -d productdb -c "\dt" | grep -q ' products ' || \
 		(echo "❌ products table missing in productdb" && docker rm -f $(MIGRATE_PG_CONTAINER) >/dev/null && exit 1)
+	@PGPASSWORD=taskpass psql -h localhost -p $(MIGRATE_PG_PORT) -U taskuser -d projectordb -c "\dt" | grep -q ' order_timeline ' || \
+		(echo "❌ order_timeline table missing in projectordb" && docker rm -f $(MIGRATE_PG_CONTAINER) >/dev/null && exit 1)
+	@PGPASSWORD=taskpass psql -h localhost -p $(MIGRATE_PG_PORT) -U taskuser -d projectordb -c "\dt" | grep -q ' order_summary ' || \
+		(echo "❌ order_summary table missing in projectordb" && docker rm -f $(MIGRATE_PG_CONTAINER) >/dev/null && exit 1)
 	@# Cleanup
 	@docker rm -f $(MIGRATE_PG_CONTAINER) >/dev/null
 	@echo "  ✅ All migrations applied and tables verified"
