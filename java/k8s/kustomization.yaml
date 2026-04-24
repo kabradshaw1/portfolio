@@ -26,6 +26,9 @@ resources:
   - services/redis.yml
   - services/task-service.yml
   - volumes/postgres-pvc.yml
+  - volumes/postgres-backup-pv.yml
+  - jobs/postgres-backup.yml
+  - pdb/postgres-pdb.yml
   - ingress.yml
   - ingress-rabbitmq.yml
   - network-policy.yml
