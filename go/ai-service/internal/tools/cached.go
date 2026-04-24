@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/cache"
@@ -36,6 +37,10 @@ func (t *cachedTool) Call(ctx context.Context, args json.RawMessage, userID stri
 			var content any
 			if json.Unmarshal(raw, &content) == nil {
 				metrics.CacheEvents.WithLabelValues("tool", "hit").Inc()
+				slog.DebugContext(ctx, "tool cache hit",
+					"tool", t.inner.Name(),
+					"key_prefix", key[:min(len(key), 16)],
+				)
 				return Result{Content: content}, nil
 			}
 		}
