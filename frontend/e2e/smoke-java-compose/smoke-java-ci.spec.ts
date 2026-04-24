@@ -1,7 +1,10 @@
 import { test, expect } from "@playwright/test";
 
-// Java services go through the gateway at port 8080.
+// Java services in compose: gateway at 8080, task-service at 8081.
+// Registration is a REST endpoint on task-service (not a GraphQL mutation).
 const GATEWAY_URL = process.env.SMOKE_API_URL || "http://localhost:8080";
+const TASK_SERVICE_URL =
+  process.env.SMOKE_TASK_URL || "http://localhost:8081";
 const GRAPHQL_URL = `${GATEWAY_URL}/graphql`;
 
 test.describe("Java compose-smoke CI tests", () => {
@@ -12,10 +15,8 @@ test.describe("Java compose-smoke CI tests", () => {
   const testEmail = `ci-smoke-${Date.now()}@test.com`;
   const testPassword = "CiSmokeTest123!";
 
-  test("gateway health check", async ({ request }) => {
-    // Spring Boot gateway should respond on its base port
-    const res = await request.get(`${GATEWAY_URL}/graphql`, {
-      headers: { "Content-Type": "application/json" },
+  test("gateway health check via GraphQL", async ({ request }) => {
+    const res = await request.post(GRAPHQL_URL, {
       data: { query: "{ __typename }" },
     });
     expect(res.ok(), "gateway GraphQL endpoint should respond").toBeTruthy();
@@ -34,18 +35,13 @@ test.describe("Java compose-smoke CI tests", () => {
   });
 
   test("register → project → task → verify activity", async ({ request }) => {
-    // Step 1: Register
-    const registerRes = await request.post(GRAPHQL_URL, {
-      data: {
-        query: `mutation Register($email: String!, $password: String!, $name: String!) {
-          register(email: $email, password: $password, name: $name) { id email name }
-        }`,
-        variables: { email: testEmail, password: testPassword, name: "CI Smoke" },
-      },
+    // Step 1: Register via REST on task-service (not GraphQL)
+    const registerRes = await request.post(`${TASK_SERVICE_URL}/register`, {
+      data: { email: testEmail, password: testPassword, name: "CI Smoke" },
     });
-    expect(registerRes.ok()).toBeTruthy();
+    expect(registerRes.ok(), "registration should succeed").toBeTruthy();
 
-    // Capture auth cookie from registration
+    // Capture auth cookie from registration response
     const regCookies = registerRes
       .headersArray()
       .filter((h) => h.name.toLowerCase() === "set-cookie")
@@ -57,13 +53,14 @@ test.describe("Java compose-smoke CI tests", () => {
       const match = regAccessCookie.match(/^access_token=([^;]+)/);
       if (match) authCookieHeader = `access_token=${match[1]}`;
     }
+    expect(authCookieHeader, "auth cookie must be captured").toBeTruthy();
 
     const headers = {
       Cookie: authCookieHeader,
       "Content-Type": "application/json",
     };
 
-    // Step 2: Create project
+    // Step 2: Create project via GraphQL gateway
     const projectRes = await request.post(GRAPHQL_URL, {
       headers,
       data: {

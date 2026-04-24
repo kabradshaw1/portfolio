@@ -528,6 +528,8 @@ jobs:
   compose-smoke-go:
     name: Compose Smoke (Go stack)
     runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-test-secret
     steps:
       - uses: actions/checkout@v4
 
