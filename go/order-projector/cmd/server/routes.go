@@ -1,19 +1,26 @@
 package main
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
+	"github.com/kabradshaw1/portfolio/go/order-projector/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 	pkgmw "github.com/kabradshaw1/portfolio/go/pkg/middleware"
 )
 
 // setupRouter creates the Gin engine with all middleware and route registrations.
-func setupRouter(cfg Config) *gin.Engine {
+func setupRouter(
+	cfg Config,
+	health *handler.HealthHandler,
+	timeline *handler.TimelineHandler,
+	summary *handler.SummaryHandler,
+	stats *handler.StatsHandler,
+	replay *handler.ReplayHandler,
+) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(pkgmw.SecurityHeaders())
@@ -21,12 +28,18 @@ func setupRouter(cfg Config) *gin.Engine {
 	router.Use(corsMiddleware(cfg.AllowedOrigins))
 	router.Use(apperror.ErrorHandler())
 
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
+	// Infrastructure endpoints.
+	router.GET("/health", health.Health)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
-	// TODO: projection query endpoints will be added in Task 9 (HTTP Handlers).
+	// Projection query endpoints.
+	router.GET("/orders/:id/timeline", timeline.GetTimeline)
+	router.GET("/orders/:id", summary.GetOrder)
+	router.GET("/orders", summary.ListOrders)
+	router.GET("/stats/orders", stats.GetOrderStats)
+
+	// Admin endpoints.
+	router.POST("/admin/replay", replay.TriggerReplay)
 
 	return router
 }
@@ -42,7 +55,7 @@ func corsMiddleware(allowedOrigins string) gin.HandlerFunc {
 		origin := c.GetHeader("Origin")
 		if originSet[origin] {
 			c.Header("Access-Control-Allow-Origin", origin)
-			c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			c.Header("Access-Control-Allow-Headers", "Content-Type, X-Requested-With")
 			c.Header("Access-Control-Allow-Credentials", "true")
 		}

@@ -7,6 +7,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kabradshaw1/portfolio/go/pkg v0.0.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/segmentio/kafka-go v0.4.50
 	github.com/sony/gobreaker/v2 v2.4.0
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.68.0
 )
@@ -48,7 +49,6 @@ require (
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.59.0 // indirect
-	github.com/segmentio/kafka-go v0.4.50 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect

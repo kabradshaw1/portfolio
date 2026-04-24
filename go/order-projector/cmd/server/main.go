@@ -6,10 +6,17 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/kabradshaw1/portfolio/go/order-projector/internal/consumer"
+	"github.com/kabradshaw1/portfolio/go/order-projector/internal/handler"
+	"github.com/kabradshaw1/portfolio/go/order-projector/internal/replay"
+	"github.com/kabradshaw1/portfolio/go/order-projector/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
+	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
@@ -49,30 +56,34 @@ func main() {
 	}
 	slog.Info("connected to postgres")
 
-	// TODO (Task 5): Create repository layer.
-	// repo := repository.New(pool)
+	// Repository with circuit breaker.
+	pgBreaker := resilience.NewBreaker(resilience.BreakerConfig{
+		Name:          "projector-postgres",
+		OnStateChange: resilience.ObserveStateChange,
+	})
+	repo := repository.New(pool, pgBreaker)
 
-	// TODO (Task 7): Create projection logic.
-	// projector := projection.New(repo)
+	// Kafka consumer with all three projections.
+	brokers := strings.Split(cfg.KafkaBrokers, ",")
+	cons := consumer.New(brokers, repo)
+	go func() {
+		if err := cons.Run(ctx); err != nil {
+			slog.Error("kafka consumer failed", "error", err)
+		}
+	}()
 
-	// TODO (Task 6): Create deserializer.
-	// deserializer := deserializer.New()
+	// Replay coordinator.
+	replayer := replay.New(repo, cons)
 
-	// TODO (Task 8): Create Kafka consumer.
-	// brokers := strings.Split(cfg.KafkaBrokers, ",")
-	// cons := consumer.New(brokers, projector, deserializer)
-	// go func() {
-	//     if err := cons.Run(ctx); err != nil {
-	//         slog.Error("kafka consumer failed", "error", err)
-	//     }
-	// }()
-	slog.Info("kafka consumer not yet wired", "brokers", cfg.KafkaBrokers)
+	// HTTP handlers.
+	healthHandler := handler.NewHealthHandler(pool, cons)
+	timelineHandler := handler.NewTimelineHandler(repo)
+	summaryHandler := handler.NewSummaryHandler(repo)
+	statsHandler := handler.NewStatsHandler(repo)
+	replayHandler := handler.NewReplayHandler(replayer)
 
-	// TODO (Task 9): Create handler with repo for query endpoints.
-	// handler := handler.New(repo)
-
-	// Router with health and metrics (query endpoints added in Task 9).
-	router := setupRouter(cfg)
+	// Router with all routes.
+	router := setupRouter(cfg, healthHandler, timelineHandler, summaryHandler, statsHandler, replayHandler)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -96,11 +107,10 @@ func main() {
 		return nil
 	})
 	sm.Register("drain-http", 0, shutdown.DrainHTTP("order-projector-http", srv))
-	// TODO (Task 8): Register Kafka consumer shutdown.
-	// sm.Register("wait-kafka", 10, shutdown.WaitForInflight("kafka-consumer", cons.IsIdle, 100*time.Millisecond))
-	// sm.Register("kafka-close", 20, func(_ context.Context) error {
-	//     return cons.Close()
-	// })
+	sm.Register("wait-kafka", 10, shutdown.WaitForInflight("kafka-consumer", cons.IsIdle, 100*time.Millisecond))
+	sm.Register("kafka-close", 20, func(_ context.Context) error {
+		return cons.Close()
+	})
 	sm.Register("postgres-close", 25, func(_ context.Context) error {
 		pool.Close()
 		return nil
