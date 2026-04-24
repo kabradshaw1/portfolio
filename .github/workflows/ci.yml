@@ -601,6 +601,7 @@ jobs:
       # GHSA-r7w7-9xr2-qq2r (langchain-openai) — DNS rebinding in image token counting, not used
       # CVE-2025-6985 (langchain-text-splitters) — XXE in HTMLSectionSplitter, not used
       # GHSA-rr7j-v2q5-chgv (langsmith) — streaming bypass of output redaction, not used
+      # CVE-2026-3219 (pip) — pip itself, no fix version available yet
       - name: Run pip-audit
         run: |
           source .venv/bin/activate
@@ -622,7 +623,8 @@ jobs:
             --ignore-vuln CVE-2026-1703 \
             --ignore-vuln ECHO-ffe1-1d3c-d9bc \
             --ignore-vuln ECHO-7db2-03aa-5591 \
-            --ignore-vuln CVE-2026-6587
+            --ignore-vuln CVE-2026-6587 \
+            --ignore-vuln CVE-2026-3219
 
   security-npm-audit:
     name: Security - npm audit
