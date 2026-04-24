@@ -63,10 +63,10 @@ func (t *initiateReturnTool) Call(ctx context.Context, args json.RawMessage, use
 
 	ret, err := t.api.InitiateReturn(ctx, jwtctx.FromContext(ctx), a.OrderID, a.ItemIDs, a.Reason)
 	if err != nil {
-		slog.Warn("initiate_return failed", "tool", "initiate_return", "order_id", a.OrderID, "error", err.Error())
+		slog.WarnContext(ctx, "tool error", "tool", "initiate_return", "order_id", a.OrderID, "error", err.Error())
 		return Result{}, fmt.Errorf("initiate_return: %w", err)
 	}
-	slog.Info("initiate_return ok", "tool", "initiate_return", "order_id", a.OrderID, "item_count", len(a.ItemIDs), "duration_ms", time.Since(start).Milliseconds())
+	slog.InfoContext(ctx, "tool result", "tool", "initiate_return", "order_id", a.OrderID, "item_count", len(a.ItemIDs), "duration_ms", time.Since(start).Milliseconds())
 	content := map[string]any{
 		"id":       ret.ID,
 		"order_id": ret.OrderID,

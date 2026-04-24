@@ -37,10 +37,10 @@ func (t *viewCartTool) Call(ctx context.Context, args json.RawMessage, userID st
 	start := time.Now()
 	cart, err := t.api.GetCart(ctx, jwtctx.FromContext(ctx))
 	if err != nil {
-		slog.Warn("view_cart failed", "tool", "view_cart", "error", err.Error())
+		slog.WarnContext(ctx, "tool error", "tool", "view_cart", "error", err.Error())
 		return Result{}, fmt.Errorf("view_cart: %w", err)
 	}
-	slog.Info("view_cart ok", "tool", "view_cart", "item_count", len(cart.Items), "duration_ms", time.Since(start).Milliseconds())
+	slog.InfoContext(ctx, "tool result", "tool", "view_cart", "item_count", len(cart.Items), "duration_ms", time.Since(start).Milliseconds())
 	content := map[string]any{
 		"items": cart.Items,
 		"total": cart.Total,
@@ -92,10 +92,10 @@ func (t *addToCartTool) Call(ctx context.Context, args json.RawMessage, userID s
 
 	item, err := t.api.AddToCart(ctx, jwtctx.FromContext(ctx), a.ProductID, a.Qty)
 	if err != nil {
-		slog.Warn("add_to_cart failed", "tool", "add_to_cart", "product_id", a.ProductID, "error", err.Error())
+		slog.WarnContext(ctx, "tool error", "tool", "add_to_cart", "product_id", a.ProductID, "error", err.Error())
 		return Result{}, fmt.Errorf("add_to_cart: %w", err)
 	}
-	slog.Info("add_to_cart ok", "tool", "add_to_cart", "product_id", a.ProductID, "quantity", a.Qty, "duration_ms", time.Since(start).Milliseconds())
+	slog.InfoContext(ctx, "tool result", "tool", "add_to_cart", "product_id", a.ProductID, "quantity", a.Qty, "duration_ms", time.Since(start).Milliseconds())
 	content := map[string]any{
 		"id":         item.ID,
 		"product_id": item.ProductID,
