@@ -291,6 +291,10 @@ jobs:
         run: |
           migrate -path go/auth-service/migrations -database "${DATABASE_URL}&x-migrations-table=auth_schema_migrations" up
 
+      - name: Apply auth-service seed data
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f go/auth-service/seed.sql
+
       - name: Run order-service migrations
         run: |
           migrate -path go/order-service/migrations -database "${DATABASE_URL}&x-migrations-table=ecommerce_schema_migrations" up

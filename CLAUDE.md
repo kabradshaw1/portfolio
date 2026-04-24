@@ -2,7 +2,11 @@
 
 ## Project Intent
 
-Portfolio project for a Gen AI Engineer job application — demonstrating RAG architecture, agentic AI, prompt engineering, and Python API development through two AI tools: a Document Q&A Assistant and a Debug Assistant.
+Portfolio project for a Golang Engineer job applications.  
+
+## Quality Bar
+
+This portfolio must demonstrate production-grade engineering, not just working demos. Every component should be something a hiring manager would feel safe dropping into a real production system. Err on the side of overly polished — if a shortcut wouldn't pass code review at a serious company, don't take it. The constraint is cost (no paid cloud services), not effort. Where a production system would use a managed service (RDS, Cloud SQL, S3 backups), implement the self-hosted equivalent with the same operational rigor: automated backups, recovery procedures, health checks, and alerting that doesn't cry wolf.
 
 ## Tech Stack
 

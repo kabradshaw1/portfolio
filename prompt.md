@@ -1,5 +1,0 @@
-want to rebuild my CI/CD pipeline.  This should be design to consider my team is currently only 1, and will likely not have more than 2 developers any time soon.  I wan to add a QA stop. I want to go to a single unified worflow for getting the changes into QA.  It should deploy a functionally idential set of services that are served with cors set to only be accessable from my 2 development machines.  I think this should be triggered by a pull request into the QA branch.   
-
-I also want to update my worflow.  I think I wan to make it as automatic as possible.  When we I crate a spec with the brainstorm skill, I want to try and automate it to go all the way to QA.  This means that agents should do all commit and pull requests, they should wait for the github actions, and debug any problems.  Agents should create a worktree in .claude.  Once they successfully get the changes into QA, they should prompt me to go inspect the changes.  I want to think about if we need to clean up the work tree first, or wait until it's decided if we want to keep the changes.  
-
-I can manually merge main and push it myself.  
