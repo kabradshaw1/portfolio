@@ -1,6 +1,7 @@
 package guardrails
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
@@ -14,6 +15,12 @@ func TruncateHistory(msgs []llm.Message, n int) []llm.Message {
 	if len(msgs) <= n {
 		return msgs
 	}
+	dropped := len(msgs) - n
+	slog.Info("history truncated",
+		"messages_before", len(msgs),
+		"messages_after", n,
+		"dropped", dropped,
+	)
 	if len(msgs) == 0 || msgs[0].Role != llm.RoleSystem {
 		return append([]llm.Message(nil), msgs[len(msgs)-n:]...)
 	}

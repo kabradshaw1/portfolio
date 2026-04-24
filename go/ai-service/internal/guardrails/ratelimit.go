@@ -2,6 +2,7 @@ package guardrails
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -54,6 +55,10 @@ func (l *Limiter) Allow(ctx context.Context, key string) (bool, time.Duration, e
 	})
 	if err != nil {
 		// Fail open on breaker-open or Redis errors.
+		slog.Warn("rate limiter fail-open",
+			"key", key,
+			"error", err.Error(),
+		)
 		return true, 0, nil
 	}
 	r := res.(result)
@@ -74,6 +79,10 @@ func Middleware(l *Limiter) gin.HandlerFunc {
 			return
 		}
 		if !ok {
+			slog.Warn("rate limit exceeded",
+				"client_ip", c.ClientIP(),
+				"retry_after_s", int(retry.Seconds()),
+			)
 			c.Header("Retry-After", strconv.Itoa(int(retry.Seconds())))
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded"})
 			return
