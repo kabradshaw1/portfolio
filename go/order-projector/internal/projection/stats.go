@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/kabradshaw1/portfolio/go/order-projector/internal/consumer"
+	"github.com/kabradshaw1/portfolio/go/order-projector/internal/event"
 	"github.com/kabradshaw1/portfolio/go/order-projector/internal/repository"
 )
 
@@ -26,7 +26,7 @@ type completedData struct {
 }
 
 // Apply increments the appropriate hourly counter based on event type.
-func (s *Stats) Apply(ctx context.Context, evt *consumer.OrderEvent) error {
+func (s *Stats) Apply(ctx context.Context, evt *event.OrderEvent) error {
 	bucket := evt.Timestamp.Truncate(time.Hour)
 
 	switch evt.Type {

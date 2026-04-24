@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/kabradshaw1/portfolio/go/order-projector/internal/consumer"
+	"github.com/kabradshaw1/portfolio/go/order-projector/internal/event"
 	"github.com/kabradshaw1/portfolio/go/order-projector/internal/repository"
 )
 
@@ -55,7 +55,7 @@ func statusFromEventType(eventType string) string {
 }
 
 // Apply switches on event type, extracts relevant data, and upserts the order summary.
-func (s *Summary) Apply(ctx context.Context, evt *consumer.OrderEvent) error {
+func (s *Summary) Apply(ctx context.Context, evt *event.OrderEvent) error {
 	status := statusFromEventType(evt.Type)
 
 	summary := repository.OrderSummary{

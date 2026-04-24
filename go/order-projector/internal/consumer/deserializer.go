@@ -3,23 +3,12 @@ package consumer
 import (
 	"encoding/json"
 	"fmt"
-	"time"
+
+	"github.com/kabradshaw1/portfolio/go/order-projector/internal/event"
 )
 
 // LatestVersion is the current schema version all events are upgraded to.
 const LatestVersion = 2
-
-// OrderEvent represents a deserialized Kafka event for the order domain.
-type OrderEvent struct {
-	ID        string          `json:"id"`
-	Type      string          `json:"type"`
-	Version   int             `json:"version"`
-	Source    string          `json:"source"`
-	OrderID   string          `json:"order_id"`
-	Timestamp time.Time       `json:"timestamp"`
-	TraceID   string          `json:"traceID"`
-	Data      json.RawMessage `json:"data"`
-}
 
 // upgrader transforms event data from version N to version N+1.
 type upgrader func(data map[string]any) map[string]any
@@ -42,8 +31,8 @@ func upgradeOrderCreatedV1toV2(data map[string]any) map[string]any {
 
 // Deserialize parses a Kafka message value into an OrderEvent,
 // applying version upgrades to bring the event data to LatestVersion.
-func Deserialize(value []byte) (*OrderEvent, error) {
-	var evt OrderEvent
+func Deserialize(value []byte) (*event.OrderEvent, error) {
+	var evt event.OrderEvent
 	if err := json.Unmarshal(value, &evt); err != nil {
 		return nil, fmt.Errorf("unmarshal event: %w", err)
 	}

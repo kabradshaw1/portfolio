@@ -3,7 +3,7 @@ package projection
 import (
 	"context"
 
-	"github.com/kabradshaw1/portfolio/go/order-projector/internal/consumer"
+	"github.com/kabradshaw1/portfolio/go/order-projector/internal/event"
 	"github.com/kabradshaw1/portfolio/go/order-projector/internal/repository"
 )
 
@@ -18,7 +18,7 @@ func NewTimeline(repo *repository.Repository) *Timeline {
 }
 
 // Apply converts an OrderEvent to a TimelineEvent and persists it.
-func (t *Timeline) Apply(ctx context.Context, evt *consumer.OrderEvent) error {
+func (t *Timeline) Apply(ctx context.Context, evt *event.OrderEvent) error {
 	return t.repo.InsertTimelineEvent(ctx, repository.TimelineEvent{
 		EventID:      evt.ID,
 		OrderID:      evt.OrderID,
