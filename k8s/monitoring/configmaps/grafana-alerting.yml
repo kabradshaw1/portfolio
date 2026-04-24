@@ -213,6 +213,7 @@ data:
         rules:
           - uid: container-oom-killed
             title: Container OOM Killed
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -256,6 +257,7 @@ data:
 
           - uid: pod-restart-storm
             title: Pod Restart Storm
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -299,6 +301,7 @@ data:
 
           - uid: container-memory-high
             title: Container Memory High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -483,6 +486,7 @@ data:
         rules:
           - uid: go-ai-error-rate
             title: Go AI Service Error Rate High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -529,6 +533,7 @@ data:
 
           - uid: go-order-error-rate
             title: Go Ecommerce Error Rate High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -575,6 +580,7 @@ data:
 
           - uid: java-gateway-error-rate
             title: Java Gateway Error Rate High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -621,6 +627,7 @@ data:
 
           - uid: go-ai-latency-high
             title: Go AI Service Latency High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -667,6 +674,7 @@ data:
 
           - uid: go-order-latency-high
             title: Go Ecommerce Latency High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -713,6 +721,7 @@ data:
 
           - uid: java-gateway-latency-high
             title: Java Gateway Latency High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -759,6 +768,7 @@ data:
 
           - uid: go-cart-error-rate
             title: Go Cart Service Error Rate High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -805,6 +815,7 @@ data:
 
           - uid: go-payment-error-rate
             title: Go Payment Service Error Rate High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -851,6 +862,7 @@ data:
 
           - uid: go-product-error-rate
             title: Go Product Service Error Rate High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -897,6 +909,7 @@ data:
 
           - uid: go-auth-error-rate
             title: Go Auth Service Error Rate High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -943,6 +956,7 @@ data:
 
           - uid: go-cart-latency-high
             title: Go Cart Service Latency High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -989,6 +1003,7 @@ data:
 
           - uid: go-payment-latency-high
             title: Go Payment Service Latency High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -1035,6 +1050,7 @@ data:
 
           - uid: go-product-latency-high
             title: Go Product Service Latency High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -1081,6 +1097,7 @@ data:
 
           - uid: saga-dlq-accumulating
             title: Saga DLQ Messages Accumulating
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -1124,6 +1141,7 @@ data:
 
           - uid: saga-step-error-rate
             title: Saga Step Error Rate High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -1170,6 +1188,7 @@ data:
 
           - uid: saga-order-stalled
             title: Saga Orders Stalled
+            noDataState: OK
             condition: D
             data:
               - refId: A
@@ -1233,6 +1252,7 @@ data:
         rules:
           - uid: kafka-consumer-lag-high
             title: Kafka Consumer Lag High
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -1281,6 +1301,7 @@ data:
         rules:
           - uid: circuit-breaker-open
             title: Circuit Breaker Open
+            noDataState: OK
             condition: C
             data:
               - refId: A
@@ -1324,6 +1345,7 @@ data:
 
           - uid: circuit-breaker-flapping
             title: Circuit Breaker Flapping
+            noDataState: OK
             condition: C
             data:
               - refId: A

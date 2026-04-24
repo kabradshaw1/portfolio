@@ -17,3 +17,7 @@ data:
     CREATE DATABASE cartdb OWNER taskuser;
   05-create-paymentdb.sql: |
     CREATE DATABASE paymentdb OWNER taskuser;
+  06-create-ecommercedb.sql: |
+    CREATE DATABASE ecommercedb OWNER taskuser;
+  07-create-projectordb.sql: |
+    CREATE DATABASE projectordb OWNER taskuser;
