@@ -160,6 +160,19 @@ patches:
       - op: replace
         path: /data/RABBITMQ_URL
         value: "amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672/qa"
+  - target:
+      kind: ConfigMap
+      name: order-projector-config
+    patch: |
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      - op: replace
+        path: /data/DATABASE_URL
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/projectordb_qa?sslmode=disable"
+      - op: replace
+        path: /data/KAFKA_BROKERS
+        value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
   # --- Migration jobs ---
   # No Job patches needed: migration jobs read DATABASE_URL via configMapKeyRef
   # from their respective ConfigMaps above. The patches already repoint
