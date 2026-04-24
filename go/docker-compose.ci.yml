@@ -66,6 +66,11 @@ services:
       auth-service:
         condition: service_started
 
+  ai-service:
+    environment:
+      JWT_SECRET: ci-test-secret
+      ALLOWED_ORIGINS: "*"
+
   analytics-service:
     environment:
       ALLOWED_ORIGINS: "*"
