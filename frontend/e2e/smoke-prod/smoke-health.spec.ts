@@ -23,10 +23,11 @@ test.describe("Service health checks", () => {
   });
 
   test("Go AI service health and readiness", async ({ request }) => {
-    const healthRes = await request.get(`${API_URL}/go-ai/health`);
+    // ai-service ingress path is /ai-api (not /go-ai)
+    const healthRes = await request.get(`${API_URL}/ai-api/health`);
     expect(healthRes.ok(), "ai-service /health should return 2xx").toBeTruthy();
 
-    const readyRes = await request.get(`${API_URL}/go-ai/ready`);
+    const readyRes = await request.get(`${API_URL}/ai-api/ready`);
     expect(readyRes.ok(), "ai-service /ready should return 2xx").toBeTruthy();
     const readyBody = await readyRes.json();
     // /ready returns { "checks": { "llm": "...", "ecommerce": "..." } }
