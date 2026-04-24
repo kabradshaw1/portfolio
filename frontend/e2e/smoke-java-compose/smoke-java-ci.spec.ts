@@ -72,6 +72,10 @@ test.describe("Java compose-smoke CI tests", () => {
     });
     expect(projectRes.ok()).toBeTruthy();
     const projectBody = await projectRes.json();
+    expect(
+      projectBody.data?.createProject,
+      `createProject failed: ${JSON.stringify(projectBody.errors ?? [])}`
+    ).toBeTruthy();
     projectId = projectBody.data.createProject.id;
     expect(projectId).toBeTruthy();
 
@@ -91,6 +95,10 @@ test.describe("Java compose-smoke CI tests", () => {
     });
     expect(taskRes.ok()).toBeTruthy();
     const taskBody = await taskRes.json();
+    expect(
+      taskBody.data?.createTask,
+      `createTask failed: ${JSON.stringify(taskBody.errors ?? [])}`
+    ).toBeTruthy();
     taskId = taskBody.data.createTask.id;
     expect(taskId).toBeTruthy();
 
