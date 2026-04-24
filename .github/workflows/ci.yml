@@ -1121,7 +1121,7 @@ jobs:
           # Always apply namespaces and manifests (cheap, idempotent)
           for f in $(find k8s go/k8s java/k8s -name 'namespace.yml' 2>/dev/null); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/ai-services -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
-          $SSH "mkdir -p /backups/postgres"
+          $SSH "minikube ssh 'sudo mkdir -p /backups/postgres && sudo chmod 777 /backups/postgres'"
           for f in $(find java/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/monitoring -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 
