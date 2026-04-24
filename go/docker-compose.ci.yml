@@ -1,0 +1,71 @@
+services:
+  postgres:
+    volumes:
+      - ./ci-init.sql:/docker-entrypoint-initdb.d/01-ci-init.sql:ro
+
+  auth-service:
+    environment:
+      JWT_SECRET: ci-test-secret
+      ALLOWED_ORIGINS: "*"
+      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable
+
+  order-service:
+    environment:
+      JWT_SECRET: ci-test-secret
+      ALLOWED_ORIGINS: "*"
+      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable
+
+  product-service:
+    build:
+      context: .
+      dockerfile: product-service/Dockerfile
+    ports:
+      - "8095:8095"
+      - "9095:9095"
+    environment:
+      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/productdb?sslmode=disable
+      ALLOWED_ORIGINS: "*"
+      PORT: "8095"
+      GRPC_PORT: "9095"
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  cart-service:
+    build:
+      context: .
+      dockerfile: cart-service/Dockerfile
+    ports:
+      - "8096:8096"
+      - "9096:9096"
+    environment:
+      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/cartdb?sslmode=disable
+      JWT_SECRET: ci-test-secret
+      ALLOWED_ORIGINS: "*"
+      PORT: "8096"
+      GRPC_PORT: "9096"
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      PRODUCT_GRPC_ADDR: product-service:9095
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      AUTH_GRPC_URL: auth-service:9091
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      product-service:
+        condition: service_started
+      auth-service:
+        condition: service_started
+
+  analytics-service:
+    environment:
+      ALLOWED_ORIGINS: "*"
