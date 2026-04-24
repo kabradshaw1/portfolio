@@ -66,6 +66,14 @@ services:
       auth-service:
         condition: service_started
 
+  kafka:
+    # Redirect log dir to avoid the named volume mount at /tmp/kraft-combined-logs.
+    # The base compose's kafka-data volume can fail on GH Actions runners with
+    # permission errors when KRaft writes bootstrap.checkpoint.tmp.
+    environment:
+      KAFKA_LOG_DIRS: /opt/kafka/data
+    user: "0:0"
+
   ai-service:
     environment:
       JWT_SECRET: ci-test-secret

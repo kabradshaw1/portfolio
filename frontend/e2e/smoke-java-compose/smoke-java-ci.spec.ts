@@ -36,9 +36,12 @@ test.describe("Java compose-smoke CI tests", () => {
 
   test("register → project → task → verify activity", async ({ request }) => {
     // Step 1: Register via REST on task-service (not GraphQL)
-    const registerRes = await request.post(`${TASK_SERVICE_URL}/register`, {
-      data: { email: testEmail, password: testPassword, name: "CI Smoke" },
-    });
+    const registerRes = await request.post(
+      `${TASK_SERVICE_URL}/auth/register`,
+      {
+        data: { email: testEmail, password: testPassword, name: "CI Smoke" },
+      }
+    );
     expect(registerRes.ok(), "registration should succeed").toBeTruthy();
 
     // Capture auth cookie from registration response
