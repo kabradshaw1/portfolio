@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: java-tasks
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: pg-dump
+              image: postgres:17-alpine
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  DATE=$(date +%Y-%m-%d)
+                  BACKUP_DIR=/backups
+
+                  for DB in authdb orderdb productdb cartdb paymentdb ecommercedb projectordb; do
+                    echo "Dumping $DB..."
+                    pg_dump --format=custom \
+                      --host=postgres.java-tasks.svc.cluster.local \
+                      --username=taskuser \
+                      --dbname="$DB" \
+                      --file="$BACKUP_DIR/${DB}-${DATE}.dump"
+                    echo "  -> $BACKUP_DIR/${DB}-${DATE}.dump ($(du -h "$BACKUP_DIR/${DB}-${DATE}.dump" | cut -f1))"
+                  done
+
+                  echo "Cleaning up backups older than 7 days..."
+                  find "$BACKUP_DIR" -name '*.dump' -mtime +7 -delete -print
+
+                  echo "Backup complete. Current backups:"
+                  ls -lh "$BACKUP_DIR"/*.dump
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: java-secrets
+                      key: postgres-password
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backups
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "500m"
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: postgres-backup

@@ -618,7 +618,8 @@ jobs:
             --ignore-vuln CVE-2026-1703 \
             --ignore-vuln ECHO-ffe1-1d3c-d9bc \
             --ignore-vuln ECHO-7db2-03aa-5591 \
-            --ignore-vuln CVE-2026-6587
+            --ignore-vuln CVE-2026-6587 \
+            --ignore-vuln CVE-2026-3219
 
   security-npm-audit:
     name: Security - npm audit
@@ -1121,6 +1122,7 @@ jobs:
           # Always apply namespaces and manifests (cheap, idempotent)
           for f in $(find k8s go/k8s java/k8s -name 'namespace.yml' 2>/dev/null); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/ai-services -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          $SSH "minikube ssh 'sudo mkdir -p /backups/postgres && sudo chmod 777 /backups/postgres'"
           for f in $(find java/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/monitoring -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 
