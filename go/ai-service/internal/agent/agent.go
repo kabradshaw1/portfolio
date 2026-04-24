@@ -69,6 +69,13 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 	)
 	defer turnSpan.End()
 	startTime := time.Now()
+	slog.Info("agent turn start",
+		"turn_id", turnID,
+		"user_id", turn.UserID,
+		"message_count", len(turn.Messages),
+		"model", a.model,
+		"max_steps", a.maxSteps,
+	)
 	stepsCompleted := 0
 	turn.Messages = guardrails.TruncateHistory(turn.Messages, guardrails.DefaultMaxHistory)
 	messages := append([]llm.Message(nil), turn.Messages...)
@@ -86,6 +93,14 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 				operation = "chat_final"
 			}
 			a.rec.RecordOllamaCall(a.model, operation, resp.RequestDuration, resp.PromptEvalCount, resp.EvalCount, resp.EvalDurationNs)
+			slog.Info("llm call",
+				"turn_id", turnID,
+				"step", step,
+				"prompt_tokens", resp.PromptEvalCount,
+				"completion_tokens", resp.EvalCount,
+				"duration_ms", resp.RequestDuration.Milliseconds(),
+				"tool_call_count", len(resp.ToolCalls),
+			)
 		}
 		if err != nil {
 			emit(Event{Error: &ErrorEvent{Reason: err.Error()}})
@@ -142,6 +157,11 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 				msg, _ := llm.ToolResultMessage(call.ID, call.Name, map[string]string{"error": errMsg})
 				messages = append(messages, msg)
 				a.rec.RecordTool(call.Name, "unknown", 0)
+				slog.Warn("unknown tool requested",
+					"turn_id", turnID,
+					"step", step,
+					"tool", call.Name,
+				)
 				toolSpan.End()
 				continue
 			}
@@ -154,6 +174,18 @@ func (a *Agent) Run(ctx context.Context, turn Turn, emit func(Event)) error {
 			}
 			a.rec.RecordTool(call.Name, outcome, time.Since(toolStart))
 			toolsCalled = append(toolsCalled, call.Name)
+			argsPreview := string(call.Args)
+			if len(argsPreview) > 200 {
+				argsPreview = argsPreview[:200] + "..."
+			}
+			slog.Info("tool call",
+				"turn_id", turnID,
+				"step", step,
+				"tool", call.Name,
+				"args_preview", argsPreview,
+				"duration_ms", time.Since(toolStart).Milliseconds(),
+				"success", toolErr == nil,
+			)
 
 			if toolErr != nil {
 				emit(Event{ToolError: &ToolErrorEvent{Name: call.Name, Error: toolErr.Error()}})
@@ -196,6 +228,10 @@ func safeCall(ctx context.Context, t tools.Tool, args json.RawMessage, userID st
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("tool %q panicked: %v", t.Name(), r)
+			slog.Error("tool panic recovered",
+				"tool", t.Name(),
+				"panic", fmt.Sprintf("%v", r),
+			)
 		}
 	}()
 	return t.Call(ctx, args, userID)
