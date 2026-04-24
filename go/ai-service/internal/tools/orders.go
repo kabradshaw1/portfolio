@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/jwtctx"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
@@ -46,6 +48,7 @@ func (t *listOrdersTool) Call(ctx context.Context, args json.RawMessage, userID 
 	if userID == "" {
 		return Result{}, errors.New("list_orders: authenticated user required")
 	}
+	start := time.Now()
 	var a listOrdersArgs
 	_ = json.Unmarshal(args, &a) // empty args are fine
 	limit := a.Limit
@@ -55,6 +58,7 @@ func (t *listOrdersTool) Call(ctx context.Context, args json.RawMessage, userID 
 
 	orders, err := t.api.ListOrders(ctx, jwtctx.FromContext(ctx))
 	if err != nil {
+		slog.Warn("list_orders failed", "tool", "list_orders", "error", err.Error())
 		return Result{}, fmt.Errorf("list_orders: %w", err)
 	}
 	if len(orders) > limit {
@@ -70,6 +74,7 @@ func (t *listOrdersTool) Call(ctx context.Context, args json.RawMessage, userID 
 			"created_at": o.CreatedAt,
 		})
 	}
+	slog.Info("list_orders ok", "tool", "list_orders", "order_count", len(orders), "duration_ms", time.Since(start).Milliseconds())
 	return Result{
 		Content: out,
 		Display: map[string]any{"kind": "order_list", "orders": out},
@@ -104,6 +109,7 @@ func (t *getOrderTool) Call(ctx context.Context, args json.RawMessage, userID st
 	if userID == "" {
 		return Result{}, errors.New("get_order: authenticated user required")
 	}
+	start := time.Now()
 	var a getOrderArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return Result{}, fmt.Errorf("get_order: bad args: %w", err)
@@ -114,6 +120,7 @@ func (t *getOrderTool) Call(ctx context.Context, args json.RawMessage, userID st
 
 	o, err := t.api.GetOrder(ctx, jwtctx.FromContext(ctx), a.OrderID)
 	if err != nil {
+		slog.Warn("get_order failed", "tool", "get_order", "order_id", a.OrderID, "error", err.Error())
 		return Result{}, fmt.Errorf("get_order: %w", err)
 	}
 	content := map[string]any{
@@ -122,6 +129,7 @@ func (t *getOrderTool) Call(ctx context.Context, args json.RawMessage, userID st
 		"total":      o.Total,
 		"created_at": o.CreatedAt,
 	}
+	slog.Info("get_order ok", "tool", "get_order", "order_id", a.OrderID, "duration_ms", time.Since(start).Milliseconds())
 	return Result{
 		Content: content,
 		Display: map[string]any{"kind": "order_card", "order": o},
@@ -163,11 +171,13 @@ func (t *summarizeOrdersTool) Call(ctx context.Context, args json.RawMessage, us
 	if userID == "" {
 		return Result{}, errors.New("summarize_orders: authenticated user required")
 	}
+	start := time.Now()
 	var a summarizeArgs
 	_ = json.Unmarshal(args, &a)
 
 	orders, err := t.api.ListOrders(ctx, jwtctx.FromContext(ctx))
 	if err != nil {
+		slog.Warn("summarize_orders list failed", "tool", "summarize_orders", "error", err.Error())
 		return Result{}, fmt.Errorf("summarize_orders: %w", err)
 	}
 	if len(orders) > maxListedOrders {
@@ -189,8 +199,10 @@ func (t *summarizeOrdersTool) Call(ctx context.Context, args json.RawMessage, us
 		{Role: llm.RoleUser, Content: prompt},
 	}, nil)
 	if err != nil {
+		slog.Warn("summarize_orders sub-llm failed", "tool", "summarize_orders", "error", err.Error())
 		return Result{}, fmt.Errorf("summarize_orders: sub-llm: %w", err)
 	}
+	slog.Info("summarize_orders ok", "tool", "summarize_orders", "order_count", len(orders), "duration_ms", time.Since(start).Milliseconds())
 	out := map[string]any{"summary": resp.Content, "order_count": len(orders)}
 	return Result{Content: out, Display: out}, nil
 }
