@@ -24,6 +24,7 @@ RUN apk add --no-cache postgresql-client \
 COPY --from=builder /auth-service /auth-service
 COPY --from=migrate /usr/local/bin/migrate /usr/local/bin/migrate
 COPY auth-service/migrations/ /migrations/
+COPY auth-service/seed.sql /seed.sql
 
 USER appuser
 

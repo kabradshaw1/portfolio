@@ -1,0 +1,19 @@
+services:
+  task-service:
+    environment:
+      JWT_SECRET: ci-test-secret-at-least-32-characters-long
+      ALLOWED_ORIGINS: "*"
+
+  activity-service:
+    environment:
+      RABBITMQ_HOST: rabbitmq
+
+  notification-service:
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      REDIS_HOST: redis
+
+  gateway-service:
+    environment:
+      JWT_SECRET: ci-test-secret-at-least-32-characters-long
+      ALLOWED_ORIGINS: "*"

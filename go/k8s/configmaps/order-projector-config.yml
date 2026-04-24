@@ -4,7 +4,7 @@ metadata:
   name: order-projector-config
   namespace: go-ecommerce
 data:
-  DATABASE_URL: "postgres://postgres:postgres@postgres.go-ecommerce.svc.cluster.local:5432/projectordb?sslmode=disable"
+  DATABASE_URL: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/projectordb?sslmode=disable"
   KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
   PORT: "8097"
   ALLOWED_ORIGINS: "http://localhost:3000,https://kylebradshaw.dev"

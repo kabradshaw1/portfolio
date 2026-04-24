@@ -1,0 +1,89 @@
+services:
+  postgres:
+    volumes:
+      - ./ci-init.sql:/docker-entrypoint-initdb.d/01-ci-init.sql:ro
+
+  auth-service:
+    environment:
+      JWT_SECRET: ci-test-secret
+      ALLOWED_ORIGINS: "*"
+      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable
+      GOOGLE_CLIENT_ID: ci-placeholder
+      GOOGLE_CLIENT_SECRET: ci-placeholder
+
+  order-service:
+    environment:
+      JWT_SECRET: ci-test-secret
+      ALLOWED_ORIGINS: "*"
+      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable
+      AUTH_GRPC_URL: auth-service:9091
+      PRODUCT_GRPC_ADDR: product-service:9095
+      CART_GRPC_ADDR: cart-service:9096
+
+  product-service:
+    build:
+      context: .
+      dockerfile: product-service/Dockerfile
+    ports:
+      - "8095:8095"
+      - "9095:9095"
+    environment:
+      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/productdb?sslmode=disable
+      ALLOWED_ORIGINS: "*"
+      PORT: "8095"
+      GRPC_PORT: "9095"
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  cart-service:
+    build:
+      context: .
+      dockerfile: cart-service/Dockerfile
+    ports:
+      - "8096:8096"
+      - "9096:9096"
+    environment:
+      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/cartdb?sslmode=disable
+      JWT_SECRET: ci-test-secret
+      ALLOWED_ORIGINS: "*"
+      PORT: "8096"
+      GRPC_PORT: "9096"
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      PRODUCT_GRPC_ADDR: product-service:9095
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      AUTH_GRPC_URL: auth-service:9091
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      product-service:
+        condition: service_started
+      auth-service:
+        condition: service_started
+
+  kafka:
+    # Redirect log dir to avoid the named volume mount at /tmp/kraft-combined-logs.
+    # The base compose's kafka-data volume can fail on GH Actions runners with
+    # permission errors when KRaft writes bootstrap.checkpoint.tmp.
+    environment:
+      KAFKA_LOG_DIRS: /opt/kafka/data
+    user: "0:0"
+
+  ai-service:
+    environment:
+      JWT_SECRET: ci-test-secret
+      ALLOWED_ORIGINS: "*"
+
+  analytics-service:
+    environment:
+      ALLOWED_ORIGINS: "*"

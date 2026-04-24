@@ -291,6 +291,10 @@ jobs:
         run: |
           migrate -path go/auth-service/migrations -database "${DATABASE_URL}&x-migrations-table=auth_schema_migrations" up
 
+      - name: Apply auth-service seed data
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f go/auth-service/seed.sql
+
       - name: Run order-service migrations
         run: |
           migrate -path go/order-service/migrations -database "${DATABASE_URL}&x-migrations-table=ecommerce_schema_migrations" up
@@ -525,6 +529,194 @@ jobs:
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
 
+  compose-smoke-go:
+    name: Compose Smoke (Go stack)
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-test-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Go service images
+        working-directory: go
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml build \
+            auth-service order-service product-service cart-service analytics-service
+
+      - name: Start infra services
+        working-directory: go
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d \
+            postgres redis rabbitmq kafka
+
+      - name: Wait for infra to be healthy
+        working-directory: go
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose -f docker-compose.yml -f docker-compose.ci.yml exec -T postgres \
+              pg_isready -U taskuser -d ecommercedb >/dev/null 2>&1; then
+              echo "Postgres ready after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Run migrations and seed data before starting services
+        working-directory: go
+        run: |
+          DC="docker compose -f docker-compose.yml -f docker-compose.ci.yml"
+
+          # Run migrations using the migrate binary baked into each image.
+          # Order matters: auth first (ecommercedb), then order (shares ecommercedb
+          # with separate migrations table), then product/cart in their own DBs.
+          # --entrypoint overrides the Go binary ENTRYPOINT so we run
+          # the migrate CLI directly instead of starting the service.
+          $DC run --rm --no-deps --entrypoint migrate auth-service \
+            -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable" up
+
+          $DC run --rm --no-deps --entrypoint migrate order-service \
+            -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable&x-migrations-table=ecommerce_schema_migrations" up
+
+          $DC run --rm --no-deps --entrypoint migrate product-service \
+            -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/productdb?sslmode=disable" up
+
+          $DC run --rm --no-deps --entrypoint migrate cart-service \
+            -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/cartdb?sslmode=disable" up
+
+          # Seed data — override entrypoint to run psql via sh
+          $DC run --rm --no-deps --entrypoint sh product-service \
+            -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d productdb -f /seed.sql'
+
+          $DC run --rm --no-deps --entrypoint sh order-service \
+            -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d ecommercedb -f /seed.sql'
+
+      - name: Start application services
+        working-directory: go
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d \
+            auth-service order-service product-service cart-service analytics-service
+
+      - name: Wait for services to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8091/health >/dev/null 2>&1 && \
+               curl -fsS http://localhost:8095/health >/dev/null 2>&1 && \
+               curl -fsS http://localhost:8096/health >/dev/null 2>&1; then
+              echo "Go services ready after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Go services did not come up within 120s" >&2
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=50
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Go smoke Playwright tests
+        working-directory: frontend
+        run: npx playwright test --config=playwright.smoke-go.config.ts
+
+      - name: Dump compose logs on failure
+        if: failure()
+        working-directory: go
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=200
+
+      - name: Tear down compose stack
+        if: always()
+        working-directory: go
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+
+  compose-smoke-java:
+    name: Compose Smoke (Java stack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Build JARs (Dockerfiles expect pre-built JARs)
+        working-directory: java
+        run: ./gradlew bootJar --no-daemon
+
+      - name: Build Java service images
+        working-directory: java
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml build
+
+      - name: Start Java compose stack
+        working-directory: java
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+
+      - name: Wait for gateway to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/graphql \
+              -H 'Content-Type: application/json' \
+              -d '{"query":"{ __typename }"}' >/dev/null 2>&1; then
+              echo "Java gateway ready after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Java gateway did not come up within 120s" >&2
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=50
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Java smoke Playwright tests
+        working-directory: frontend
+        run: npx playwright test --config=playwright.smoke-java.config.ts
+
+      - name: Dump compose logs on failure
+        if: failure()
+        working-directory: java
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=200
+
+      - name: Tear down compose stack
+        if: always()
+        working-directory: java
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+
   security-bandit:
     name: Security - Bandit (Python SAST)
     runs-on: ubuntu-latest
@@ -597,6 +789,7 @@ jobs:
       # GHSA-r7w7-9xr2-qq2r (langchain-openai) — DNS rebinding in image token counting, not used
       # CVE-2025-6985 (langchain-text-splitters) — XXE in HTMLSectionSplitter, not used
       # GHSA-rr7j-v2q5-chgv (langsmith) — streaming bypass of output redaction, not used
+      # CVE-2026-3219 (pip) — pip itself, no fix version available yet
       - name: Run pip-audit
         run: |
           source .venv/bin/activate

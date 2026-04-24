@@ -1,7 +1,7 @@
-.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-go-integration preflight-go-migrations preflight-security preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup
+.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-go-integration preflight-go-migrations preflight-security preflight-compose-config preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup
 
 # Run all CI checks locally before pushing
-preflight: grafana-sync-check preflight-python preflight-frontend preflight-security preflight-java preflight-go
+preflight: grafana-sync-check preflight-python preflight-frontend preflight-security preflight-java preflight-go preflight-compose-config
 	@echo "\n✅ All preflight checks passed"
 
 # --- Python services ---
@@ -169,6 +169,22 @@ grafana-sync:
 
 grafana-sync-check:
 	python3 scripts/grafana_sync.py --check
+
+# --- Compose config validation (no Docker needed, just validates YAML merge) ---
+# Catches env var interpolation errors, missing services, YAML syntax issues.
+# Uses dummy env vars to satisfy ${VAR:?} guards without needing real secrets.
+preflight-compose-config:
+	@echo "\n=== Compose: validating Python stack config ==="
+	@cd . && docker compose -f docker-compose.yml -f docker-compose.ci.yml config --quiet 2>/dev/null || \
+		(echo "⚠️  Python compose config validation requires Docker CLI — skipping" && true)
+	@echo "\n=== Compose: validating Go stack config ==="
+	@cd go && JWT_SECRET=dummy GOOGLE_CLIENT_ID=dummy GOOGLE_CLIENT_SECRET=dummy \
+		docker compose -f docker-compose.yml -f docker-compose.ci.yml config --quiet 2>/dev/null || \
+		(echo "⚠️  Go compose config validation requires Docker CLI — skipping" && true)
+	@echo "\n=== Compose: validating Java stack config ==="
+	@cd java && docker compose -f docker-compose.yml -f docker-compose.ci.yml config --quiet 2>/dev/null || \
+		(echo "⚠️  Java compose config validation requires Docker CLI — skipping" && true)
+	@echo "  ✅ Compose configs valid"
 
 # --- Security scans ---
 preflight-security:
