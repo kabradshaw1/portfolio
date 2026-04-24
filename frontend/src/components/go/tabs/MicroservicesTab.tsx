@@ -54,7 +54,7 @@ export function MicroservicesTab() {
         <h3 className="text-lg font-medium">Tech Stack</h3>
         <div className="mt-3 flex flex-wrap gap-2">
           {[
-            "7 Go microservices",
+            "8 Go microservices",
             "gRPC + Protobuf",
             "RabbitMQ Saga",
             "PostgreSQL (per-service)",
@@ -95,11 +95,13 @@ export function MicroservicesTab() {
   PAY[payment-service<br/>REST :8098 / gRPC :9098]
   AI[ai-service<br/>REST :8093]
   ANA[analytics-service<br/>REST :8094]
+  PROJ[order-projector<br/>REST :8097]
   PG_A[(authdb)]
   PG_P[(productdb)]
   PG_C[(cartdb)]
   PG_O[(orderdb)]
   PG_PAY[(paymentdb)]
+  PG_PROJ[(projectordb)]
   RD[(Redis)]
   MQ{{RabbitMQ<br/>Saga Exchange}}
   KF{{Kafka}}
@@ -123,6 +125,8 @@ export function MicroservicesTab() {
   ORD -->|order events| KF
   CART -->|cart events| KF
   KF --> ANA
+  KF --> PROJ
+  PROJ --> PG_PROJ
   PROD --> RD
   CART --> RD`}
           />

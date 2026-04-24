@@ -53,9 +53,14 @@ func (h *HealthHandler) Health(c *gin.Context) {
 
 	status := "ok"
 	httpStatus := http.StatusOK
-	if !dbOK || !kafkaOK {
+	if !dbOK {
+		// Database is critical — service cannot serve reads without it.
 		status = "degraded"
 		httpStatus = http.StatusServiceUnavailable
+	} else if !kafkaOK {
+		// Kafka disconnected is informational — the service can still serve
+		// existing read models. An empty topic is a valid steady state.
+		status = "degraded"
 	}
 
 	c.JSON(httpStatus, gin.H{
