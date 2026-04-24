@@ -543,11 +543,59 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.ci.yml build \
             auth-service order-service product-service cart-service analytics-service
 
-      - name: Start Go compose stack (skip ai-service)
+      - name: Start infra services
         working-directory: go
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d \
-            postgres redis rabbitmq kafka \
+            postgres redis rabbitmq kafka
+
+      - name: Wait for infra to be healthy
+        working-directory: go
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose -f docker-compose.yml -f docker-compose.ci.yml exec -T postgres \
+              pg_isready -U taskuser -d ecommercedb >/dev/null 2>&1; then
+              echo "Postgres ready after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Run migrations and seed data before starting services
+        working-directory: go
+        run: |
+          DC="docker compose -f docker-compose.yml -f docker-compose.ci.yml"
+
+          # Run migrations using the migrate binary baked into each image.
+          # Order matters: auth first (ecommercedb), then order (shares ecommercedb
+          # with separate migrations table), then product/cart in their own DBs.
+          $DC run --rm --no-deps auth-service \
+            migrate -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable" up
+
+          $DC run --rm --no-deps order-service \
+            migrate -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable&x-migrations-table=ecommerce_schema_migrations" up
+
+          $DC run --rm --no-deps product-service \
+            migrate -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/productdb?sslmode=disable" up
+
+          $DC run --rm --no-deps cart-service \
+            migrate -path /migrations \
+            -database "postgres://taskuser:taskpass@postgres:5432/cartdb?sslmode=disable" up
+
+          # Seed data
+          $DC run --rm --no-deps product-service \
+            sh -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d productdb -f /seed.sql'
+
+          $DC run --rm --no-deps order-service \
+            sh -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d ecommercedb -f /seed.sql'
+
+      - name: Start application services
+        working-directory: go
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d \
             auth-service order-service product-service cart-service analytics-service
 
       - name: Wait for services to be healthy
@@ -564,36 +612,6 @@ jobs:
           echo "Go services did not come up within 120s" >&2
           docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=50
           exit 1
-
-      - name: Run migrations and seed data
-        working-directory: go
-        run: |
-          DC="docker compose -f docker-compose.yml -f docker-compose.ci.yml"
-
-          # Each service has its own DB and needs its own migrations table
-          # to avoid version conflicts (matches K8s migration jobs).
-          $DC exec -T auth-service \
-            migrate -path /migrations \
-            -database "postgres://taskuser:taskpass@postgres:5432/ecommercedb?sslmode=disable" up
-
-          $DC exec -T product-service \
-            migrate -path /migrations \
-            -database "postgres://taskuser:taskpass@postgres:5432/productdb?sslmode=disable" up
-
-          $DC exec -T order-service \
-            migrate -path /migrations \
-            -database "postgres://taskuser:taskpass@postgres:5432/orderdb?sslmode=disable&x-migrations-table=ecommerce_schema_migrations" up
-
-          $DC exec -T cart-service \
-            migrate -path /migrations \
-            -database "postgres://taskuser:taskpass@postgres:5432/cartdb?sslmode=disable" up
-
-          # Seed product catalog and smoke test data
-          $DC exec -T product-service \
-            sh -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d productdb -f /seed.sql'
-
-          $DC exec -T order-service \
-            sh -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d orderdb -f /seed.sql'
 
       - uses: actions/setup-node@v4
         with:
