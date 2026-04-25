@@ -10,7 +10,8 @@ data:
     route:
       routes:
         - match:
-            - receiver: "loki"
+            - type: Warning
+          receiver: "loki"
     receivers:
       - name: "loki"
         webhook:
