@@ -146,7 +146,14 @@ Three pillars in the `monitoring` namespace: Prometheus (metrics), Loki+Promtail
 
 **Minikube:** 16Gi memory (cannot increase without `minikube delete` which wipes all cluster state).
 
-**Debugging:** Use the `/debug-observability` skill for Loki queries, Jaeger traces, saga debugging, and circuit breaker diagnosis. Rule: query the observability stack before SSH.
+**Debugging triage hierarchy** — follow this order:
+
+1. **Pods down / CrashLoopBackOff:** `kubectl get pods` + `kubectl logs` directly. Observability can't help if the monitoring target is dead. Fix the pod first, then assess.
+2. **Alerts firing:** Use `/debug-observability` — it has a structured alert triage routine that classifies stale vs real alerts and identifies what actually needs attention.
+3. **Pods running but errors:** Use `/debug-observability` — Loki logs, Jaeger traces, circuit breaker queries. Don't SSH and grep logs manually.
+4. **Post-incident verification:** Use `/debug-observability` — it has a health verification checklist and stale alert cleanup procedure.
+
+Rule: only skip the observability skill for step 1 (pods down). For everything else, use the skill first.
 
 
 ## Kafka Streaming Analytics

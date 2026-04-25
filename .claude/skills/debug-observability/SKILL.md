@@ -1,11 +1,21 @@
 ---
 name: debug-observability
-description: Debug Go service issues using Loki, Jaeger, and Grafana. Use when encountering runtime errors, checkout failures, saga stuck states, gRPC connection issues, or any service misbehavior in QA or prod.
+description: Debug service issues and triage alerts using Loki, Jaeger, Grafana, and Prometheus. Use when encountering runtime errors, alerts firing, post-incident health verification, checkout failures, saga stuck states, gRPC connection issues, circuit breaker issues, or any service misbehavior in QA or prod. Also use after resolving an incident to verify recovery and clear stale alerts.
 ---
 
 # Debug with Observability Stack
 
-**Rule: Use Grafana/Loki/Jaeger before SSH.** Every runtime issue should be diagnosable from the observability stack. SSH + `kubectl logs` is a last resort.
+**Rule: Use Grafana/Loki/Jaeger before SSH.** Every runtime issue should be diagnosable from the observability stack. SSH + `kubectl logs` is a last resort — the only exception is pods in CrashLoopBackOff where the monitoring target is dead.
+
+## When to Use This Skill
+
+- **Alerts firing** — triage whether alerts are real or stale (see Alert Triage below)
+- **Post-incident** — verify cluster recovery and clear stale alerts (see Post-Incident Verification below)
+- **Runtime errors** — 5xx responses, failed requests, timeouts
+- **Saga issues** — stuck orders, DLQ accumulation, step errors
+- **Circuit breakers** — open or flapping breakers
+- **gRPC failures** — connection refused, TLS handshake errors
+- **Performance** — high latency, low cache hit ratio
 
 ## Key Facts
 
@@ -133,3 +143,118 @@ ssh debian 'kubectl get certificates -n go-ecommerce'
 ssh debian 'kubectl get pods -n cert-manager'
 ssh debian 'kubectl describe certificate payment-grpc-tls -n go-ecommerce'
 ```
+
+## Alert Triage
+
+When alerts fire, classify them before acting. Most alerts after an incident are stale.
+
+### Step 1: Get all active alerts with classification
+
+```bash
+ssh debian "curl -s 'http://10.100.246.150:3000/api/alertmanager/grafana/api/v2/alerts' | python3 -c \"
+import json,sys
+alerts=json.load(sys.stdin)
+if not alerts:
+    print('No active alerts!')
+    sys.exit()
+nodata = [a for a in alerts if a['labels'].get('alertname') == 'DatasourceNoData']
+restart = [a for a in alerts if 'restarted more than' in a['annotations'].get('summary','')]
+real = [a for a in alerts if a['labels'].get('alertname') != 'DatasourceNoData' and 'restarted' not in a['annotations'].get('summary','')]
+print(str(len(alerts)) + ' total: ' + str(len(nodata)) + ' NoData(stale), ' + str(len(restart)) + ' restart-storm(stale), ' + str(len(real)) + ' real')
+for a in real:
+    print('  REAL: ' + a['annotations'].get('summary','?')[:80])
+for a in nodata[:3]:
+    print('  STALE: ' + a['annotations'].get('summary','?')[:80] + ' [NoData]')
+if len(nodata) > 3:
+    print('  ... and ' + str(len(nodata)-3) + ' more NoData alerts')
+\""
+```
+
+### Understanding alert types
+
+| alertname | Meaning | Action |
+|-----------|---------|--------|
+| `DatasourceNoData` | Prometheus query returned empty — usually stale after pod restarts | No action — will auto-resolve as rate windows fill with data. Restart Grafana to clear immediately. |
+| Pod restart storm (summary contains "restarted more than") | References pods that may no longer exist | Check if the named pod still exists: `kubectl get pod <name> -n <ns>`. If gone, it's stale. |
+| Everything else | Potentially real | Investigate — check the specific metric via Prometheus. |
+
+### Step 2: For "real" alerts, verify via Prometheus
+
+```bash
+# Circuit breakers — which are actually open right now?
+ssh debian "curl -s 'http://10.98.36.175:9090/api/v1/query?query=circuit_breaker_state==2' | python3 -c \"
+import json,sys
+r=json.load(sys.stdin)['data']['result']
+if not r: print('No open circuit breakers')
+for m in r:
+    name=m['metric'].get('name','?')
+    svc=m['metric'].get('service','?')
+    pod=m['metric'].get('pod','?')
+    print('OPEN: ' + name + ' (' + svc + ', pod=' + pod + ')')
+\""
+
+# Check if the pod still exists (stale metric from terminated pod)
+ssh debian "kubectl get pod <pod-name> -n go-ecommerce 2>&1"
+```
+
+### Step 3: Clear stale alerts
+
+If all alerts are stale `DatasourceNoData` from a resolved incident, restart Grafana to reset alert state:
+
+```bash
+ssh debian "kubectl rollout restart deployment grafana -n monitoring && kubectl wait --for=condition=ready pod -l app=grafana -n monitoring --timeout=60s"
+```
+
+This works because provisioned alert rules (file-based, not database-backed) reset their state on restart. The `noDataState: OK` rules will then evaluate cleanly.
+
+**Only do this when you've confirmed the cluster is healthy.** Don't clear alerts to silence a real problem.
+
+## Post-Incident Verification
+
+After resolving any incident, run this checklist before declaring recovery.
+
+### Step 1: Pod health (all namespaces)
+
+```bash
+ssh debian "kubectl get pods --all-namespaces --no-headers | grep -v 'Running\|Completed' || echo 'All pods healthy'"
+```
+
+All pods should be Running with 0 restarts on current pods. Old pods from before the incident will show higher restart counts — that's expected as long as the *current* pods are clean.
+
+### Step 2: Endpoint smoke test
+
+```bash
+ssh debian "curl -s -o /dev/null -w 'auth:%{http_code} ' http://192.168.49.2/go-auth/health && \
+curl -s -o /dev/null -w 'products:%{http_code} ' http://192.168.49.2/go-products/products && \
+curl -s -o /dev/null -w 'ai:%{http_code} ' http://192.168.49.2/ai-api/health && \
+curl -s -o /dev/null -w 'orders:%{http_code} ' http://192.168.49.2/go-orders/health && \
+curl -s -o /dev/null -w 'gql:%{http_code} ' http://192.168.49.2/graphql -X POST -H 'Content-Type: application/json' -d '{\"query\":\"{__typename}\"}' && \
+echo ''"
+```
+
+All should return 200.
+
+### Step 3: Postgres health
+
+```bash
+ssh debian "kubectl exec deployment/postgres -n java-tasks -- pg_isready -U taskuser -d taskdb"
+```
+
+### Step 4: Circuit breaker state
+
+```bash
+ssh debian "curl -s 'http://10.98.36.175:9090/api/v1/query?query=circuit_breaker_state==2' | python3 -c \"
+import json,sys
+r=json.load(sys.stdin)['data']['result']
+if not r: print('All circuit breakers closed')
+for m in r:
+    pod=m['metric'].get('pod','?')
+    print('OPEN: ' + m['metric'].get('name','?') + ' (' + m['metric'].get('service','?') + ', pod=' + pod + ')')
+\""
+```
+
+If a breaker is open on a pod that still exists, restart that service. If the pod no longer exists, it's a stale Prometheus metric — will clear in ~5 minutes.
+
+### Step 5: Classify remaining alerts
+
+Run the Alert Triage Step 1 query above. If all alerts are `DatasourceNoData` or reference terminated pods, the cluster is healthy and alerts are stale. Clear with Grafana restart if needed.
