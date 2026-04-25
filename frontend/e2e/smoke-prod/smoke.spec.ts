@@ -190,6 +190,39 @@ test.describe("Java task management smoke tests", () => {
       const taskParts = taskHref.split("/");
       taskId = taskParts[taskParts.length - 1];
     }
+
+    // Step 9b: Verify activity feed has entries (async RabbitMQ flow)
+    // task-service → RabbitMQ → notification-service → activity-service
+    if (taskId && authCookieHeader) {
+      let activityFound = false;
+      for (let i = 0; i < 20; i++) {
+        const activityRes = await request.post(GRAPHQL_URL, {
+          headers: {
+            Cookie: authCookieHeader,
+            "Content-Type": "application/json",
+          },
+          data: {
+            query: `query { taskActivity(taskId: "${taskId}") { id eventType } }`,
+          },
+        });
+        if (activityRes.ok()) {
+          const activityBody = await activityRes.json();
+          if (
+            activityBody.data?.taskActivity &&
+            activityBody.data.taskActivity.length > 0
+          ) {
+            activityFound = true;
+            break;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      if (!activityFound) {
+        console.warn(
+          "activity feed had no entries after 10s — RabbitMQ async flow may be slow"
+        );
+      }
+    }
   });
 
   test.afterAll(async ({ request }) => {
@@ -285,7 +318,10 @@ test.describe("Go ecommerce smoke tests", () => {
 
   test("full checkout lifecycle: cart → order → verify", async ({
     playwright,
-  }) => {
+  }, testInfo) => {
+    // Cart-empty polling (15s) + analytics polling (15s) can exceed the
+    // default 30s timeout. Give this test 60s.
+    testInfo.setTimeout(60_000);
     expect(
       SMOKE_PASSWORD,
       "SMOKE_GO_PASSWORD env var must be set for this test"
@@ -352,6 +388,32 @@ test.describe("Go ecommerce smoke tests", () => {
         break;
       }
       await new Promise((r) => setTimeout(r, 500));
+    }
+
+    // Step 6b: Verify analytics consumed the order event (Kafka → analytics-service)
+    let analyticsHasData = false;
+    for (let i = 0; i < 30; i++) {
+      const analyticsRes = await authContext.get(
+        `${API_URL}/go-analytics/analytics/revenue?hours=1`
+      );
+      if (analyticsRes.ok()) {
+        const analyticsBody = await analyticsRes.json();
+        if (
+          analyticsBody.windows &&
+          analyticsBody.windows.length > 0
+        ) {
+          analyticsHasData = true;
+          break;
+        }
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    // Non-blocking: analytics may take longer than 15s to process in prod.
+    // Log but don't fail the test — the checkout itself is the critical assertion.
+    if (!analyticsHasData) {
+      console.warn(
+        "analytics did not report revenue data within 15s — Kafka consumer may be lagging"
+      );
     }
 
     if (cartEmpty) {
