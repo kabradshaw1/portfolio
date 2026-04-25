@@ -318,7 +318,10 @@ test.describe("Go ecommerce smoke tests", () => {
 
   test("full checkout lifecycle: cart → order → verify", async ({
     playwright,
-  }) => {
+  }, testInfo) => {
+    // Cart-empty polling (15s) + analytics polling (15s) can exceed the
+    // default 30s timeout. Give this test 60s.
+    testInfo.setTimeout(60_000);
     expect(
       SMOKE_PASSWORD,
       "SMOKE_GO_PASSWORD env var must be set for this test"
