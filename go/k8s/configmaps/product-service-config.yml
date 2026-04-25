@@ -4,7 +4,7 @@ metadata:
   name: product-service-config
   namespace: go-ecommerce
 data:
-  DATABASE_URL: postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/productdb?sslmode=disable
+  DATABASE_URL: postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/productdb?sslmode=disable&application_name=product-service
   REDIS_URL: redis://redis.java-tasks.svc.cluster.local:6379
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
   PORT: "8095"

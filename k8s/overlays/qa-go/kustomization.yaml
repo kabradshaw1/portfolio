@@ -17,7 +17,7 @@ patches:
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
       - op: replace
         path: /data/DATABASE_URL
-        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/authdb_qa?sslmode=disable"
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/authdb_qa?sslmode=disable&application_name=auth-service"
       - op: add
         path: /data/GRPC_PORT
         value: "9091"
@@ -33,7 +33,7 @@ patches:
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
       - op: replace
         path: /data/DATABASE_URL
-        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb_qa?sslmode=disable"
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb_qa?sslmode=disable&application_name=order-service"
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
@@ -115,7 +115,7 @@ patches:
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
       - op: replace
         path: /data/DATABASE_URL
-        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/productdb_qa?sslmode=disable"
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/productdb_qa?sslmode=disable&application_name=product-service"
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
@@ -128,7 +128,7 @@ patches:
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
       - op: replace
         path: /data/DATABASE_URL
-        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/cartdb_qa?sslmode=disable"
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/cartdb_qa?sslmode=disable&application_name=cart-service"
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
@@ -153,7 +153,7 @@ patches:
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
       - op: replace
         path: /data/DATABASE_URL
-        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/paymentdb_qa?sslmode=disable"
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/paymentdb_qa?sslmode=disable&application_name=payment-service"
       - op: replace
         path: /data/KAFKA_BROKERS
         value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
@@ -169,7 +169,7 @@ patches:
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
       - op: replace
         path: /data/DATABASE_URL
-        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/projectordb_qa?sslmode=disable"
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/projectordb_qa?sslmode=disable&application_name=order-projector"
       - op: replace
         path: /data/KAFKA_BROKERS
         value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
