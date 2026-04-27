@@ -89,8 +89,7 @@ jobs:
           key: venv-${{ matrix.service }}-${{ hashFiles(format('services/{0}/requirements.txt', matrix.service), 'services/shared/pyproject.toml') }}
 
       - name: Install dependencies
-        if: steps.changes.outputs.changed == 'true'
-        if: steps.venv-cache.outputs.cache-hit != 'true'
+        if: steps.changes.outputs.changed == 'true' && steps.venv-cache.outputs.cache-hit != 'true'
         run: |
           python -m venv .venv
           source .venv/bin/activate
@@ -974,8 +973,7 @@ jobs:
           key: venv-audit-${{ matrix.service }}-${{ hashFiles(format('services/{0}/requirements.txt', matrix.service), 'services/shared/pyproject.toml') }}
 
       - name: Install dependencies
-        if: steps.changes.outputs.changed == 'true'
-        if: steps.venv-cache.outputs.cache-hit != 'true'
+        if: steps.changes.outputs.changed == 'true' && steps.venv-cache.outputs.cache-hit != 'true'
         run: |
           python -m venv .venv
           source .venv/bin/activate
