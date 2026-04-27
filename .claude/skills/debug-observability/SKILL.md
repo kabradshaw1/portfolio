@@ -24,6 +24,48 @@ description: Debug service issues and triage alerts using Loki, Jaeger, Grafana,
 - **Webhook dashboard shows per-event-type breakdown.** The "Payment Webhooks" panel groups by `event_type` and `outcome`.
 - **Saga stalled alert exists.** `saga-order-stalled` fires when orders reach `PAYMENT_CREATED` but none complete within 30 minutes.
 
+## Step 0: Check Recent Deploys and Kubernetes Warning Events
+
+Before diving into service-specific debugging, check if a recent deploy or cluster-level event explains the issue.
+
+### Deploy annotations
+
+Grafana deploy annotations are posted by CI after every QA and prod rollout. Open any Grafana dashboard and look for vertical annotation markers — they show which namespace was deployed and the commit SHA.
+
+To query annotations programmatically:
+```bash
+ssh debian "curl -s 'http://grafana.monitoring.svc.cluster.local:3000/api/annotations?from=$(date -d '2 hours ago' +%s)000&to=$(date +%s)000' | python3 -c \"
+import json,sys
+for a in json.load(sys.stdin):
+    print(a.get('text','?') + ' [' + ','.join(a.get('tags',[])) + ']')
+\""
+```
+
+If the issue started right after a deploy annotation, the deploy is the likely cause.
+
+### Kubernetes Warning events (via Loki)
+
+OOM kills, probe failures, evictions, and scheduling failures are forwarded to Loki by the `kube-event-exporter`. Query them:
+
+```bash
+# All Warning events in the last hour
+scripts/loki-query --ns monitoring --filter "kube-event-exporter" --hours 1
+
+# Or query Loki directly for structured labels
+ssh debian "kubectl exec -n monitoring deploy/loki -- wget -qO- 'http://localhost:3100/loki/api/v1/query_range?query=%7Bjob%3D%22kube-event-exporter%22%7D&limit=20&start=$(date -d '1 hour ago' +%s)&end=$(date +%s)'"
+```
+
+Filter by namespace or reason:
+```bash
+# OOM kills across all namespaces
+ssh debian "kubectl exec -n monitoring deploy/loki -- wget -qO- 'http://localhost:3100/loki/api/v1/query_range?query=%7Bjob%3D%22kube-event-exporter%22%2Creason%3D%22OOMKilling%22%7D&limit=20&start=$(date -d '1 hour ago' +%s)&end=$(date +%s)'"
+
+# All warnings in go-ecommerce namespace
+ssh debian "kubectl exec -n monitoring deploy/loki -- wget -qO- 'http://localhost:3100/loki/api/v1/query_range?query=%7Bjob%3D%22kube-event-exporter%22%2Cnamespace%3D%22go-ecommerce%22%7D&limit=20&start=$(date -d '1 hour ago' +%s)&end=$(date +%s)'"
+```
+
+Common Warning event reasons: `OOMKilling`, `Unhealthy` (probe failure), `BackOff` (CrashLoopBackOff), `FailedScheduling`, `Evicted`.
+
 ## Step 1: Verify the Right Build is Deployed
 
 ```bash
@@ -143,6 +185,39 @@ ssh debian 'kubectl get certificates -n go-ecommerce'
 ssh debian 'kubectl get pods -n cert-manager'
 ssh debian 'kubectl describe certificate payment-grpc-tls -n go-ecommerce'
 ```
+
+## Postgres Connection Debugging
+
+All Go services set `application_name` on their DATABASE_URL, so `pg_stat_activity` shows which service owns each connection.
+
+### Check connections per service
+
+```bash
+ssh debian "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"
+SELECT application_name, datname, state, count(*)
+FROM pg_stat_activity
+WHERE datname NOT LIKE 'template%' AND datname != 'postgres'
+GROUP BY application_name, datname, state
+ORDER BY count DESC;\""
+```
+
+### Identify connection leaks
+
+If total connections are high, look for services with disproportionate `idle` connections:
+```bash
+ssh debian "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"
+SELECT application_name, state, count(*)
+FROM pg_stat_activity
+WHERE state = 'idle' AND datname NOT LIKE 'template%'
+GROUP BY application_name, state
+ORDER BY count DESC;\""
+```
+
+A healthy service should have connections roughly proportional to its pool size (typically `MaxConns` from pgxpool config). An abnormal count of `idle` connections from one service suggests a pool leak.
+
+### Grafana panel
+
+The PostgreSQL dashboard has a "Connections by Service" bar gauge panel showing `pg_stat_activity_count` grouped by `application_name`. Check this first for a quick visual.
 
 ## Alert Triage
 

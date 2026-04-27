@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-event-exporter
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-event-exporter
+  template:
+    metadata:
+      labels:
+        app: kube-event-exporter
+    spec:
+      serviceAccountName: kube-event-exporter
+      containers:
+        - name: kube-event-exporter
+          image: ghcr.io/resmoio/kubernetes-event-exporter:v1.7
+          args:
+            - -conf=/data/config.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /data
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+      volumes:
+        - name: config
+          configMap:
+            name: kube-event-exporter-config

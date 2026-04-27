@@ -1115,6 +1115,7 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET_QA }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
@@ -1225,6 +1226,18 @@ jobs:
           $SSH "kubectl rollout restart deployment -n java-tasks-qa"
           $SSH "kubectl rollout restart deployment -n go-ecommerce-qa"
 
+          # Post deploy annotations to Grafana
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          if [ -n "${GRAFANA_API_KEY:-}" ]; then
+            for NS in ai-services-qa java-tasks-qa go-ecommerce-qa; do
+              $SSH "curl -sf -X POST 'http://grafana.monitoring.svc.cluster.local:3000/api/annotations' \
+                -H 'Authorization: Bearer ${GRAFANA_API_KEY}' \
+                -H 'Content-Type: application/json' \
+                -d '{\"text\":\"Deploy: ${NS} (sha:${SHORT_SHA})\",\"tags\":[\"qa-deploy\",\"${NS}\"]}'" || echo "::warning::Grafana annotation failed for ${NS} (non-fatal)"
+            done
+          fi
+
           $SSH "kubectl rollout status deployment -n ai-services-qa --timeout=180s"
           $SSH "kubectl rollout status deployment -n java-tasks-qa --timeout=180s"
           $SSH "kubectl rollout status deployment -n go-ecommerce-qa --timeout=180s"
@@ -1306,6 +1319,7 @@ jobs:
           K8S_CHANGED: ${{ needs.changes.outputs.k8s }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET_PROD }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
@@ -1423,6 +1437,18 @@ jobs:
             echo "Restarting go-ecommerce deployments..."
             $SSH "kubectl rollout restart deployment -n go-ecommerce"
             $SSH "kubectl rollout status deployment -n go-ecommerce --timeout=180s"
+          fi
+
+          # Post deploy annotations to Grafana
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          if [ -n "${GRAFANA_API_KEY:-}" ]; then
+            for NS in ai-services java-tasks go-ecommerce; do
+              $SSH "curl -sf -X POST 'http://grafana.monitoring.svc.cluster.local:3000/api/annotations' \
+                -H 'Authorization: Bearer ${GRAFANA_API_KEY}' \
+                -H 'Content-Type: application/json' \
+                -d '{\"text\":\"Deploy: ${NS} (sha:${SHORT_SHA})\",\"tags\":[\"deploy\",\"${NS}\"]}'" || echo "::warning::Grafana annotation failed for ${NS} (non-fatal)"
+            done
           fi
 
           # Verify monitoring stack health

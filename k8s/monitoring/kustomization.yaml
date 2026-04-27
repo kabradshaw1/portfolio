@@ -12,6 +12,9 @@ resources:
   - rbac/promtail-clusterrole.yml
   - rbac/promtail-clusterrolebinding.yml
   - rbac/promtail-serviceaccount.yml
+  - rbac/kube-event-exporter-serviceaccount.yml
+  - rbac/kube-event-exporter-clusterrole.yml
+  - rbac/kube-event-exporter-clusterrolebinding.yml
   - pvc/prometheus-data.yml
   - pvc/loki-data.yml
   - configmaps/grafana-dashboard-provider.yml
@@ -21,10 +24,12 @@ resources:
   - configmaps/loki-config.yml
   - configmaps/promtail-config.yml
   - configmaps/prometheus-config.yml
+  - configmaps/kube-event-exporter-config.yml
   - deployments/grafana.yml
   - deployments/jaeger.yml
   - deployments/kube-state-metrics.yml
   - deployments/prometheus.yml
+  - deployments/kube-event-exporter.yml
   - statefulsets/loki.yml
   - daemonsets/node-exporter.yml
   - daemonsets/promtail.yml
