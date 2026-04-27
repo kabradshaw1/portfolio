@@ -53,3 +53,18 @@ data:
               template: '{{ .container }}'
           - labels:
               app:
+          - match:
+              selector: '{app="postgres"}'
+              stages:
+                - regex:
+                    expression: 'duration: (?P<duration_ms>[0-9.]+) ms.*\bplan:\s*(?P<plan_json>\{.*\})'
+                - json:
+                    source: plan_json
+                    expressions:
+                      database: '"Database"'
+                      query_id: '"Query Identifier"'
+                - labels:
+                    database:
+                - structured_metadata:
+                    duration_ms:
+                    query_id:
