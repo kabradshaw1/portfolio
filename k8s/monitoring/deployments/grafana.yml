@@ -45,6 +45,11 @@ spec:
                   name: telegram-bot
                   key: bot-token
                   optional: true
+            - name: GRAFANA_READER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: grafana-reader-password
           volumeMounts:
             - name: datasource
               mountPath: /etc/grafana/provisioning/datasources/datasources.yml
