@@ -1,4 +1,9 @@
 import { MermaidDiagram } from "@/components/MermaidDiagram";
+import { GapsGrid, type Gap } from "@/components/observability/GapsGrid";
+import { type Incident } from "@/components/observability/IncidentCard";
+import { JourneyTimeline } from "@/components/observability/JourneyTimeline";
+import { LessonCallout } from "@/components/observability/LessonCallout";
+import { ADR_DIRECTORY_URL } from "@/lib/observability/adrs";
 import Link from "next/link";
 
 const architectureDiagram = `flowchart TD
@@ -62,26 +67,136 @@ const ALERT_GROUPS = [
   {
     name: "Infrastructure",
     color: "border-red-500/50",
-    description: "GPU exporter health, AI service readiness, GPU temperature and VRAM usage",
+    description:
+      "GPU exporter health, AI service readiness, GPU temperature and VRAM usage",
     count: 4,
   },
   {
     name: "Kubernetes Health",
     color: "border-red-500/50",
-    description: "OOM kills, pod restart storms, container memory pressure, node disk pressure, stuck deployments",
+    description:
+      "OOM kills, pod restart storms, container memory pressure, node disk pressure, stuck deployments",
     count: 6,
   },
   {
     name: "Application SLOs",
     color: "border-red-500/50",
-    description: "HTTP error rate and p95 latency targets for Go AI, Go ecommerce, and Java gateway services",
+    description:
+      "HTTP error rate and p95 latency targets for Go AI, Go ecommerce, and Java gateway services",
     count: 6,
   },
   {
     name: "Streaming Analytics",
     color: "border-red-500/50",
-    description: "Kafka consumer lag monitoring across order, cart, and product view event topics",
+    description:
+      "Kafka consumer lag monitoring across order, cart, and product view event topics",
     count: 1,
+  },
+];
+
+const INCIDENTS: Incident[] = [
+  {
+    date: "Apr 22, 2026",
+    title: "The mTLS Handshake",
+    namespace: "go-ecommerce",
+    accent: "red",
+    symptom:
+      '"Order failed. Please try again." — and Loki had nothing useful for 45 minutes.',
+    before:
+      "A gRPC mTLS handshake to payment-service hung silently for 30 seconds. The saga blocked, no metrics fired, and the only signal was a stuck order status. Discovering it required `kubectl exec`, `openssl`, and reading `git diff HEAD~1` to realise CI had never rebuilt the fix.",
+    after:
+      "A shared `grpcmetrics` client interceptor records `grpc_client_requests_total` and `grpc_client_request_duration_seconds` per target, and emits `slog.ErrorContext` on every non-OK result. All gRPC calls now have 30s context deadlines. Saga steps are timed via `saga_step_duration_seconds`. Build SHA is logged at startup so `{app=...} | json | gitSHA=...` answers 'is my fix deployed?' from Loki. CI image-change detection moved from `HEAD~1` to `HEAD~5`.",
+    fixes: [
+      "gRPC interceptor",
+      "saga step duration",
+      "build SHA in logs",
+      "CI HEAD~5",
+    ],
+    adrId: "07",
+  },
+  {
+    date: "Apr 23, 2026",
+    title: "The Silent Webhook",
+    namespace: "go-ecommerce",
+    accent: "green",
+    symptom:
+      "Customer completes Stripe checkout. Cart still full. No order confirmation. Loki shows zero ERROR logs for 24 hours.",
+    before:
+      "The `apperror.ErrorHandler()` middleware silently converted `AppError` instances to JSON responses without logging — a webhook 500 vanished. QA and production also shared a RabbitMQ instance with identical queue names, so a QA `clear.cart` command was being consumed by the production cart-service.",
+    after:
+      'Middleware now logs every 5xx `AppError` via `slog.Error` with code, message, status, and request ID before responding — silent server errors are no longer possible. QA runs on a dedicated RabbitMQ `/qa` vhost, fully isolating saga flow. A `saga-order-stalled` Grafana alert fires when `saga_steps_total{step="PAYMENT_CREATED"}` increases but neither `COMPLETED` nor `COMPENSATION_COMPLETE` does within 30 minutes.',
+    fixes: [
+      "5xx middleware logging",
+      "RabbitMQ /qa vhost",
+      "saga-order-stalled alert",
+      "webhook event-type panel",
+    ],
+    adrId: "08",
+  },
+  {
+    date: "Apr 23, 2026",
+    title: "The Black-Box Agent Loop",
+    namespace: "ai-services",
+    accent: "purple",
+    symptom:
+      "Loki was deployed and ai-service was emitting JSON logs — but only 4 `slog` calls existed in the entire codebase. A failed agent request gave you 'turn started' and 'turn ended' with nothing in between.",
+    before:
+      "The agent loop made 3-8 LLM roundtrips per request, each potentially triggering 1-N tool calls. When something went wrong the question was always 'which step failed, and why?' — and the only answer was 'add print statements and redeploy.' The OpenAI and Anthropic clients didn't emit OTel spans, so provider comparison wasn't possible in Jaeger.",
+    after:
+      'Six-layer structured logging covers HTTP handler, agent loop, LLM clients, cache, guardrails, and tools. All agent-loop logs use `slog.InfoContext(ctx, ...)` so `tracing.NewLogHandler()` injects the OTel traceID into every record. OpenAI and Anthropic clients now emit `openai.chat` / `anthropic.chat` spans with token attributes — provider comparison is visible in Jaeger. A single Loki query (`{app="ai-service"} | json | traceID="..."`) shows the complete request lifecycle.',
+    fixes: [
+      "6-layer slog",
+      "OTel span parity",
+      "traceID-in-logs",
+      "truncation discipline",
+    ],
+    adrId: "09",
+  },
+  {
+    date: "Apr 24, 2026",
+    title: "The Postgres WAL Incident",
+    namespace: "all",
+    accent: "red",
+    symptom:
+      "During a Postgres WAL corruption incident, three observability gaps made diagnosis harder than necessary. We couldn't tell which deploy preceded the metric change. K8s Warning events expired before we looked. And `pg_stat_activity` showed every connection as the same `taskuser` — no way to tell which service owned them.",
+    before:
+      "Deploy timestamps had to be reconstructed from `kubectl get events`. K8s Warning events (OOM kills, probe failures, evictions) lived 1 hour and weren't queryable from Grafana. All six Go services shared the same Postgres credentials — a connection leak in one was indistinguishable from normal load across all.",
+    after:
+      'Every CI rollout posts a Grafana annotation tagged with namespace + short SHA via `/api/annotations`, with anonymous-Viewer auth preserved for public dashboard viewing. `kubernetes-event-exporter` (resmoio fork) ships Warning-only events into Loki under `{job="kube-event-exporter"}` with namespace/reason/kind/name labels. Every Go service\'s `DATABASE_URL` includes `application_name=<service-name>`, so a "Connections by Service" dashboard panel attributes every Postgres connection in seconds.',
+    fixes: [
+      "CI deploy annotations",
+      "K8s events → Loki",
+      "application_name in DSN",
+      "connection attribution panel",
+    ],
+    adrId: "10",
+  },
+];
+
+const GAPS: Gap[] = [
+  {
+    title: "PostgreSQL query tracing",
+    description:
+      "Manual OpenTelemetry spans around slow queries. Useful but a significant lift for incremental value over pgxpool's existing connection metrics.",
+    source: "ADR 07",
+  },
+  {
+    title: "RabbitMQ queue depth metrics",
+    description:
+      "Requires scraping the RabbitMQ management API. Saga DLQ depth alerts depend on it being shipped first.",
+    source: "ADR 07",
+  },
+  {
+    title: "Grafana dashboard for AI agent",
+    description:
+      "A dedicated panel set for agent-loop debugging. Deferred until QA logs accumulate enough volume to know which queries are most useful.",
+    source: "ADR 09",
+  },
+  {
+    title: "Promtail trace_id field for Python",
+    description:
+      "Pipeline change deployed but not yet verified end-to-end. Once verified, Python ingestion / chat / debug services join the unified traceID-in-logs experience.",
+    source: "ADR 07",
   },
 ];
 
@@ -90,15 +205,33 @@ export default function ObservabilityPage() {
     <div className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="mt-8 text-3xl font-bold">Observability</h1>
 
-      {/* Intro */}
+      {/* Hero */}
       <section className="mt-8">
-        <p className="text-muted-foreground leading-relaxed">
-          Production monitoring across three pillars &mdash; metrics, logs, and
-          traces &mdash; with automated alerting and cross-pillar correlation.
-          Every service in this portfolio is instrumented, and a single traceID
-          connects a Grafana metric spike to the relevant log lines to the full
-          distributed trace in Jaeger.
+        <p className="text-lg font-medium leading-relaxed">
+          Three pillars. Sixteen alert rules. And four production incidents that
+          taught us what was missing.
         </p>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          Every service in this portfolio is instrumented for metrics, logs, and
+          traces. The journey from &ldquo;monitoring deployed&rdquo; to
+          &ldquo;production-debuggable&rdquo; took real incidents &mdash; gRPC
+          handshakes that hung silently, webhook 500s lost in middleware, agent
+          loops that were black boxes, and Postgres connections we
+          couldn&rsquo;t attribute. Here&rsquo;s what broke, what we shipped,
+          and what we still want to close.
+        </p>
+      </section>
+
+      {/* Journey timeline */}
+      <section className="mt-12">
+        <h2 className="text-2xl font-semibold">The Journey</h2>
+        <p className="mt-3 text-muted-foreground leading-relaxed">
+          Four incidents in three days. Each exposed a gap, drove a concrete
+          change, and shaped the system you see below.
+        </p>
+        <div className="mt-6">
+          <JourneyTimeline incidents={INCIDENTS} />
+        </div>
       </section>
 
       {/* Architecture diagram */}
@@ -144,6 +277,26 @@ export default function ObservabilityPage() {
               </code>
             ))}
           </div>
+          <LessonCallout adrIds={["07", "10"]}>
+            After ADR 07, every outbound gRPC call is metered:{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              grpc_client_request_duration_seconds&#123;target=...&#125;
+            </code>{" "}
+            and{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              grpc_client_requests_total
+            </code>{" "}
+            with target/method/code labels. After ADR 10, every PostgreSQL
+            connection is attributed via{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              application_name=
+            </code>{" "}
+            in the{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              DATABASE_URL
+            </code>
+            , surfaced in a Grafana &ldquo;Connections by Service&rdquo; panel.
+          </LessonCallout>
         </div>
       </section>
 
@@ -173,6 +326,24 @@ export default function ObservabilityPage() {
               {'{namespace="go-ecommerce"} | json | level="error"'}
             </code>
           </div>
+          <LessonCallout adrIds={["08", "09"]}>
+            After ADR 08, the{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              apperror
+            </code>{" "}
+            middleware logs every 5xx{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              AppError
+            </code>{" "}
+            &mdash; silent server errors are no longer possible. After ADR 09,
+            the AI agent loop emits structured logs at six layers (HTTP, agent,
+            LLM client, cache, guardrails, tools), all with the OTel traceID
+            injected, so{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              {'{app="ai-service"} | json | traceID="..."'}
+            </code>{" "}
+            returns the full request lifecycle.
+          </LessonCallout>
         </div>
       </section>
 
@@ -196,6 +367,23 @@ export default function ObservabilityPage() {
             traced from the HTTP gateway through ecommerce processing, across an
             async Kafka boundary, to the analytics consumer.
           </p>
+          <LessonCallout adrIds={["09"]}>
+            After ADR 09, OpenAI and Anthropic clients emit{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              openai.chat
+            </code>{" "}
+            /{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              anthropic.chat
+            </code>{" "}
+            spans with{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              otelhttp.NewTransport
+            </code>
+            -based propagation, matching the existing Ollama instrumentation.
+            Provider comparison is now possible in Jaeger as child spans of the
+            agent turn.
+          </LessonCallout>
         </div>
       </section>
 
@@ -229,6 +417,23 @@ export default function ObservabilityPage() {
               </div>
             ))}
           </div>
+          <LessonCallout adrIds={["08", "10"]}>
+            After ADR 08, a{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              saga-order-stalled
+            </code>{" "}
+            rule fires when{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              {'saga_steps_total{step="PAYMENT_CREATED"}'}
+            </code>{" "}
+            increases without a matching{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              COMPLETED
+            </code>{" "}
+            within 30 minutes. After ADR 10, every CI rollout posts a Grafana
+            annotation tagged with namespace and short SHA, so dashboards mark
+            the exact deploy preceding any metric change.
+          </LessonCallout>
         </div>
       </section>
 
@@ -252,8 +457,21 @@ export default function ObservabilityPage() {
         </div>
       </section>
 
-      {/* Footer CTA */}
-      <section className="mt-16 text-center">
+      {/* What's next */}
+      <section className="mt-12">
+        <h2 className="text-2xl font-semibold">What&rsquo;s Next</h2>
+        <p className="mt-3 text-muted-foreground leading-relaxed">
+          Production maturity is a continuous process. Here&rsquo;s what&rsquo;s
+          on the roadmap, pulled from the &ldquo;Remaining gaps&rdquo; sections
+          of the recent ADRs.
+        </p>
+        <div className="mt-6">
+          <GapsGrid gaps={GAPS} />
+        </div>
+      </section>
+
+      {/* Footer CTAs */}
+      <section className="mt-16 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
         <Link
           href="https://grafana.kylebradshaw.dev/d/system-overview/system-overview?orgId=1&from=now-1h&to=now&timezone=browser"
           target="_blank"
@@ -261,6 +479,14 @@ export default function ObservabilityPage() {
           className="inline-block rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           View Live Grafana Dashboard &rarr;
+        </Link>
+        <Link
+          href={ADR_DIRECTORY_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block rounded-lg border border-foreground/20 px-6 py-3 text-sm font-medium hover:bg-muted transition-colors"
+        >
+          View ADRs on GitHub &rarr;
         </Link>
       </section>
     </div>
