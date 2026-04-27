@@ -99,7 +99,7 @@ A single CTA button that links to `/go` (Shopping Assistant tab). Copy: *"The sa
 
 A new subsection with three copy-pasteable configuration snippets, each in a `<pre>` block with a code copy button (use whatever pattern already exists in the repo for code blocks; if none exists, plain `<pre>` is fine — no scope creep on copy-button infrastructure).
 
-The public MCP endpoint is `https://api.kylebradshaw.dev/go-ai/mcp` (verify the exact ingress path during implementation — check `k8s/go-ecommerce/` ingress rules for ai-service before publishing the snippet).
+The public MCP endpoint is `https://api.kylebradshaw.dev/ai-api/mcp`. Verified against `go/k8s/ingress.yml` — the `/ai-api(/|$)(.*)` rule routes to `go-ai-service:8093` with rewrite-target `/$2`, so `/ai-api/mcp` reaches the `/mcp` handler registered in `go/ai-service/cmd/server/routes.go:75`. The frontend smoke tests already use this path — see `frontend/e2e/smoke-prod/smoke-health.spec.ts:26-30`.
 
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
@@ -108,7 +108,7 @@ The public MCP endpoint is `https://api.kylebradshaw.dev/go-ai/mcp` (verify the 
   "mcpServers": {
     "kyle-portfolio": {
       "transport": "http",
-      "url": "https://api.kylebradshaw.dev/go-ai/mcp"
+      "url": "https://api.kylebradshaw.dev/ai-api/mcp"
     }
   }
 }
@@ -119,7 +119,7 @@ The public MCP endpoint is `https://api.kylebradshaw.dev/go-ai/mcp` (verify the 
 **MCP Inspector** — single command:
 
 ```bash
-npx @modelcontextprotocol/inspector https://api.kylebradshaw.dev/go-ai/mcp
+npx @modelcontextprotocol/inspector https://api.kylebradshaw.dev/ai-api/mcp
 ```
 
 A short note below the snippets: *"Public tools (catalog search, RAG search, `list_collections`) work without auth. Scoped tools (cart, orders, returns) require a Bearer JWT — register and log in at /go/register, then copy the token from the auth header in DevTools."*
@@ -156,10 +156,9 @@ A small footer link to `go/ai-service/internal/mcp/` on GitHub, the way other po
 - `/ai` renders all four sections in the new order, with the new MCP section at the top.
 - The shared `<MCPToolCatalog />` component renders identically on both `/ai` and `/go` (Shopping Assistant tab).
 - The Claude Desktop and Inspector snippets are syntactically valid (paste-test against a local Claude Desktop and a fresh Inspector run before merging).
-- Manually verify the public ingress path resolves: `curl -s https://api.kylebradshaw.dev/go-ai/mcp` returns a non-error response (the MCP handshake will reject a plain GET, but the server should respond — a 404 or transport error means the ingress path is wrong).
+- Manually verify the public ingress path resolves: `curl -s https://api.kylebradshaw.dev/ai-api/mcp` returns a non-error response (the MCP handshake will reject a plain GET, but the server should respond — a 404 or transport error means the ingress path is wrong).
 - Issues #79 and #83 are closed with reference comments.
 
 ## Open questions
 
-- **Exact public path for the MCP endpoint.** I've assumed `https://api.kylebradshaw.dev/go-ai/mcp` based on the documented ingress routing pattern (`/go-api/*`, `/go-auth/*`, `/go-products/*`). The actual ai-service ingress path needs to be confirmed before the connection snippets ship — the wrong path in a portfolio JSON config block is a credibility hit.
 - **Should the connection-instructions section include a "minimal JWT for testing" path?** Right now visitors would need to register and copy a token from DevTools to exercise scoped tools. A more polished story would be a "guest token" link that mints a read-only JWT scoped to the demo user. Out of scope for this round; flagged for future iteration.
