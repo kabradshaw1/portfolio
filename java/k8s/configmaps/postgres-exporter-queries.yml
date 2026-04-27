@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-exporter-queries
+  namespace: java-tasks
+data:
+  queries.yml: |
+    pg_stat_statements:
+      query: |
+        SELECT
+          pss.queryid::text AS queryid,
+          LEFT(pss.query, 200) AS query_text,
+          pss.calls,
+          pss.total_exec_time,
+          pss.mean_exec_time,
+          pss.stddev_exec_time,
+          pss.rows
+        FROM pg_stat_statements pss
+        WHERE pss.calls > 10
+        ORDER BY pss.mean_exec_time DESC
+        LIMIT 50
+      master: true
+      metrics:
+        - queryid:
+            usage: "LABEL"
+            description: "pg_stat_statements query ID"
+        - query_text:
+            usage: "LABEL"
+            description: "Truncated query text (200 chars)"
+        - calls:
+            usage: "COUNTER"
+            description: "Number of times executed"
+        - total_exec_time:
+            usage: "COUNTER"
+            description: "Total time in milliseconds"
+        - mean_exec_time:
+            usage: "GAUGE"
+            description: "Mean execution time in milliseconds"
+        - stddev_exec_time:
+            usage: "GAUGE"
+            description: "Standard deviation of execution time"
+        - rows:
+            usage: "COUNTER"
+            description: "Total rows returned"
+
+    pg_stat_statements_io:
+      query: |
+        SELECT
+          pss.queryid::text AS queryid,
+          pss.shared_blks_hit,
+          pss.shared_blks_read,
+          pss.shared_blks_dirtied
+        FROM pg_stat_statements pss
+        WHERE pss.calls > 10
+        ORDER BY pss.shared_blks_read DESC
+        LIMIT 50
+      master: true
+      metrics:
+        - queryid:
+            usage: "LABEL"
+            description: "pg_stat_statements query ID"
+        - shared_blks_hit:
+            usage: "COUNTER"
+            description: "Buffer hits per query"
+        - shared_blks_read:
+            usage: "COUNTER"
+            description: "Disk reads per query"
+        - shared_blks_dirtied:
+            usage: "COUNTER"
+            description: "Buffers dirtied per query"
