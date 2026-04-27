@@ -21,3 +21,22 @@ data:
     CREATE DATABASE ecommercedb OWNER taskuser;
   07-create-projectordb.sql: |
     CREATE DATABASE projectordb OWNER taskuser;
+  08-create-extensions.sql: |
+    -- pg_stat_statements is per-database; auto_explain is server-wide via
+    -- shared_preload_libraries (no CREATE EXTENSION needed).
+    \connect taskdb
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    \connect authdb
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    \connect orderdb
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    \connect productdb
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    \connect cartdb
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    \connect paymentdb
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    \connect ecommercedb
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    \connect projectordb
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;

@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-extensions-bootstrap
+  namespace: java-tasks
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: psql
+          image: postgres:17-alpine
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: postgres-password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              for db in taskdb authdb orderdb productdb cartdb paymentdb ecommercedb projectordb; do
+                echo "Enabling pg_stat_statements on $db"
+                psql -h postgres.java-tasks.svc.cluster.local -U taskuser -d "$db" \
+                  -v ON_ERROR_STOP=1 \
+                  -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+              done
+              echo "All extensions ready"
+          resources:
+            requests: { cpu: "10m", memory: "32Mi" }
+            limits:   { cpu: "100m", memory: "64Mi" }
