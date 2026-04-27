@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
+import { MCPSection } from "@/components/ai/MCPSection";
 
 const architectureDiagram = `flowchart LR
   subgraph Ingestion["Document Ingestion"]
@@ -48,10 +49,12 @@ export default function AISection() {
         {/* Bio */}
         <section className="mt-8">
           <p className="text-muted-foreground leading-relaxed">
-            Building intelligent systems with retrieval-augmented generation and
-            agentic architectures. This section demonstrates RAG pipelines,
-            vector search, LLM orchestration, and tool-using agents — built with
-            FastAPI, Qdrant, and Ollama, deployed on Kubernetes.
+            Building intelligent systems with retrieval-augmented generation,
+            agentic architectures, and Model Context Protocol (MCP) servers
+            that any AI client can call. This section demonstrates an MCP
+            server fronting twelve tools, RAG pipelines with evaluation,
+            vector search, and tool-using agents — built with FastAPI,
+            Qdrant, Ollama, and Go, deployed on Kubernetes.
           </p>
           <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
             Prometheus scrapes every AI service and streams metrics to a live{" "}
@@ -67,8 +70,41 @@ export default function AISection() {
           </p>
         </section>
 
-        {/* Project Explanation */}
+        {/* MCP Server (top section) */}
+        <MCPSection />
+
+        {/* RAG Evaluation */}
+        <section className="mt-16">
+          <h2 className="text-2xl font-semibold">RAG Evaluation</h2>
+          <p className="mt-4 text-muted-foreground leading-relaxed">
+            A measurement tool for systematically tracking RAG pipeline quality.
+            Create golden datasets with expected answers, run RAGAS evaluations
+            against the live pipeline, and view scorecards with per-query
+            breakdowns — faithfulness, answer relevancy, context precision, and
+            context recall.
+          </p>
+
+          <h3 className="mt-6 text-lg font-medium">What It Demonstrates</h3>
+          <ul className="mt-2 list-disc pl-6 text-muted-foreground space-y-1">
+            <li>RAGAS evaluation framework for RAG quality measurement</li>
+            <li>Cross-service JWT authentication (Go auth → Python eval)</li>
+            <li>Async evaluation with polling for long-running LLM judge calls</li>
+            <li>Golden dataset management for repeatable quality tracking</li>
+          </ul>
+        </section>
+
+        {/* Eval Demo Link */}
         <section className="mt-12">
+          <Link
+            href="/ai/eval"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Try RAG Evaluation &rarr;
+          </Link>
+        </section>
+
+        {/* Document Q&A Assistant */}
+        <section className="mt-16">
           <h2 className="text-2xl font-semibold">Document Q&A Assistant</h2>
           <p className="mt-4 text-muted-foreground leading-relaxed">
             A full-stack Retrieval-Augmented Generation (RAG) application that
@@ -107,7 +143,7 @@ export default function AISection() {
           </Link>
         </section>
 
-        {/* Debug Assistant Section */}
+        {/* Debug Assistant */}
         <section className="mt-16">
           <h2 className="text-2xl font-semibold">Debug Assistant</h2>
           <p className="mt-4 text-muted-foreground leading-relaxed">
@@ -151,36 +187,6 @@ export default function AISection() {
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             Try the Debug Demo &rarr;
-          </Link>
-        </section>
-
-        {/* RAG Evaluation Section */}
-        <section className="mt-16">
-          <h2 className="text-2xl font-semibold">RAG Evaluation</h2>
-          <p className="mt-4 text-muted-foreground leading-relaxed">
-            A measurement tool for systematically tracking RAG pipeline quality.
-            Create golden datasets with expected answers, run RAGAS evaluations
-            against the live pipeline, and view scorecards with per-query
-            breakdowns — faithfulness, answer relevancy, context precision, and
-            context recall.
-          </p>
-
-          <h3 className="mt-6 text-lg font-medium">What It Demonstrates</h3>
-          <ul className="mt-2 list-disc pl-6 text-muted-foreground space-y-1">
-            <li>RAGAS evaluation framework for RAG quality measurement</li>
-            <li>Cross-service JWT authentication (Go auth → Python eval)</li>
-            <li>Async evaluation with polling for long-running LLM judge calls</li>
-            <li>Golden dataset management for repeatable quality tracking</li>
-          </ul>
-        </section>
-
-        {/* Eval Demo Link */}
-        <section className="mt-12">
-          <Link
-            href="/ai/eval"
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Try RAG Evaluation &rarr;
           </Link>
         </section>
       </div>
