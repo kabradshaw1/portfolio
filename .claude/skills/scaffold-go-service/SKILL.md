@@ -227,11 +227,83 @@ ssh debian 'kubectl exec -n java-tasks deploy/postgres -- psql -U taskuser -d ta
 
 3. **Ingress** — Add path in `go/k8s/ingress.yml` and update `go/k8s/kustomization.yaml`
 
-## Frontend + Smoke Tests
+## Frontend
 
 - Add `NEXT_PUBLIC_<SERVICE>_URL` env var to Vercel (production + preview/qa) BEFORE merging
-- Update `frontend/e2e/smoke-prod/smoke.spec.ts` if endpoints moved
 - Add to `make preflight-go` target
+
+## Smoke Tests & Compose CI
+
+Every new service needs smoke test coverage in three places: compose-smoke CI (tests service starts and responds), prod health checks (tests deployed service is reachable), and compose config validation (catches env var errors before pushing).
+
+### 1. Database init (`go/ci-init.sql`)
+
+If the service uses its own database (not `ecommercedb`), add:
+```sql
+CREATE DATABASE <dbname>;
+GRANT ALL PRIVILEGES ON DATABASE <dbname> TO taskuser;
+```
+
+### 2. Compose CI overlay (`go/docker-compose.ci.yml`)
+
+Add a service block:
+```yaml
+  <service>:
+    build:
+      context: .
+      dockerfile: <service>/Dockerfile
+    ports:
+      - "<rest-port>:<rest-port>"
+      - "<grpc-port>:<grpc-port>"  # if applicable
+    environment:
+      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/<dbname>?sslmode=disable
+      JWT_SECRET: ci-test-secret
+      ALLOWED_ORIGINS: "*"
+      # Add gRPC addresses if calling other services:
+      # AUTH_GRPC_URL: auth-service:9091
+      # PRODUCT_GRPC_ADDR: product-service:9095
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+```
+
+### 3. CI workflow migration step (`.github/workflows/ci.yml`)
+
+In the `compose-smoke-go` job's "Run migrations and seed data" step, add:
+```bash
+$DC run --rm --no-deps --entrypoint migrate <service> \
+  -path /migrations \
+  -database "postgres://taskuser:taskpass@postgres:5432/<dbname>?sslmode=disable" up
+```
+Use `&x-migrations-table=<svc>_schema_migrations` if sharing a database with another service.
+
+If the service has a `seed.sql`, also add:
+```bash
+$DC run --rm --no-deps --entrypoint sh <service> \
+  -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d <dbname> -f /seed.sql'
+```
+
+**CRITICAL:** Use `--entrypoint migrate` (or `--entrypoint sh` for seeds). Without it, `docker compose run` passes args to the Go binary's ENTRYPOINT, which starts the HTTP server instead of running migrations.
+
+### 4. Compose-smoke health check (`frontend/e2e/smoke-go-compose/smoke-go-ci.spec.ts`)
+
+Add to the `services` array in the health check test:
+```typescript
+{ name: "<service>", url: process.env.SMOKE_<SERVICE>_URL || "http://localhost:<port>" }
+```
+
+### 5. Prod health check (`frontend/e2e/smoke-prod/smoke-health.spec.ts`)
+
+Add the service's ingress path to the `endpoints` array:
+```typescript
+"/go-<service>/health"
+```
+
+### 6. Compose config validation
+
+No action needed — `make preflight-compose-config` runs automatically and validates the compose overlay merges without interpolation errors.
 
 ## Migration Notes
 
@@ -253,3 +325,9 @@ Before merging, confirm ALL items:
 - [ ] Ingress path added
 - [ ] Frontend env var set in Vercel (if applicable)
 - [ ] `make preflight-go` passes
+- [ ] Service added to `go/docker-compose.ci.yml` with correct env vars
+- [ ] Service DB added to `go/ci-init.sql` (if separate DB)
+- [ ] Migration step added to CI `compose-smoke-go` job
+- [ ] Health check added to `smoke-go-ci.spec.ts`
+- [ ] Health check added to `smoke-health.spec.ts` (prod)
+- [ ] `make preflight-compose-config` passes

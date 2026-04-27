@@ -172,16 +172,40 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, order-service, ai-service, analytics-service, product-service, cart-service, order-projector]
+        include:
+          - service: auth-service
+            paths: go/auth-service go/pkg go/go.work
+          - service: order-service
+            paths: go/order-service go/product-service go/cart-service go/pkg go/go.work
+          - service: ai-service
+            paths: go/ai-service go/pkg go/go.work
+          - service: analytics-service
+            paths: go/analytics-service go/pkg go/go.work
+          - service: product-service
+            paths: go/product-service go/pkg go/go.work
+          - service: cart-service
+            paths: go/cart-service go/product-service go/pkg go/go.work
+          - service: order-projector
+            paths: go/order-projector go/pkg go/go.work
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: ${{ matrix.paths }}
       - uses: actions/setup-go@v5
+        if: steps.changes.outputs.changed == 'true'
         with:
           go-version-file: go/${{ matrix.service }}/go.mod
       - name: Install golangci-lint
+        if: steps.changes.outputs.changed == 'true'
         working-directory: go/${{ matrix.service }}
         run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
       - name: Run linter
+        if: steps.changes.outputs.changed == 'true'
         working-directory: go/${{ matrix.service }}
         run: golangci-lint run ./...
 
@@ -190,17 +214,40 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [auth-service, order-service, ai-service, analytics-service, product-service, cart-service, order-projector]
+        include:
+          - service: auth-service
+            paths: go/auth-service go/pkg go/go.work
+          - service: order-service
+            paths: go/order-service go/product-service go/cart-service go/pkg go/go.work
+          - service: ai-service
+            paths: go/ai-service go/pkg go/go.work
+          - service: analytics-service
+            paths: go/analytics-service go/pkg go/go.work
+          - service: product-service
+            paths: go/product-service go/pkg go/go.work
+          - service: cart-service
+            paths: go/cart-service go/product-service go/pkg go/go.work
+          - service: order-projector
+            paths: go/order-projector go/pkg go/go.work
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: ${{ matrix.paths }}
       - uses: actions/setup-go@v5
+        if: steps.changes.outputs.changed == 'true'
         with:
           go-version-file: go/${{ matrix.service }}/go.mod
       - name: Run tests
+        if: steps.changes.outputs.changed == 'true'
         working-directory: go/${{ matrix.service }}
         run: go test ./... -v -race -coverprofile=coverage.out
       - name: Upload coverage
-        if: always()
+        if: steps.changes.outputs.changed == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-go-${{ matrix.service }}
@@ -980,7 +1027,7 @@ jobs:
             context: go
             file: go/product-service/Dockerfile
             image: go-product-service
-            paths: go/product-service go/pkg
+            paths: go/product-service go/pkg go/go.work
           - service: go-cart-service
             context: go
             file: go/cart-service/Dockerfile
@@ -999,28 +1046,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 10
+          fetch-depth: 50
 
       - name: Check for changes
         id: changes
-        env:
-          PATHS: ${{ matrix.paths }}
-        run: |
-          # Compare against the last successfully deployed image tag.
-          # HEAD~1 misses changes from multi-commit pushes — a common cause
-          # of "stale image" bugs where code changes land but CI skips the build
-          # because only the final commit is diffed.
-          # Use HEAD~5 as a wider window to catch recent changes across commits.
-          COMPARE_BASE="HEAD~5"
-          # Fall back to HEAD~1 if history is too shallow
-          git rev-parse --verify "$COMPARE_BASE" >/dev/null 2>&1 || COMPARE_BASE="HEAD~1"
-          if git diff --quiet "$COMPARE_BASE" -- $PATHS; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No changes in [$PATHS] since $COMPARE_BASE — skipping build"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Changes detected in [$PATHS] since $COMPARE_BASE"
-          fi
+        uses: ./.github/actions/check-changes
+        with:
+          paths: ${{ matrix.paths }}
 
       - name: Set up JDK 21
         if: matrix.java-service && steps.changes.outputs.changed == 'true'

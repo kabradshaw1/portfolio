@@ -1,0 +1,69 @@
+name: Check for changes
+description: >-
+  Determine whether any of the given paths changed in this push or PR.
+  Uses github.event.before for pushes and github.event.pull_request.base.sha
+  for PRs to compute a precise compare base. Falls back to a sliding window
+  (default HEAD~5) for first pushes, workflow_dispatch, or unknown events.
+
+inputs:
+  paths:
+    description: Space-separated paths (relative to repo root) to inspect.
+    required: true
+  fallback-base:
+    description: Compare base to use when push.before / pr.base.sha is unavailable.
+    required: false
+    default: HEAD~5
+
+outputs:
+  changed:
+    description: '"true" if any of the paths changed since the compare base, otherwise "false".'
+    value: ${{ steps.detect.outputs.changed }}
+  compare-base:
+    description: The git ref that was used as the compare base.
+    value: ${{ steps.detect.outputs.compare-base }}
+
+runs:
+  using: composite
+  steps:
+    - id: detect
+      shell: bash
+      env:
+        PATHS: ${{ inputs.paths }}
+        FALLBACK_BASE: ${{ inputs.fallback-base }}
+        EVENT_NAME: ${{ github.event_name }}
+        PUSH_BEFORE: ${{ github.event.before }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        set -euo pipefail
+        ZERO_SHA="0000000000000000000000000000000000000000"
+
+        if [ "$EVENT_NAME" = "pull_request" ] && [ -n "${PR_BASE_SHA:-}" ]; then
+          COMPARE_BASE="$PR_BASE_SHA"
+          REASON="PR base"
+        elif [ "$EVENT_NAME" = "push" ] && [ -n "${PUSH_BEFORE:-}" ] && [ "$PUSH_BEFORE" != "$ZERO_SHA" ]; then
+          COMPARE_BASE="$PUSH_BEFORE"
+          REASON="push.event.before"
+        else
+          COMPARE_BASE="$FALLBACK_BASE"
+          REASON="fallback ($EVENT_NAME / first push / unknown)"
+        fi
+
+        # Lazily fetch the compare base if it's not in our shallow clone.
+        if ! git rev-parse --verify "${COMPARE_BASE}^{commit}" >/dev/null 2>&1; then
+          echo "Compare base $COMPARE_BASE not in local history; fetching..."
+          git fetch --no-tags --depth=50 origin "$COMPARE_BASE" 2>/dev/null || true
+        fi
+        if ! git rev-parse --verify "${COMPARE_BASE}^{commit}" >/dev/null 2>&1; then
+          echo "Compare base still unreachable; falling back to HEAD~1"
+          COMPARE_BASE="HEAD~1"
+          REASON="fallback (history too shallow)"
+        fi
+
+        echo "compare-base=$COMPARE_BASE" >> "$GITHUB_OUTPUT"
+        if git diff --quiet "$COMPARE_BASE" -- $PATHS; then
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          echo "✓ No changes in [$PATHS] since $COMPARE_BASE ($REASON) — skipping"
+        else
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "▶ Changes detected in [$PATHS] since $COMPARE_BASE ($REASON)"
+        fi
