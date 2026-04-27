@@ -3509,3 +3509,112 @@ data:
       "uid": "postgresql",
       "version": 1
     }
+  pg-query-performance.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "graphTooltip": 1,
+      "title": "PostgreSQL Query Performance",
+      "uid": "pg-query-performance",
+      "schemaVersion": 39,
+      "tags": ["postgres", "queries"],
+      "time": { "from": "now-6h", "to": "now" },
+      "timepicker": {},
+      "templating": {
+        "list": [
+          {
+            "name": "database",
+            "type": "datasource",
+            "query": "postgres",
+            "current": { "text": "postgres-productdb", "value": "postgres-productdb" },
+            "regex": "/^postgres-/",
+            "label": "Database"
+          },
+          {
+            "name": "queryid",
+            "type": "query",
+            "datasource": { "type": "postgres", "uid": "${database}" },
+            "query": "SELECT queryid::text FROM pg_stat_statements WHERE calls > 10 ORDER BY mean_exec_time DESC LIMIT 25",
+            "multi": true,
+            "includeAll": true
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "table",
+          "title": "Top 10 slowest queries (mean exec time)",
+          "datasource": { "type": "postgres", "uid": "${database}" },
+          "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+          "targets": [{
+            "rawSql": "SELECT LEFT(query, 200) AS query, calls, ROUND(mean_exec_time::numeric, 2) AS mean_ms, ROUND(stddev_exec_time::numeric, 2) AS stddev_ms, rows FROM pg_stat_statements WHERE calls > 10 ORDER BY mean_exec_time DESC LIMIT 10",
+            "format": "table",
+            "refId": "A"
+          }]
+        },
+        {
+          "type": "table",
+          "title": "Top 10 by total exec time",
+          "datasource": { "type": "postgres", "uid": "${database}" },
+          "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+          "targets": [{
+            "rawSql": "SELECT LEFT(query, 200) AS query, calls, ROUND(total_exec_time::numeric / 1000, 2) AS total_seconds, ROUND(mean_exec_time::numeric, 2) AS mean_ms FROM pg_stat_statements WHERE calls > 10 ORDER BY total_exec_time DESC LIMIT 10",
+            "format": "table",
+            "refId": "A"
+          }]
+        },
+        {
+          "type": "timeseries",
+          "title": "Mean exec time per queryid (top 5)",
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+          "targets": [{
+            "expr": "topk(5, pg_stat_statements_mean_exec_time)",
+            "legendFormat": "{{queryid}} {{query_text}}",
+            "refId": "A"
+          }]
+        },
+        {
+          "type": "timeseries",
+          "title": "Slow-query call rate (mean > 500ms)",
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+          "targets": [{
+            "expr": "sum by (queryid) (rate(pg_stat_statements_calls_total{queryid=~\".+\"}[5m]) and on(queryid) pg_stat_statements_mean_exec_time > 500)",
+            "legendFormat": "{{queryid}}",
+            "refId": "A"
+          }]
+        },
+        {
+          "type": "table",
+          "title": "Cache hit ratio per top query",
+          "datasource": { "type": "postgres", "uid": "${database}" },
+          "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
+          "targets": [{
+            "rawSql": "SELECT LEFT(query, 200) AS query, shared_blks_hit, shared_blks_read, CASE WHEN (shared_blks_hit + shared_blks_read) > 0 THEN ROUND((shared_blks_hit::numeric / (shared_blks_hit + shared_blks_read)) * 100, 2) ELSE NULL END AS hit_pct FROM pg_stat_statements WHERE calls > 10 ORDER BY shared_blks_read DESC LIMIT 10",
+            "format": "table",
+            "refId": "A"
+          }]
+        },
+        {
+          "type": "logs",
+          "title": "Recent slow plans (auto_explain, last 1h)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "x": 0, "y": 32, "w": 24, "h": 10 },
+          "targets": [{
+            "expr": "{namespace=\"java-tasks\", app=\"postgres\"} |= \"auto_explain\" |= \"plan:\"",
+            "refId": "A"
+          }]
+        },
+        {
+          "type": "logs",
+          "title": "Plan viewer (filter by queryid)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "x": 0, "y": 42, "w": 24, "h": 10 },
+          "targets": [{
+            "expr": "{namespace=\"java-tasks\", app=\"postgres\"} |= \"auto_explain\" | json | query_id=~\"$queryid\"",
+            "refId": "A"
+          }]
+        }
+      ]
+    }
