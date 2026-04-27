@@ -209,6 +209,14 @@ Claude Code determines the current branch via `git branch --show-current` and fo
 
 ## Pre-commit Requirements
 
+**First-time setup:** New clones must install the pre-commit hook framework once:
+
+```bash
+make install-pre-commit
+```
+
+This installs both commit-stage hooks (gitleaks, bandit, hadolint, ruff, java-checkstyle, frontend tsc/lint, go-lint covering all 8 services) and pre-push-stage hooks (frontend `next build`). After this, every commit triggers the relevant subset based on what files changed.
+
 Before every commit, run the relevant preflight checks and fix any failures. Only escalate to Kyle if you can't resolve the issue.
 
 - **Python changes:** `make preflight-python` and `make preflight-security`
