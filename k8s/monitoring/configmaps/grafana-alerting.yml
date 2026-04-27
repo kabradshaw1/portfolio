@@ -1577,3 +1577,150 @@ data:
               severity: critical
             annotations:
               summary: "No successful postgres backup in 26 hours — check CronJob postgres-backup in java-tasks namespace"
+
+          - uid: pg-query-mean-exec-time-high
+            title: Postgres Query Mean Exec Time High
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: max(pg_stat_statements_mean_exec_time) by (queryid, query_text)
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [1000] }
+                  refId: C
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Postgres query mean exec time > 1s — {{ $labels.query_text }}"
+
+          - uid: pg-query-mean-regression
+            title: Postgres Query Regression vs 7-day Baseline
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 900, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    (max(pg_stat_statements_mean_exec_time) by (queryid))
+                    /
+                    (max(avg_over_time(pg_stat_statements_mean_exec_time[7d])) by (queryid))
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 900, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 900, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [2] }
+                  refId: C
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Postgres query mean is >2× its 7-day baseline (queryid {{ $labels.queryid }})"
+
+          - uid: pg-slow-query-rate-spike
+            title: Postgres Slow Query Rate Spike
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    sum(rate(pg_stat_statements_calls_total[5m])
+                      and on(queryid) pg_stat_statements_mean_exec_time > 500)
+                    /
+                    sum(avg_over_time(rate(pg_stat_statements_calls_total[5m])[1h:5m])
+                      and on(queryid) pg_stat_statements_mean_exec_time > 500)
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [3] }
+                  refId: C
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Slow-query call rate is >3× the 1h baseline"
+
+          - uid: pg-auto-explain-stalled
+            title: Postgres auto_explain Plans Not Flowing
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 86400, to: 0 }
+                datasourceUid: loki
+                model:
+                  expr: 'sum(count_over_time({namespace="java-tasks", app="postgres"} |= "auto_explain" [24h]))'
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 86400, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 86400, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: lt, params: [1] }
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "No auto_explain log lines in 24h — query observability is silently broken"
