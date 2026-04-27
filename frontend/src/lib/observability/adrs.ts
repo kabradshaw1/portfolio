@@ -1,8 +1,8 @@
 const REPO_BASE_URL =
-  "https://github.com/kabradshaw1/gen_ai_engineer/blob/main";
+  "https://github.com/kabradshaw1/portfolio/blob/main";
 
 export const ADR_DIRECTORY_URL =
-  "https://github.com/kabradshaw1/gen_ai_engineer/tree/main/docs/adr/observability";
+  "https://github.com/kabradshaw1/portfolio/tree/main/docs/adr/observability";
 
 export type AdrId = "07" | "08" | "09" | "10";
 
