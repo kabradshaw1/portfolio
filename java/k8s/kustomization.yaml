@@ -6,6 +6,7 @@ resources:
   - configmaps/activity-service-config.yml
   - configmaps/gateway-service-config.yml
   - configmaps/notification-service-config.yml
+  - configmaps/postgres-exporter-queries.yml
   - configmaps/postgres-initdb.yml
   - configmaps/rabbitmq-definitions.yml
   - configmaps/task-service-config.yml
@@ -28,6 +29,8 @@ resources:
   - volumes/postgres-pvc.yml
   - volumes/postgres-backup-pv.yml
   - jobs/postgres-backup.yml
+  - jobs/postgres-extensions-bootstrap.yml
+  - jobs/postgres-grafana-reader.yml
   - pdb/postgres-pdb.yml
   - ingress.yml
   - ingress-rabbitmq.yml

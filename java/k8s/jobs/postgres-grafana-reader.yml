@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-grafana-reader
+  namespace: java-tasks
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: psql
+          image: postgres:17-alpine
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: postgres-password
+            - name: GRAFANA_READER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: grafana-reader-password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              psql -h postgres.java-tasks.svc.cluster.local -U taskuser -d postgres \
+                -v ON_ERROR_STOP=1 \
+                -v reader_pw="$GRAFANA_READER_PASSWORD" <<'SQL'
+              DO $$
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grafana_reader') THEN
+                  EXECUTE format('CREATE ROLE grafana_reader LOGIN PASSWORD %L', :'reader_pw');
+                ELSE
+                  EXECUTE format('ALTER ROLE grafana_reader WITH PASSWORD %L', :'reader_pw');
+                END IF;
+              END
+              $$;
+              GRANT pg_monitor TO grafana_reader;
+              GRANT CONNECT ON DATABASE productdb TO grafana_reader;
+              GRANT CONNECT ON DATABASE orderdb   TO grafana_reader;
+              GRANT CONNECT ON DATABASE paymentdb TO grafana_reader;
+              GRANT CONNECT ON DATABASE cartdb    TO grafana_reader;
+              GRANT CONNECT ON DATABASE authdb    TO grafana_reader;
+              SQL
+              echo "grafana_reader ready"
+          resources:
+            requests: { cpu: "10m", memory: "32Mi" }
+            limits:   { cpu: "100m", memory: "64Mi" }

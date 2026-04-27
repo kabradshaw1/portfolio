@@ -588,12 +588,111 @@ kubectl wait --for=condition=complete job/go-auth-migrate`}
           </div>
         </section>
 
+        {/* Optimization 5: Precise Change Detection */}
+        <section className="mt-12">
+          <h3 className="text-lg font-semibold">
+            5. Precise Change Detection
+          </h3>
+          <div className="mt-3 space-y-4 text-muted-foreground leading-relaxed">
+            <p>
+              <strong className="text-foreground">Problem:</strong> The path
+              filter from <em>#2</em> evolved with the codebase. The first
+              version compared against <code>HEAD~1</code>, which silently
+              missed rebuilds when a fix was pushed in a multi-commit batch
+              (the diff only saw the final commit). A post-incident hardening
+              widened it to <code>HEAD~5</code>. That fixed the missed-rebuild
+              bug but introduced the opposite failure mode: once Go work
+              landed in the last 5 commits, <em>every</em> subsequent push —
+              including docs-only or frontend-only ones — re-ran the full Go
+              test, lint, and image-build matrices.
+            </p>
+            <p>
+              <strong className="text-foreground">Investigation:</strong>{" "}
+              GitHub gives the exact range for every event: pushes carry{" "}
+              <code>github.event.before</code> (the previous tip of the
+              branch); PRs carry{" "}
+              <code>github.event.pull_request.base.sha</code> (the merge
+              base). Both are precise — <code>HEAD~N</code> was always a
+              heuristic dressed up as a window. The same overshoot also hit
+              the test and lint matrices, which never had path filtering at
+              all and re-ran the full Python, Java, and Go test suites on
+              every push regardless of what changed.
+            </p>
+            <p>
+              <strong className="text-foreground">Fix:</strong> A composite
+              action at <code>.github/actions/check-changes</code> picks the
+              compare base based on the event type — push.before for pushes,
+              PR base SHA for PRs, with <code>HEAD~5</code> kept only as a
+              fallback for first pushes and <code>workflow_dispatch</code>.
+              Wired into 14 gated jobs: the original three (go-tests,
+              go-lint, build-and-push-images) plus python-tests,
+              java-unit-tests, java-integration-tests, frontend-checks,
+              k8s-manifest-validation, go-migration-test, all three
+              compose-smoke jobs, security-pip-audit, and security-hadolint.
+              Every gated entry&apos;s <code>paths:</code> value includes{" "}
+              <code>ci.yml</code> and the action&apos;s own{" "}
+              <code>action.yml</code>, so a workflow refactor triggers every
+              matrix entry — a safeguard against silent pipeline regressions.
+            </p>
+            <pre className="overflow-x-auto rounded-lg border border-border bg-muted/50 p-4 text-sm">
+{`- name: Check for changes
+  id: changes
+  uses: ./.github/actions/check-changes
+  with:
+    paths: services/chat services/shared
+           .github/workflows/ci.yml
+           .github/actions/check-changes/action.yml
+
+# Subsequent steps gated on:
+#   if: steps.changes.outputs.changed == 'true'`}
+            </pre>
+            <p>
+              <strong className="text-foreground">Result:</strong> A docs-only
+              push now skips ~14 matrix entries in seconds. The pipeline
+              failure mode shifted with each iteration:{" "}
+              <code>HEAD~1</code> silently missed rebuilds,{" "}
+              <code>HEAD~5</code> silently over-rebuilt, and the precise
+              push-range / PR-base approach rebuilds exactly what changed.
+            </p>
+            <p>
+              <strong className="text-foreground">Lesson:</strong> The first
+              merge after extending the gate broke CI entirely. Every run
+              showed{" "}
+              <em>
+                &ldquo;This run likely failed because of a workflow file
+                issue&rdquo;
+              </em>{" "}
+              with an empty workflow graph — no jobs visible because nothing
+              ever started. Locally, the pre-flight check used{" "}
+              <code>python -c &quot;yaml.safe_load(...)&quot;</code>, which
+              passed because YAML accepts duplicate keys (last value wins).{" "}
+              <code>actionlint</code> caught it instantly: a step had both
+              the new gate{" "}
+              <code>
+                if: steps.changes.outputs.changed == &apos;true&apos;
+              </code>{" "}
+              and an existing{" "}
+              <code>
+                if: steps.venv-cache.outputs.cache-hit != &apos;true&apos;
+              </code>{" "}
+              — two <code>if:</code> keys on the same map, which
+              GitHub&apos;s parser rejects.{" "}
+              <strong className="text-foreground">
+                Validate workflow files with <code>actionlint</code>, not
+                just a YAML parser.
+              </strong>{" "}
+              YAML&apos;s permissiveness is the wrong shape for CI configs.
+            </p>
+          </div>
+        </section>
+
         {/* Combined Impact */}
         <section className="mt-12">
           <h3 className="text-lg font-semibold">Combined Impact</h3>
           <p className="mt-2 text-sm text-muted-foreground">
-            The four optimizations together reduced the pipeline from 30+
-            minutes to ~5 minutes on a typical push.
+            The five optimizations together reduced the pipeline from 30+
+            minutes to ~5 minutes on a typical push, and a docs-only or
+            single-stack push now skips most of it entirely.
           </p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm border-collapse">
@@ -629,6 +728,13 @@ kubectl wait --for=condition=complete job/go-auth-migrate`}
                   <td className="py-2 pr-4">Deploy QA</td>
                   <td className="py-2 px-4">failing</td>
                   <td className="py-2 px-4 text-green-400">85 sec</td>
+                </tr>
+                <tr className="border-b border-border/50">
+                  <td className="py-2 pr-4">
+                    Test/lint matrices (no change)
+                  </td>
+                  <td className="py-2 px-4">always 1-3 min each</td>
+                  <td className="py-2 px-4 text-green-400">~30 sec (skipped)</td>
                 </tr>
                 <tr className="border-t border-border">
                   <td className="py-2 pr-4 font-medium text-foreground">

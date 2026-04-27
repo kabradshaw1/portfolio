@@ -33,3 +33,47 @@ data:
         url: http://jaeger.monitoring.svc.cluster.local:16686
         editable: false
         uid: jaeger
+      - name: postgres-productdb
+        type: postgres
+        access: proxy
+        url: postgres.java-tasks.svc.cluster.local:5432
+        user: grafana_reader
+        editable: false
+        uid: postgres-productdb
+        jsonData:
+          database: productdb
+          sslmode: disable
+          postgresVersion: 1700
+          timescaledb: false
+        secureJsonData:
+          password: "$__env{GRAFANA_READER_PASSWORD}"
+
+      - name: postgres-orderdb
+        type: postgres
+        access: proxy
+        url: postgres.java-tasks.svc.cluster.local:5432
+        user: grafana_reader
+        editable: false
+        uid: postgres-orderdb
+        jsonData:
+          database: orderdb
+          sslmode: disable
+          postgresVersion: 1700
+          timescaledb: false
+        secureJsonData:
+          password: "$__env{GRAFANA_READER_PASSWORD}"
+
+      - name: postgres-paymentdb
+        type: postgres
+        access: proxy
+        url: postgres.java-tasks.svc.cluster.local:5432
+        user: grafana_reader
+        editable: false
+        uid: postgres-paymentdb
+        jsonData:
+          database: paymentdb
+          sslmode: disable
+          postgresVersion: 1700
+          timescaledb: false
+        secureJsonData:
+          password: "$__env{GRAFANA_READER_PASSWORD}"
