@@ -1,6 +1,394 @@
+# Observability Journey Page Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Restructure `/observability` to lead with a four-incident journey timeline (ADRs 07-10), add inline "Lessons from production" callouts beneath each pillar, and surface a "What's next" gaps section — without changing existing pillar copy or diagrams.
+
+**Architecture:** Pure frontend, presentational components only. New components co-located under `frontend/src/components/observability/`. Page-local data plus a single shared constants module for ADR GitHub URLs. No backend, no data fetching, no animation, no JS state.
+
+**Tech Stack:** Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 4, existing `MermaidDiagram` component. No new dependencies.
+
+**Spec:** `docs/superpowers/specs/2026-04-27-observability-journey-design.md`
+
+**Note on TDD:** The frontend has no unit-test framework — only Playwright E2E (out of scope per the spec). These are presentational components with no business logic, so verification per task is `npx tsc --noEmit` (type check) + visual inspection via `npm run dev`. Final verification is `make preflight-frontend` (lint + tsc + Next.js build).
+
+**File structure:**
+
+| File | Status | Responsibility |
+| --- | --- | --- |
+| `frontend/src/lib/observability/adrs.ts` | Create | GitHub URL builder + ADR slug → label map |
+| `frontend/src/components/observability/IncidentCard.tsx` | Create | One incident card (title / symptom / before-after / chips / link) |
+| `frontend/src/components/observability/JourneyTimeline.tsx` | Create | Vertical rail + date column wrapper around `IncidentCard[]` |
+| `frontend/src/components/observability/LessonCallout.tsx` | Create | Inset card for inline pillar callouts |
+| `frontend/src/components/observability/GapsGrid.tsx` | Create | "What's next" gap card grid |
+| `frontend/src/app/observability/page.tsx` | Modify | Restructure: hero refresh, mount new components, add GitHub CTA |
+
+---
+
+### Task 1: ADR URL constants module
+
+**Files:**
+- Create: `frontend/src/lib/observability/adrs.ts`
+
+- [ ] **Step 1: Create the directory**
+
+```bash
+mkdir -p frontend/src/lib/observability
+```
+
+- [ ] **Step 2: Create `adrs.ts` with the GitHub URL helper and ADR map**
+
+Write the file with this exact content:
+
+```ts
+const REPO_BASE_URL =
+  "https://github.com/kabradshaw1/gen_ai_engineer/blob/main";
+
+export const ADR_DIRECTORY_URL =
+  "https://github.com/kabradshaw1/gen_ai_engineer/tree/main/docs/adr/observability";
+
+export type AdrId = "07" | "08" | "09" | "10";
+
+const ADR_PATHS: Record<AdrId, string> = {
+  "07": "docs/adr/observability/07-debuggability-and-instrumentation-gaps.md",
+  "08": "docs/adr/observability/08-webhook-incident-and-environment-isolation.md",
+  "09": "docs/adr/observability/09-ai-service-observability.md",
+  "10": "docs/adr/observability/10-observability-gaps.md",
+};
+
+export function adrUrl(id: AdrId): string {
+  return `${REPO_BASE_URL}/${ADR_PATHS[id]}`;
+}
+
+export function adrLabel(id: AdrId): string {
+  return `ADR ${id}`;
+}
+```
+
+- [ ] **Step 3: Verify the module type-checks**
+
+Run: `cd frontend && npx tsc --noEmit`
+Expected: no errors related to `lib/observability/adrs.ts`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add frontend/src/lib/observability/adrs.ts
+git -c commit.gpgsign=false commit -m "feat(observability): add ADR URL constants module"
+```
+
+---
+
+### Task 2: `IncidentCard` component
+
+**Files:**
+- Create: `frontend/src/components/observability/IncidentCard.tsx`
+
+- [ ] **Step 1: Create the directory**
+
+```bash
+mkdir -p frontend/src/components/observability
+```
+
+- [ ] **Step 2: Create `IncidentCard.tsx` with the full component**
+
+Write the file with this exact content:
+
+```tsx
+import Link from "next/link";
+import { adrLabel, adrUrl, type AdrId } from "@/lib/observability/adrs";
+
+export type IncidentAccent = "orange" | "green" | "purple" | "red";
+
+export type Incident = {
+  date: string;
+  title: string;
+  namespace: string;
+  accent: IncidentAccent;
+  symptom: string;
+  before: string;
+  after: string;
+  fixes: string[];
+  adrId: AdrId;
+};
+
+const ACCENT_BORDER: Record<IncidentAccent, string> = {
+  orange: "border-orange-500/60",
+  green: "border-green-500/60",
+  purple: "border-purple-500/60",
+  red: "border-red-500/60",
+};
+
+function renderWithCode(text: string): React.ReactNode {
+  const parts = text.split(/(`[^`]+`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code
+          key={i}
+          className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+export function IncidentCard({ incident }: { incident: Incident }) {
+  const borderClass = ACCENT_BORDER[incident.accent];
+
+  return (
+    <div
+      className={`rounded-xl border border-foreground/10 border-l-4 ${borderClass} bg-card p-5`}
+    >
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 className="text-lg font-semibold">{incident.title}</h3>
+        <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+          {incident.namespace}
+        </span>
+      </div>
+      <p className="mt-3 border-l-2 border-foreground/20 pl-3 text-sm italic text-muted-foreground leading-relaxed">
+        {incident.symptom}
+      </p>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-red-400">
+            Before
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+            {renderWithCode(incident.before)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-green-400">
+            After
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+            {renderWithCode(incident.after)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {incident.fixes.map((fix) => (
+          <code
+            key={fix}
+            className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground"
+          >
+            {fix}
+          </code>
+        ))}
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <Link
+          href={adrUrl(incident.adrId)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          Read {adrLabel(incident.adrId)} &rarr;
+        </Link>
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 3: Type-check**
+
+Run: `cd frontend && npx tsc --noEmit`
+Expected: no errors.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add frontend/src/components/observability/IncidentCard.tsx
+git -c commit.gpgsign=false commit -m "feat(observability): add IncidentCard component"
+```
+
+---
+
+### Task 3: `JourneyTimeline` component
+
+**Files:**
+- Create: `frontend/src/components/observability/JourneyTimeline.tsx`
+
+- [ ] **Step 1: Create `JourneyTimeline.tsx`**
+
+Write the file with this exact content:
+
+```tsx
+import { IncidentCard, type Incident } from "./IncidentCard";
+
+export function JourneyTimeline({ incidents }: { incidents: Incident[] }) {
+  return (
+    <ol className="relative space-y-6 sm:space-y-8">
+      {incidents.map((incident, idx) => (
+        <li
+          key={incident.adrId}
+          className="grid grid-cols-1 gap-3 sm:grid-cols-[120px_1fr] sm:gap-6"
+        >
+          <div className="flex sm:flex-col sm:items-end sm:pt-5">
+            <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
+              {incident.date}
+            </span>
+            <span className="ml-2 sm:ml-0 sm:mt-1 font-mono text-xs text-muted-foreground/70">
+              #{idx + 1}
+            </span>
+          </div>
+          <IncidentCard incident={incident} />
+        </li>
+      ))}
+    </ol>
+  );
+}
+```
+
+- [ ] **Step 2: Type-check**
+
+Run: `cd frontend && npx tsc --noEmit`
+Expected: no errors.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add frontend/src/components/observability/JourneyTimeline.tsx
+git -c commit.gpgsign=false commit -m "feat(observability): add JourneyTimeline component"
+```
+
+---
+
+### Task 4: `LessonCallout` component
+
+**Files:**
+- Create: `frontend/src/components/observability/LessonCallout.tsx`
+
+- [ ] **Step 1: Create `LessonCallout.tsx`**
+
+Write the file with this exact content:
+
+```tsx
+import type { ReactNode } from "react";
+import { adrLabel, type AdrId } from "@/lib/observability/adrs";
+
+export function LessonCallout({
+  adrIds,
+  children,
+}: {
+  adrIds: AdrId[];
+  children: ReactNode;
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-foreground/10 bg-muted/30 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Lessons from production
+        </span>
+        {adrIds.map((id) => (
+          <span
+            key={id}
+            className="rounded bg-foreground/10 px-2 py-0.5 font-mono text-xs text-muted-foreground"
+          >
+            {adrLabel(id)}
+          </span>
+        ))}
+      </div>
+      <div className="mt-3 text-sm text-muted-foreground leading-relaxed">
+        {children}
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Type-check**
+
+Run: `cd frontend && npx tsc --noEmit`
+Expected: no errors.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add frontend/src/components/observability/LessonCallout.tsx
+git -c commit.gpgsign=false commit -m "feat(observability): add LessonCallout component"
+```
+
+---
+
+### Task 5: `GapsGrid` component
+
+**Files:**
+- Create: `frontend/src/components/observability/GapsGrid.tsx`
+
+- [ ] **Step 1: Create `GapsGrid.tsx`**
+
+Write the file with this exact content:
+
+```tsx
+export type Gap = {
+  title: string;
+  description: string;
+  source: string;
+};
+
+export function GapsGrid({ gaps }: { gaps: Gap[] }) {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {gaps.map((gap) => (
+        <div
+          key={gap.title}
+          className="rounded-lg border border-foreground/10 bg-card p-4"
+        >
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold">{gap.title}</h3>
+            <span className="font-mono text-xs text-muted-foreground">
+              {gap.source}
+            </span>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+            {gap.description}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Type-check**
+
+Run: `cd frontend && npx tsc --noEmit`
+Expected: no errors.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add frontend/src/components/observability/GapsGrid.tsx
+git -c commit.gpgsign=false commit -m "feat(observability): add GapsGrid component"
+```
+
+---
+
+### Task 6: Restructure `observability/page.tsx`
+
+**Files:**
+- Modify: `frontend/src/app/observability/page.tsx` (full rewrite — preserves the two Mermaid diagram strings, the `ALERT_GROUPS` constant, the architecture/correlation/metrics/logs/traces/alerting copy and code chips; adds the new sections and components around them).
+
+- [ ] **Step 1: Replace the entire file with the restructured version**
+
+Open `frontend/src/app/observability/page.tsx` and replace its full contents with:
+
+```tsx
 import { MermaidDiagram } from "@/components/MermaidDiagram";
 import { GapsGrid, type Gap } from "@/components/observability/GapsGrid";
-import { type Incident } from "@/components/observability/IncidentCard";
+import {
+  IncidentCard,
+  type Incident,
+} from "@/components/observability/IncidentCard";
 import { JourneyTimeline } from "@/components/observability/JourneyTimeline";
 import { LessonCallout } from "@/components/observability/LessonCallout";
 import { ADR_DIRECTORY_URL } from "@/lib/observability/adrs";
@@ -124,7 +512,7 @@ const INCIDENTS: Incident[] = [
     before:
       "The `apperror.ErrorHandler()` middleware silently converted `AppError` instances to JSON responses without logging — a webhook 500 vanished. QA and production also shared a RabbitMQ instance with identical queue names, so a QA `clear.cart` command was being consumed by the production cart-service.",
     after:
-      'Middleware now logs every 5xx `AppError` via `slog.Error` with code, message, status, and request ID before responding — silent server errors are no longer possible. QA runs on a dedicated RabbitMQ `/qa` vhost, fully isolating saga flow. A `saga-order-stalled` Grafana alert fires when `saga_steps_total{step="PAYMENT_CREATED"}` increases but neither `COMPLETED` nor `COMPENSATION_COMPLETE` does within 30 minutes.',
+      "Middleware now logs every 5xx `AppError` via `slog.Error` with code, message, status, and request ID before responding — silent server errors are no longer possible. QA runs on a dedicated RabbitMQ `/qa` vhost, fully isolating saga flow. A `saga-order-stalled` Grafana alert fires when `saga_steps_total{step=\"PAYMENT_CREATED\"}` increases but neither `COMPLETED` nor `COMPENSATION_COMPLETE` does within 30 minutes.",
     fixes: [
       "5xx middleware logging",
       "RabbitMQ /qa vhost",
@@ -143,7 +531,7 @@ const INCIDENTS: Incident[] = [
     before:
       "The agent loop made 3-8 LLM roundtrips per request, each potentially triggering 1-N tool calls. When something went wrong the question was always 'which step failed, and why?' — and the only answer was 'add print statements and redeploy.' The OpenAI and Anthropic clients didn't emit OTel spans, so provider comparison wasn't possible in Jaeger.",
     after:
-      'Six-layer structured logging covers HTTP handler, agent loop, LLM clients, cache, guardrails, and tools. All agent-loop logs use `slog.InfoContext(ctx, ...)` so `tracing.NewLogHandler()` injects the OTel traceID into every record. OpenAI and Anthropic clients now emit `openai.chat` / `anthropic.chat` spans with token attributes — provider comparison is visible in Jaeger. A single Loki query (`{app="ai-service"} | json | traceID="..."`) shows the complete request lifecycle.',
+      "Six-layer structured logging covers HTTP handler, agent loop, LLM clients, cache, guardrails, and tools. All agent-loop logs use `slog.InfoContext(ctx, ...)` so `tracing.NewLogHandler()` injects the OTel traceID into every record. OpenAI and Anthropic clients now emit `openai.chat` / `anthropic.chat` spans with token attributes — provider comparison is visible in Jaeger. A single Loki query (`{app=\"ai-service\"} | json | traceID=\"...\"`) shows the complete request lifecycle.",
     fixes: [
       "6-layer slog",
       "OTel span parity",
@@ -162,7 +550,7 @@ const INCIDENTS: Incident[] = [
     before:
       "Deploy timestamps had to be reconstructed from `kubectl get events`. K8s Warning events (OOM kills, probe failures, evictions) lived 1 hour and weren't queryable from Grafana. All six Go services shared the same Postgres credentials — a connection leak in one was indistinguishable from normal load across all.",
     after:
-      'Every CI rollout posts a Grafana annotation tagged with namespace + short SHA via `/api/annotations`, with anonymous-Viewer auth preserved for public dashboard viewing. `kubernetes-event-exporter` (resmoio fork) ships Warning-only events into Loki under `{job="kube-event-exporter"}` with namespace/reason/kind/name labels. Every Go service\'s `DATABASE_URL` includes `application_name=<service-name>`, so a "Connections by Service" dashboard panel attributes every Postgres connection in seconds.',
+      "Every CI rollout posts a Grafana annotation tagged with namespace + short SHA via `/api/annotations`, with anonymous-Viewer auth preserved for public dashboard viewing. `kubernetes-event-exporter` (resmoio fork) ships Warning-only events into Loki under `{job=\"kube-event-exporter\"}` with namespace/reason/kind/name labels. Every Go service's `DATABASE_URL` includes `application_name=<service-name>`, so a 'Connections by Service' dashboard panel attributes every Postgres connection in seconds.",
     fixes: [
       "CI deploy annotations",
       "K8s events → Loki",
@@ -492,3 +880,156 @@ export default function ObservabilityPage() {
     </div>
   );
 }
+```
+
+Note: the `IncidentCard` import is intentional — it's used transitively through `JourneyTimeline`, but importing it directly here keeps the type re-exports stable for any future per-card usage on this page. If `eslint-config-next` flags the unused import, remove the `IncidentCard` line and keep the type-only import: `import type { Incident } from "@/components/observability/IncidentCard";`.
+
+- [ ] **Step 2: Run ESLint to detect any unused-import warnings**
+
+Run: `cd frontend && npm run lint -- --max-warnings 0`
+Expected: passes. If `IncidentCard` is reported as unused, change the import line to:
+
+```tsx
+import type { Incident } from "@/components/observability/IncidentCard";
+```
+
+(and keep `JourneyTimeline` / `LessonCallout` / `GapsGrid` imports as-is). Re-run lint.
+
+- [ ] **Step 3: Type-check**
+
+Run: `cd frontend && npx tsc --noEmit`
+Expected: no errors.
+
+- [ ] **Step 4: Visually confirm the page renders**
+
+Start the dev server (in a second terminal if needed):
+
+```bash
+cd frontend && npm run dev
+```
+
+Open `http://localhost:3000/observability`. Confirm:
+
+- Hero shows the new lead sentence ("Three pillars. Sixteen alert rules...").
+- "The Journey" section shows four cards with vertical date column on desktop, stacked on mobile (use browser devtools to test).
+- Each pillar (Metrics / Logs / Traces / Alerting) has a "Lessons from production" callout below its body.
+- "What's Next" section shows four gap cards.
+- Footer shows two side-by-side CTAs.
+- Both Mermaid diagrams (architecture + correlation) render with no regression.
+- Each `Read ADR XX →` link opens the correct GitHub markdown file in a new tab.
+
+Stop the dev server with Ctrl-C.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/src/app/observability/page.tsx
+git -c commit.gpgsign=false commit -m "feat(observability): restructure page around production journey"
+```
+
+---
+
+### Task 7: Final verification
+
+**Files:** No file changes — verification only.
+
+- [ ] **Step 1: Run the full frontend preflight**
+
+```bash
+make preflight-frontend
+```
+
+Expected output ends with all three sub-steps passing:
+- `=== Frontend: lint ===` (eslint exits 0)
+- `=== Frontend: type check ===` (tsc --noEmit exits 0)
+- `=== Frontend: build ===` (Next.js build succeeds)
+
+If any sub-step fails, fix it and re-run before proceeding. Lint/format errors are autonomous fixes; logic regressions stop and report to Kyle per the branch rules in `CLAUDE.md`.
+
+- [ ] **Step 2: Verify all six commits on the branch**
+
+```bash
+git log --oneline main..HEAD
+```
+
+Expected (in order, oldest first):
+```
+docs(spec): observability journey page restructure
+feat(observability): add ADR URL constants module
+feat(observability): add IncidentCard component
+feat(observability): add JourneyTimeline component
+feat(observability): add LessonCallout component
+feat(observability): add GapsGrid component
+feat(observability): restructure page around production journey
+```
+
+(Reverse-order from `git log` — confirm all seven exist.)
+
+- [ ] **Step 3: Push the branch and open the PR**
+
+```bash
+git push -u origin agent/feat-observability-journey-page
+gh pr create --base qa --title "Restructure /observability around production journey" --body "$(cat <<'EOF'
+## Summary
+- Adds a four-incident journey timeline (ADRs 07-10) to `/observability` with before/after framing per card
+- Adds inline "Lessons from production" callouts beneath each pillar (Metrics / Logs / Traces / Alerting), tying specific instrumentation to the incidents that drove it
+- Adds a "What's Next" section pulled from the Remaining gaps in the source ADRs
+- Adds a "View ADRs on GitHub" CTA alongside the existing Grafana button
+- Refreshes the hero copy to lead with the journey arc
+
+Spec: `docs/superpowers/specs/2026-04-27-observability-journey-design.md`
+Plan: `docs/superpowers/plans/2026-04-27-observability-journey.md`
+
+No backend changes. Architecture and correlation Mermaid diagrams unchanged. Existing pillar copy and alert grid preserved.
+
+## Test plan
+- [ ] `/observability` renders without console errors
+- [ ] Journey timeline shows four cards in chronological order with correct dates
+- [ ] Each "Read ADR XX →" link opens the correct GitHub markdown file
+- [ ] All four pillars show a "Lessons from production" callout
+- [ ] "What's Next" grid shows four gap cards
+- [ ] CI passes (lint, tsc, Next.js build)
+EOF
+)"
+```
+
+Notify Kyle the PR is open. Do not watch CI.
+
+---
+
+## Self-Review
+
+### Spec coverage check
+
+| Spec section | Plan task |
+| --- | --- |
+| Hero refresh | Task 6 |
+| Journey timeline component (`JourneyTimeline`) | Task 3 |
+| `IncidentCard` component | Task 2 |
+| `LessonCallout` component | Task 4 |
+| `GapsGrid` component | Task 5 |
+| ADR URL centralisation (`adrs.ts`) | Task 1 |
+| Page restructure with new ordering | Task 6 |
+| All four lesson callouts beneath pillars | Task 6 |
+| "What's Next" section | Task 6 |
+| "View ADRs on GitHub" CTA | Task 6 |
+| Architecture / correlation diagrams unchanged | Task 6 (preserved verbatim in code block) |
+| `make preflight-frontend` passes | Task 7 |
+| Mobile-friendly stacking | Task 2/3/5 (Tailwind `sm:` breakpoint usage) |
+
+No gaps detected.
+
+### Placeholder scan
+
+No "TBD", "TODO", "implement later", "fill in details", or vague "add appropriate error handling" language found. Each step contains the exact code, exact command, or exact expected output an engineer needs.
+
+### Type consistency check
+
+- `Incident` type defined in Task 2, imported and reused in Task 3 and Task 6.
+- `Gap` type defined in Task 5, imported and reused in Task 6.
+- `AdrId` type defined in Task 1, imported in Task 2 (`IncidentCard`) and Task 4 (`LessonCallout`).
+- `IncidentAccent` defined in Task 2, used only within Task 2.
+- `ADR_DIRECTORY_URL` exported in Task 1, imported in Task 6.
+- `adrUrl` / `adrLabel` exported in Task 1, used in Tasks 2 and 4.
+
+All type and identifier names consistent across tasks. No drift.
