@@ -25,6 +25,27 @@ spec:
           image: postgres:17-alpine
           ports:
             - containerPort: 5432
+          args:
+            - "-c"
+            - "shared_preload_libraries=pg_stat_statements,auto_explain"
+            - "-c"
+            - "pg_stat_statements.max=5000"
+            - "-c"
+            - "pg_stat_statements.track=top"
+            - "-c"
+            - "pg_stat_statements.track_utility=off"
+            - "-c"
+            - "auto_explain.log_min_duration=500ms"
+            - "-c"
+            - "auto_explain.log_analyze=true"
+            - "-c"
+            - "auto_explain.log_buffers=true"
+            - "-c"
+            - "auto_explain.log_timing=true"
+            - "-c"
+            - "auto_explain.log_format=json"
+            - "-c"
+            - "auto_explain.sample_rate=1.0"
           lifecycle:
             preStop:
               exec:
@@ -80,6 +101,13 @@ spec:
                   key: postgres-password
             - name: DATA_SOURCE_URI
               value: "localhost:5432/taskdb?sslmode=disable"
+            - name: PG_EXPORTER_EXTEND_QUERY_PATH
+              value: /etc/postgres-exporter/queries.yml
+          volumeMounts:
+            - name: exporter-queries
+              mountPath: /etc/postgres-exporter/queries.yml
+              subPath: queries.yml
+              readOnly: true
           resources:
             requests:
               memory: "32Mi"
@@ -94,3 +122,6 @@ spec:
         - name: postgres-data
           persistentVolumeClaim:
             claimName: postgres-data
+        - name: exporter-queries
+          configMap:
+            name: postgres-exporter-queries
