@@ -1,4 +1,4 @@
-.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-go-integration preflight-go-migrations preflight-security preflight-compose-config preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup
+.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-go-integration preflight-go-migrations preflight-security preflight-compose-config preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup install-pre-commit
 
 # Run all CI checks locally before pushing
 preflight: grafana-sync-check preflight-python preflight-frontend preflight-security preflight-java preflight-go preflight-compose-config
@@ -208,3 +208,10 @@ worktree-cleanup:
 	done
 	@git worktree prune
 	@echo "Done"
+
+# --- Developer setup ---
+install-pre-commit:
+	@command -v pre-commit >/dev/null 2>&1 || { echo "Install pre-commit first: pip install pre-commit"; exit 1; }
+	pre-commit install --install-hooks
+	pre-commit install --hook-type pre-push --install-hooks
+	@echo "✅ pre-commit hooks installed (commit + pre-push stages)"

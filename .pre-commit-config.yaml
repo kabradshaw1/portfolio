@@ -3,6 +3,17 @@ repos:
     rev: v8.24.3
     hooks:
       - id: gitleaks
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.6
+    hooks:
+      - id: bandit
+        args: ["-ll"]
+        files: ^services/.*\.py$
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.13.1-beta
+    hooks:
+      - id: hadolint-docker
+        files: (^|/)Dockerfile(\..+)?$
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.6
     hooks:
@@ -39,8 +50,8 @@ repos:
         pass_filenames: false
         stages: [pre-push]
       - id: go-lint
-        name: Go Lint
-        entry: bash -c 'cd go/auth-service && ~/go/bin/golangci-lint run ./... && cd ../order-service && ~/go/bin/golangci-lint run ./...'
+        name: Go Lint (all services)
+        entry: bash -c 'set -e; for svc in auth-service order-service ai-service analytics-service product-service cart-service payment-service order-projector; do echo "--- $svc ---"; (cd "go/$svc" && ~/go/bin/golangci-lint run ./...); done'
         language: system
         files: ^go/.*\.go$
         pass_filenames: false
