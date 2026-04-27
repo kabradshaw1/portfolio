@@ -92,6 +92,13 @@ const ALERT_GROUPS = [
       "Kafka consumer lag monitoring across order, cart, and product view event topics",
     count: 1,
   },
+  {
+    name: "PostgreSQL",
+    color: "border-red-500/50",
+    description:
+      "Connection saturation, replication lag, deadlocks, backup freshness, and query-level latency, regression, slow-query rate, and auto_explain stalled signals",
+    count: 8,
+  },
 ];
 
 const INCIDENTS: Incident[] = [
@@ -175,9 +182,9 @@ const INCIDENTS: Incident[] = [
 
 const GAPS: Gap[] = [
   {
-    title: "PostgreSQL query tracing",
+    title: "In-app PostgreSQL query tracing",
     description:
-      "Manual OpenTelemetry spans around slow queries. Useful but a significant lift for incremental value over pgxpool's existing connection metrics.",
+      "Manual OpenTelemetry spans around slow queries — partly displaced by the pg_stat_statements + auto_explain layer below. Still useful for tying a slow query span to the surrounding business operation in Jaeger; deferred until the database-side data exposes a query that warrants per-call attribution.",
     source: "ADR 07",
   },
   {
@@ -433,6 +440,100 @@ export default function ObservabilityPage() {
             within 30 minutes. After ADR 10, every CI rollout posts a Grafana
             annotation tagged with namespace and short SHA, so dashboards mark
             the exact deploy preceding any metric change.
+          </LessonCallout>
+        </div>
+      </section>
+
+      {/* Database Query Performance */}
+      <section className="mt-12">
+        <div className="border-l-4 border-blue-500/60 pl-4">
+          <h2 className="text-2xl font-semibold">
+            Database Query Performance &mdash; pg_stat_statements + auto_explain
+          </h2>
+          <p className="mt-4 text-muted-foreground leading-relaxed">
+            System-level Postgres metrics (connections, cache hit, deadlocks,
+            backup freshness) tell you the database is alive. They don&rsquo;t
+            tell you which queries are slow, drifting, or eating CPU. The
+            shared Postgres 17 instance now preloads{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              pg_stat_statements
+            </code>{" "}
+            and{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              auto_explain
+            </code>
+            , exposing per-query latency, call rate, IO behavior, and full
+            execution plans for anything over 500&nbsp;ms.
+          </p>
+          <p className="mt-4 text-muted-foreground leading-relaxed">
+            Three independent paths feed Grafana. The{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              postgres_exporter
+            </code>{" "}
+            sidecar runs custom queries that export the top-50 statements as
+            time-series metrics &mdash;{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              pg_stat_statements_mean_exec_time
+            </code>
+            ,{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              pg_stat_statements_calls_total
+            </code>
+            ,{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              pg_stat_statements_shared_blks_read
+            </code>
+            . A read-only{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              grafana_reader
+            </code>{" "}
+            role with the{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              pg_monitor
+            </code>{" "}
+            predefined role powers per-database PostgreSQL data sources for
+            live SQL inspection. And{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              auto_explain.log_format = json
+            </code>{" "}
+            writes plans to Postgres logs &mdash; Promtail extracts them into
+            Loki so plans render inline in a Grafana logs panel filtered by
+            queryid.
+          </p>
+          <div className="mt-4 rounded-lg border border-foreground/10 bg-muted/50 p-3">
+            <code className="text-xs text-blue-400">
+              {'{namespace="java-tasks", app="postgres"} |= "auto_explain" | json | query_id=~"$queryid"'}
+            </code>
+          </div>
+          <p className="mt-4 text-muted-foreground leading-relaxed">
+            A new{" "}
+            <strong className="text-foreground">
+              PostgreSQL Query Performance
+            </strong>{" "}
+            dashboard ties it together: top-N tables by mean and total exec
+            time, p95 latency per queryid, slow-query call rate, cache hit
+            ratio, and a plan-viewer panel driven by a queryid template
+            variable. Four new alerts cover the realistic failure modes &mdash;
+            a hard <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">&gt;1&nbsp;s</code>{" "}
+            ceiling, a regression rule that fires when current mean is
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">&gt;2&times;</code>{" "}
+            its 7-day baseline, a slow-query rate spike rule, and an{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              auto_explain
+            </code>{" "}
+            stalled rule that catches misconfigurations before they hide a
+            regression.
+          </p>
+          <LessonCallout adrIds={["pg-query"]}>
+            Hard latency thresholds miss the realistic failure mode &mdash; a
+            query that quietly drifts from 50&nbsp;ms to 200&nbsp;ms after a
+            planner change. The 7-day baseline regression alert catches that;
+            the hard ceiling catches genuinely terrible queries. Together they
+            give the database a working measurement layer for the rest of the
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              db-roadmap
+            </code>{" "}
+            (replication, retention, vacuum tuning, partitioning) to build on.
           </LessonCallout>
         </div>
       </section>
