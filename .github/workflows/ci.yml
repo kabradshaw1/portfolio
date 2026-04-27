@@ -54,16 +54,34 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ingestion, chat, debug, eval]
+        include:
+          - service: ingestion
+            paths: services/ingestion services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: chat
+            paths: services/chat services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: debug
+            paths: services/debug services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: eval
+            paths: services/eval services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: ${{ matrix.paths }}
 
       - name: Set up Python
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Cache virtualenv
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/cache@v4
         id: venv-cache
         with:
@@ -71,6 +89,7 @@ jobs:
           key: venv-${{ matrix.service }}-${{ hashFiles(format('services/{0}/requirements.txt', matrix.service), 'services/shared/pyproject.toml') }}
 
       - name: Install dependencies
+        if: steps.changes.outputs.changed == 'true'
         if: steps.venv-cache.outputs.cache-hit != 'true'
         run: |
           python -m venv .venv
@@ -79,6 +98,7 @@ jobs:
           pip install -r services/${{ matrix.service }}/requirements.txt
 
       - name: Run tests with coverage
+        if: steps.changes.outputs.changed == 'true'
         env:
           PYTHONPATH: services
         run: |
@@ -89,7 +109,7 @@ jobs:
             --cov-report=xml:coverage-${{ matrix.service }}.xml
 
       - name: Upload coverage report
-        if: always()
+        if: steps.changes.outputs.changed == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.service }}
@@ -117,15 +137,28 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service:
-          - task-service
-          - activity-service
-          - notification-service
-          - gateway-service
+        include:
+          - service: task-service
+            paths: java/task-service java/build.gradle java/settings.gradle java/checkstyle.xml .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: activity-service
+            paths: java/activity-service java/build.gradle java/settings.gradle java/checkstyle.xml .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: notification-service
+            paths: java/notification-service java/build.gradle java/settings.gradle java/checkstyle.xml .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: gateway-service
+            paths: java/gateway-service java/build.gradle java/settings.gradle java/checkstyle.xml .github/workflows/ci.yml .github/actions/check-changes/action.yml
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: ${{ matrix.paths }}
 
       - name: Set up JDK 21
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -133,11 +166,12 @@ jobs:
           cache: gradle
 
       - name: Run unit tests
+        if: steps.changes.outputs.changed == 'true'
         working-directory: java
         run: ./gradlew :${{ matrix.service }}:test --no-daemon --stacktrace
 
       - name: Upload test report
-        if: always()
+        if: steps.changes.outputs.changed == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: java-test-report-${{ matrix.service }}
@@ -148,8 +182,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: java .github/workflows/ci.yml .github/actions/check-changes/action.yml
 
       - name: Set up JDK 21
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -157,11 +200,12 @@ jobs:
           cache: gradle
 
       - name: Run integration tests
+        if: steps.changes.outputs.changed == 'true'
         working-directory: java
         run: ./gradlew integrationTest --no-daemon --stacktrace
 
       - name: Upload test report
-        if: always()
+        if: steps.changes.outputs.changed == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: java-test-report-integration
@@ -303,8 +347,17 @@ jobs:
       DATABASE_URL: postgres://taskuser:taskpass@localhost:5432/ecommercedb?sslmode=disable
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: go/auth-service/migrations go/auth-service/seed.sql go/order-service/migrations go/order-service/seed.sql go/product-service/migrations go/product-service/seed.sql go/order-projector/migrations .github/workflows/ci.yml .github/actions/check-changes/action.yml
 
       - name: Install postgresql-client and golang-migrate
+        if: steps.changes.outputs.changed == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-client
@@ -313,18 +366,21 @@ jobs:
           migrate -version
 
       - name: Create ecommercedb
+        if: steps.changes.outputs.changed == 'true'
         env:
           PGPASSWORD: taskpass
         run: |
           psql -h localhost -U taskuser -d taskdb -c "CREATE DATABASE ecommercedb;"
 
       - name: Create productdb
+        if: steps.changes.outputs.changed == 'true'
         env:
           PGPASSWORD: taskpass
         run: |
           psql -h localhost -U taskuser -d taskdb -c "CREATE DATABASE productdb;"
 
       - name: Create projectordb
+        if: steps.changes.outputs.changed == 'true'
         env:
           PGPASSWORD: taskpass
         run: |
@@ -335,30 +391,37 @@ jobs:
       # and whichever runs first claims the version counter, causing the other
       # to skip migrations and fail on table references. See commit 25054f5.
       - name: Run auth-service migrations
+        if: steps.changes.outputs.changed == 'true'
         run: |
           migrate -path go/auth-service/migrations -database "${DATABASE_URL}&x-migrations-table=auth_schema_migrations" up
 
       - name: Apply auth-service seed data
+        if: steps.changes.outputs.changed == 'true'
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f go/auth-service/seed.sql
 
       - name: Run order-service migrations
+        if: steps.changes.outputs.changed == 'true'
         run: |
           migrate -path go/order-service/migrations -database "${DATABASE_URL}&x-migrations-table=ecommerce_schema_migrations" up
 
       - name: Apply order-service seed data
+        if: steps.changes.outputs.changed == 'true'
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f go/order-service/seed.sql
 
       - name: Run product-service migrations
+        if: steps.changes.outputs.changed == 'true'
         run: |
           migrate -path go/product-service/migrations -database "postgres://taskuser:taskpass@localhost:5432/productdb?sslmode=disable&x-migrations-table=product_schema_migrations" up
 
       - name: Apply product seed data
+        if: steps.changes.outputs.changed == 'true'
         run: |
           psql "postgres://taskuser:taskpass@localhost:5432/productdb?sslmode=disable" -v ON_ERROR_STOP=1 -f go/product-service/seed.sql
 
       - name: Verify tables exist
+        if: steps.changes.outputs.changed == 'true'
         run: |
           psql "$DATABASE_URL" -c "\dt" | tee /tmp/tables.txt
           grep -q ' users ' /tmp/tables.txt || (echo "users table missing" && exit 1)
@@ -366,15 +429,18 @@ jobs:
           grep -q ' orders ' /tmp/tables.txt || (echo "orders table missing" && exit 1)
 
       - name: Run order-projector migrations
+        if: steps.changes.outputs.changed == 'true'
         run: |
           migrate -path go/order-projector/migrations -database "postgres://taskuser:taskpass@localhost:5432/projectordb?sslmode=disable&x-migrations-table=projector_schema_migrations" up
 
       - name: Verify product tables exist
+        if: steps.changes.outputs.changed == 'true'
         run: |
           psql "postgres://taskuser:taskpass@localhost:5432/productdb?sslmode=disable" -c "\dt" | tee /tmp/product-tables.txt
           grep -q ' products ' /tmp/product-tables.txt || (echo "products table missing in productdb" && exit 1)
 
       - name: Verify projector tables exist
+        if: steps.changes.outputs.changed == 'true'
         run: |
           psql "postgres://taskuser:taskpass@localhost:5432/projectordb?sslmode=disable" -c "\dt" | tee /tmp/projector-tables.txt
           grep -q ' order_timeline ' /tmp/projector-tables.txt || (echo "order_timeline table missing in projectordb" && exit 1)
@@ -388,8 +454,17 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: frontend .github/workflows/ci.yml .github/actions/check-changes/action.yml
 
       - name: Set up Node
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -397,15 +472,19 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
+        if: steps.changes.outputs.changed == 'true'
         run: npm ci
 
       - name: Lint
+        if: steps.changes.outputs.changed == 'true'
         run: npm run lint
 
       - name: Type check
+        if: steps.changes.outputs.changed == 'true'
         run: npx tsc --noEmit
 
       - name: Build
+        if: steps.changes.outputs.changed == 'true'
         run: npm run build
 
   e2e-mocked:
@@ -447,8 +526,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: k8s java/k8s go/k8s scripts/k8s-policy-check.sh .github/workflows/ci.yml .github/actions/check-changes/action.yml
 
       - name: Install kubeconform
+        if: steps.changes.outputs.changed == 'true'
         run: |
           curl -L -o kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
           tar xf kubeconform.tar.gz
@@ -456,6 +544,7 @@ jobs:
           kubeconform -v
 
       - name: Install yq
+        if: steps.changes.outputs.changed == 'true'
         run: |
           sudo curl -L -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
@@ -465,6 +554,7 @@ jobs:
       # Exclude overlays/ dirs — they contain Kustomize patch fragments,
       # not standalone manifests (e.g. $patch: delete directives).
       - name: Stage A — kubeconform
+        if: steps.changes.outputs.changed == 'true'
         run: |
           find k8s/ java/k8s/ go/k8s/ \
             -type f \( -name '*.yml' -o -name '*.yaml' \) \
@@ -475,18 +565,21 @@ jobs:
 
       # Stage B: spin up a throwaway kind cluster and run server-side dry-run.
       - name: Stage B — kind cluster (create)
+        if: steps.changes.outputs.changed == 'true'
         uses: helm/kind-action@v1
         with:
           cluster_name: manifest-validation
           wait: 60s
 
       - name: Stage B — create namespaces
+        if: steps.changes.outputs.changed == 'true'
         run: |
           for ns in ai-services java-tasks go-ecommerce monitoring ai-services-qa java-tasks-qa go-ecommerce-qa; do
             kubectl create namespace "$ns"
           done
 
       - name: Stage B — server-side dry-run
+        if: steps.changes.outputs.changed == 'true'
         run: |
           # Apply every manifest directory recursively. --dry-run=server
           # exercises the real API server's validation and admission.
@@ -501,6 +594,7 @@ jobs:
 
       # Stage C: portfolio-specific policy rules.
       - name: Stage C — policy check
+        if: steps.changes.outputs.changed == 'true'
         run: scripts/k8s-policy-check.sh
 
   compose-smoke:
@@ -508,8 +602,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: services docker-compose.yml docker-compose.ci.yml nginx .github/workflows/ci.yml .github/actions/check-changes/action.yml
 
       - name: Log in to GHCR (for pulling cached images)
+        if: steps.changes.outputs.changed == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -517,9 +620,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create empty .env (required by docker-compose.yml env_file refs)
+        if: steps.changes.outputs.changed == 'true'
         run: touch .env
 
       - name: Pull pre-built images and start compose stack
+        if: steps.changes.outputs.changed == 'true'
         run: |
           # Pull pre-built GHCR images instead of building from source.
           # This skips the ~10 min pip install during docker build.
@@ -537,6 +642,7 @@ jobs:
             qdrant gateway ingestion chat debug mock-ollama
 
       - name: Wait for gateway to be reachable
+        if: steps.changes.outputs.changed == 'true'
         run: |
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:8000/chat/health >/dev/null 2>&1; then
@@ -555,24 +661,27 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
+        if: steps.changes.outputs.changed == 'true'
         working-directory: frontend
         run: npm ci
 
       - name: Install Playwright browsers
+        if: steps.changes.outputs.changed == 'true'
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
       - name: Run smoke-ci Playwright tests
+        if: steps.changes.outputs.changed == 'true'
         working-directory: frontend
         run: npx playwright test --config=playwright.smoke-ci.config.ts
 
       - name: Dump compose logs on failure
-        if: failure()
+        if: steps.changes.outputs.changed == 'true' && failure()
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=200
 
       - name: Tear down compose stack
-        if: always()
+        if: steps.changes.outputs.changed == 'true' && always()
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
 
@@ -583,20 +692,31 @@ jobs:
       JWT_SECRET: ci-test-secret
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: go .github/workflows/ci.yml .github/actions/check-changes/action.yml
 
       - name: Build Go service images
+        if: steps.changes.outputs.changed == 'true'
         working-directory: go
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml build \
             auth-service order-service product-service cart-service analytics-service
 
       - name: Start infra services
+        if: steps.changes.outputs.changed == 'true'
         working-directory: go
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d \
             postgres redis rabbitmq kafka
 
       - name: Wait for infra to be healthy
+        if: steps.changes.outputs.changed == 'true'
         working-directory: go
         run: |
           for i in $(seq 1 30); do
@@ -609,6 +729,7 @@ jobs:
           done
 
       - name: Run migrations and seed data before starting services
+        if: steps.changes.outputs.changed == 'true'
         working-directory: go
         run: |
           DC="docker compose -f docker-compose.yml -f docker-compose.ci.yml"
@@ -642,12 +763,14 @@ jobs:
             -c 'PGPASSWORD=taskpass psql -h postgres -U taskuser -d ecommercedb -f /seed.sql'
 
       - name: Start application services
+        if: steps.changes.outputs.changed == 'true'
         working-directory: go
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d \
             auth-service order-service product-service cart-service analytics-service
 
       - name: Wait for services to be healthy
+        if: steps.changes.outputs.changed == 'true'
         run: |
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:8091/health >/dev/null 2>&1 && \
@@ -669,25 +792,28 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
+        if: steps.changes.outputs.changed == 'true'
         working-directory: frontend
         run: npm ci
 
       - name: Install Playwright browsers
+        if: steps.changes.outputs.changed == 'true'
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
       - name: Run Go smoke Playwright tests
+        if: steps.changes.outputs.changed == 'true'
         working-directory: frontend
         run: npx playwright test --config=playwright.smoke-go.config.ts
 
       - name: Dump compose logs on failure
-        if: failure()
+        if: steps.changes.outputs.changed == 'true' && failure()
         working-directory: go
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=200
 
       - name: Tear down compose stack
-        if: always()
+        if: steps.changes.outputs.changed == 'true' && always()
         working-directory: go
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
@@ -697,8 +823,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: java .github/workflows/ci.yml .github/actions/check-changes/action.yml
 
       - name: Set up JDK 21
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -706,20 +841,24 @@ jobs:
           cache: gradle
 
       - name: Build JARs (Dockerfiles expect pre-built JARs)
+        if: steps.changes.outputs.changed == 'true'
         working-directory: java
         run: ./gradlew bootJar --no-daemon
 
       - name: Build Java service images
+        if: steps.changes.outputs.changed == 'true'
         working-directory: java
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml build
 
       - name: Start Java compose stack
+        if: steps.changes.outputs.changed == 'true'
         working-directory: java
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 
       - name: Wait for gateway to be healthy
+        if: steps.changes.outputs.changed == 'true'
         run: |
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:8080/graphql \
@@ -741,25 +880,28 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
+        if: steps.changes.outputs.changed == 'true'
         working-directory: frontend
         run: npm ci
 
       - name: Install Playwright browsers
+        if: steps.changes.outputs.changed == 'true'
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
       - name: Run Java smoke Playwright tests
+        if: steps.changes.outputs.changed == 'true'
         working-directory: frontend
         run: npx playwright test --config=playwright.smoke-java.config.ts
 
       - name: Dump compose logs on failure
-        if: failure()
+        if: steps.changes.outputs.changed == 'true' && failure()
         working-directory: java
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail=200
 
       - name: Tear down compose stack
-        if: always()
+        if: steps.changes.outputs.changed == 'true' && always()
         working-directory: java
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
@@ -797,16 +939,34 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ingestion, chat, debug, eval]
+        include:
+          - service: ingestion
+            paths: services/ingestion services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: chat
+            paths: services/chat services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: debug
+            paths: services/debug services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: eval
+            paths: services/eval services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: ${{ matrix.paths }}
 
       - name: Set up Python
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Cache virtualenv
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/cache@v4
         id: venv-cache
         with:
@@ -814,6 +974,7 @@ jobs:
           key: venv-audit-${{ matrix.service }}-${{ hashFiles(format('services/{0}/requirements.txt', matrix.service), 'services/shared/pyproject.toml') }}
 
       - name: Install dependencies
+        if: steps.changes.outputs.changed == 'true'
         if: steps.venv-cache.outputs.cache-hit != 'true'
         run: |
           python -m venv .venv
@@ -838,6 +999,7 @@ jobs:
       # GHSA-rr7j-v2q5-chgv (langsmith) — streaming bypass of output redaction, not used
       # CVE-2026-3219 (pip) — pip itself, no fix version available yet
       - name: Run pip-audit
+        if: steps.changes.outputs.changed == 'true'
         run: |
           source .venv/bin/activate
           pip-audit \
@@ -899,27 +1061,52 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dockerfile:
-          - services/ingestion/Dockerfile
-          - services/chat/Dockerfile
-          - services/debug/Dockerfile
-          - services/eval/Dockerfile
-          - java/task-service/Dockerfile
-          - java/activity-service/Dockerfile
-          - java/notification-service/Dockerfile
-          - java/gateway-service/Dockerfile
-          - go/auth-service/Dockerfile
-          - go/order-service/Dockerfile
-          - go/ai-service/Dockerfile
-          - go/analytics-service/Dockerfile
-          - go/product-service/Dockerfile
-          - go/cart-service/Dockerfile
-          - go/payment-service/Dockerfile
-          - go/order-projector/Dockerfile
+        include:
+          - dockerfile: services/ingestion/Dockerfile
+            paths: services/ingestion/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: services/chat/Dockerfile
+            paths: services/chat/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: services/debug/Dockerfile
+            paths: services/debug/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: services/eval/Dockerfile
+            paths: services/eval/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: java/task-service/Dockerfile
+            paths: java/task-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: java/activity-service/Dockerfile
+            paths: java/activity-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: java/notification-service/Dockerfile
+            paths: java/notification-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: java/gateway-service/Dockerfile
+            paths: java/gateway-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: go/auth-service/Dockerfile
+            paths: go/auth-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: go/order-service/Dockerfile
+            paths: go/order-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: go/ai-service/Dockerfile
+            paths: go/ai-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: go/analytics-service/Dockerfile
+            paths: go/analytics-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: go/product-service/Dockerfile
+            paths: go/product-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: go/cart-service/Dockerfile
+            paths: go/cart-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: go/payment-service/Dockerfile
+            paths: go/payment-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: go/order-projector/Dockerfile
+            paths: go/order-projector/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check for changes
+        id: changes
+        uses: ./.github/actions/check-changes
+        with:
+          paths: ${{ matrix.paths }}
 
       - name: Run Hadolint
+        if: steps.changes.outputs.changed == 'true'
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: ${{ matrix.dockerfile }}
