@@ -9,6 +9,7 @@ resources:
   - configmaps/postgres-exporter-queries.yml
   - configmaps/postgres-initdb.yml
   - configmaps/postgres-wal-scripts.yml
+  - configmaps/postgres-replica-scripts.yml
   - configmaps/rabbitmq-definitions.yml
   - configmaps/task-service-config.yml
   - configmaps/postgres-verify-scripts.yml
@@ -27,6 +28,8 @@ resources:
   - services/mongodb.yml
   - services/notification-service.yml
   - services/postgres.yml
+  - services/postgres-replica.yml
+  - statefulsets/postgres-replica.yml
   - services/rabbitmq.yml
   - services/redis.yml
   - services/task-service.yml
