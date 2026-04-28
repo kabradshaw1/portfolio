@@ -35,6 +35,9 @@ patches:
         path: /data/DATABASE_URL
         value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb_qa?sslmode=disable&application_name=order-service"
       - op: replace
+        path: /data/DATABASE_URL_REPLICA
+        value: "postgres://taskuser:taskpass@postgres-replica.java-tasks.svc.cluster.local:5432/orderdb_qa?sslmode=disable"
+      - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
       - op: replace

@@ -15,6 +15,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/auth-service/authmiddleware"
 	authpb "github.com/kabradshaw1/portfolio/go/auth-service/pb/auth/v1"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/cartclient"
+	"github.com/kabradshaw1/portfolio/go/order-service/internal/db"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/partition"
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/paymentclient"
@@ -46,7 +47,14 @@ func main() {
 	))
 	buildinfo.Log()
 
-	pool := connectPostgres(ctx, cfg.DatabaseURL)
+	pools, err := db.New(ctx, cfg.DatabaseURL, cfg.DatabaseURLReplica)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	pool := pools.Primary
+	slog.Info("connected to database",
+		"replica_configured", cfg.DatabaseURLReplica != "",
+	)
 
 	redisClient := connectRedis(ctx, cfg.RedisURL)
 
@@ -149,8 +157,10 @@ func main() {
 	refresher := reporting.NewRefresher(pool, 15*time.Minute)
 	go refresher.Run(ctx)
 
-	// Create reporting repository and handler
-	reportingRepo := reporting.NewRepository(pool, pgBreaker)
+	// Create reporting repository and handler. Reporting reads target the
+	// streaming read replica when DATABASE_URL_REPLICA is set; otherwise
+	// pools.Reporting falls back to the primary (see internal/db.New).
+	reportingRepo := reporting.NewRepository(pools.Reporting, pgBreaker)
 	reportingHandler := handler.NewReportingHandler(reportingRepo)
 
 	orderSvc := service.NewOrderService(orderRepo, cartClient, orch)
@@ -208,7 +218,7 @@ func main() {
 	sm.Register("drain-http", 0, shutdown.DrainHTTP("order-http", srv))
 	sm.Register("wait-saga", 10, shutdown.WaitForInflight("order-saga", consumer.IsIdle, 100*time.Millisecond))
 	sm.Register("postgres", 20, func(_ context.Context) error {
-		pool.Close()
+		pools.Close()
 		return nil
 	})
 	sm.Register("rabbitmq", 20, func(_ context.Context) error {

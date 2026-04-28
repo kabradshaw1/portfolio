@@ -8,9 +8,10 @@ import (
 
 // Config holds all environment-driven configuration for the ecommerce service.
 type Config struct {
-	DatabaseURL  string // required
-	JWTSecret    string // required
-	RabbitmqURL  string // required
+	DatabaseURL        string // required
+	DatabaseURLReplica string // optional; falls back to DatabaseURL when unset
+	JWTSecret          string // required
+	RabbitmqURL        string // required
 	AllowedOrigins string // default "http://localhost:3000"
 	Port           string // default "8092"
 	RedisURL       string // optional
@@ -28,9 +29,10 @@ type Config struct {
 // It fatals on missing required values.
 func loadConfig() Config {
 	cfg := Config{
-		DatabaseURL:    os.Getenv("DATABASE_URL"),
-		JWTSecret:      os.Getenv("JWT_SECRET"),
-		RabbitmqURL:    os.Getenv("RABBITMQ_URL"),
+		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		DatabaseURLReplica: os.Getenv("DATABASE_URL_REPLICA"),
+		JWTSecret:          os.Getenv("JWT_SECRET"),
+		RabbitmqURL:        os.Getenv("RABBITMQ_URL"),
 		AllowedOrigins: os.Getenv("ALLOWED_ORIGINS"),
 		Port:           os.Getenv("PORT"),
 		RedisURL:       os.Getenv("REDIS_URL"),
