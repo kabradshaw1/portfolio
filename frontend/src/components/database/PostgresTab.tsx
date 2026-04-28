@@ -7,9 +7,10 @@ import {
 
 const tocItems: StickyTocItem[] = [
   { id: "optimization", label: "Query Optimization" },
-  { id: "schema", label: "Schema Design" },
+  { id: "observability", label: "Query Observability" },
+  { id: "reliability", label: "Reliability & Backups" },
   { id: "migrations", label: "Migration Safety" },
-  { id: "reliability", label: "Reliability & Recovery" },
+  { id: "schema", label: "Schema Design" },
 ];
 
 export function PostgresTab() {
@@ -36,6 +37,46 @@ export function PostgresTab() {
                 Docker-equipped machine; results were captured to{" "}
                 <code>go/benchdata/</code> for interview-ready evidence.
               </p>
+              <div className="mt-6 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="pb-2 pr-4 font-medium text-foreground">
+                        Optimization
+                      </th>
+                      <th className="pb-2 pr-4 font-medium text-foreground">Before</th>
+                      <th className="pb-2 pr-4 font-medium text-foreground">After</th>
+                      <th className="pb-2 font-medium text-foreground">Speedup</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    <tr>
+                      <td className="py-2 pr-4">Order creation (20 items)</td>
+                      <td className="py-2 pr-4">4.5 ms</td>
+                      <td className="py-2 pr-4">1.3 ms</td>
+                      <td className="py-2 font-medium text-foreground">3.5&times;</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-4">Product search</td>
+                      <td className="py-2 pr-4">1.0 ms</td>
+                      <td className="py-2 pr-4">0.55 ms</td>
+                      <td className="py-2 font-medium text-foreground">1.9&times;</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-4">Order creation (5 items)</td>
+                      <td className="py-2 pr-4">1.5 ms</td>
+                      <td className="py-2 pr-4">0.8 ms</td>
+                      <td className="py-2 font-medium text-foreground">1.8&times;</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-4">Category filter</td>
+                      <td className="py-2 pr-4">430 &micro;s</td>
+                      <td className="py-2 pr-4">327 &micro;s</td>
+                      <td className="py-2 font-medium text-foreground">1.3&times;</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </>
           }
           bullets={[
@@ -76,53 +117,165 @@ export function PostgresTab() {
         />
 
         <PillarSection
-          id="schema"
-          title="Schema Design — Partitioning & Materialized Views"
+          id="observability"
+          title="Query Observability — pg_stat_statements + auto_explain"
           narrative={
             <>
               <p>
-                Reporting workloads on a monotonically growing <code>orders</code> table forced a
-                schema-design pass. Range partitioning by <code>created_at</code> prunes scan scope;
-                three materialized views give constant-time reads for dashboard queries; CTE +
-                window functions express the rolling-average business logic without
-                application-side aggregation.
+                Slow queries don&apos;t fix themselves; they have to be found first.
+                Postgres ships two extensions that do exactly this — <code>pg_stat_statements</code>{" "}
+                aggregates per-query latency, call counts, and IO; <code>auto_explain</code>{" "}
+                captures full execution plans for any query that crosses a duration threshold.
+              </p>
+              <p>
+                Both are wired into the portfolio so the slow query a hiring manager would
+                normally have to take on faith is instead visible in Grafana.
               </p>
             </>
           }
           bullets={[
             <>
-              Range partitioning on <code>orders.created_at</code> (monthly), 18 months
-              pre-provisioned with a default catch-all partition
+              <code>shared_preload_libraries=&apos;pg_stat_statements,auto_explain&apos;</code> set on
+              the Postgres deployment — server-wide enablement; restart picked up by the existing{" "}
+              <code>Recreate</code> strategy.
             </>,
             <>
-              Background goroutine creates partitions 3 months ahead daily; idempotent{" "}
-              <code>CREATE TABLE IF NOT EXISTS</code>
+              Per-database <code>CREATE EXTENSION IF NOT EXISTS pg_stat_statements</code> for all
+              7 prod databases, bootstrapped by an idempotent K8s Job{" "}
+              (<code>postgres-extensions-bootstrap</code>).
             </>,
             <>
-              Three materialized views (<code>mv_daily_revenue</code>,{" "}
-              <code>mv_product_performance</code>, <code>mv_customer_summary</code>) refreshed{" "}
-              <code>CONCURRENTLY</code> on a 15-min cadence
+              <code>auto_explain.log_min_duration=500ms</code>, <code>log_analyze=true</code>,{" "}
+              <code>log_format=json</code> — every query over 500ms writes a JSON plan to Postgres
+              logs, which Promtail ships to Loki keyed by <code>query_id</code>.
             </>,
             <>
-              Unique indexes per MV to support <code>REFRESH CONCURRENTLY</code>
+              Custom <code>postgres_exporter</code> queries surface the top-50 by mean latency
+              and the top-50 by IO, with <code>query_text</code> truncated to 200 chars to bound
+              label cardinality.
             </>,
             <>
-              CTE-driven reporting with{" "}
-              <code>SUM(...) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)</code> for
-              rolling 7/30-day averages
+              Three Prometheus alerts: hard ceiling on per-query mean (&gt; 1s for 10m),
+              regression detection (mean &gt; 2× the 7-day baseline for 15m), and an{" "}
+              <code>auto_explain</code>-stalled canary that fires when no plan log lines arrive
+              in 24h.
             </>,
             <>
-              <code>DENSE_RANK()</code> for tie-aware top-N (turnover, top customers)
-            </>,
-            <>
-              Composite primary key trade-off documented (<code>(id, created_at)</code> removes
-              single-column FK target — referential integrity moves to the saga)
+              Read-only <code>grafana_reader</code> role (<code>pg_monitor</code> predefined
+              role) lets a Grafana PostgreSQL data source render live &ldquo;top slow
+              queries&rdquo; tables without leaking write access.
             </>,
           ]}
           links={[
             {
               label: "Read the ADR",
-              href: "https://github.com/kabradshaw1/portfolio/blob/main/docs/adr/ecommerce/go-sql-optimization-reporting.md",
+              href: "https://github.com/kabradshaw1/portfolio/blob/main/docs/adr/observability/2026-04-27-pg-query-observability.md",
+            },
+            {
+              label: "Detailed observability story",
+              href: "/observability",
+            },
+          ]}
+        />
+
+        <PillarSection
+          id="reliability"
+          title="Reliability & Backups"
+          narrative={
+            <>
+              <p>
+                Production-grade SQL isn&apos;t only about queries. Postgres needs scheduled
+                backups, continuous WAL archiving, monitored health, and a written runbook for
+                the day someone has to restore.
+              </p>
+              <p>
+                The portfolio&apos;s Postgres deployment ships all four — and verifies the
+                backups are actually restorable, because a backup that hasn&apos;t been
+                restored is a hope, not a guarantee.
+              </p>
+            </>
+          }
+          bullets={[
+            <>
+              Daily <code>pg_dump --format=custom</code> per database (7 prod DBs), 7-day
+              retention; backups land on a hostPath PV (<code>/backups/postgres</code>) separate
+              from the Postgres data PVC so PVC corruption doesn&apos;t affect backups.
+            </>,
+            <>
+              Postgres deployment uses <code>Recreate</code> strategy +{" "}
+              <code>terminationGracePeriodSeconds: 90</code> +{" "}
+              <code>preStop: pg_ctl stop -m fast</code> — the combination that prevents the
+              WAL-corruption incident the data-integrity ADR documents.
+            </>,
+            <>
+              <code>PodDisruptionBudget</code> with <code>maxUnavailable: 0</code> on the
+              single-replica DB so node drains don&apos;t take it out involuntarily.
+            </>,
+            <>
+              <code>archive_mode=on</code> + custom <code>archive_command</code> wrapper script{" "}
+              (<code>pg-archive-wal.sh</code>, atomic via temp + rename) ships every WAL segment
+              to a 10Gi <code>wal-archive</code> PV.
+            </>,
+            <>
+              <code>archive_timeout=300</code> forces a WAL switch every 5 min during idle
+              periods, so RPO drops from ≤ 24h to ≤ 5m.
+            </>,
+            <>
+              Weekly <code>pg_basebackup</code> CronJob (Sundays 03:00 UTC) writes{" "}
+              <code>--format=tar --gzip --wal-method=fetch</code> tarballs; retains 4 weeklies +
+              WAL back to the second-newest base backup. Uses a dedicated <code>replicator</code>{" "}
+              role with only <code>REPLICATION LOGIN</code> (not <code>taskuser</code>).
+            </>,
+            <>
+              Three <code>pg_stat_archiver</code>-based alerts: archive command failing, WAL
+              archive stale, base backup stale.
+            </>,
+            <>
+              Daily <code>postgres-backup-verify</code> CronJob restores yesterday&apos;s dump
+              into a throwaway database, runs <code>pg_restore --list | wc -l</code> and a
+              row-count smoke check, pushes success/failure to Pushgateway as a Prometheus
+              metric.
+            </>,
+            <>
+              Two verification alerts: verification <em>failed</em> (immediate, severity
+              critical) and verification <em>stale</em> (no successful verify in 26h, severity
+              warning).
+            </>,
+            <>
+              The verification metric is on the existing PostgreSQL dashboard alongside the
+              <code>pg_dump</code>-stale and basebackup-stale panels — three operational
+              signals on one screen.
+            </>,
+            <>
+              <code>postgres_exporter</code> sidecar feeding Prometheus; Grafana dashboard
+              surfaces connection counts, replication lag, table sizes, and slow queries.
+            </>,
+            <>
+              Alert rules: backup-job failure, replication-lag-too-high, disk-full,
+              long-running-transaction.
+            </>,
+            <>
+              Four-scenario runbook (<code>docs/runbooks/postgres-recovery.md</code>): fresh
+              PVC reset, full restore from <code>pg_dump</code>, partial restore (single
+              database), point-in-time recovery to a specific timestamp.
+            </>,
+          ]}
+          links={[
+            {
+              label: "Read the data-integrity ADR",
+              href: "https://github.com/kabradshaw1/portfolio/blob/main/docs/adr/infrastructure/2026-04-24-postgres-data-integrity.md",
+            },
+            {
+              label: "Read the WAL/PITR ADR",
+              href: "https://github.com/kabradshaw1/portfolio/blob/main/docs/adr/database/wal-archiving-pitr.md",
+            },
+            {
+              label: "Read the backup-verification ADR",
+              href: "https://github.com/kabradshaw1/portfolio/blob/main/docs/adr/database/backup-verification.md",
+            },
+            {
+              label: "Read the recovery runbook",
+              href: "https://github.com/kabradshaw1/portfolio/blob/main/docs/runbooks/postgres-recovery.md",
             },
           ]}
         />
@@ -181,43 +334,53 @@ export function PostgresTab() {
         />
 
         <PillarSection
-          id="reliability"
-          title="Reliability & Recovery"
+          id="schema"
+          title="Schema Design — Partitioning & Materialized Views"
           narrative={
             <>
               <p>
-                Production-grade SQL isn&apos;t only about queries. Postgres needs scheduled
-                backups, monitored health, and a written runbook for the day someone has to restore
-                from one. The portfolio&apos;s Postgres deployment ships with all three.
+                Reporting workloads on a monotonically growing <code>orders</code> table forced a
+                schema-design pass. Range partitioning by <code>created_at</code> prunes scan scope;
+                three materialized views give constant-time reads for dashboard queries; CTE +
+                window functions express the rolling-average business logic without
+                application-side aggregation.
               </p>
             </>
           }
           bullets={[
             <>
-              Automated <code>pg_dump</code> CronJob writing to a persistent volume on the Minikube
-              node; retention policy in the manifest
+              Range partitioning on <code>orders.created_at</code> (monthly), 18 months
+              pre-provisioned with a default catch-all partition
             </>,
             <>
-              Pod Disruption Budget on the StatefulSet (<code>maxUnavailable: 1</code>) so node
-              drains don&apos;t block on a single-replica DB
+              Background goroutine creates partitions 3 months ahead daily; idempotent{" "}
+              <code>CREATE TABLE IF NOT EXISTS</code>
             </>,
             <>
-              <code>postgres_exporter</code> sidecar feeding Prometheus; Grafana dashboard surfaces
-              connection counts, replication lag, table sizes, and slow queries
+              Three materialized views (<code>mv_daily_revenue</code>,{" "}
+              <code>mv_product_performance</code>, <code>mv_customer_summary</code>) refreshed{" "}
+              <code>CONCURRENTLY</code> on a 15-min cadence
             </>,
             <>
-              Alert rules: backup-job failure, replication-lag-too-high, disk-full,
-              long-running-transaction
+              Unique indexes per MV to support <code>REFRESH CONCURRENTLY</code>
             </>,
             <>
-              Written recovery runbook: step-by-step from <code>pg_dump</code> artifact to a
-              restored database
+              CTE-driven reporting with{" "}
+              <code>SUM(...) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)</code> for
+              rolling 7/30-day averages
+            </>,
+            <>
+              <code>DENSE_RANK()</code> for tie-aware top-N (turnover, top customers)
+            </>,
+            <>
+              Composite primary key trade-off documented (<code>(id, created_at)</code> removes
+              single-column FK target — referential integrity moves to the saga)
             </>,
           ]}
           links={[
             {
-              label: "Read the runbook",
-              href: "https://github.com/kabradshaw1/portfolio/blob/main/docs/runbooks/postgres-recovery.md",
+              label: "Read the ADR",
+              href: "https://github.com/kabradshaw1/portfolio/blob/main/docs/adr/ecommerce/go-sql-optimization-reporting.md",
             },
           ]}
         />
