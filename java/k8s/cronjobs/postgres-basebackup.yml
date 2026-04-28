@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-basebackup
+  namespace: java-tasks
+spec:
+  schedule: "0 3 * * 0"   # Sundays 03:00 UTC, one hour after the daily pg_dump
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: basebackup
+              image: postgres:17-alpine
+              command: ["/usr/local/bin/pg-basebackup-and-prune.sh"]
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: java-secrets
+                      key: replicator-password
+              volumeMounts:
+                - name: scripts
+                  mountPath: /usr/local/bin/pg-basebackup-and-prune.sh
+                  subPath: pg-basebackup-and-prune.sh
+                  readOnly: true
+                - name: basebackup
+                  mountPath: /backups/basebackup
+                - name: wal-archive
+                  mountPath: /backups/wal-archive
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+          volumes:
+            - name: scripts
+              configMap:
+                name: postgres-wal-scripts
+                defaultMode: 0755
+            - name: basebackup
+              persistentVolumeClaim:
+                claimName: postgres-basebackup
+            - name: wal-archive
+              persistentVolumeClaim:
+                claimName: postgres-wal-archive

@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-wal-scripts
+  namespace: java-tasks
+data:
+  pg-archive-wal.sh: |
+    #!/bin/sh
+    # Postgres archive_command target.
+    #   $1 = %p — absolute path to the WAL segment (under pg_wal/)
+    #   $2 = %f — segment filename
+    # Contract: exit 0 on success. Anything non-zero causes Postgres to
+    # retry forever, which stalls WAL recycling — so we want loud-fail
+    # on real corruption (overwrite attempt) and durable success on the
+    # happy path.
+    set -eu
+
+    SRC="$1"
+    FN="$2"
+    DST_DIR="/var/lib/postgresql/wal-archive"
+    DST="$DST_DIR/$FN"
+    TMP="$DST.tmp"
+
+    if [ -e "$DST" ]; then
+      echo "pg-archive-wal: $FN already archived; refusing overwrite" >&2
+      exit 1
+    fi
+
+    cp "$SRC" "$TMP"
+    sync "$TMP"
+    mv "$TMP" "$DST"
+  pg-basebackup-and-prune.sh: |
+    #!/bin/sh
+    # Weekly: take a base backup as a gzip tarball, prune old base
+    # backups, and prune WAL older than the second-newest surviving
+    # base backup.
+    set -eu
+
+    STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+    BACKUP_DIR="/backups/basebackup/$STAMP"
+    ARCHIVE_DIR="/backups/wal-archive"
+    RETAIN=4   # keep 4 most-recent weekly base backups
+
+    mkdir -p "$BACKUP_DIR"
+
+    echo "Base backup -> $BACKUP_DIR"
+    pg_basebackup \
+      --host=postgres.java-tasks.svc.cluster.local \
+      --username=replicator \
+      --pgdata="$BACKUP_DIR" \
+      --format=tar \
+      --gzip --compress=6 \
+      --wal-method=fetch \
+      --label="weekly-$STAMP" \
+      --checkpoint=fast \
+      --progress
+
+    echo "Pruning base backups older than $RETAIN newest..."
+    # shellcheck disable=SC2012  # ls -1d is fine for our naming convention
+    ls -1d /backups/basebackup/*/ 2>/dev/null \
+      | sort \
+      | head -n -"$RETAIN" \
+      | xargs -r rm -rf
+
+    echo "Pruning WAL older than the second-newest base backup..."
+    SECOND_NEWEST=$(ls -1d /backups/basebackup/*/ 2>/dev/null | sort | tail -n 2 | head -n 1)
+    if [ -n "$SECOND_NEWEST" ] && [ -f "$SECOND_NEWEST/backup_label.gz" ]; then
+      START_WAL=$(zcat "$SECOND_NEWEST/backup_label.gz" \
+                  | awk '/^START WAL LOCATION:/ {print $6; exit}' \
+                  | tr -d '()')
+      if [ -n "$START_WAL" ]; then
+        pg_archivecleanup "$ARCHIVE_DIR" "$START_WAL"
+      fi
+    fi
+
+    echo "Base backup + prune complete."
+    ls -1d /backups/basebackup/*/ | sort
