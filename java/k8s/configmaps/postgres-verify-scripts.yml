@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-verify-scripts
+  namespace: java-tasks
+data:
+  pg-verify-backups.sh: |
+    #!/bin/sh
+    # Restore each pg_dump file to an ephemeral local Postgres,
+    # smoke-check it, and push per-DB metrics to Pushgateway.
+    set -eu
+
+    DBS="${VERIFY_DBS:-authdb productdb orderdb cartdb paymentdb ecommercedb projectordb}"
+    PUSHGATEWAY="${PUSHGATEWAY_URL:-http://pushgateway.monitoring.svc.cluster.local:9091}"
+    DUMPS_DIR="${DUMPS_DIR:-/backups/postgres}"
+    DATA_DIR="${PG_DATA_DIR:-/var/lib/postgresql/data}"
+    SOCKET_DIR="${PG_SOCKET_DIR:-/tmp/pg-verify}"
+
+    mkdir -p "$SOCKET_DIR"
+    chmod 700 "$SOCKET_DIR"
+
+    push_success() {
+      db="$1"; rows="$2"; dump="$3"
+      now="$(date +%s)"
+      dump_age_sec="$(( now - $(stat -c %Y "$dump") ))"
+      cat <<EOF | curl -fsS --data-binary @- "$PUSHGATEWAY/metrics/job/postgres_backup_verify/instance/$db"
+    # TYPE backup_verification_last_success_timestamp gauge
+    backup_verification_last_success_timestamp $now
+    # TYPE backup_verification_restored_rows gauge
+    backup_verification_restored_rows $rows
+    # TYPE backup_verification_dump_age_seconds gauge
+    backup_verification_dump_age_seconds $dump_age_sec
+    EOF
+    }
+
+    push_failure() {
+      db="$1"; reason="$2"
+      now="$(date +%s)"
+      cat <<EOF | curl -fsS --data-binary @- "$PUSHGATEWAY/metrics/job/postgres_backup_verify/instance/$db"
+    # TYPE backup_verification_last_failure_timestamp gauge
+    backup_verification_last_failure_timestamp $now
+    # TYPE backup_verification_last_failure_reason gauge
+    backup_verification_last_failure_reason{reason="$reason"} 1
+    EOF
+    }
+
+    push_overall() {
+      ok="$1"
+      cat <<EOF | curl -fsS --data-binary @- "$PUSHGATEWAY/metrics/job/postgres_backup_verify"
+    # TYPE backup_verification_run_success gauge
+    backup_verification_run_success $ok
+    # TYPE backup_verification_run_timestamp gauge
+    backup_verification_run_timestamp $(date +%s)
+    EOF
+    }
+
+    if [ ! -f "$DATA_DIR/PG_VERSION" ]; then
+      echo "Initializing local Postgres data dir at $DATA_DIR"
+      initdb -D "$DATA_DIR" -U verify --auth=trust --no-locale --encoding=UTF8
+    fi
+
+    echo "Starting local Postgres on socket $SOCKET_DIR"
+    pg_ctl -D "$DATA_DIR" -l /tmp/pg-verify.log -o "-k $SOCKET_DIR -h ''" -w start
+
+    trap 'pg_ctl -D "$DATA_DIR" -m fast stop || true' EXIT
+
+    OVERALL_OK=1
+
+    for DB in $DBS; do
+      echo "Verifying $DB..."
+      DUMP="$(ls -t "$DUMPS_DIR/$DB"-*.dump 2>/dev/null | head -1 || true)"
+      if [ -z "$DUMP" ]; then
+        echo "  FAIL: no dump file found for $DB in $DUMPS_DIR"
+        push_failure "$DB" "no_dump_file"
+        OVERALL_OK=0
+        continue
+      fi
+
+      TARGET="${DB}_verify"
+      psql -h "$SOCKET_DIR" -U verify -d postgres -c "DROP DATABASE IF EXISTS $TARGET;" >/dev/null
+      psql -h "$SOCKET_DIR" -U verify -d postgres -c "CREATE DATABASE $TARGET;" >/dev/null
+
+      LOG="/tmp/pg_restore_${DB}.log"
+      if ! pg_restore -h "$SOCKET_DIR" -U verify -d "$TARGET" --no-owner --no-acl "$DUMP" > "$LOG" 2>&1; then
+        echo "  FAIL: pg_restore exited non-zero for $DB"
+        tail -20 "$LOG" || true
+        push_failure "$DB" "pg_restore_failed"
+        OVERALL_OK=0
+        psql -h "$SOCKET_DIR" -U verify -d postgres -c "DROP DATABASE $TARGET;" >/dev/null || true
+        continue
+      fi
+
+      ROWS="$(psql -h "$SOCKET_DIR" -U verify -d "$TARGET" -t -A -c "
+        SELECT COALESCE(SUM(reltuples)::bigint, 0)
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind = 'r' AND n.nspname = 'public';
+      ")"
+      ROWS="${ROWS:-0}"
+
+      if [ "$ROWS" -lt 1 ]; then
+        echo "  FAIL: restored $DB has zero rows in public schema"
+        push_failure "$DB" "empty_after_restore"
+        OVERALL_OK=0
+      else
+        echo "  OK: $DB has $ROWS rows"
+        push_success "$DB" "$ROWS" "$DUMP"
+      fi
+
+      psql -h "$SOCKET_DIR" -U verify -d postgres -c "DROP DATABASE $TARGET;" >/dev/null
+    done
+
+    push_overall "$OVERALL_OK"
+
+    if [ "$OVERALL_OK" -eq 1 ]; then
+      echo "All databases verified."
+      exit 0
+    else
+      echo "One or more databases failed verification."
+      exit 1
+    fi
