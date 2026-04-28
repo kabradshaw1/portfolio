@@ -758,9 +758,11 @@ kubectl wait --for=condition=complete job/go-auth-migrate`}
           <p className="mt-2 text-muted-foreground leading-relaxed">
             After every deployment, automated smoke tests verify the services are
             healthy. QA runs health endpoint checks against{" "}
-            <code>qa-api.kylebradshaw.dev</code>. Production runs Playwright
-            tests against the live site — including an end-to-end RAG flow that
-            uploads a PDF, asks a question, and verifies a streamed response.
+            <code>qa-api.kylebradshaw.dev</code> covering the Python AI, Java,
+            and Go stacks — auth, products, cart, orders, payments, and the
+            saga happy-path. Production runs Playwright tests against the live
+            site — including an end-to-end RAG flow that uploads a PDF, asks a
+            question, and verifies a streamed response.
           </p>
         </section>
       </div>

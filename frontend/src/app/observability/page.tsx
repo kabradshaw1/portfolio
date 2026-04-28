@@ -394,6 +394,53 @@ export default function ObservabilityPage() {
         </div>
       </section>
 
+      {/* Event Sourcing & CQRS */}
+      <section className="mt-12">
+        <div className="border-l-4 border-cyan-500/60 pl-4">
+          <h2 className="text-2xl font-semibold">
+            Event Sourcing &amp; CQRS &mdash; Order Projector
+          </h2>
+          <p className="mt-4 text-muted-foreground leading-relaxed">
+            The same{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              ecommerce.orders
+            </code>{" "}
+            Kafka topic that drives saga state also feeds an{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              order-projector
+            </code>{" "}
+            consumer, which writes a denormalized read model into{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              projectordb
+            </code>
+            . Reads against the projection are independent of the OLTP write
+            path —{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              order-service
+            </code>{" "}
+            owns the write schema, the projector owns the read schema, and the
+            two evolve on different timelines.
+          </p>
+          <p className="mt-4 text-muted-foreground leading-relaxed">
+            The pay-off is operational: dashboard and reporting reads on the
+            projection don&apos;t compete with checkout writes for primary-pool
+            connections, and the projection&apos;s shape can be tuned to query
+            patterns instead of transactional invariants. Trace context arrives
+            on Kafka headers, so a single order&apos;s lifecycle (HTTP →{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              order-service
+            </code>{" "}
+            → Kafka → projector) renders as one trace in Jaeger. The projector
+            reuses the same metric vocabulary as the analytics consumer (
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              kafka_consumer_lag
+            </code>
+            , aggregation latency), so a single dashboard panel covers both
+            consumers.
+          </p>
+        </div>
+      </section>
+
       {/* Alerting */}
       <section className="mt-12">
         <div className="border-l-4 border-red-500/60 pl-4">

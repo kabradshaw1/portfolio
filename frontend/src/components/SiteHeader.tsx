@@ -26,17 +26,11 @@ export function SiteHeader() {
             <Link href="/go" className={navLinkClass("/go")}>
               Go
             </Link>
-            <Link href="/aws" className={navLinkClass("/aws")}>
-              AWS
-            </Link>
-            <Link href="/java" className={navLinkClass("/java")}>
-              Java
+            <Link href="/database" className={navLinkClass("/database")}>
+              Database
             </Link>
             <Link href="/ai" className={navLinkClass("/ai")}>
               AI
-            </Link>
-            <Link href="/cicd" className={navLinkClass("/cicd")}>
-              CI/CD
             </Link>
             <Link
               href="/observability"
@@ -44,8 +38,17 @@ export function SiteHeader() {
             >
               Observability
             </Link>
+            <Link href="/cicd" className={navLinkClass("/cicd")}>
+              CI/CD
+            </Link>
+            <Link href="/aws" className={navLinkClass("/aws")}>
+              AWS
+            </Link>
             <Link href="/security" className={navLinkClass("/security")}>
               Security
+            </Link>
+            <Link href="/java" className={navLinkClass("/java")}>
+              Java
             </Link>
           </nav>
         </div>

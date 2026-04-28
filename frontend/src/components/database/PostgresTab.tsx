@@ -8,6 +8,8 @@ import {
 const tocItems: StickyTocItem[] = [
   { id: "optimization", label: "Query Optimization" },
   { id: "observability", label: "Query Observability" },
+  { id: "pooling", label: "Connection Pooling" },
+  { id: "replica", label: "Read Replica" },
   { id: "reliability", label: "Reliability & Backups" },
   { id: "migrations", label: "Migration Safety" },
   { id: "schema", label: "Schema Design" },
@@ -174,6 +176,131 @@ export function PostgresTab() {
             {
               label: "Detailed observability story",
               href: "/observability",
+            },
+          ]}
+        />
+
+        <PillarSection
+          id="pooling"
+          title="Connection Pooling — PgBouncer"
+          narrative={
+            <>
+              <p>
+                Five Go services × pod replicas × pgx pool size adds up fast. Postgres tops out
+                around 100 connections by default, and every reconnect during a deploy is a small
+                stampede. PgBouncer sits between every Go service and Postgres in transaction-pool
+                mode, letting hundreds of client-side connections share a small fixed pool of
+                server-side ones.
+              </p>
+              <p>
+                Migrations bypass the pooler — <code>golang-migrate</code> uses session-level
+                features (advisory locks, multi-statement transactions) that transaction-pool mode
+                strips, so each service ConfigMap exposes a second DSN that points at Postgres
+                directly.
+              </p>
+            </>
+          }
+          bullets={[
+            <>
+              PgBouncer Deployment in <code>java-tasks</code> with{" "}
+              <code>pool_mode=transaction</code>, <code>max_client_conn=1000</code>,{" "}
+              <code>default_pool_size=20</code>, <code>server_reset_query=DISCARD ALL</code>.
+            </>,
+            <>
+              <code>auth_query</code> credential delegation: PgBouncer runs as a low-privilege{" "}
+              <code>pgbouncer_auth</code> role and looks up application credentials from a
+              dedicated <code>pgbouncer.userlist</code> view at connect time — no synced password
+              files, no plaintext secrets in the pooler image.
+            </>,
+            <>
+              Per-service ConfigMap split: <code>DATABASE_URL</code> routes through{" "}
+              <code>pgbouncer.java-tasks.svc.cluster.local:6432</code> (apps); {" "}
+              <code>DATABASE_URL_DIRECT</code> hits{" "}
+              <code>postgres.java-tasks.svc.cluster.local:5432</code> (migrations and any
+              session-level work).
+            </>,
+            <>
+              CI/CD <code>kustomize</code> overlay applies the same split in QA pointing at the
+              prod-namespace pooler via <code>ExternalName</code> — shared infra, single source of
+              truth.
+            </>,
+            <>
+              <code>PodDisruptionBudget</code> on the pooler with{" "}
+              <code>maxUnavailable: 1</code> so node drains don&apos;t take all client traffic
+              with them.
+            </>,
+            <>
+              Bootstrap Job seeds the <code>pgbouncer_auth</code> role and{" "}
+              <code>pgbouncer.userlist</code> on first install; idempotent re-runs.
+            </>,
+          ]}
+          links={[
+            {
+              label: "Read the spec",
+              href: "https://github.com/kabradshaw1/portfolio/blob/main/docs/superpowers/specs/2026-04-27-pgbouncer-design.md",
+            },
+          ]}
+        />
+
+        <PillarSection
+          id="replica"
+          title="Read Replica & Reporting Pool"
+          narrative={
+            <>
+              <p>
+                Reporting reads (sales trends, inventory turnover, top customers) shouldn&apos;t
+                compete with checkout writes for primary connections. An async streaming replica
+                takes the load: <code>order-service</code> opens a second{" "}
+                <code>pgxpool</code> against <code>postgres-replica.java-tasks</code>, and the
+                <code> /reporting/*</code> endpoints route there.
+              </p>
+              <p>
+                Each pool sets a distinct <code>application_name</code> runtime parameter, so
+                primary vs reporting traffic is trivially distinguishable in{" "}
+                <code>pg_stat_activity</code> — &ldquo;did the reporting reads actually move off
+                the primary?&rdquo; becomes a single query instead of guesswork.
+              </p>
+            </>
+          }
+          bullets={[
+            <>
+              Async streaming replica via Postgres physical replication
+              (<code>primary_conninfo</code> + standby signal); fed by the same WAL stream the
+              archive uses.
+            </>,
+            <>
+              <code>order-service</code> wires two <code>pgxpool</code> instances —{" "}
+              <code>Primary</code> for OLTP and <code>Reporting</code> for read-only reporting
+              queries — with identical pool tuning so failover behavior is uniform.
+            </>,
+            <>
+              <code>application_name</code> is set per pool (<code>order-service</code> vs{" "}
+              <code>order-service-reporting</code>) so traffic attribution is built in, not
+              guessed.
+            </>,
+            <>
+              <strong>Graceful fallback:</strong> if the replica is unreachable at startup
+              (5-second connect timeout), the reporting pool is aliased to primary and a warning
+              is logged. The service stays up and reporting reads transparently hit the primary
+              until a future restart re-resolves the replica.
+            </>,
+            <>
+              The fallback was driven by a real cross-namespace deployment-ordering incident: a
+              QA <code>ExternalName</code> pointed at a not-yet-deployed prod replica, the
+              previous fail-fast behavior crashed every new pod, and the rollout timed out.
+              Best-effort connect at the boundary is the production-grade answer.
+            </>,
+            <>
+              QA shares the prod replica via <code>ExternalName</code>{" "}
+              (<code>postgres-replica.java-tasks-qa</code> →{" "}
+              <code>postgres-replica.java-tasks</code>) — same shared-infra pattern as the rest of
+              the QA stack.
+            </>,
+          ]}
+          links={[
+            {
+              label: "Read the spec",
+              href: "https://github.com/kabradshaw1/portfolio/blob/main/docs/superpowers/specs/2026-04-27-read-replica-design.md",
             },
           ]}
         />
