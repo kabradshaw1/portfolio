@@ -60,7 +60,7 @@ kind: ConfigMap
 metadata:
   name: bad
 data:
-  DATABASE_URL: postgres://user:pass@host:5432/db
+  DATABASE_URL: postgres://host:5432/db
 EOF
 if "$POLICY" "$TMP/case3" >/dev/null 2>&1; then
   fail "case3: postgres URL without sslmode=disable should have failed"
@@ -75,7 +75,7 @@ kind: ConfigMap
 metadata:
   name: good
 data:
-  DATABASE_URL: postgres://user:pass@host:5432/db?sslmode=disable
+  DATABASE_URL: postgres://host:5432/db?sslmode=disable
 EOF
 if ! "$POLICY" "$TMP/case4" >/dev/null 2>&1; then
   fail "case4: postgres URL with sslmode=disable should have passed"
@@ -100,6 +100,53 @@ if ! "$POLICY" "$TMP/case5" >/dev/null 2>&1; then
   fail "case5: unrelated Deployment without probe should have passed"
 fi
 pass "case5: non-stateful Deployment without probe is allowed"
+
+# --- Fixture 6: ConfigMap with creds in non-DATABASE_URL key (R3 fail) ---
+mkdir -p "$TMP/case6"
+cat > "$TMP/case6/cm.yml" <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bad
+data:
+  RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+EOF
+if "$POLICY" "$TMP/case6" >/dev/null 2>&1; then
+  fail "case6: amqp:// with embedded credentials should have failed (R3)"
+fi
+pass "case6: credential URL in ConfigMap is detected (R3)"
+
+# --- Fixture 7: ConfigMap with host:port only (no creds) — should pass ---
+mkdir -p "$TMP/case7"
+cat > "$TMP/case7/cm.yml" <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: good
+data:
+  REDIS_URL: redis://redis.java-tasks.svc.cluster.local:6379
+  POSTGRES_HOST: postgres.java-tasks.svc.cluster.local
+  POSTGRES_PORT: "5432"
+EOF
+if ! "$POLICY" "$TMP/case7" >/dev/null 2>&1; then
+  fail "case7: credential-free URLs should have passed"
+fi
+pass "case7: host:port URLs without credentials pass (R3)"
+
+# --- Fixture 8: ConfigMap with mongodb+srv credentials — should fail (R3) ---
+mkdir -p "$TMP/case8"
+cat > "$TMP/case8/cm.yml" <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bad
+data:
+  MONGO_URL: mongodb+srv://user:secret@cluster.example.net/db
+EOF
+if "$POLICY" "$TMP/case8" >/dev/null 2>&1; then
+  fail "case8: mongodb+srv credentials should have failed (R3)"
+fi
+pass "case8: mongodb+srv credentials detected (R3)"
 
 echo
 echo "All policy check tests passed."
