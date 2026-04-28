@@ -50,4 +50,49 @@ test.describe("/database page", () => {
     const link = page.getByRole("link", { name: /View vector DB usage in \/ai/ });
     await expect(link).toHaveAttribute("href", "/ai");
   });
+
+  test("PostgreSQL tab renders all four pillar headings", async ({ page }) => {
+    await page.goto("/database");
+    await expect(
+      page.getByRole("heading", { name: "Query Optimization & Benchmarking", level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Schema Design — Partitioning & Materialized Views", level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Migration Safety — migration-lint", level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Reliability & Recovery", level: 2 }),
+    ).toBeVisible();
+  });
+
+  test("each pillar has a stable anchor id", async ({ page }) => {
+    await page.goto("/database");
+    for (const id of ["optimization", "schema", "migrations", "reliability"]) {
+      await expect(page.locator(`#${id}`)).toBeVisible();
+    }
+  });
+
+  test("PostgreSQL tab includes recruiter keywords inline", async ({ page }) => {
+    await page.goto("/database");
+    // Several of these keywords appear in both narrative + bullet — first match is enough.
+    await expect(page.getByText("PostgreSQL 16", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("Range partitioning", { exact: false }).first()).toBeVisible();
+    await expect(
+      page.getByText("CREATE INDEX CONCURRENTLY", { exact: false }).first(),
+    ).toBeVisible();
+    await expect(page.getByText("postgres_exporter", { exact: false }).first()).toBeVisible();
+  });
+
+  test("clicking a TOC link scrolls to the corresponding pillar", async ({ page }) => {
+    await page.goto("/database");
+    // Default viewport is desktop-sized; the sidebar TOC is the visible one.
+    await page
+      .locator('[data-testid="sticky-toc-sidebar"] a[href="#migrations"]')
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Migration Safety — migration-lint", level: 2 }),
+    ).toBeInViewport();
+  });
 });

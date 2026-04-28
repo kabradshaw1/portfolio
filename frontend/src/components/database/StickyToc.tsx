@@ -11,7 +11,8 @@ export type StickyTocProps = {
   items: StickyTocItem[];
 };
 
-export function StickyToc({ items }: StickyTocProps) {
+/** Tracks which section is currently most-prominent in the viewport. */
+function useActiveSection(items: StickyTocItem[]): string {
   const [activeId, setActiveId] = useState<string>(items[0]?.id ?? "");
 
   useEffect(() => {
@@ -25,8 +26,8 @@ export function StickyToc({ items }: StickyTocProps) {
 
     // Pick the section closest to the top of the viewport that is still
     // intersecting. The rootMargin biases toward sections whose top has
-    // crossed about 25% of the viewport, which avoids flicker when two
-    // sections are partially in view.
+    // crossed about 25% of the viewport, avoiding flicker when two sections
+    // are partially in view.
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -46,56 +47,64 @@ export function StickyToc({ items }: StickyTocProps) {
     return () => observer.disconnect();
   }, [items]);
 
-  return (
-    <>
-      {/* Mobile: horizontal chip row */}
-      <nav
-        aria-label="Section navigation"
-        className="md:hidden -mx-6 mb-6 overflow-x-auto px-6"
-        data-testid="sticky-toc-mobile"
-      >
-        <ul className="flex gap-2 whitespace-nowrap">
-          {items.map((item) => (
-            <li key={item.id}>
-              <a
-                href={`#${item.id}`}
-                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  activeId === item.id
-                    ? "border-primary text-foreground bg-accent"
-                    : "border-foreground/10 text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {item.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
+  return activeId;
+}
 
-      {/* Desktop: sticky right-column TOC */}
-      <nav
-        aria-label="Section navigation"
-        className="hidden md:block sticky top-24 self-start"
-        data-testid="sticky-toc-desktop"
-      >
-        <p className="text-xs uppercase tracking-wide text-muted-foreground mb-3">On this page</p>
-        <ul className="space-y-2 border-l border-foreground/10">
-          {items.map((item) => (
-            <li key={item.id}>
-              <a
-                href={`#${item.id}`}
-                className={`block border-l-2 pl-3 -ml-px text-sm transition-colors ${
-                  activeId === item.id
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {item.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
-    </>
+/** Mobile horizontal chip row — render once at the top of the tab content. */
+export function StickyTocChips({ items }: StickyTocProps) {
+  const activeId = useActiveSection(items);
+  return (
+    <nav
+      aria-label="Section navigation"
+      className="-mx-6 mb-6 overflow-x-auto px-6"
+      data-testid="sticky-toc-chips"
+    >
+      <ul className="flex gap-2 whitespace-nowrap">
+        {items.map((item) => (
+          <li key={item.id}>
+            <a
+              href={`#${item.id}`}
+              className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                activeId === item.id
+                  ? "border-primary text-foreground bg-accent"
+                  : "border-foreground/10 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {item.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+/** Desktop sticky right-column TOC — render once inside an `<aside>`. */
+export function StickyTocSidebar({ items }: StickyTocProps) {
+  const activeId = useActiveSection(items);
+  return (
+    <nav
+      aria-label="Section navigation"
+      className="sticky top-24 self-start"
+      data-testid="sticky-toc-sidebar"
+    >
+      <p className="text-xs uppercase tracking-wide text-muted-foreground mb-3">On this page</p>
+      <ul className="space-y-2 border-l border-foreground/10">
+        {items.map((item) => (
+          <li key={item.id}>
+            <a
+              href={`#${item.id}`}
+              className={`block border-l-2 pl-3 -ml-px text-sm transition-colors ${
+                activeId === item.id
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {item.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }
