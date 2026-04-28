@@ -1724,3 +1724,112 @@ data:
               severity: warning
             annotations:
               summary: "No auto_explain log lines in 24h — query observability is silently broken"
+
+          - uid: pg-archive-command-failing
+            title: Postgres Archive Command Failing
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: rate(pg_stat_archiver_failed_count[10m])
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+                  refId: C
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "pg_stat_archiver is reporting failures — archive_command is broken; WAL recycling will stall and PITR will silently break"
+
+          - uid: pg-wal-archive-stale
+            title: Postgres WAL Archive Stale
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: time() - pg_stat_archiver_last_archived_time
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [600] }
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "No WAL archived in 10+ minutes — archive_timeout is 5m so this should never happen under normal load"
+
+          - uid: pg-basebackup-stale
+            title: Postgres Base Backup Stale
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 86400, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    time() - max(kube_cronjob_status_last_successful_time{
+                      cronjob="postgres-basebackup",
+                      namespace="java-tasks"
+                    })
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 86400, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 86400, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [691200] }
+                  refId: C
+            for: 0s
+            labels:
+              severity: critical
+            annotations:
+              summary: "No successful postgres-basebackup CronJob in 8+ days — PITR baseline may have aged out"
