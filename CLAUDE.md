@@ -52,6 +52,13 @@ Vercel CLI is installed, linked to `kabradshaw1s-projects`. Use `vercel env ls p
 
 **Critical rule:** If frontend code adds a new `NEXT_PUBLIC_*` env var with a `localhost` fallback, **Vercel will silently bake the localhost fallback into the production bundle** unless the env var is added in Vercel and a redeploy is triggered. Always add the var to Vercel before merging.
 
+### Secrets and configuration
+
+- **Application Secrets are committed `SealedSecret` resources** at `k8s/secrets/<namespace>/<name>.sealed.yml`. The Sealed Secrets controller in `kube-system` decrypts them on apply. The committed sealed file is the single source of truth — don't `kubectl edit` Secrets, don't `kubectl create secret generic` in CI for app Secrets, don't ship `*.template.yml` files. Use `scripts/seal-from-cluster.sh` to re-seal from cluster state.
+- **Credentials never go in ConfigMap data.** DSN strings split into ConfigMap (host/port/db/options) + Secret (user/password); the application assembles the connection string at startup. The DSN-split rollout is in flight (Phase 4 of the migration plan); don't introduce new `user:pass` strings inside ConfigMap values.
+- **Shared-infra services must exist in their prod namespace before QA can ExternalName-route to them.** The QA deploy job doesn't apply prod-namespace manifests; QA pointing at a not-yet-deployed prod Service produces the same DNS-resolution failure that auth-service hit when pgbouncer landed in QA before prod.
+- The full ruleset is in [`docs/adr/security/secrets-and-config-practices.md`](docs/adr/security/secrets-and-config-practices.md); the migration decision is in [`docs/adr/security/secrets-management.md`](docs/adr/security/secrets-management.md).
+
 ### Migrations
 
 - **Go services:** `golang-migrate`. Files in `go/<service>/migrations/` as `NNN_name.up.sql` / `NNN_name.down.sql` pairs. K8s Jobs run `migrate up` on every deploy.
