@@ -34,4 +34,20 @@ test.describe("/database page", () => {
     await page.getByRole("button", { name: "Vector", exact: true }).click();
     await expect(page.getByTestId("vector-tab")).toBeVisible();
   });
+
+  test("NoSQL stub points to /java", async ({ page }) => {
+    await page.goto("/database");
+    await page.getByRole("button", { name: "NoSQL", exact: true }).click();
+    await expect(page.getByText("MongoDB powers the activity feed", { exact: false })).toBeVisible();
+    const link = page.getByRole("link", { name: /View MongoDB usage in \/java/ });
+    await expect(link).toHaveAttribute("href", "/java");
+  });
+
+  test("Vector stub points to /ai", async ({ page }) => {
+    await page.goto("/database");
+    await page.getByRole("button", { name: "Vector", exact: true }).click();
+    await expect(page.getByText("Qdrant backs the retrieval layer", { exact: false })).toBeVisible();
+    const link = page.getByRole("link", { name: /View vector DB usage in \/ai/ });
+    await expect(link).toHaveAttribute("href", "/ai");
+  });
 });
