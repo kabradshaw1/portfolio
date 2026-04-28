@@ -5,39 +5,12 @@ import (
 	"log"
 	"log/slog"
 	"strings"
-	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 
 	appkafka "github.com/kabradshaw1/portfolio/go/order-service/internal/kafka"
 )
-
-// connectPostgres creates a tuned pgxpool connection.
-func connectPostgres(ctx context.Context, databaseURL string) *pgxpool.Pool {
-	poolConfig, err := pgxpool.ParseConfig(databaseURL)
-	if err != nil {
-		log.Fatalf("failed to parse database URL: %v", err)
-	}
-	poolConfig.MaxConns = 25
-	poolConfig.MinConns = 5
-	poolConfig.MaxConnIdleTime = 5 * time.Minute
-	poolConfig.MaxConnLifetime = 30 * time.Minute
-	poolConfig.HealthCheckPeriod = 30 * time.Second
-	poolConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheDescribe
-
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		log.Fatalf("failed to ping database: %v", err)
-	}
-	slog.Info("connected to database")
-	return pool
-}
 
 // connectRedis optionally connects to Redis. Returns nil if URL is empty or unreachable.
 func connectRedis(ctx context.Context, redisURL string) *redis.Client {

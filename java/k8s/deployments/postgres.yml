@@ -54,6 +54,14 @@ spec:
             - "archive_timeout=300"
             - "-c"
             - "wal_level=replica"
+            - "-c"
+            - "max_wal_senders=10"
+            - "-c"
+            - "max_replication_slots=10"
+            - "-c"
+            - "max_slot_wal_keep_size=4GB"
+            - "-c"
+            - "hot_standby=on"
           lifecycle:
             preStop:
               exec:

@@ -53,6 +53,9 @@ if [ "$ENV" = "qa" ]; then
   kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/controller.yaml 2>/dev/null || true
   kubectl wait --for=condition=available --timeout=120s deployment/sealed-secrets-controller -n kube-system 2>/dev/null || true
 
+  echo "==> Applying committed SealedSecret resources..."
+  kubectl apply -k "$REPO_DIR/k8s/secrets"
+
   echo "==> Deploying go-ecommerce-qa..."
   kubectl apply -k "$SCRIPT_DIR/overlays/qa-go"
 
@@ -82,18 +85,10 @@ if [ "$ENV" = "qa" ]; then
 fi
 
 # --- Secrets (applied directly — not managed by kustomize) ---
-echo "==> Applying secrets..."
-if [ -f "$REPO_DIR/java/k8s/secrets/java-secrets.yml" ]; then
-  kubectl apply -f "$REPO_DIR/java/k8s/secrets/java-secrets.yml"
-else
-  echo "    WARN: java-secrets.yml not found — copy java-secrets.yml.template and fill in values"
-fi
-
-if [ -f "$REPO_DIR/go/k8s/secrets/go-secrets.yml" ]; then
-  kubectl apply -f "$REPO_DIR/go/k8s/secrets/go-secrets.yml"
-else
-  echo "    WARN: go-secrets.yml not found — create go/k8s/secrets/go-secrets.yml with jwt-secret"
-fi
+# Application Secrets are managed via Sealed Secrets (k8s/secrets/).
+# The minikube/aws path applies them after the Sealed Secrets controller
+# is installed, which happens further down. There's no manual
+# template-and-apply step anymore — see k8s/sealed-secrets/README.md.
 
 # --- Deploy ai-services ---
 echo "==> Deploying ai-services (Python)..."
@@ -141,6 +136,9 @@ echo "==> Installing Sealed Secrets controller (if not already present)..."
 # Version pin documented in k8s/sealed-secrets/README.md.
 kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/controller.yaml 2>/dev/null || true
 kubectl wait --for=condition=available --timeout=120s deployment/sealed-secrets-controller -n kube-system 2>/dev/null || true
+
+echo "==> Applying committed SealedSecret resources..."
+kubectl apply -k "$REPO_DIR/k8s/secrets"
 
 kubectl apply -k "$REPO_DIR/go/k8s/overlays/$ENV"
 
