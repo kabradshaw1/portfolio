@@ -1594,10 +1594,6 @@ jobs:
           # each one into a regular Secret in the same namespace.
           kubectl kustomize k8s/secrets | $SSH "kubectl apply -f -"
 
-          # Apply committed SealedSecret resources. The controller decrypts
-          # each one into a regular Secret in the same namespace.
-          kubectl kustomize k8s/secrets | $SSH "kubectl apply -f -"
-
           for f in $(find go/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*' -not -path '*/jobs/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 
           # Only restart deployments that have new images

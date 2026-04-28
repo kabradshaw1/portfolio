@@ -99,6 +99,18 @@ patches:
       kind: Deployment
       metadata:
         name: rabbitmq
+  # postgres-replica is shared with prod (the replica streams the entire
+  # primary, including QA databases); delete the StatefulSet here and
+  # ExternalName the Service back at the prod replica below.
+  - target:
+      kind: StatefulSet
+      name: postgres-replica
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: postgres-replica
   # --- Gateway service: ClusterIP in QA (prod holds cluster-wide NodePort 30080) ---
   - target:
       kind: Service
@@ -150,6 +162,15 @@ patches:
         value:
           type: ExternalName
           externalName: rabbitmq.java-tasks.svc.cluster.local
+  - target:
+      kind: Service
+      name: postgres-replica
+    patch: |
+      - op: replace
+        path: /spec
+        value:
+          type: ExternalName
+          externalName: postgres-replica.java-tasks.svc.cluster.local
   - target:
       kind: Service
       name: pgbouncer
