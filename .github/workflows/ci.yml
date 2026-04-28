@@ -589,14 +589,16 @@ jobs:
           # Apply every manifest directory recursively. --dry-run=server
           # exercises the real API server's validation and admission.
           # Skip overlays/, kustomization.yaml, cert-manager/ (CRDs not in
-          # kind cluster), and sealed-secrets/ (controller is fetched from
-          # upstream URL; the in-repo dir is just a README today, but the
-          # exclusion future-proofs against committing the controller YAML).
+          # kind cluster), sealed-secrets/ (the in-repo dir holds only
+          # docs; the controller manifest is fetched from upstream at
+          # deploy time), and secrets/ (SealedSecret CRD not installed
+          # in the kind cluster).
           for dir in k8s java/k8s go/k8s; do
             find "$dir" -type f \( -name '*.yml' -o -name '*.yaml' \) \
               -not -path '*/overlays/*' \
               -not -path '*/cert-manager/*' \
               -not -path '*/sealed-secrets/*' \
+              -not -path 'k8s/secrets/*' \
               -not -name 'kustomization.yaml' \
               -print0 | xargs -0 -I{} kubectl apply --dry-run=server -f {}
           done
@@ -1587,6 +1589,14 @@ jobs:
           # block and k8s/deploy.sh.
           $SSH "kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/controller.yaml 2>/dev/null || true"
           $SSH "kubectl wait --for=condition=available --timeout=120s deployment/sealed-secrets-controller -n kube-system 2>/dev/null || true"
+
+          # Apply committed SealedSecret resources. The controller decrypts
+          # each one into a regular Secret in the same namespace.
+          kubectl kustomize k8s/secrets | $SSH "kubectl apply -f -"
+
+          # Apply committed SealedSecret resources. The controller decrypts
+          # each one into a regular Secret in the same namespace.
+          kubectl kustomize k8s/secrets | $SSH "kubectl apply -f -"
 
           for f in $(find go/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*' -not -path '*/jobs/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 
