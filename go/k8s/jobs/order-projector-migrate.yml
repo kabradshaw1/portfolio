@@ -28,7 +28,7 @@ spec:
               valueFrom:
                 configMapKeyRef:
                   name: order-projector-config
-                  key: DATABASE_URL
+                  key: DATABASE_URL_DIRECT
           resources:
             requests:
               memory: "32Mi"

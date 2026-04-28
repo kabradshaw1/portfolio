@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-config
+  namespace: java-tasks
+data:
+  pgbouncer.ini: |
+    [databases]
+    ; Wildcard so any new DB just works. Per-DB overrides can be added later.
+    * = host=postgres.java-tasks.svc.cluster.local port=5432
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 6432
+
+    ; --- Auth ---
+    auth_type = scram-sha-256
+    auth_user = pgbouncer_auth
+    auth_query = SELECT usename, passwd FROM public.pgbouncer_get_auth($1)
+    ; userlist.txt holds ONLY pgbouncer_auth itself (chicken-and-egg for auth_query).
+    auth_file = /etc/pgbouncer/userlist.txt
+
+    ; --- Pooling ---
+    pool_mode = transaction
+    max_client_conn = 200
+    default_pool_size = 25
+    min_pool_size = 5
+    reserve_pool_size = 5
+    reserve_pool_timeout = 3
+    max_db_connections = 80
+    server_idle_timeout = 600
+    server_lifetime = 3600
+
+    ; --- Prepared statements (PgBouncer 1.21+ transaction-mode support) ---
+    max_prepared_statements = 200
+
+    ; --- Logging / observability ---
+    log_connections = 1
+    log_disconnections = 1
+    log_pooler_errors = 1
+    stats_period = 60
+
+    ; --- Admin / stats access for the exporter ---
+    admin_users = pgbouncer_auth
+    stats_users = pgbouncer_auth
+    ignore_startup_parameters = extra_float_digits,search_path,application_name
+
+  userlist.txt: |
+    ; Only pgbouncer_auth lives here in plaintext-equivalent form.
+    ; Real password substituted at runtime via initContainer (see deployment).
+    "pgbouncer_auth" "PLACEHOLDER_REPLACED_BY_INITCONTAINER"

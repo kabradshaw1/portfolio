@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pgbouncer-auth-bootstrap
+  namespace: java-tasks
+  annotations:
+    description: "Creates pgbouncer_auth role + SECURITY DEFINER wrapper for auth_query. Idempotent."
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: postgres:16
+          env:
+            - name: PGHOST
+              value: postgres.java-tasks.svc.cluster.local
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: taskuser
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: postgres-password
+            - name: PGBOUNCER_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: pgbouncer-auth-password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+              # Run against every database PgBouncer will pool. Function is per-DB.
+              for db in postgres authdb productdb orderdb cartdb paymentdb projectordb taskdb \
+                        authdb_qa productdb_qa orderdb_qa cartdb_qa paymentdb_qa projectordb_qa taskdb_qa; do
+                echo "Bootstrapping pgbouncer_auth in $db..."
+                psql -d "$db" -v ON_ERROR_STOP=1 -v pw="$PGBOUNCER_AUTH_PASSWORD" <<'SQL'
+                  DO $$
+                  BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pgbouncer_auth') THEN
+                      EXECUTE format('CREATE ROLE pgbouncer_auth LOGIN PASSWORD %L', :'pw');
+                    ELSE
+                      EXECUTE format('ALTER ROLE pgbouncer_auth WITH PASSWORD %L', :'pw');
+                    END IF;
+                  END
+                  $$;
+
+                  CREATE OR REPLACE FUNCTION public.pgbouncer_get_auth(p_usename TEXT)
+                  RETURNS TABLE(usename TEXT, passwd TEXT)
+                  LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog AS $func$
+                    SELECT usename::TEXT, passwd::TEXT FROM pg_shadow WHERE usename = p_usename;
+                  $func$;
+
+                  REVOKE ALL ON FUNCTION public.pgbouncer_get_auth(TEXT) FROM PUBLIC;
+                  GRANT EXECUTE ON FUNCTION public.pgbouncer_get_auth(TEXT) TO pgbouncer_auth;
+              SQL
+              done
+              echo "pgbouncer_auth bootstrap complete."

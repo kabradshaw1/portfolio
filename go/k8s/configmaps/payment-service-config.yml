@@ -5,6 +5,7 @@ metadata:
   namespace: go-ecommerce
 data:
   DATABASE_URL: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/paymentdb?sslmode=disable&application_name=payment-service"
+  DATABASE_URL_DIRECT: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/paymentdb?sslmode=disable&application_name=payment-service-migrate"
   PORT: "8098"
   GRPC_PORT: "9098"
   RABBITMQ_URL: "amqp://guest:guest@rabbitmq.java-tasks.svc.cluster.local:5672"

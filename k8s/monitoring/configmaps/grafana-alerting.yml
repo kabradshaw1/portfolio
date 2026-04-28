@@ -1905,3 +1905,119 @@ data:
               severity: critical
             annotations:
               summary: "No successful postgres-basebackup CronJob in 8+ days — PITR baseline may have aged out"
+
+      - orgId: 1
+        name: PgBouncer
+        folder: Infrastructure Alerts
+        interval: 1m
+        rules:
+          - uid: pgbouncer-pool-wait-time-high
+            title: PgBouncer Pool Wait Time High
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: pgbouncer_stats_avg_wait_time_seconds
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [0.1] }
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "PgBouncer pool {{ $labels.database }} wait time high"
+              description: "Avg wait time >100ms for 5m on {{ $labels.database }}. Pool may be undersized or Postgres slow."
+
+          - uid: pgbouncer-clients-waiting
+            title: PgBouncer Clients Waiting
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: pgbouncer_pools_client_waiting_connections
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+                  refId: C
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "PgBouncer pool {{ $labels.database }} has waiting clients for 10m"
+              description: "{{ $values.B }} client(s) waiting on {{ $labels.database }}. Consider raising default_pool_size."
+
+          - uid: pgbouncer-server-connection-failures
+            title: PgBouncer Cannot Reach Postgres
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    (sum by (database) (pgbouncer_pools_client_active_connections) > 0)
+                    and on(database)
+                    (sum by (database) (rate(pgbouncer_stats_total_xact_count[5m])) == 0)
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+                  refId: C
+            for: 3m
+            labels:
+              severity: critical
+            annotations:
+              summary: "PgBouncer cannot reach Postgres for {{ $labels.database }}"
+              description: "Clients connected but no transactions completing. PgBouncer→Postgres path likely broken."
