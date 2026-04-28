@@ -15,9 +15,13 @@ patches:
       - op: replace
         path: /data/ALLOWED_ORIGINS
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      # Temporarily routed direct to postgres while pgbouncer is rolled out
+      # to prod (see PR #182 follow-up). QA's pgbouncer Service is an
+      # ExternalName at pgbouncer.java-tasks.svc.cluster.local, which does
+      # not yet resolve.
       - op: replace
         path: /data/DATABASE_URL
-        value: "postgres://taskuser:taskpass@pgbouncer.java-tasks-qa.svc.cluster.local:6432/authdb_qa?sslmode=disable&application_name=auth-service"
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/authdb_qa?sslmode=disable&application_name=auth-service"
       - op: add
         path: /data/DATABASE_URL_DIRECT
         value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/authdb_qa?sslmode=disable&application_name=auth-service-migrate"
