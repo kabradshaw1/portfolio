@@ -230,6 +230,8 @@ jobs:
             paths: go/cart-service go/product-service go/pkg go/go.work
           - service: order-projector
             paths: go/order-projector go/pkg go/go.work
+          - service: cmd/migration-lint
+            paths: go/cmd/migration-lint
     steps:
       - uses: actions/checkout@v4
         with:
@@ -272,6 +274,8 @@ jobs:
             paths: go/cart-service go/product-service go/pkg go/go.work
           - service: order-projector
             paths: go/order-projector go/pkg go/go.work
+          - service: cmd/migration-lint
+            paths: go/cmd/migration-lint
     steps:
       - uses: actions/checkout@v4
         with:
