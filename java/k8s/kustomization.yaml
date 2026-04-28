@@ -10,6 +10,7 @@ resources:
   - configmaps/postgres-initdb.yml
   - configmaps/rabbitmq-definitions.yml
   - configmaps/task-service-config.yml
+  - configmaps/postgres-verify-scripts.yml
   - deployments/activity-service.yml
   - deployments/gateway-service.yml
   - deployments/mongodb.yml
@@ -28,9 +29,11 @@ resources:
   - services/task-service.yml
   - volumes/postgres-pvc.yml
   - volumes/postgres-backup-pv.yml
+  - volumes/postgres-backup-readonly-pv.yml
   - jobs/postgres-backup.yml
   - jobs/postgres-extensions-bootstrap.yml
   - jobs/postgres-grafana-reader.yml
+  - jobs/postgres-backup-verify.yml
   - pdb/postgres-pdb.yml
   - ingress.yml
   - ingress-rabbitmq.yml
