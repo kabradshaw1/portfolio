@@ -4,7 +4,7 @@ metadata:
   name: auth-service-config
   namespace: go-ecommerce
 data:
-  DATABASE_URL: postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/authdb?sslmode=disable&application_name=auth-service
+  DATABASE_URL: postgres://taskuser:taskpass@pgbouncer.java-tasks.svc.cluster.local:6432/authdb?sslmode=disable&application_name=auth-service
   DATABASE_URL_DIRECT: postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/authdb?sslmode=disable&application_name=auth-service-migrate
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
   PORT: "8091"
