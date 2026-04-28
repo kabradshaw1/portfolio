@@ -12,6 +12,7 @@ resources:
   - configmaps/rabbitmq-definitions.yml
   - configmaps/task-service-config.yml
   - configmaps/postgres-verify-scripts.yml
+  - configmaps/pgbouncer-config.yml
   - deployments/activity-service.yml
   - deployments/gateway-service.yml
   - deployments/mongodb.yml
