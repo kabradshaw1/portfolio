@@ -170,3 +170,22 @@ patches:
       kind: Ingress
       metadata:
         name: rabbitmq-ingress
+  # --- Remove WAL-archive workloads (shared prod handles them) ---
+  - target:
+      kind: CronJob
+      name: postgres-basebackup
+    patch: |
+      $patch: delete
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: postgres-basebackup
+  - target:
+      kind: Job
+      name: postgres-replicator-bootstrap
+    patch: |
+      $patch: delete
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: postgres-replicator-bootstrap

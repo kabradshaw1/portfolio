@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-replicator-bootstrap
+  namespace: java-tasks
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: psql
+          image: postgres:17-alpine
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: postgres-password
+            - name: REPLICATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: replicator-password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              psql -h postgres.java-tasks.svc.cluster.local -U taskuser -d postgres \
+                -v ON_ERROR_STOP=1 \
+                -v repl_pw="$REPLICATOR_PASSWORD" <<'SQL'
+              DO $$
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'replicator') THEN
+                  EXECUTE format('CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD %L', :'repl_pw');
+                ELSE
+                  EXECUTE format('ALTER ROLE replicator WITH REPLICATION LOGIN PASSWORD %L', :'repl_pw');
+                END IF;
+              END
+              $$;
+              SQL
+              echo "replicator role ready"
+          resources:
+            requests: { cpu: "10m", memory: "32Mi" }
+            limits:   { cpu: "100m", memory: "64Mi" }
