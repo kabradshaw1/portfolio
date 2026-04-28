@@ -3,6 +3,7 @@ module github.com/kabradshaw1/portfolio/go/ai-service
 go 1.26.1
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
