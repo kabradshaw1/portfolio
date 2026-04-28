@@ -171,6 +171,43 @@ patches:
         value:
           type: ExternalName
           externalName: postgres-replica.java-tasks.svc.cluster.local
+  - target:
+      kind: Service
+      name: pgbouncer
+    patch: |
+      - op: replace
+        path: /spec
+        value:
+          type: ExternalName
+          externalName: pgbouncer.java-tasks.svc.cluster.local
+  # --- Remove pgbouncer deployment + bootstrap job (shared with prod) ---
+  - target:
+      kind: Deployment
+      name: pgbouncer
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: pgbouncer
+  - target:
+      kind: Job
+      name: pgbouncer-auth-bootstrap
+    patch: |
+      $patch: delete
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: pgbouncer-auth-bootstrap
+  - target:
+      kind: PodDisruptionBudget
+      name: pgbouncer-pdb
+    patch: |
+      $patch: delete
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: pgbouncer-pdb
   # --- Remove PVC (no local storage needed) ---
   - target:
       kind: PersistentVolumeClaim

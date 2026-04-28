@@ -51,27 +51,54 @@ test.describe("/database page", () => {
     await expect(link).toHaveAttribute("href", "/ai");
   });
 
-  test("PostgreSQL tab renders all four pillar headings", async ({ page }) => {
+  test("PostgreSQL tab renders all five pillar headings", async ({ page }) => {
     await page.goto("/database");
     await expect(
       page.getByRole("heading", { name: "Query Optimization & Benchmarking", level: 2 }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Schema Design — Partitioning & Materialized Views", level: 2 }),
+      page.getByRole("heading", {
+        name: "Query Observability — pg_stat_statements + auto_explain",
+        level: 2,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Reliability & Backups", level: 2 }),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Migration Safety — migration-lint", level: 2 }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Reliability & Recovery", level: 2 }),
+      page.getByRole("heading", { name: "Schema Design — Partitioning & Materialized Views", level: 2 }),
     ).toBeVisible();
   });
 
   test("each pillar has a stable anchor id", async ({ page }) => {
     await page.goto("/database");
-    for (const id of ["optimization", "schema", "migrations", "reliability"]) {
+    for (const id of ["optimization", "observability", "reliability", "migrations", "schema"]) {
       await expect(page.locator(`#${id}`)).toBeVisible();
     }
+  });
+
+  test("TOC items render in the new order", async ({ page }) => {
+    await page.goto("/database");
+    const sidebarLabels = await page
+      .locator('[data-testid="sticky-toc-sidebar"] a')
+      .allTextContents();
+    expect(sidebarLabels.map((s) => s.trim())).toEqual([
+      "Query Optimization",
+      "Query Observability",
+      "Reliability & Backups",
+      "Migration Safety",
+      "Schema Design",
+    ]);
+  });
+
+  test("optimization pillar contains the moved benchmark table", async ({ page }) => {
+    await page.goto("/database");
+    const optimization = page.locator("#optimization");
+    await expect(optimization.locator("table")).toBeVisible();
+    await expect(optimization.locator("table td", { hasText: /3\.5(x|×)/ })).toBeVisible();
   });
 
   test("PostgreSQL tab includes recruiter keywords inline", async ({ page }) => {
@@ -94,6 +121,14 @@ test.describe("/database page", () => {
     await expect(
       page.getByRole("heading", { name: "Migration Safety — migration-lint", level: 2 }),
     ).toBeInViewport();
+  });
+
+  test("/go Microservices tab links back to /database#optimization", async ({ page }) => {
+    await page.goto("/go");
+    const breadcrumb = page.locator('[data-testid="database-optimization-breadcrumb"]');
+    await expect(breadcrumb).toBeVisible();
+    const link = breadcrumb.getByRole("link", { name: "Database", exact: true });
+    await expect(link).toHaveAttribute("href", "/database#optimization");
   });
 
   test("homepage links to /database", async ({ page }) => {

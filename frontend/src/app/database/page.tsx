@@ -16,12 +16,13 @@ export default function DatabasePage() {
       {/* Bio Section */}
       <section className="mt-8">
         <p className="text-muted-foreground leading-relaxed">
-          Production-grade PostgreSQL is one of the load-bearing skills behind
-          this portfolio: real-database benchmarks, range partitioning with
-          materialized views, a custom AST-based migration linter, and an
-          operational track with backups and recovery runbooks. MongoDB and
-          Qdrant are also in use elsewhere in the portfolio — dedicated tabs
-          for each are coming.
+          Production-grade PostgreSQL: real-database benchmarks (with measured
+          3.5× wins), slow-query observability via{" "}
+          <code>pg_stat_statements</code> + <code>auto_explain</code>,
+          point-in-time recovery with verified backups, a custom AST-based
+          migration linter, and range partitioning with materialized views for
+          reporting. MongoDB and Qdrant are also in use elsewhere in the
+          portfolio — dedicated tabs for each are coming.
         </p>
       </section>
 

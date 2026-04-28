@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: java-tasks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgbouncer
+  strategy:
+    type: Recreate  # single replica, port 6432 must not double-bind
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9127"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: Exists
+      volumes:
+        - name: config
+          configMap:
+            name: pgbouncer-config
+        - name: rendered
+          emptyDir: {}
+      initContainers:
+        - name: render-userlist
+          image: busybox:1.36
+          env:
+            - name: PGBOUNCER_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: pgbouncer-auth-password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              # Substitute the real password into userlist.txt. SCRAM-SHA-256 hash
+              # is what auth_query returns; the file only needs auth_user creds in
+              # md5/scram form. We use plaintext here because pgbouncer accepts
+              # plaintext entries when auth_type=scram-sha-256 — pgbouncer itself
+              # will negotiate scram against postgres on the back end.
+              sed "s|PLACEHOLDER_REPLACED_BY_INITCONTAINER|${PGBOUNCER_AUTH_PASSWORD}|" \
+                /config/userlist.txt > /rendered/userlist.txt
+              cp /config/pgbouncer.ini /rendered/pgbouncer.ini
+              chmod 600 /rendered/userlist.txt
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: rendered
+              mountPath: /rendered
+      containers:
+        - name: pgbouncer
+          image: edoburu/pgbouncer:1.23.1
+          args:
+            - /rendered/pgbouncer.ini
+          ports:
+            - containerPort: 6432
+              name: pgbouncer
+          volumeMounts:
+            - name: rendered
+              mountPath: /rendered
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          readinessProbe:
+            tcpSocket:
+              port: 6432
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 6432
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70  # pgbouncer in edoburu image
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+        - name: exporter
+          image: prometheuscommunity/pgbouncer-exporter:v0.10.2
+          args:
+            - --pgBouncer.connectionString=postgres://pgbouncer_auth:$(PGBOUNCER_AUTH_PASSWORD)@127.0.0.1:6432/pgbouncer?sslmode=disable
+            - --web.listen-address=:9127
+          env:
+            - name: PGBOUNCER_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: pgbouncer-auth-password
+          ports:
+            - containerPort: 9127
+              name: metrics
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "20m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9127
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

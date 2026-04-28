@@ -59,6 +59,7 @@ Vercel CLI is installed, linked to `kabradshaw1s-projects`. Use `vercel env ls p
 - **Java services:** schema owned by Spring/JPA at startup. No separate migration step.
 - **Python AI services:** no relational schema (Qdrant is schemaless).
 - **`sslmode=disable` is required on Go `DATABASE_URL`s.** `golang-migrate`'s `pq` driver defaults to `sslmode=require` and will fail without it.
+- **Go migration Jobs bypass PgBouncer.** Each Go service ConfigMap defines two keys: `DATABASE_URL` (routes through `pgbouncer.java-tasks.svc.cluster.local:6432`, transaction-pooled) and `DATABASE_URL_DIRECT` (direct `postgres.java-tasks.svc.cluster.local:5432`, session-level). Migration Jobs reference `DATABASE_URL_DIRECT`; app Deployments read `DATABASE_URL`. Reason: `golang-migrate` uses session-level features (advisory locks, transaction wrapping) that PgBouncer's transaction-pool mode doesn't preserve. When adding a new Go service, define both keys in its ConfigMap and point its migrate Job at `DATABASE_URL_DIRECT`.
 
 ## Project Structure
 

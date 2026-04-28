@@ -233,123 +233,19 @@ export function MicroservicesTab() {
         </div>
       </section>
 
-      {/* Database Optimization */}
-      <section className="mt-12">
+      {/* Database Optimization — moved to /database#optimization */}
+      <section className="mt-12" data-testid="database-optimization-breadcrumb">
         <h3 className="text-xl font-semibold">Database Optimization</h3>
         <p className="mt-4 text-muted-foreground leading-relaxed">
-          Benchmarked all three database services with{" "}
-          <span className="text-foreground font-medium">
-            real PostgreSQL via testcontainers
-          </span>{" "}
-          (not mocks), identified anti-patterns, and applied targeted
-          optimizations. The full analysis is documented in a{" "}
+          Benchmark methodology and the full before/after results live on the{" "}
           <a
-            href="https://github.com/kabradshaw1/portfolio/blob/main/docs/adr/go-database-optimization.md"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/database#optimization"
             className="underline hover:text-foreground transition-colors"
           >
-            database optimization ADR
-          </a>
-          .
+            Database
+          </a>{" "}
+          page.
         </p>
-
-        <h4 className="mt-8 text-lg font-medium">Benchmark Results</h4>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-sm text-muted-foreground">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="pb-2 pr-4 font-medium text-foreground">
-                  Optimization
-                </th>
-                <th className="pb-2 pr-4 font-medium text-foreground">
-                  Before
-                </th>
-                <th className="pb-2 pr-4 font-medium text-foreground">
-                  After
-                </th>
-                <th className="pb-2 font-medium text-foreground">
-                  Speedup
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              <tr>
-                <td className="py-2 pr-4">
-                  Order creation (20 items)
-                </td>
-                <td className="py-2 pr-4">4.5 ms</td>
-                <td className="py-2 pr-4">1.3 ms</td>
-                <td className="py-2 font-medium text-foreground">
-                  3.5x
-                </td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-4">Product search</td>
-                <td className="py-2 pr-4">1.0 ms</td>
-                <td className="py-2 pr-4">0.55 ms</td>
-                <td className="py-2 font-medium text-foreground">
-                  1.9x
-                </td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-4">
-                  Order creation (5 items)
-                </td>
-                <td className="py-2 pr-4">1.5 ms</td>
-                <td className="py-2 pr-4">0.8 ms</td>
-                <td className="py-2 font-medium text-foreground">
-                  1.8x
-                </td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-4">Category filter</td>
-                <td className="py-2 pr-4">430 &micro;s</td>
-                <td className="py-2 pr-4">327 &micro;s</td>
-                <td className="py-2 font-medium text-foreground">
-                  1.3x
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <h4 className="mt-8 text-lg font-medium">What was optimized</h4>
-        <ul className="mt-2 list-disc pl-6 text-muted-foreground space-y-1">
-          <li>
-            <span className="text-foreground font-medium">
-              Batch INSERT
-            </span>{" "}
-            &mdash; replaced N+1 order item inserts with single multi-row
-            INSERT
-          </li>
-          <li>
-            <span className="text-foreground font-medium">
-              Window function
-            </span>{" "}
-            &mdash; eliminated COUNT+data double query with COUNT(*) OVER()
-          </li>
-          <li>
-            <span className="text-foreground font-medium">
-              CTE conflict resolution
-            </span>{" "}
-            &mdash; single atomic query replaces two-query cart update
-            pattern
-          </li>
-          <li>
-            <span className="text-foreground font-medium">
-              Schema hardening
-            </span>{" "}
-            &mdash; CHECK constraints, targeted indexes (saga_step,
-            composite cart, partial low-stock)
-          </li>
-          <li>
-            <span className="text-foreground font-medium">
-              Prepared statement cache
-            </span>{" "}
-            &mdash; pgx QueryExecModeCacheDescribe across all services
-          </li>
-        </ul>
       </section>
     </div>
   );

@@ -4,10 +4,12 @@ metadata:
   name: order-service-config
   namespace: go-ecommerce
 data:
-  DATABASE_URL: postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb?sslmode=disable
+  DATABASE_URL: postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb?sslmode=disable&application_name=order-service
+  DATABASE_URL_DIRECT: postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb?sslmode=disable&application_name=order-service-migrate
   # Reporting reads (mv_daily_revenue / mv_product_performance /
-  # mv_customer_summary) target the streaming read replica. internal/db.New
-  # sets application_name on each pool so primary ("order-service") vs
+  # mv_customer_summary) target the streaming read replica directly —
+  # replicas aren't pooled by pgbouncer in this setup. internal/db.New
+  # overrides application_name per pool so primary ("order-service") vs
   # reporting ("order-service-reporting") traffic is distinguishable in
   # pg_stat_activity on either endpoint.
   DATABASE_URL_REPLICA: postgres://taskuser:taskpass@postgres-replica.java-tasks.svc.cluster.local:5432/orderdb?sslmode=disable

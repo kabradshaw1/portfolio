@@ -15,9 +15,16 @@ patches:
       - op: replace
         path: /data/ALLOWED_ORIGINS
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      # Temporarily routed direct to postgres while pgbouncer is rolled out
+      # to prod (see PR #182 follow-up). QA's pgbouncer Service is an
+      # ExternalName at pgbouncer.java-tasks.svc.cluster.local, which does
+      # not yet resolve.
       - op: replace
         path: /data/DATABASE_URL
         value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/authdb_qa?sslmode=disable&application_name=auth-service"
+      - op: add
+        path: /data/DATABASE_URL_DIRECT
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/authdb_qa?sslmode=disable&application_name=auth-service-migrate"
       - op: add
         path: /data/GRPC_PORT
         value: "9091"
@@ -34,6 +41,9 @@ patches:
       - op: replace
         path: /data/DATABASE_URL
         value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb_qa?sslmode=disable&application_name=order-service"
+      - op: add
+        path: /data/DATABASE_URL_DIRECT
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb_qa?sslmode=disable&application_name=order-service-migrate"
       - op: replace
         path: /data/DATABASE_URL_REPLICA
         value: "postgres://taskuser:taskpass@postgres-replica.java-tasks.svc.cluster.local:5432/orderdb_qa?sslmode=disable"
@@ -119,6 +129,9 @@ patches:
       - op: replace
         path: /data/DATABASE_URL
         value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/productdb_qa?sslmode=disable&application_name=product-service"
+      - op: add
+        path: /data/DATABASE_URL_DIRECT
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/productdb_qa?sslmode=disable&application_name=product-service-migrate"
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
@@ -132,6 +145,9 @@ patches:
       - op: replace
         path: /data/DATABASE_URL
         value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/cartdb_qa?sslmode=disable&application_name=cart-service"
+      - op: add
+        path: /data/DATABASE_URL_DIRECT
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/cartdb_qa?sslmode=disable&application_name=cart-service-migrate"
       - op: replace
         path: /data/REDIS_URL
         value: "redis://redis.java-tasks.svc.cluster.local:6379/1"
@@ -157,6 +173,9 @@ patches:
       - op: replace
         path: /data/DATABASE_URL
         value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/paymentdb_qa?sslmode=disable&application_name=payment-service"
+      - op: add
+        path: /data/DATABASE_URL_DIRECT
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/paymentdb_qa?sslmode=disable&application_name=payment-service-migrate"
       - op: replace
         path: /data/KAFKA_BROKERS
         value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
@@ -173,6 +192,9 @@ patches:
       - op: replace
         path: /data/DATABASE_URL
         value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/projectordb_qa?sslmode=disable&application_name=order-projector"
+      - op: add
+        path: /data/DATABASE_URL_DIRECT
+        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/projectordb_qa?sslmode=disable&application_name=order-projector-migrate"
       - op: replace
         path: /data/KAFKA_BROKERS
         value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
