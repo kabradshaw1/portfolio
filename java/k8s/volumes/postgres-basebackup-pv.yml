@@ -22,6 +22,8 @@ spec:
   accessModes:
     - ReadWriteOnce
   storageClassName: manual
+  # Pin to the named PV so two PVCs of identical shape can't cross-bind.
+  volumeName: postgres-basebackup-pv
   resources:
     requests:
       storage: 10Gi
