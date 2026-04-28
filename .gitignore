@@ -22,6 +22,12 @@ env/
 **/k8s/secrets/*.yml
 !**/k8s/secrets/*.yml.template
 
+# Sealed Secrets sealing-key backups — produced by the runbook in
+# k8s/sealed-secrets/README.md. The private key in these files would
+# decrypt every committed *.sealed.yml in the repo if leaked.
+sealing-key-backup-*.yaml
+sealing-key-backup-*.yml
+
 # IDE
 .vscode/
 .idea/
