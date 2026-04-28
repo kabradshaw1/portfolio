@@ -9,7 +9,9 @@
 //   - Reporting  — an async streaming read replica (postgres-replica.java-tasks)
 //                  that serves the /reporting/* endpoints. Falls back to the
 //                  primary DSN when DATABASE_URL_REPLICA is unset (local dev,
-//                  CI, single-pod environments).
+//                  CI, single-pod environments) or when the replica is
+//                  unreachable at startup (degraded mode — the service stays
+//                  up and reporting reads transparently hit the primary).
 //
 // Each pool sets a distinct `application_name` runtime parameter so primary
 // vs reporting traffic is trivially distinguishable in pg_stat_activity —
@@ -20,6 +22,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -43,24 +46,45 @@ type Pools struct {
 	Reporting *pgxpool.Pool
 }
 
-// New connects both pools. If replicaDSN is empty, the reporting pool is
-// pointed at the primary DSN — this keeps local dev and CI working without
-// a second Postgres instance, and the application_name still differentiates
-// the traffic in pg_stat_activity.
+// replicaConnectTimeout caps how long we wait for the replica at startup.
+// Short by design: if the replica is unreachable we degrade to primary
+// rather than blocking the pod from becoming Ready — and the cluster's
+// internal DNS + Postgres typically settle in well under this budget.
+const replicaConnectTimeout = 5 * time.Second
+
+// New connects both pools.
+//
+// Behavior matrix:
+//
+//   - replicaDSN empty                  → Reporting is aliased to Primary
+//     (single-Postgres dev/CI; no second connection).
+//   - replicaDSN set, replica reachable → Reporting is its own pool against
+//     the replica.
+//   - replicaDSN set, replica unreachable → Reporting is aliased to Primary
+//     and a warning is logged. The service stays up; reporting reads
+//     transparently hit the primary until a future restart re-resolves the
+//     replica. This avoids cross-namespace deployment-ordering deadlocks
+//     (e.g., QA's ExternalName pointing at a not-yet-deployed prod replica).
+//
+// In every case Reporting is non-nil, so callers never need to nil-check.
 func New(ctx context.Context, primaryDSN, replicaDSN string) (*Pools, error) {
 	primary, err := newPool(ctx, primaryDSN, "order-service")
 	if err != nil {
 		return nil, fmt.Errorf("primary pool: %w", err)
 	}
 
-	effectiveReplicaDSN := replicaDSN
-	if effectiveReplicaDSN == "" {
-		effectiveReplicaDSN = primaryDSN
+	if replicaDSN == "" || replicaDSN == primaryDSN {
+		return &Pools{Primary: primary, Reporting: primary}, nil
 	}
-	reporting, err := newPool(ctx, effectiveReplicaDSN, "order-service-reporting")
+
+	replicaCtx, cancel := context.WithTimeout(ctx, replicaConnectTimeout)
+	defer cancel()
+	reporting, err := newPool(replicaCtx, replicaDSN, "order-service-reporting")
 	if err != nil {
-		primary.Close()
-		return nil, fmt.Errorf("reporting pool: %w", err)
+		slog.Warn("reporting pool unavailable, falling back to primary",
+			"error", err.Error(),
+		)
+		return &Pools{Primary: primary, Reporting: primary}, nil
 	}
 
 	return &Pools{Primary: primary, Reporting: reporting}, nil
