@@ -1,6 +1,13 @@
 package composite
 
-import "strconv"
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strconv"
+
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
+)
 
 // Verdict is the structured output of investigate_my_order.
 type Verdict struct {
@@ -67,4 +74,55 @@ func ComputeVerdict(b EvidenceBundle) Verdict {
 		v.NextAction = "contact_support"
 	}
 	return v
+}
+
+// investigateMyOrderTool implements tools.Tool, wrapping EvidenceFetcher as an
+// MCP-registerable tool that runs parallel fan-out and reduces to a customer-facing verdict.
+type investigateMyOrderTool struct {
+	fetcher EvidenceFetcher
+}
+
+// compile-time assertion — fails at build if the interface contract drifts.
+var _ tools.Tool = (*investigateMyOrderTool)(nil)
+
+// NewInvestigateMyOrderTool wraps an EvidenceFetcher as an MCP-registerable tool.
+// It runs the parallel fan-out and reduces the bundle to a customer-facing verdict.
+func NewInvestigateMyOrderTool(f EvidenceFetcher) *investigateMyOrderTool {
+	return &investigateMyOrderTool{fetcher: f}
+}
+
+func (t *investigateMyOrderTool) Name() string {
+	return "investigate_my_order"
+}
+
+func (t *investigateMyOrderTool) Description() string {
+	return "Investigates the full checkout saga for a given order, correlating order, payment, cart reservation, RabbitMQ events, trace, and logs into a structured verdict with a customer-facing message."
+}
+
+func (t *investigateMyOrderTool) Schema() json.RawMessage {
+	return json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"order_id": { "type": "string", "description": "The order id to investigate." }
+		},
+		"required": ["order_id"]
+	}`)
+}
+
+func (t *investigateMyOrderTool) Call(ctx context.Context, args json.RawMessage, _ string) (tools.Result, error) {
+	var req struct {
+		OrderID string `json:"order_id"`
+	}
+	if err := json.Unmarshal(args, &req); err != nil {
+		return tools.Result{}, err
+	}
+	if req.OrderID == "" {
+		return tools.Result{}, errors.New("order_id is required")
+	}
+	bundle, err := t.fetcher.Fetch(ctx, req.OrderID)
+	if err != nil {
+		return tools.Result{}, err
+	}
+	verdict := ComputeVerdict(bundle)
+	return tools.Result{Content: verdict}, nil
 }

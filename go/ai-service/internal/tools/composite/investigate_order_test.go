@@ -1,6 +1,7 @@
 package composite
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 )
@@ -76,5 +77,43 @@ func TestVerdictPartialEvidenceFlagged(t *testing.T) {
 	v := ComputeVerdict(b)
 	if !v.Evidence.Partial {
 		t.Fatalf("expected verdict.Evidence.Partial=true")
+	}
+}
+
+func TestInvestigateMyOrderToolEndToEnd(t *testing.T) {
+	tool := NewInvestigateMyOrderTool(EvidenceFetcher{
+		Order:   fakeOrderSource{data: OrderRecord{ID: "ord1", Status: "completed", TraceID: "t1"}},
+		Saga:    fakeSagaSource{data: SagaHistory{Step: "completed"}},
+		Payment: fakePaymentSource{data: PaymentRecord{StripeChargeID: "ch", WebhookReceived: true}},
+		Cart:    fakeCartSource{},
+		Rabbit:  fakeRabbitSource{},
+		Trace:   fakeTraceSource{},
+		Logs:    fakeLogSource{},
+	})
+	if tool.Name() != "investigate_my_order" {
+		t.Fatalf("name: %s", tool.Name())
+	}
+	result, err := tool.Call(context.Background(), []byte(`{"order_id":"ord1"}`), "")
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	out, err := json.Marshal(result.Content)
+	if err != nil {
+		t.Fatalf("marshal content: %v", err)
+	}
+	var v Verdict
+	if e := json.Unmarshal(out, &v); e != nil {
+		t.Fatalf("unmarshal: %v", e)
+	}
+	if v.Stage != "completed" {
+		t.Fatalf("stage: %s", v.Stage)
+	}
+}
+
+func TestInvestigateMyOrderRejectsMissingOrderID(t *testing.T) {
+	tool := NewInvestigateMyOrderTool(EvidenceFetcher{})
+	_, err := tool.Call(context.Background(), []byte(`{}`), "")
+	if err == nil {
+		t.Fatalf("expected error on missing order_id")
 	}
 }
