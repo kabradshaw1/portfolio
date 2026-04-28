@@ -189,3 +189,25 @@ patches:
       kind: Job
       metadata:
         name: postgres-replicator-bootstrap
+  # --- Remove WAL-archive PVCs (the underlying PVs are claimed by prod) ---
+  # Without these deletes, QA's PVCs raced prod's for the only two matching PVs
+  # and cross-bound, leaving prod's postgres pod unschedulable.
+  # See incident note in docs/runbooks/postgres-recovery.md.
+  - target:
+      kind: PersistentVolumeClaim
+      name: postgres-wal-archive
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: postgres-wal-archive
+  - target:
+      kind: PersistentVolumeClaim
+      name: postgres-basebackup
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: postgres-basebackup
