@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 )
@@ -109,20 +112,32 @@ func (t *investigateMyOrderTool) Schema() json.RawMessage {
 	}`)
 }
 
-func (t *investigateMyOrderTool) Call(ctx context.Context, args json.RawMessage, _ string) (tools.Result, error) {
+func (t *investigateMyOrderTool) Call(ctx context.Context, args json.RawMessage, userID string) (tools.Result, error) {
+	start := time.Now()
 	var req struct {
 		OrderID string `json:"order_id"`
 	}
 	if err := json.Unmarshal(args, &req); err != nil {
-		return tools.Result{}, err
+		slog.WarnContext(ctx, "tool error", "tool", "investigate_my_order", "error", err.Error())
+		return tools.Result{}, fmt.Errorf("investigate_my_order: invalid args: %w", err)
 	}
 	if req.OrderID == "" {
-		return tools.Result{}, errors.New("order_id is required")
+		return tools.Result{}, errors.New("investigate_my_order: order_id is required")
 	}
+	// TODO(auth): verify order.UserID == userID once source adapters are wired (A5).
+	_ = userID
 	bundle, err := t.fetcher.Fetch(ctx, req.OrderID)
 	if err != nil {
-		return tools.Result{}, err
+		slog.WarnContext(ctx, "tool error", "tool", "investigate_my_order", "order_id", req.OrderID, "error", err.Error())
+		return tools.Result{}, fmt.Errorf("investigate_my_order: %w", err)
 	}
 	verdict := ComputeVerdict(bundle)
+	slog.InfoContext(ctx, "tool result", "tool", "investigate_my_order",
+		"order_id", req.OrderID,
+		"stage", verdict.Stage,
+		"status", verdict.Status,
+		"partial", verdict.Evidence.Partial,
+		"duration_ms", time.Since(start).Milliseconds(),
+	)
 	return tools.Result{Content: verdict}, nil
 }
