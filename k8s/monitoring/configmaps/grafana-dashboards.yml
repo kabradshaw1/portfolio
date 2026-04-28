@@ -3499,10 +3499,100 @@ data:
           }
         },
         {
+          "title": "Time Since Last WAL Archive",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 24 },
+          "id": 8,
+          "datasource": { "type": "prometheus", "uid": "" },
+          "targets": [
+            {
+              "expr": "time() - pg_stat_archiver_last_archived_time",
+              "legendFormat": "age",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 300 },
+                  { "color": "red", "value": 600 }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "title": "WAL Archive Failures (5m rate)",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 8, "y": 24 },
+          "id": 9,
+          "datasource": { "type": "prometheus", "uid": "" },
+          "targets": [
+            {
+              "expr": "rate(pg_stat_archiver_failed_count[5m])",
+              "legendFormat": "failures/sec",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 0.0001 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "tooltip": { "mode": "multi" },
+            "legend": { "displayMode": "list", "placement": "bottom" }
+          }
+        },
+        {
+          "title": "Time Since Last Base Backup",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 24 },
+          "id": 10,
+          "datasource": { "type": "prometheus", "uid": "" },
+          "targets": [
+            {
+              "expr": "time() - max(kube_cronjob_status_last_successful_time{cronjob=\"postgres-basebackup\", namespace=\"java-tasks\"})",
+              "legendFormat": "age",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 604800 },
+                  { "color": "red", "value": 691200 }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
           "title": "Backup Verification — Time Since Last Success",
           "type": "stat",
-          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
-          "id": 8,
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 30 },
+          "id": 11,
           "datasource": { "type": "prometheus", "uid": "" },
           "targets": [
             {
@@ -3534,8 +3624,8 @@ data:
         {
           "title": "Backup Verification Failures (last 30d)",
           "type": "timeseries",
-          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
-          "id": 9,
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 30 },
+          "id": 12,
           "datasource": { "type": "prometheus", "uid": "" },
           "targets": [
             {
@@ -3564,8 +3654,8 @@ data:
         {
           "title": "Backup Verification — Restored Row Counts",
           "type": "bargauge",
-          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
-          "id": 10,
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 30 },
+          "id": 13,
           "datasource": { "type": "prometheus", "uid": "" },
           "targets": [
             {
@@ -3601,7 +3691,7 @@ data:
       "timezone": "",
       "title": "PostgreSQL",
       "uid": "postgresql",
-      "version": 1
+      "version": 2
     }
   pg-query-performance.json: |
     {

@@ -129,6 +129,24 @@ export default function Home() {
               </CardContent>
             </Card>
           </Link>
+          <Link href="/database" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>Database Engineering</CardTitle>
+                <CardDescription>
+                  Production PostgreSQL — optimization, partitioning, migration
+                  safety, and reliability
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Real benchmarks against PostgreSQL 16, range partitioning with
+                  materialized views, a custom AST-based migration linter, and
+                  an operational track with backups and recovery runbooks.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
           <Link href="/security" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
