@@ -25,6 +25,7 @@ SECRETS_DIR="$REPO_DIR/k8s/secrets"
 # a new live Secret that should land in the repo.
 SECRETS=(
   "java-tasks/java-secrets"
+  "java-tasks-qa/java-secrets"
   "go-ecommerce/go-secrets"
   "go-ecommerce/stripe-secrets"
   "monitoring/telegram-bot"
