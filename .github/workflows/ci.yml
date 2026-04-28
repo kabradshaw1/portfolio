@@ -230,7 +230,8 @@ jobs:
             paths: go/cart-service go/product-service go/pkg go/go.work
           - service: order-projector
             paths: go/order-projector go/pkg go/go.work
-          - service: cmd/migration-lint
+          - service: migration-lint
+            dir: cmd/migration-lint
             paths: go/cmd/migration-lint
     steps:
       - uses: actions/checkout@v4
@@ -244,14 +245,14 @@ jobs:
       - uses: actions/setup-go@v5
         if: steps.changes.outputs.changed == 'true'
         with:
-          go-version-file: go/${{ matrix.service }}/go.mod
+          go-version-file: go/${{ matrix.dir || matrix.service }}/go.mod
       - name: Install golangci-lint
         if: steps.changes.outputs.changed == 'true'
-        working-directory: go/${{ matrix.service }}
+        working-directory: go/${{ matrix.dir || matrix.service }}
         run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
       - name: Run linter
         if: steps.changes.outputs.changed == 'true'
-        working-directory: go/${{ matrix.service }}
+        working-directory: go/${{ matrix.dir || matrix.service }}
         run: golangci-lint run ./...
 
   go-tests:
@@ -274,7 +275,8 @@ jobs:
             paths: go/cart-service go/product-service go/pkg go/go.work
           - service: order-projector
             paths: go/order-projector go/pkg go/go.work
-          - service: cmd/migration-lint
+          - service: migration-lint
+            dir: cmd/migration-lint
             paths: go/cmd/migration-lint
     steps:
       - uses: actions/checkout@v4
@@ -288,17 +290,17 @@ jobs:
       - uses: actions/setup-go@v5
         if: steps.changes.outputs.changed == 'true'
         with:
-          go-version-file: go/${{ matrix.service }}/go.mod
+          go-version-file: go/${{ matrix.dir || matrix.service }}/go.mod
       - name: Run tests
         if: steps.changes.outputs.changed == 'true'
-        working-directory: go/${{ matrix.service }}
+        working-directory: go/${{ matrix.dir || matrix.service }}
         run: go test ./... -v -race -coverprofile=coverage.out
       - name: Upload coverage
         if: steps.changes.outputs.changed == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-go-${{ matrix.service }}
-          path: go/${{ matrix.service }}/coverage.out
+          path: go/${{ matrix.dir || matrix.service }}/coverage.out
 
   buf-breaking:
     name: Proto Breaking Change Check
