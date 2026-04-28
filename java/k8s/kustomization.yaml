@@ -38,6 +38,7 @@ resources:
   - jobs/postgres-grafana-reader.yml
   - jobs/postgres-backup-verify.yml
   - jobs/postgres-replicator-bootstrap.yml
+  - jobs/pgbouncer-auth-bootstrap.yml
   - cronjobs/postgres-basebackup.yml
   - pdb/postgres-pdb.yml
   - ingress.yml
