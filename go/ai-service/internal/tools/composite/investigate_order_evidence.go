@@ -2,7 +2,6 @@ package composite
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -115,16 +114,27 @@ func (f EvidenceFetcher) Fetch(ctx context.Context, orderID string) (EvidenceBun
 	bundle.Order = order
 
 	g, gctx := errgroup.WithContext(ctx)
+
 	var (
 		mu             sync.Mutex
+		partial        bool
 		partialReasons []string
 	)
 	mark := func(reason string) {
 		mu.Lock()
 		defer mu.Unlock()
 		partialReasons = append(partialReasons, reason)
-		bundle.Partial = true
+		partial = true
 	}
+
+	var (
+		saga    SagaHistory
+		payment PaymentRecord
+		cart    CartReservation
+		rabbit  []RabbitEvent
+		trace   TraceSummary
+		logs    []string
+	)
 
 	g.Go(func() error {
 		v, e := f.Saga.FetchSaga(gctx, orderID)
@@ -132,7 +142,7 @@ func (f EvidenceFetcher) Fetch(ctx context.Context, orderID string) (EvidenceBun
 			mark("saga: " + e.Error())
 			return nil
 		}
-		bundle.Saga = v
+		saga = v
 		return nil
 	})
 	g.Go(func() error {
@@ -141,7 +151,7 @@ func (f EvidenceFetcher) Fetch(ctx context.Context, orderID string) (EvidenceBun
 			mark("payment: " + e.Error())
 			return nil
 		}
-		bundle.Payment = v
+		payment = v
 		return nil
 	})
 	g.Go(func() error {
@@ -150,7 +160,7 @@ func (f EvidenceFetcher) Fetch(ctx context.Context, orderID string) (EvidenceBun
 			mark("cart: " + e.Error())
 			return nil
 		}
-		bundle.Cart = v
+		cart = v
 		return nil
 	})
 	g.Go(func() error {
@@ -159,7 +169,7 @@ func (f EvidenceFetcher) Fetch(ctx context.Context, orderID string) (EvidenceBun
 			mark("rabbit: " + e.Error())
 			return nil
 		}
-		bundle.Rabbit = v
+		rabbit = v
 		return nil
 	})
 	g.Go(func() error {
@@ -171,7 +181,7 @@ func (f EvidenceFetcher) Fetch(ctx context.Context, orderID string) (EvidenceBun
 			mark("trace: " + e.Error())
 			return nil
 		}
-		bundle.Trace = v
+		trace = v
 		return nil
 	})
 	g.Go(func() error {
@@ -180,13 +190,19 @@ func (f EvidenceFetcher) Fetch(ctx context.Context, orderID string) (EvidenceBun
 			mark("logs: " + e.Error())
 			return nil
 		}
-		bundle.Logs = v
+		logs = v
 		return nil
 	})
 
-	if err := g.Wait(); err != nil {
-		return bundle, errors.New("fan-out wait: " + err.Error())
-	}
+	_ = g.Wait() // all goroutines swallow errors; partial results carried via partialReasons
+
+	bundle.Saga = saga
+	bundle.Payment = payment
+	bundle.Cart = cart
+	bundle.Rabbit = rabbit
+	bundle.Trace = trace
+	bundle.Logs = logs
+	bundle.Partial = partial
 	bundle.PartialReason = partialReasons
 	return bundle, nil
 }

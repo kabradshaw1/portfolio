@@ -3,6 +3,7 @@ package composite
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -110,6 +111,12 @@ func TestFanOutSingleFailureMarksPartial(t *testing.T) {
 	}
 	if bundle.Order.ID != "ord1" {
 		t.Fatalf("primary order data should still be present")
+	}
+	if len(bundle.PartialReason) != 1 {
+		t.Fatalf("expected exactly 1 partial reason, got %d: %v", len(bundle.PartialReason), bundle.PartialReason)
+	}
+	if !strings.HasPrefix(bundle.PartialReason[0], "saga:") {
+		t.Fatalf("expected partial reason to be prefixed 'saga:', got %q", bundle.PartialReason[0])
 	}
 }
 
