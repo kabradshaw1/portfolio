@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { databaseTabs, type DatabaseTab } from "@/components/database/tabs";
 import { PostgresTab } from "@/components/database/PostgresTab";
-import { NoSqlTab } from "@/components/database/NoSqlTab";
+import { RedisTab } from "@/components/database/RedisTab";
+import { MongoDbTab } from "@/components/database/MongoDbTab";
 import { VectorTab } from "@/components/database/VectorTab";
 
 export default function DatabasePage() {
@@ -21,8 +22,10 @@ export default function DatabasePage() {
           <code>pg_stat_statements</code> + <code>auto_explain</code>,
           point-in-time recovery with verified backups, a custom AST-based
           migration linter, and range partitioning with materialized views for
-          reporting. MongoDB and Qdrant are also in use elsewhere in the
-          portfolio — dedicated tabs for each are coming.
+          reporting. Redis underpins caching, rate limiting, HTTP idempotency,
+          JWT revocation, and time-windowed analytics across the Go stack and
+          Spring <code>@Cacheable</code> in the Java stack. MongoDB and Qdrant
+          are also in use elsewhere — dedicated tabs for each are coming.
         </p>
       </section>
 
@@ -50,7 +53,8 @@ export default function DatabasePage() {
         {/* Tab Content */}
         <div className="mt-8">
           {activeTab === "postgres" && <PostgresTab />}
-          {activeTab === "nosql" && <NoSqlTab />}
+          {activeTab === "redis" && <RedisTab />}
+          {activeTab === "mongodb" && <MongoDbTab />}
           {activeTab === "vector" && <VectorTab />}
         </div>
       </section>

@@ -8,24 +8,33 @@ test.describe("/database page", () => {
     ).toBeVisible();
   });
 
-  test("renders all three tab labels", async ({ page }) => {
+  test("renders all four tab labels", async ({ page }) => {
     await page.goto("/database");
     await expect(page.getByRole("button", { name: "PostgreSQL", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "NoSQL", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Redis", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "MongoDB", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Vector", exact: true })).toBeVisible();
   });
 
   test("PostgreSQL tab is active by default", async ({ page }) => {
     await page.goto("/database");
     await expect(page.getByTestId("postgres-tab")).toBeVisible();
-    await expect(page.getByTestId("nosql-tab")).not.toBeVisible();
+    await expect(page.getByTestId("redis-tab")).not.toBeVisible();
+    await expect(page.getByTestId("mongodb-tab")).not.toBeVisible();
     await expect(page.getByTestId("vector-tab")).not.toBeVisible();
   });
 
-  test("clicking NoSQL switches to the NoSQL tab", async ({ page }) => {
+  test("clicking Redis switches to the Redis tab", async ({ page }) => {
     await page.goto("/database");
-    await page.getByRole("button", { name: "NoSQL", exact: true }).click();
-    await expect(page.getByTestId("nosql-tab")).toBeVisible();
+    await page.getByRole("button", { name: "Redis", exact: true }).click();
+    await expect(page.getByTestId("redis-tab")).toBeVisible();
+    await expect(page.getByTestId("postgres-tab")).not.toBeVisible();
+  });
+
+  test("clicking MongoDB switches to the MongoDB tab", async ({ page }) => {
+    await page.goto("/database");
+    await page.getByRole("button", { name: "MongoDB", exact: true }).click();
+    await expect(page.getByTestId("mongodb-tab")).toBeVisible();
     await expect(page.getByTestId("postgres-tab")).not.toBeVisible();
   });
 
@@ -35,12 +44,55 @@ test.describe("/database page", () => {
     await expect(page.getByTestId("vector-tab")).toBeVisible();
   });
 
-  test("NoSQL stub points to /java", async ({ page }) => {
+  test("MongoDB stub points to /java", async ({ page }) => {
     await page.goto("/database");
-    await page.getByRole("button", { name: "NoSQL", exact: true }).click();
+    await page.getByRole("button", { name: "MongoDB", exact: true }).click();
     await expect(page.getByText("MongoDB powers the activity feed", { exact: false })).toBeVisible();
     const link = page.getByRole("link", { name: /View MongoDB usage in \/java/ });
     await expect(link).toHaveAttribute("href", "/java");
+  });
+
+  test("Redis tab renders all five pillar headings", async ({ page }) => {
+    await page.goto("/database");
+    await page.getByRole("button", { name: "Redis", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: /Read-Side Caching/, level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Per-IP Rate Limiting/, level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /HTTP Idempotency-Key/, level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /JWT Token Denylist/, level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Time-Windowed Analytics/, level: 2 }),
+    ).toBeVisible();
+  });
+
+  test("Redis tab pillars have stable anchor ids", async ({ page }) => {
+    await page.goto("/database");
+    await page.getByRole("button", { name: "Redis", exact: true }).click();
+    for (const id of ["caching", "rate-limiting", "idempotency", "denylist", "analytics"]) {
+      await expect(page.locator(`#${id}`)).toBeVisible();
+    }
+  });
+
+  test("Redis tab TOC labels render in order", async ({ page }) => {
+    await page.goto("/database");
+    await page.getByRole("button", { name: "Redis", exact: true }).click();
+    const sidebarLabels = await page
+      .locator('[data-testid="sticky-toc-sidebar"] a')
+      .allTextContents();
+    expect(sidebarLabels.map((s) => s.trim())).toEqual([
+      "Read-Side Caching",
+      "Rate Limiting",
+      "HTTP Idempotency",
+      "JWT Denylist",
+      "Time-Windowed Analytics",
+    ]);
   });
 
   test("Vector stub points to /ai", async ({ page }) => {
