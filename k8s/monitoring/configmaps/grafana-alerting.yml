@@ -1724,3 +1724,75 @@ data:
               severity: warning
             annotations:
               summary: "No auto_explain log lines in 24h — query observability is silently broken"
+
+          - uid: pg-backup-verification-failed
+            title: Postgres Backup Verification Failed
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    max by (instance) (backup_verification_last_failure_timestamp)
+                    - max by (instance) (backup_verification_last_success_timestamp)
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+                  refId: C
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Backup verification FAILED for {{ $labels.instance }} — most recent verification did not restore"
+
+          - uid: pg-backup-verification-stale
+            title: Postgres Backup Verification Stale
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: time() - max by (instance) (backup_verification_last_success_timestamp)
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [691200] }
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "No successful backup verification for {{ $labels.instance }} in over 8 days"
