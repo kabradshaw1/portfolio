@@ -17,6 +17,7 @@ resources:
   - rbac/kube-event-exporter-clusterrolebinding.yml
   - pvc/prometheus-data.yml
   - pvc/loki-data.yml
+  - pvc/pushgateway-data.yml
   - configmaps/grafana-dashboard-provider.yml
   - configmaps/grafana-dashboards.yml
   - configmaps/grafana-datasource.yml
@@ -30,6 +31,7 @@ resources:
   - deployments/kube-state-metrics.yml
   - deployments/prometheus.yml
   - deployments/kube-event-exporter.yml
+  - deployments/pushgateway.yml
   - statefulsets/loki.yml
   - daemonsets/node-exporter.yml
   - daemonsets/promtail.yml
@@ -39,4 +41,5 @@ resources:
   - services/kube-state-metrics.yml
   - services/node-exporter.yml
   - services/prometheus.yml
+  - services/pushgateway.yml
   - ingress.yml
