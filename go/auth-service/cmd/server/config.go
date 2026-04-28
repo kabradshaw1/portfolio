@@ -114,7 +114,7 @@ func connectPostgres(ctx context.Context, databaseURL string) *pgxpool.Pool {
 	if err != nil {
 		log.Fatalf("failed to parse database config: %v", err)
 	}
-	poolConfig.MaxConns = 10
+	poolConfig.MaxConns = 8
 	poolConfig.MinConns = 2
 	poolConfig.MaxConnIdleTime = 5 * time.Minute
 	poolConfig.MaxConnLifetime = 30 * time.Minute

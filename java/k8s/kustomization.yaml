@@ -12,6 +12,7 @@ resources:
   - configmaps/rabbitmq-definitions.yml
   - configmaps/task-service-config.yml
   - configmaps/postgres-verify-scripts.yml
+  - configmaps/pgbouncer-config.yml
   - deployments/activity-service.yml
   - deployments/gateway-service.yml
   - deployments/mongodb.yml
@@ -20,6 +21,7 @@ resources:
   - deployments/rabbitmq.yml
   - deployments/redis.yml
   - deployments/task-service.yml
+  - deployments/pgbouncer.yml
   - services/activity-service.yml
   - services/gateway-service.yml
   - services/mongodb.yml
@@ -28,6 +30,7 @@ resources:
   - services/rabbitmq.yml
   - services/redis.yml
   - services/task-service.yml
+  - services/pgbouncer.yml
   - volumes/postgres-pvc.yml
   - volumes/postgres-backup-pv.yml
   - volumes/postgres-backup-readonly-pv.yml
@@ -38,8 +41,10 @@ resources:
   - jobs/postgres-grafana-reader.yml
   - jobs/postgres-backup-verify.yml
   - jobs/postgres-replicator-bootstrap.yml
+  - jobs/pgbouncer-auth-bootstrap.yml
   - cronjobs/postgres-basebackup.yml
   - pdb/postgres-pdb.yml
+  - pdb/pgbouncer-pdb.yml
   - ingress.yml
   - ingress-rabbitmq.yml
   - network-policy.yml

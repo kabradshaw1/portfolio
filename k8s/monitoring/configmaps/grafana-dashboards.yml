@@ -3802,3 +3802,115 @@ data:
         }
       ]
     }
+  pgbouncer.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "uid": "pgbouncer-overview",
+      "title": "PgBouncer Overview",
+      "tags": ["pgbouncer", "postgres", "infrastructure"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "title": "Total Postgres backends (headline)",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+          "id": 1,
+          "datasource": { "type": "prometheus", "uid": "" },
+          "targets": [
+            { "expr": "sum(pg_stat_database_numbackends)", "legendFormat": "backends", "refId": "A" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 60 },
+                  { "color": "red", "value": 80 }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "title": "Top pools by waiting clients",
+          "type": "bargauge",
+          "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+          "id": 2,
+          "datasource": { "type": "prometheus", "uid": "" },
+          "targets": [
+            { "expr": "topk(5, pgbouncer_pools_client_waiting_connections)", "legendFormat": "{{database}}", "refId": "A" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "red", "value": 5 }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "title": "Avg wait time per pool (ms)",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+          "id": 3,
+          "datasource": { "type": "prometheus", "uid": "" },
+          "targets": [
+            { "expr": "pgbouncer_stats_avg_wait_time_seconds * 1000", "legendFormat": "{{database}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+        },
+        {
+          "title": "Avg query time per pool (ms)",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+          "id": 4,
+          "datasource": { "type": "prometheus", "uid": "" },
+          "targets": [
+            { "expr": "pgbouncer_stats_avg_query_time_seconds * 1000", "legendFormat": "{{database}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+        },
+        {
+          "title": "Client connections (active vs waiting)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "id": 5,
+          "datasource": { "type": "prometheus", "uid": "" },
+          "targets": [
+            { "expr": "sum by (database) (pgbouncer_pools_client_active_connections)", "legendFormat": "active — {{database}}", "refId": "A" },
+            { "expr": "sum by (database) (pgbouncer_pools_client_waiting_connections)", "legendFormat": "waiting — {{database}}", "refId": "B" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "custom": { "stacking": { "mode": "normal" } } }, "overrides": [] }
+        },
+        {
+          "title": "Server connection usage",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "id": 6,
+          "datasource": { "type": "prometheus", "uid": "" },
+          "targets": [
+            { "expr": "sum by (database) (pgbouncer_pools_server_active_connections)", "legendFormat": "active — {{database}}", "refId": "A" },
+            { "expr": "sum by (database) (pgbouncer_pools_server_idle_connections)", "legendFormat": "idle — {{database}}", "refId": "B" },
+            { "expr": "sum by (database) (pgbouncer_pools_server_used_connections)", "legendFormat": "used — {{database}}", "refId": "C" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "custom": { "stacking": { "mode": "normal" } } }, "overrides": [] }
+        }
+      ]
+    }
