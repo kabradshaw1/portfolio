@@ -29,3 +29,52 @@ func TestVerdictMarshalsToExpectedShape(t *testing.T) {
 		t.Fatalf("marshal mismatch:\n got=%s\nwant=%s", got, want)
 	}
 }
+
+func TestVerdictCompletedOrder(t *testing.T) {
+	b := EvidenceBundle{
+		Order:   OrderRecord{ID: "ord", Status: "completed", TraceID: "t"},
+		Saga:    SagaHistory{Step: "completed"},
+		Payment: PaymentRecord{StripeChargeID: "ch_1", WebhookReceived: true},
+	}
+	v := ComputeVerdict(b)
+	if v.Stage != "completed" || v.Status != "ok" || v.NextAction != "none" {
+		t.Fatalf("unexpected verdict: %+v", v)
+	}
+}
+
+func TestVerdictPaymentCapturedWarehousePending(t *testing.T) {
+	b := EvidenceBundle{
+		Order:   OrderRecord{ID: "ord", Status: "processing", TraceID: "t"},
+		Saga:    SagaHistory{Step: "payment_captured"},
+		Payment: PaymentRecord{StripeChargeID: "ch_1", WebhookReceived: true},
+	}
+	v := ComputeVerdict(b)
+	if v.Stage != "payment_captured" || v.NextAction != "wait" {
+		t.Fatalf("unexpected verdict: %+v", v)
+	}
+	if v.CustomerMessage == "" {
+		t.Fatalf("expected non-empty customer message")
+	}
+}
+
+func TestVerdictFailedSaga(t *testing.T) {
+	b := EvidenceBundle{
+		Order: OrderRecord{ID: "ord", Status: "failed"},
+		Saga:  SagaHistory{Step: "failed", Retries: 3},
+	}
+	v := ComputeVerdict(b)
+	if v.Status != "failed" || v.NextAction != "contact_support" {
+		t.Fatalf("unexpected verdict: %+v", v)
+	}
+}
+
+func TestVerdictPartialEvidenceFlagged(t *testing.T) {
+	b := EvidenceBundle{
+		Order:   OrderRecord{ID: "ord", Status: "completed"},
+		Partial: true,
+	}
+	v := ComputeVerdict(b)
+	if !v.Evidence.Partial {
+		t.Fatalf("expected verdict.Evidence.Partial=true")
+	}
+}
