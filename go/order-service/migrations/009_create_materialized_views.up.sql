@@ -15,6 +15,7 @@ WHERE o.status = 'completed'
 GROUP BY 1, 2, 3, 4;
 
 -- Unique index required for REFRESH MATERIALIZED VIEW CONCURRENTLY
+-- migration-lint: ignore=MIG001 reason="materialized view created in same migration above; index target is empty at creation time"
 CREATE UNIQUE INDEX idx_mv_daily_revenue_pk ON mv_daily_revenue (day, product_id);
 
 -- Product performance: units, revenue, return rate, AOV
@@ -50,6 +51,7 @@ LEFT JOIN (
 ) r ON r.product_id = p.id
 GROUP BY p.id, p.name, p.category, p.stock, r.return_count;
 
+-- migration-lint: ignore=MIG001 reason="materialized view created in same migration above; index target is empty at creation time"
 CREATE UNIQUE INDEX idx_mv_product_performance_pk ON mv_product_performance (product_id);
 
 -- Customer summary: CLV proxy
@@ -69,4 +71,5 @@ FROM orders o
 WHERE o.status = 'completed'
 GROUP BY o.user_id;
 
+-- migration-lint: ignore=MIG001 reason="materialized view created in same migration above; index target is empty at creation time"
 CREATE UNIQUE INDEX idx_mv_customer_summary_pk ON mv_customer_summary (user_id);
