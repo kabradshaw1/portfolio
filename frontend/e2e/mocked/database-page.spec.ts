@@ -95,4 +95,11 @@ test.describe("/database page", () => {
       page.getByRole("heading", { name: "Migration Safety — migration-lint", level: 2 }),
     ).toBeInViewport();
   });
+
+  test("homepage links to /database", async ({ page }) => {
+    await page.goto("/");
+    const link = page.getByRole("link", { name: /Database Engineering/ });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", "/database");
+  });
 });
