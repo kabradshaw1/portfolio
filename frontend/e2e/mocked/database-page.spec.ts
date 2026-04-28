@@ -63,6 +63,12 @@ test.describe("/database page", () => {
       }),
     ).toBeVisible();
     await expect(
+      page.getByRole("heading", { name: "Connection Pooling — PgBouncer", level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Read Replica & Reporting Pool", level: 2 }),
+    ).toBeVisible();
+    await expect(
       page.getByRole("heading", { name: "Reliability & Backups", level: 2 }),
     ).toBeVisible();
     await expect(
@@ -75,7 +81,15 @@ test.describe("/database page", () => {
 
   test("each pillar has a stable anchor id", async ({ page }) => {
     await page.goto("/database");
-    for (const id of ["optimization", "observability", "reliability", "migrations", "schema"]) {
+    for (const id of [
+      "optimization",
+      "observability",
+      "pooling",
+      "replica",
+      "reliability",
+      "migrations",
+      "schema",
+    ]) {
       await expect(page.locator(`#${id}`)).toBeVisible();
     }
   });
@@ -88,6 +102,8 @@ test.describe("/database page", () => {
     expect(sidebarLabels.map((s) => s.trim())).toEqual([
       "Query Optimization",
       "Query Observability",
+      "Connection Pooling",
+      "Read Replica",
       "Reliability & Backups",
       "Migration Safety",
       "Schema Design",

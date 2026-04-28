@@ -55,38 +55,22 @@ export default function Home() {
               </CardContent>
             </Card>
           </Link>
-          <Link href="/aws" className="block">
+          <Link href="/database" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
-                <CardTitle>Infrastructure & Deployment</CardTitle>
+                <CardTitle>Database Engineering</CardTitle>
                 <CardDescription>
-                  Production Kubernetes on a home server, AWS-ready with
-                  Terraform and EKS
+                  Production PostgreSQL — pooling, replication, optimization,
+                  partitioning, migration safety, and reliability
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground text-sm">
-                  Two deployment architectures for the same services — a
-                  cost-effective Minikube cluster with Cloudflare Tunnel serving
-                  production today, and a one-command AWS deployment with EKS,
-                  RDS, ElastiCache, and Amazon MQ.
-                </p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/java" className="block">
-            <Card className="hover:ring-foreground/20 transition-all">
-              <CardHeader>
-                <CardTitle>Full Stack Java Developer</CardTitle>
-                <CardDescription>
-                  Task Management System built with Spring Boot, GraphQL, and
-                  Kubernetes
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-sm">
-                  Microservices architecture with PostgreSQL, MongoDB, Redis,
-                  RabbitMQ, Google OAuth, and CI/CD automation.
+                  Real benchmarks against PostgreSQL 16, transaction-mode
+                  PgBouncer pooling, an async streaming read replica with a
+                  separate reporting pool, range partitioning with materialized
+                  views, a custom AST-based migration linter, and verified
+                  point-in-time recovery.
                 </p>
               </CardContent>
             </Card>
@@ -105,6 +89,24 @@ export default function Home() {
                   A full-stack retrieval-augmented generation system
                   demonstrating PDF ingestion, vector search, prompt
                   engineering, and streaming LLM responses.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/observability" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>Observability</CardTitle>
+                <CardDescription>
+                  Production-journey instrumentation — Prometheus metrics, Loki
+                  logs, Jaeger traces, and live alerting
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Three-pillar stack with deploy annotations, Kubernetes event
+                  exporter, gRPC client interceptors, saga-stalled alerts, and
+                  Kafka-header trace propagation across the async boundary.
                 </p>
               </CardContent>
             </Card>
@@ -129,20 +131,21 @@ export default function Home() {
               </CardContent>
             </Card>
           </Link>
-          <Link href="/database" className="block">
+          <Link href="/aws" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
-                <CardTitle>Database Engineering</CardTitle>
+                <CardTitle>Infrastructure & Deployment</CardTitle>
                 <CardDescription>
-                  Production PostgreSQL — optimization, partitioning, migration
-                  safety, and reliability
+                  Production Kubernetes on a home server, AWS-ready with
+                  Terraform and EKS
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground text-sm">
-                  Real benchmarks against PostgreSQL 16, range partitioning with
-                  materialized views, a custom AST-based migration linter, and
-                  an operational track with backups and recovery runbooks.
+                  Two deployment architectures for the same services — a
+                  cost-effective Minikube cluster with Cloudflare Tunnel serving
+                  production today, and a one-command AWS deployment with EKS,
+                  RDS, ElastiCache, and Amazon MQ.
                 </p>
               </CardContent>
             </Card>
@@ -159,8 +162,26 @@ export default function Home() {
               <CardContent>
                 <p className="text-muted-foreground text-sm">
                   Six CI security gates, JWT + httpOnly cookies, pod security
-                  contexts, UFW default-deny firewall, Tailscale-only SSH,
+                  contexts, Sealed Secrets for GitOps-friendly secret
+                  management, UFW default-deny firewall, Tailscale-only SSH,
                   auditd, sysctl hardening, and a lynis baseline score of 77.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/java" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>Full Stack Java Developer</CardTitle>
+                <CardDescription>
+                  Task Management System built with Spring Boot, GraphQL, and
+                  Kubernetes
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Microservices architecture with PostgreSQL, MongoDB, Redis,
+                  RabbitMQ, Google OAuth, and CI/CD automation.
                 </p>
               </CardContent>
             </Card>
