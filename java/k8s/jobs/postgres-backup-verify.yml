@@ -15,10 +15,6 @@ spec:
       template:
         spec:
           restartPolicy: Never
-          securityContext:
-            runAsUser: 70
-            runAsGroup: 70
-            fsGroup: 70
           containers:
             - name: pg-verify
               image: postgres:17-alpine
@@ -27,7 +23,8 @@ spec:
                 - |
                   set -eu
                   apk add --no-cache curl >/dev/null
-                  exec /scripts/pg-verify-backups.sh
+                  chown -R postgres:postgres /var/lib/postgresql/data
+                  exec gosu postgres /scripts/pg-verify-backups.sh
               env:
                 - name: PUSHGATEWAY_URL
                   value: "http://pushgateway.monitoring.svc.cluster.local:9091"
