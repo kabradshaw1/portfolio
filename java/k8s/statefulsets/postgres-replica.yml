@@ -1,0 +1,158 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-replica
+  namespace: java-tasks
+spec:
+  serviceName: postgres-replica
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-replica
+  template:
+    metadata:
+      labels:
+        app: postgres-replica
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        - name: bootstrap
+          image: postgres:17-alpine
+          command: ["/scripts/bootstrap-replica.sh"]
+          env:
+            - name: PRIMARY_HOST
+              value: postgres.java-tasks.svc.cluster.local
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: replicator-password
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: scripts
+              mountPath: /scripts
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - containerPort: 5432
+          # standby.signal + primary_conninfo are written into pgdata by
+          # pg_basebackup --write-recovery-conf, so Postgres starts directly
+          # in standby mode and replays WAL from the primary via slot
+          # replica_1. We pass the same args as the primary for everything
+          # that is server-wide (shared_preload_libraries, etc.) and add
+          # hot_standby=on so the replica accepts read-only queries.
+          args:
+            - "-c"
+            - "shared_preload_libraries=pg_stat_statements,auto_explain"
+            - "-c"
+            - "pg_stat_statements.max=5000"
+            - "-c"
+            - "pg_stat_statements.track=top"
+            - "-c"
+            - "pg_stat_statements.track_utility=off"
+            - "-c"
+            - "auto_explain.log_min_duration=500ms"
+            - "-c"
+            - "auto_explain.log_analyze=true"
+            - "-c"
+            - "auto_explain.log_buffers=true"
+            - "-c"
+            - "auto_explain.log_timing=true"
+            - "-c"
+            - "auto_explain.log_format=json"
+            - "-c"
+            - "auto_explain.sample_rate=1.0"
+            - "-c"
+            - "hot_standby=on"
+            - "-c"
+            - "hot_standby_feedback=on"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["gosu", "postgres", "pg_ctl", "stop", "-m", "fast", "-D", "/var/lib/postgresql/data/pgdata"]
+          readinessProbe:
+            exec:
+              # On a hot standby `pg_isready` returns 0 once the recovery
+              # process is accepting connections; queries fail until then.
+              command: ["pg_isready", "-U", "taskuser", "-d", "postgres"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "taskuser", "-d", "postgres"]
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          env:
+            # POSTGRES_* env vars are honored on first boot only; on a
+            # bootstrapped replica they are no-ops because pg_basebackup
+            # has already populated the data dir.
+            - name: POSTGRES_USER
+              value: taskuser
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: postgres-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
+        - name: postgres-exporter
+          image: prometheuscommunity/postgres-exporter:v0.16.0
+          ports:
+            - containerPort: 9187
+          env:
+            - name: DATA_SOURCE_USER
+              value: taskuser
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: postgres-password
+            # The exporter targets the postgres database (which exists on
+            # any standby) — most replication metrics are server-scoped, not
+            # database-scoped, so we don't need a per-DB connection.
+            - name: DATA_SOURCE_URI
+              value: "localhost:5432/postgres?sslmode=disable"
+            - name: PG_EXPORTER_AUTO_DISCOVER_DATABASES
+              value: "false"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+      volumes:
+        - name: scripts
+          configMap:
+            name: postgres-replica-scripts
+            defaultMode: 0755
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: postgres-replica
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
