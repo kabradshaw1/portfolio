@@ -588,11 +588,15 @@ jobs:
         run: |
           # Apply every manifest directory recursively. --dry-run=server
           # exercises the real API server's validation and admission.
-          # Skip overlays/, kustomization.yaml, and cert-manager/ (CRDs not in kind cluster).
+          # Skip overlays/, kustomization.yaml, cert-manager/ (CRDs not in
+          # kind cluster), and sealed-secrets/ (controller is fetched from
+          # upstream URL; the in-repo dir is just a README today, but the
+          # exclusion future-proofs against committing the controller YAML).
           for dir in k8s java/k8s go/k8s; do
             find "$dir" -type f \( -name '*.yml' -o -name '*.yaml' \) \
               -not -path '*/overlays/*' \
               -not -path '*/cert-manager/*' \
+              -not -path '*/sealed-secrets/*' \
               -not -name 'kustomization.yaml' \
               -print0 | xargs -0 -I{} kubectl apply --dry-run=server -f {}
           done
@@ -1378,6 +1382,13 @@ jobs:
           cat k8s/cert-manager/cluster-issuer.yml | $SSH "kubectl apply -f -"
           cat k8s/cert-manager/qa-certificates.yml | $SSH "kubectl apply -f -"
 
+          # Install Sealed Secrets controller (idempotent — kubectl apply
+          # against the pinned upstream manifest). Version pin documented
+          # in k8s/sealed-secrets/README.md; refresh by bumping here +
+          # the prod block below + the deploy.sh script.
+          $SSH "kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/controller.yaml 2>/dev/null || true"
+          $SSH "kubectl wait --for=condition=available --timeout=120s deployment/sealed-secrets-controller -n kube-system 2>/dev/null || true"
+
           # Apply Go overlay, excluding Jobs (they must run sequentially below).
           # Split multi-doc YAML on '---', drop any document containing 'kind: Job'.
           kubectl kustomize k8s/overlays/qa-go/ \
@@ -1570,6 +1581,12 @@ jobs:
           cat k8s/cert-manager/ca-certificate.yml | $SSH "kubectl apply -f -"
           cat k8s/cert-manager/issuer.yml | $SSH "kubectl apply -f -"
           cat k8s/cert-manager/certificates.yml | $SSH "kubectl apply -f -"
+
+          # Install Sealed Secrets controller. Version pin documented in
+          # k8s/sealed-secrets/README.md; keep this in sync with the QA
+          # block and k8s/deploy.sh.
+          $SSH "kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/controller.yaml 2>/dev/null || true"
+          $SSH "kubectl wait --for=condition=available --timeout=120s deployment/sealed-secrets-controller -n kube-system 2>/dev/null || true"
 
           for f in $(find go/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*' -not -path '*/jobs/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 

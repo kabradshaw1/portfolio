@@ -48,6 +48,11 @@ if [ "$ENV" = "qa" ]; then
   kubectl apply -f "$SCRIPT_DIR/cert-manager/cluster-issuer.yml"
   kubectl apply -f "$SCRIPT_DIR/cert-manager/qa-certificates.yml"
 
+  echo "==> Installing Sealed Secrets controller (if not already present)..."
+  # Version pin documented in k8s/sealed-secrets/README.md.
+  kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/controller.yaml 2>/dev/null || true
+  kubectl wait --for=condition=available --timeout=120s deployment/sealed-secrets-controller -n kube-system 2>/dev/null || true
+
   echo "==> Deploying go-ecommerce-qa..."
   kubectl apply -k "$SCRIPT_DIR/overlays/qa-go"
 
@@ -131,6 +136,11 @@ kubectl apply -f "$SCRIPT_DIR/cert-manager/cluster-issuer.yml"
 kubectl apply -f "$SCRIPT_DIR/cert-manager/ca-certificate.yml"
 kubectl apply -f "$SCRIPT_DIR/cert-manager/issuer.yml"
 kubectl apply -f "$SCRIPT_DIR/cert-manager/certificates.yml"
+
+echo "==> Installing Sealed Secrets controller (if not already present)..."
+# Version pin documented in k8s/sealed-secrets/README.md.
+kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/controller.yaml 2>/dev/null || true
+kubectl wait --for=condition=available --timeout=120s deployment/sealed-secrets-controller -n kube-system 2>/dev/null || true
 
 kubectl apply -k "$REPO_DIR/go/k8s/overlays/$ENV"
 
