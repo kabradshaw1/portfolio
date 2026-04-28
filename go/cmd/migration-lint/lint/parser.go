@@ -29,3 +29,30 @@ func parseSource(filename string, src []byte) (*FileContext, error) {
 		Statements: result.Stmts,
 	}, nil
 }
+
+// StmtStart returns the byte offset of the first SQL keyword in stmt, skipping
+// any leading whitespace and `--` line comments that pg_query attributed to
+// the statement. Use this (not stmt.StmtLocation) when reporting line numbers
+// or matching ignore directives, because pg_query treats preceding comments
+// as part of the statement's source range.
+func StmtStart(src []byte, stmt *pg_query.RawStmt) int {
+	i := int(stmt.StmtLocation)
+	end := i + int(stmt.StmtLen)
+	if end > len(src) {
+		end = len(src)
+	}
+	for i < end {
+		c := src[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			i++
+		case c == '-' && i+1 < end && src[i+1] == '-':
+			for i < end && src[i] != '\n' {
+				i++
+			}
+		default:
+			return i
+		}
+	}
+	return i
+}
