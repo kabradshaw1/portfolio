@@ -46,6 +46,14 @@ spec:
             - "auto_explain.log_format=json"
             - "-c"
             - "auto_explain.sample_rate=1.0"
+            - "-c"
+            - "archive_mode=on"
+            - "-c"
+            - "archive_command=/usr/local/bin/pg-archive-wal.sh %p %f"
+            - "-c"
+            - "archive_timeout=300"
+            - "-c"
+            - "wal_level=replica"
           lifecycle:
             preStop:
               exec:
@@ -80,6 +88,12 @@ spec:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
               subPath: pgdata
+            - name: wal-scripts
+              mountPath: /usr/local/bin/pg-archive-wal.sh
+              subPath: pg-archive-wal.sh
+              readOnly: true
+            - name: wal-archive
+              mountPath: /var/lib/postgresql/wal-archive
           resources:
             requests:
               memory: "128Mi"
@@ -125,3 +139,10 @@ spec:
         - name: exporter-queries
           configMap:
             name: postgres-exporter-queries
+        - name: wal-scripts
+          configMap:
+            name: postgres-wal-scripts
+            defaultMode: 0755
+        - name: wal-archive
+          persistentVolumeClaim:
+            claimName: postgres-wal-archive
