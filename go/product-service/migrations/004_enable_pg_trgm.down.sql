@@ -1,0 +1,3 @@
+-- Down migration left as a no-op: dropping the extension would invalidate
+-- the trigram index installed by 005_add_product_search_index. Roll back
+-- 005 first, then drop the extension manually if truly required.

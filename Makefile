@@ -1,4 +1,4 @@
-.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-go-integration preflight-go-migrations preflight-security preflight-compose-config preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup install-pre-commit
+.PHONY: preflight preflight-python preflight-frontend preflight-e2e preflight-java preflight-java-integration preflight-go preflight-go-integration preflight-go-migrations preflight-go-migration-lint preflight-security preflight-compose-config preflight-ai-service preflight-ai-service-evals grafana-sync grafana-sync-check worktree-cleanup install-pre-commit
 
 # Run all CI checks locally before pushing
 preflight: grafana-sync-check preflight-python preflight-frontend preflight-security preflight-java preflight-go preflight-compose-config
@@ -64,13 +64,23 @@ preflight-go:
 	cd go/analytics-service && go test ./... -v -race
 	cd go/order-projector && go test ./... -v -race
 
+# --- Go migration static lint (no Docker required) ---
+# Builds the migration-lint binary fresh and runs it over every service's
+# .up.sql files. Catches operationally unsafe DDL patterns before the runtime
+# migration test even starts.
+preflight-go-migration-lint:
+	@echo "\n=== Go: migration static lint ==="
+	@cd go/cmd/migration-lint && go build -o /tmp/migration-lint .
+	@/tmp/migration-lint go/*/migrations/*.up.sql
+	@echo "  ✅ migration-lint clean"
+
 # --- Go migration pipeline test (requires Docker via Colima + golang-migrate) ---
 # Mirrors the CI "Go Migration Pipeline Test" job: spins up Postgres in Docker,
 # runs all service migrations, applies seeds, and verifies tables exist.
 # Catches FK/index/partition errors before pushing.
 MIGRATE_PG_CONTAINER := preflight-migrate-pg
 MIGRATE_PG_PORT := 54399
-preflight-go-migrations:
+preflight-go-migrations: preflight-go-migration-lint
 	@echo "\n=== Go: migration pipeline test ==="
 	@if ! docker info >/dev/null 2>&1; then \
 		echo "⚠️  Docker not available (run 'colima start') — skipping migration test"; \
