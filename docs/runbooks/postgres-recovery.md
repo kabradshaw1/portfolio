@@ -2,7 +2,7 @@
 
 ## Overview
 
-The shared PostgreSQL instance (`postgres` deployment in `java-tasks` namespace) hosts all Go and Java service databases. This runbook covers four recovery scenarios ordered by severity.
+The shared PostgreSQL instance (`postgres` deployment in `java-tasks` namespace) hosts all Go and Java service databases. This runbook covers five recovery scenarios ordered by severity.
 
 **Related alerts:**
 - `Postgres Backup Stale` — no successful pg_dump in 26h → Scenario 2
@@ -14,6 +14,9 @@ The shared PostgreSQL instance (`postgres` deployment in `java-tasks` namespace)
 - `Postgres Archive Command Failing` — `archive_command` exiting non-zero → Scenario 4 (preventive — not a recovery trigger by itself)
 - `Postgres WAL Archive Stale` — no new WAL archived in 10+ min → Scenario 4 (preventive)
 - `Postgres Base Backup Stale` — no successful weekly base backup in 8d → Scenario 4 (preventive)
+- `Postgres Replication Lag High` — replica replay lag > 30s → Scenario 5 (review, not yet promote)
+- `Postgres Replication Slot Lag High` — slot is inactive or near `max_slot_wal_keep_size` → Scenario 5 (review)
+- `Postgres Replica Down` — replica pod is gone → Scenario 5 (review)
 
 **Backup locations on the Debian host:**
 - `/backups/postgres/` — daily `pg_dump` per database (Scenario 2)
@@ -369,3 +372,81 @@ Restoring from backup preserves data created after the last seed run.
 - If the target timestamp turned out to be wrong, you can re-run this entire
   procedure from the same base backup tarball; the WAL archive is unchanged
   by the restore.
+
+---
+
+## Scenario 5: Promote the Replica (primary is unrecoverable)
+
+### Symptoms
+
+- Primary postgres pod won't start (`CrashLoopBackOff`) and the data PVC is
+  unrecoverable, so neither Scenario 1 (fresh PVC) nor Scenario 2 (pg_dump
+  restore) will preserve the most recent writes.
+- A failover drill — exercising the replica as the primary on demand.
+
+This is the *physical* HA scenario. If Postgres is healthy but data is
+logically wrong, use Scenario 4 (PITR) instead.
+
+### Prerequisites
+
+- The streaming replica (`postgres-replica-0` StatefulSet) is running and
+  caught up — verify before you do anything destructive:
+  ```bash
+  ssh debian "kubectl exec -n java-tasks postgres-replica-0 -c postgres -- \
+    psql -U taskuser -d postgres -c 'SELECT pg_is_in_recovery(), pg_last_wal_replay_lsn(), pg_last_xact_replay_timestamp();'"
+  ```
+  Expect `t` (true — still a standby) and a recent timestamp. If the replica
+  is hours behind the primary's last known state, accept that loss before
+  proceeding — promotion turns "current replay LSN" into the new source of
+  truth.
+
+**Estimated time:** 5-10 minutes.
+
+### Steps
+
+1. **Stop traffic to the broken primary.** Scaling its Deployment to zero
+   prevents apps from racing to reconnect during promotion:
+   ```bash
+   ssh debian "kubectl scale deployment postgres -n java-tasks --replicas=0"
+   ssh debian "kubectl wait --for=delete pod -l app=postgres -n java-tasks --timeout=60s"
+   ```
+
+2. **Confirm replay is current,** then promote:
+   ```bash
+   ssh debian "kubectl exec -n java-tasks postgres-replica-0 -c postgres -- \
+     psql -U taskuser -d postgres -c 'SELECT pg_promote();'"
+   ```
+   `pg_promote()` returns `t` once the replica becomes a normal read-write
+   primary. `pg_is_in_recovery()` should now return `f`.
+
+3. **Repoint the `postgres` Service at the promoted pod** so applications
+   don't have to be re-configured. Patch the Service selector:
+   ```bash
+   ssh debian "kubectl patch service postgres -n java-tasks --type=merge \
+     -p '{\"spec\":{\"selector\":{\"app\":\"postgres-replica\"}}}'"
+   ```
+   Existing pods will reconnect on their next pool health-check tick. The
+   `postgres-replica` Service still resolves the same pod, so anything that
+   was already pointed at the replica (e.g., order-service reporting reads)
+   keeps working.
+
+4. **Verify applications are healthy:**
+   ```bash
+   ssh debian "curl -s -o /dev/null -w '%{http_code}' http://192.168.49.2/go-auth/health"
+   ssh debian "curl -s -o /dev/null -w '%{http_code}' http://192.168.49.2/go-products/products"
+   ```
+
+### After-action
+
+- The promoted instance is the new primary; the old `postgres` Deployment
+  data PVC is left untouched for forensics. Do NOT scale the old Deployment
+  back up against that PVC — it will try to start as a standalone primary
+  and split-brain the cluster.
+- Bring up a *new* replica by recycling the StatefulSet's PVC and letting
+  the bootstrap initContainer re-run `pg_basebackup` against the new
+  primary. This is the "first deploy" path; no special procedure is needed.
+- Take a fresh `pg_dump` and `pg_basebackup` against the new primary so the
+  rest of the recovery toolchain is anchored to the new timeline.
+- Automated failover (Patroni / repmgr) is the long-term answer; this
+  manual procedure exists because the trade-off (operational simplicity vs.
+  RTO) is appropriate for portfolio scale.
