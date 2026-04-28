@@ -17,7 +17,7 @@ const STATUS_ROWS: { area: string; status: string; variant: "default" | "seconda
   { area: "Shift-left security in CI", status: "Strong", variant: "default", notes: "Six gating jobs: Bandit, pip-audit, npm audit, gitleaks, Hadolint, CORS guardrail" },
   { area: "Infrastructure-as-Code validation", status: "Strong", variant: "default", notes: "kubeconform, kind dry-run, custom policy-as-code script" },
   { area: "Supply chain", status: "Adequate", variant: "secondary", notes: "Multi-stage non-root builds, private GHCR; no image signing or digest pinning" },
-  { area: "Secrets management", status: "Strong", variant: "default", notes: "Gitignored files, full-history gitleaks, K8s secretKeyRef injection" },
+  { area: "Secrets management", status: "Strong", variant: "default", notes: "Sealed Secrets controller in-cluster (Phase 1–2 of 6 shipped); committed SealedSecret resources, full-history gitleaks, K8s secretKeyRef injection" },
   { area: "Application AuthN/AuthZ", status: "Strong", variant: "default", notes: "JWT + bcrypt + OAuth 2.0, httpOnly cookies, Redis token revocation, Python JWT enforcement" },
   { area: "Transport security", status: "Adequate", variant: "secondary", notes: "TLS at Cloudflare edge; no direct internet exposure; intra-cluster traffic unencrypted" },
   { area: "Developer guardrails", status: "Strong", variant: "default", notes: "Pre-commit hooks, preflight Makefile targets, structured branch workflow" },
@@ -150,6 +150,79 @@ export default function SecurityPage() {
                 className="underline hover:text-foreground transition-colors"
               >
                 §5 of security-assessment.md
+              </a>
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-lg font-medium">
+              Secrets Management — Sealed Secrets{" "}
+              <span className="ml-2 align-middle text-xs font-normal text-muted-foreground">
+                (in progress · 2 of 6 phases shipped)
+              </span>
+            </h3>
+            <p className="mt-2 text-muted-foreground leading-relaxed">
+              Cluster Secrets are migrating from live{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                kubectl
+              </code>{" "}
+              edits to committed{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                SealedSecret
+              </code>{" "}
+              resources at{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                k8s/secrets/&lt;namespace&gt;/&lt;name&gt;.sealed.yml
+              </code>
+              . The Bitnami sealed-secrets controller in{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                kube-system
+              </code>{" "}
+              decrypts each resource on apply using a controller-held private
+              key; the encrypted file in the repo is the single source of
+              truth, and only the in-cluster controller can decrypt it. This
+              enables GitOps for secrets without committing plaintext.
+            </p>
+            <p className="mt-2 text-muted-foreground leading-relaxed">
+              <span className="text-foreground font-medium">Phase 1</span> —
+              controller install, public-key export, sealing helper script (
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                scripts/seal-from-cluster.sh
+              </code>
+              ).{" "}
+              <span className="text-foreground font-medium">Phase 2</span> —
+              four live application Secrets converted to{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                SealedSecret
+              </code>{" "}
+              files, plaintext templates removed from the repo.
+            </p>
+            <p className="mt-2 text-muted-foreground leading-relaxed">
+              <span className="text-foreground font-medium">
+                Phases 3–6 queued:
+              </span>{" "}
+              key-rotation runbook, audit-trail integration with the existing
+              gitleaks gate, prod cutover for the remaining Secrets, and
+              retiring the last hand-managed credentials.
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Migration decision:{" "}
+              <a
+                href={`${REPO}/blob/main/docs/adr/security/secrets-management.md`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground transition-colors"
+              >
+                secrets-management.md
+              </a>{" "}
+              · Day-to-day rules:{" "}
+              <a
+                href={`${REPO}/blob/main/docs/adr/security/secrets-and-config-practices.md`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground transition-colors"
+              >
+                secrets-and-config-practices.md
               </a>
             </p>
           </div>

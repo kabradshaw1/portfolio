@@ -1,13 +1,13 @@
 import Link from "next/link";
 
-export function NoSqlTab() {
+export function MongoDbTab() {
   return (
-    <div data-testid="nosql-tab" className="space-y-6">
+    <div data-testid="mongodb-tab" className="space-y-6">
       <p className="text-muted-foreground leading-relaxed">
         MongoDB powers the activity feed and analytics aggregations in the
-        Java task-management portfolio — document-shaped activity events,
-        time-bucketed aggregations, and a Redis read-cache layered on top.
-        A dedicated NoSQL section is on the way; for now, the running code
+        Java task-management portfolio — document-shaped activity events
+        and time-bucketed aggregations served back through GraphQL. A
+        dedicated MongoDB section is on the way; for now, the running code
         and its supporting docs live on the Java page.
       </p>
       <div>
