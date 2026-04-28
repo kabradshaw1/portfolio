@@ -9,6 +9,8 @@ The shared PostgreSQL instance (`postgres` deployment in `java-tasks` namespace)
 - `Postgres Connection Utilization High` — connections > 80%
 - `Postgres Cache Hit Ratio Low` — cache ratio < 95%
 - `Postgres Deadlocks Detected` — deadlocks in 5m window
+- `Postgres Backup Verification Failed` — most recent restore-from-dump failed for at least one DB
+- `Postgres Backup Verification Stale` — no successful verification in over 8 days
 - `Postgres Archive Command Failing` — `archive_command` exiting non-zero → Scenario 4 (preventive — not a recovery trigger by itself)
 - `Postgres WAL Archive Stale` — no new WAL archived in 10+ min → Scenario 4 (preventive)
 - `Postgres Base Backup Stale` — no successful weekly base backup in 8d → Scenario 4 (preventive)
@@ -17,6 +19,21 @@ The shared PostgreSQL instance (`postgres` deployment in `java-tasks` namespace)
 - `/backups/postgres/` — daily `pg_dump` per database (Scenario 2)
 - `/backups/wal-archive/` — continuous WAL archive (Scenario 4)
 - `/backups/basebackup/` — weekly `pg_basebackup` tarballs (Scenario 4)
+
+**Verification:** A weekly CronJob (`postgres-backup-verify` in `java-tasks`, Mondays 04:00 UTC) restores every dump into an ephemeral local Postgres and pushes per-DB metrics to Pushgateway. Check the most recent run with:
+
+```bash
+ssh debian "kubectl get jobs -n java-tasks --sort-by=.status.completionTime | grep postgres-backup-verify | tail -3"
+ssh debian "kubectl logs -n java-tasks job/<latest-verify-job-name>"
+```
+
+To trigger an ad-hoc verification (e.g., after restoring backups manually):
+
+```bash
+ssh debian "kubectl create job --from=cronjob/postgres-backup-verify postgres-backup-verify-manual-$(date +%s) -n java-tasks"
+```
+
+The Grafana **PostgreSQL** dashboard's "Backup Verification — Time Since Last Success" panel shows per-DB freshness; green = within a week, red = over 8 days.
 
 ---
 

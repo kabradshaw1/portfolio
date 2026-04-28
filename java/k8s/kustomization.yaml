@@ -11,6 +11,7 @@ resources:
   - configmaps/postgres-wal-scripts.yml
   - configmaps/rabbitmq-definitions.yml
   - configmaps/task-service-config.yml
+  - configmaps/postgres-verify-scripts.yml
   - deployments/activity-service.yml
   - deployments/gateway-service.yml
   - deployments/mongodb.yml
@@ -29,11 +30,13 @@ resources:
   - services/task-service.yml
   - volumes/postgres-pvc.yml
   - volumes/postgres-backup-pv.yml
+  - volumes/postgres-backup-readonly-pv.yml
   - volumes/postgres-basebackup-pv.yml
   - volumes/postgres-wal-archive-pv.yml
   - jobs/postgres-backup.yml
   - jobs/postgres-extensions-bootstrap.yml
   - jobs/postgres-grafana-reader.yml
+  - jobs/postgres-backup-verify.yml
   - jobs/postgres-replicator-bootstrap.yml
   - cronjobs/postgres-basebackup.yml
   - pdb/postgres-pdb.yml
