@@ -1867,6 +1867,117 @@ data:
             annotations:
               summary: "No WAL archived in 10+ minutes — archive_timeout is 5m so this should never happen under normal load"
 
+          - uid: pg-replication-lag-high
+            title: Postgres Replication Lag High
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: max(pg_stat_replication_replay_lag_seconds)
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [30] }
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Postgres replica replay lag > 30s — reporting reads are now seeing data older than the staleness SLA"
+
+          - uid: pg-replication-slot-lag-high
+            title: Postgres Replication Slot Lag High
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  # Either no slot is currently active OR the slot's WAL
+                  # retention has crossed 2GB — both mean the slot is
+                  # heading toward invalidation by max_slot_wal_keep_size.
+                  expr: >-
+                    (max(pg_replication_slots_active{slot_name="replica_1"}) == bool 0)
+                    or
+                    (max(pg_replication_slots_safe_wal_size_bytes{slot_name="replica_1"}) < 2147483648)
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Replication slot replica_1 is inactive or within 2GB of max_slot_wal_keep_size — replica is at risk of being dropped"
+
+          - uid: pg-replica-down
+            title: Postgres Replica Down
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: max(up{namespace="java-tasks", pod=~"postgres-replica-.*"})
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange: { from: 300, to: 0 }
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator: { type: lt, params: [1] }
+                  refId: C
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Postgres replica is down — reporting reads will fall back to the primary and primary's WAL retention will start growing"
+
           - uid: pg-basebackup-stale
             title: Postgres Base Backup Stale
             noDataState: OK
