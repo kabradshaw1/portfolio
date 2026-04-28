@@ -34,28 +34,35 @@ spec:
             - /bin/sh
             - -c
             - |
-              set -euo pipefail
+              set -eu
               # Run against every database PgBouncer will pool. Function is per-DB.
-              for db in postgres authdb productdb orderdb cartdb paymentdb projectordb taskdb \
-                        authdb_qa productdb_qa orderdb_qa cartdb_qa paymentdb_qa projectordb_qa taskdb_qa; do
-                echo "Bootstrapping pgbouncer_auth in $db..."
-                psql -d "$db" -v ON_ERROR_STOP=1 -v pw="$PGBOUNCER_AUTH_PASSWORD" <<'SQL'
-                  DO $$
-                  BEGIN
-                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pgbouncer_auth') THEN
-                      EXECUTE format('CREATE ROLE pgbouncer_auth LOGIN PASSWORD %L', :'pw');
-                    ELSE
-                      EXECUTE format('ALTER ROLE pgbouncer_auth WITH PASSWORD %L', :'pw');
-                    END IF;
-                  END
-                  $$;
+              # The role is global; CREATE/ALTER runs once via the postgres database.
+              # psql variable substitution (:'pw') doesn't work inside DO blocks
+              # (psql treats dollar-quoted strings as opaque), so we branch in
+              # shell and use top-level statements where :'pw' substitutes correctly.
+              EXISTS=$(psql -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='pgbouncer_auth'")
+              if [ "$EXISTS" = "1" ]; then
+                psql -d postgres -v ON_ERROR_STOP=1 -v pw="$PGBOUNCER_AUTH_PASSWORD" <<'SQL'
+              ALTER ROLE pgbouncer_auth WITH PASSWORD :'pw';
+              SQL
+              else
+                psql -d postgres -v ON_ERROR_STOP=1 -v pw="$PGBOUNCER_AUTH_PASSWORD" <<'SQL'
+              CREATE ROLE pgbouncer_auth LOGIN PASSWORD :'pw';
+              SQL
+              fi
 
+              # Discover databases at runtime — the cluster's DB set drifts as
+              # services are added/removed, and a stale hardcoded list either
+              # fails on missing DBs or skips newly added ones.
+              DBS=$(psql -d postgres -tAc "SELECT datname FROM pg_database WHERE datname NOT IN ('template0','template1') ORDER BY datname")
+              for db in $DBS; do
+                echo "Installing pgbouncer_get_auth in $db..."
+                psql -d "$db" -v ON_ERROR_STOP=1 <<'SQL'
                   CREATE OR REPLACE FUNCTION public.pgbouncer_get_auth(p_usename TEXT)
                   RETURNS TABLE(usename TEXT, passwd TEXT)
                   LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog AS $func$
                     SELECT usename::TEXT, passwd::TEXT FROM pg_shadow WHERE usename = p_usename;
                   $func$;
-
                   REVOKE ALL ON FUNCTION public.pgbouncer_get_auth(TEXT) FROM PUBLIC;
                   GRANT EXECUTE ON FUNCTION public.pgbouncer_get_auth(TEXT) TO pgbouncer_auth;
               SQL

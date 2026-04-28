@@ -28,18 +28,20 @@ spec:
             - -c
             - |
               set -eu
-              psql -h postgres.java-tasks.svc.cluster.local -U taskuser -d postgres \
-                -v ON_ERROR_STOP=1 \
-                -v reader_pw="$GRAFANA_READER_PASSWORD" <<'SQL'
-              DO $$
-              BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grafana_reader') THEN
-                  EXECUTE format('CREATE ROLE grafana_reader LOGIN PASSWORD %L', :'reader_pw');
-                ELSE
-                  EXECUTE format('ALTER ROLE grafana_reader WITH PASSWORD %L', :'reader_pw');
-                END IF;
-              END
-              $$;
+              # psql variable substitution (:'pw') doesn't work inside DO blocks,
+              # so branch in shell and use top-level CREATE/ALTER statements.
+              PSQL="psql -h postgres.java-tasks.svc.cluster.local -U taskuser -d postgres"
+              EXISTS=$($PSQL -tAc "SELECT 1 FROM pg_roles WHERE rolname='grafana_reader'")
+              if [ "$EXISTS" = "1" ]; then
+                $PSQL -v ON_ERROR_STOP=1 -v reader_pw="$GRAFANA_READER_PASSWORD" <<'SQL'
+              ALTER ROLE grafana_reader WITH PASSWORD :'reader_pw';
+              SQL
+              else
+                $PSQL -v ON_ERROR_STOP=1 -v reader_pw="$GRAFANA_READER_PASSWORD" <<'SQL'
+              CREATE ROLE grafana_reader LOGIN PASSWORD :'reader_pw';
+              SQL
+              fi
+              $PSQL -v ON_ERROR_STOP=1 <<'SQL'
               GRANT pg_monitor TO grafana_reader;
               GRANT CONNECT ON DATABASE productdb TO grafana_reader;
               GRANT CONNECT ON DATABASE orderdb   TO grafana_reader;
