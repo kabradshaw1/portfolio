@@ -8,6 +8,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 )
 
@@ -43,11 +44,28 @@ type Content struct {
 type Registry struct {
 	mu        sync.RWMutex
 	resources map[string]Resource
+	catalog   CatalogClient
 }
 
 // NewRegistry constructs an empty Registry.
 func NewRegistry() *Registry {
 	return &Registry{resources: make(map[string]Resource)}
+}
+
+// WithCatalogClient enables templated catalog://product/{id} reads without
+// enumerating every product in resources/list.
+func (r *Registry) WithCatalogClient(c CatalogClient) *Registry {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.catalog = c
+	return r
+}
+
+// HasCatalogClient reports whether templated catalog resources are enabled.
+func (r *Registry) HasCatalogClient() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.catalog != nil
 }
 
 // Register adds (or replaces) a Resource by its URI. Concurrency-safe.
@@ -73,9 +91,18 @@ func (r *Registry) List() []Resource {
 func (r *Registry) Read(ctx context.Context, uri string) (Content, error) {
 	r.mu.RLock()
 	res, ok := r.resources[uri]
+	catalog := r.catalog
 	r.mu.RUnlock()
-	if !ok {
-		return Content{}, ErrResourceNotFound
+	if ok {
+		return res.Read(ctx)
 	}
-	return res.Read(ctx)
+	if id, ok := matchProductURI(uri); ok && catalog != nil {
+		return NewProductResource(catalog, id).Read(ctx)
+	}
+	return Content{}, ErrResourceNotFound
+}
+
+func matchProductURI(uri string) (string, bool) {
+	id, ok := strings.CutPrefix(uri, productURIPrefix)
+	return id, ok && id != ""
 }

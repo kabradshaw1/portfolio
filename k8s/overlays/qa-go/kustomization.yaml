@@ -90,6 +90,9 @@ patches:
       - op: replace
         path: /data/KAFKA_BROKERS
         value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"
+      - op: replace
+        path: /data/PRODUCT_SERVICE_URL
+        value: "http://go-product-service.go-ecommerce-qa.svc.cluster.local:8095"
   - target:
       kind: ConfigMap
       name: analytics-service-config

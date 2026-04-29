@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -47,6 +48,25 @@ func TestRegistryReadUnknownURIReturnsError(t *testing.T) {
 	_, err := r.Read(context.Background(), "fake://missing")
 	if !errors.Is(err, ErrResourceNotFound) {
 		t.Fatalf("want ErrResourceNotFound, got %v", err)
+	}
+}
+
+func TestRegistryReadCatalogProductTemplate(t *testing.T) {
+	r := NewRegistry().WithCatalogClient(fakeCatalogClient{
+		products: map[string]CatalogProduct{
+			"p1": {ID: "p1", Name: "Trail Shoe"},
+		},
+	})
+
+	got, err := r.Read(context.Background(), "catalog://product/p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.URI != "catalog://product/p1" {
+		t.Fatalf("uri: %s", got.URI)
+	}
+	if !strings.Contains(got.Text, "Trail Shoe") {
+		t.Fatalf("text: %s", got.Text)
 	}
 }
 

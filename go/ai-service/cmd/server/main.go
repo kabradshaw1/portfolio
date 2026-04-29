@@ -21,6 +21,8 @@ import (
 	appkafka "github.com/kabradshaw1/portfolio/go/ai-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
 	mcpadapter "github.com/kabradshaw1/portfolio/go/ai-service/internal/mcp"
+	mcpprompts "github.com/kabradshaw1/portfolio/go/ai-service/internal/mcp/prompts"
+	mcpresources "github.com/kabradshaw1/portfolio/go/ai-service/internal/mcp/resources"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
@@ -180,8 +182,20 @@ func runServe() {
 	recommendNeighbor := composite.NopNeighborSearch{}
 	registry.Register(composite.NewRecommendWithRationaleTool(recommendHistory, recommendNeighbor))
 
+	resourcesRegistry, promptsRegistry := buildMCPRegistries(
+		cfg.ProductServiceURL,
+		cfg.OrderURL,
+		cfg.RunbookPath,
+		cfg.SchemaPath,
+	)
+
 	// MCP streamable HTTP endpoint
-	mcpSrv := mcpadapter.NewServer(registry, mcpadapter.Defaults{})
+	mcpSrv := mcpadapter.NewServer(
+		registry,
+		mcpadapter.Defaults{},
+		mcpadapter.WithResources(resourcesRegistry),
+		mcpadapter.WithPrompts(promptsRegistry),
+	)
 	mcpHandler := sdkmcp.NewStreamableHTTPHandler(func(_ *http.Request) *sdkmcp.Server {
 		return mcpSrv
 	}, &sdkmcp.StreamableHTTPOptions{Stateless: true})
@@ -250,11 +264,51 @@ func runMCP() {
 		slog.Info("stdio mode: authenticated", "user_id", uid)
 	}
 
-	mcpSrv := mcpadapter.NewServer(registry, defaults)
+	resourcesRegistry, promptsRegistry := buildMCPRegistries(
+		getenv("PRODUCT_SERVICE_URL", "http://go-product-service.go-ecommerce.svc.cluster.local:8095"),
+		orderURL,
+		getenv("MCP_RESOURCES_RUNBOOK_PATH", "/app/resources/runbook.md"),
+		getenv("MCP_RESOURCES_SCHEMA_PATH", "/app/resources/schema-ecommerce.md"),
+	)
+	mcpSrv := mcpadapter.NewServer(
+		registry,
+		defaults,
+		mcpadapter.WithResources(resourcesRegistry),
+		mcpadapter.WithPrompts(promptsRegistry),
+	)
 	slog.Info("ai-service MCP server starting (stdio)")
 	if err := mcpSrv.Run(context.Background(), &sdkmcp.StdioTransport{}); err != nil {
 		log.Fatalf("mcp server: %v", err)
 	}
+}
+
+func buildMCPRegistries(productServiceURL, userServiceURL, runbookPath, schemaPath string) (*mcpresources.Registry, *mcpprompts.Registry) {
+	catalogClient := clients.NewCatalogResourceClient(productServiceURL)
+	userClient := clients.NewUserResourceClient(userServiceURL)
+
+	resReg := mcpresources.NewRegistry().WithCatalogClient(catalogClient)
+	resReg.Register(mcpresources.NewCategoriesResource(catalogClient))
+	resReg.Register(mcpresources.NewFeaturedResource(catalogClient))
+	resReg.Register(mcpresources.NewUserOrdersResource(userClient))
+	resReg.Register(mcpresources.NewUserCartResource(userClient))
+
+	if runbook, err := mcpresources.NewRunbookResource(runbookPath); err != nil {
+		slog.Warn("MCP runbook resource disabled", "path", runbookPath, "error", err)
+	} else {
+		resReg.Register(runbook)
+	}
+	if schema, err := mcpresources.NewSchemaResource(schemaPath); err != nil {
+		slog.Warn("MCP schema resource disabled", "path", schemaPath, "error", err)
+	} else {
+		resReg.Register(schema)
+	}
+
+	promReg := mcpprompts.NewRegistry()
+	promReg.Register(mcpprompts.NewExplainMyOrder())
+	promReg.Register(mcpprompts.NewCompareAndRecommend())
+	promReg.Register(mcpprompts.NewPortfolioTour())
+
+	return resReg, promReg
 }
 
 // mustOpenDB opens a *sql.DB for the pgx driver and applies standard pool

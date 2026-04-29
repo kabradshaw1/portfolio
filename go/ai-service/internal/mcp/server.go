@@ -9,6 +9,8 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/jwtctx"
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/mcp/prompts"
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/mcp/resources"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 )
 
@@ -20,15 +22,48 @@ type Defaults struct {
 	JWT    string // raw AI_SERVICE_TOKEN value, forwarded to ecommerce-service
 }
 
-// NewServer creates an MCP server that exposes every tool in reg.
-func NewServer(reg tools.Registry, defaults Defaults) *sdkmcp.Server {
+type Option func(*serverOptions)
+
+type serverOptions struct {
+	resources *resources.Registry
+	prompts   *prompts.Registry
+}
+
+// WithResources registers MCP Resources on the server.
+func WithResources(reg *resources.Registry) Option {
+	return func(opts *serverOptions) {
+		opts.resources = reg
+	}
+}
+
+// WithPrompts registers server-provided MCP Prompts on the server.
+func WithPrompts(reg *prompts.Registry) Option {
+	return func(opts *serverOptions) {
+		opts.prompts = reg
+	}
+}
+
+// NewServer creates an MCP server that exposes every tool in reg, plus optional
+// Resource and Prompt registries.
+func NewServer(reg tools.Registry, defaults Defaults, opts ...Option) *sdkmcp.Server {
+	options := serverOptions{}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	srv := sdkmcp.NewServer(&sdkmcp.Implementation{
 		Name:    "ai-service",
-		Version: "1.0.0",
+		Version: "1.1.0",
 	}, nil)
 
 	for _, t := range reg.All() {
 		registerTool(srv, t, defaults)
+	}
+	if options.resources != nil {
+		registerResources(srv, options.resources, defaults)
+	}
+	if options.prompts != nil {
+		registerPrompts(srv, options.prompts)
 	}
 	return srv
 }

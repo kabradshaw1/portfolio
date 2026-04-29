@@ -14,3 +14,8 @@ data:
   KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
   OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"
   ALLOWED_ORIGINS: "http://localhost:3000,https://kylebradshaw.dev"
+  JAEGER_QUERY_URL: "http://jaeger.monitoring.svc.cluster.local:16686"
+  LOKI_URL: "http://loki.monitoring.svc.cluster.local:3100"
+  PRODUCT_SERVICE_URL: "http://go-product-service.go-ecommerce.svc.cluster.local:8095"
+  MCP_RESOURCES_RUNBOOK_PATH: "/app/resources/runbook.md"
+  MCP_RESOURCES_SCHEMA_PATH: "/app/resources/schema-ecommerce.md"
