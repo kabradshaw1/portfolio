@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 This skill guides the creation of a new Go microservice with all required infrastructure. Every item must be addressed or the QA/prod deploy will fail.
 
+**Before any infra mutation, invoke `ops-as-code`.** New services almost always need bootstrap state in shared environments (databases, roles, queues, secrets). The rule is: any mutating action against a shared environment must exist as committed code (a K8s Job manifest or a `scripts/ops/` script) before it runs. Don't tell the user to `ssh debian` and `kubectl exec ... CREATE DATABASE` — that's the exact anti-pattern this project moved away from. See `docs/superpowers/specs/2026-04-28-ops-as-code-design.md`.
+
 ## Service Code
 
 Create `go/<service>/` with this structure:
@@ -198,10 +200,9 @@ Add `kubectl wait` for the new deployment in both QA and prod sections.
 
 ## QA Setup
 
-1. **Create QA database manually:**
-```bash
-ssh debian 'kubectl exec -n java-tasks deploy/postgres -- psql -U taskuser -d taskdb -c "CREATE DATABASE <dbname>_qa OWNER taskuser;"'
-```
+1. **Provision the QA database via a committed Job, not by hand.** Per `ops-as-code`: the bootstrap action exists as code. Add a `<service>-db-bootstrap` Job at `go/k8s/jobs/ops/<service>-db-bootstrap-qa.yml` that runs `CREATE DATABASE IF NOT EXISTS` (or the Postgres equivalent: `SELECT 1 FROM pg_database WHERE datname='<dbname>_qa'` guarded `CREATE DATABASE`). Idempotent: re-running on an existing DB is a no-op. CI applies it as part of the QA deploy.
+
+   Do NOT add an `ssh debian ... CREATE DATABASE ...` step to the runbook or PR description; that's the anti-pattern this project moved away from.
 
 2. **QA Kustomize overlay** — Add ConfigMap patch in `k8s/overlays/qa-go/kustomization.yaml`:
 ```yaml
