@@ -1391,6 +1391,10 @@ jobs:
           $SSH "kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/controller.yaml 2>/dev/null || true"
           $SSH "kubectl wait --for=condition=available --timeout=120s deployment/sealed-secrets-controller -n kube-system 2>/dev/null || true"
 
+          # Apply committed SealedSecret resources before Go Deployments and
+          # migration Jobs reference the Secrets materialized by the controller.
+          kubectl kustomize k8s/secrets | $SSH "kubectl apply -f -"
+
           # Apply Go overlay, excluding Jobs (they must run sequentially below).
           # Split multi-doc YAML on '---', drop any document containing 'kind: Job'.
           kubectl kustomize k8s/overlays/qa-go/ \
