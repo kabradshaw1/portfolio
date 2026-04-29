@@ -53,14 +53,14 @@ func TestRegistryReadUnknownURIReturnsError(t *testing.T) {
 func TestRegistryRegisterIsThreadSafe(t *testing.T) {
 	r := NewRegistry()
 	done := make(chan struct{}, 16)
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		uri := "fake://" + string(rune('a'+i))
 		go func() {
 			r.Register(fakeResource{uri: uri})
 			done <- struct{}{}
 		}()
 	}
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		<-done
 	}
 	if len(r.List()) != 16 {
