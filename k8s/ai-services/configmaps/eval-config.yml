@@ -5,6 +5,9 @@ metadata:
   namespace: ai-services
 data:
   CHAT_SERVICE_URL: http://chat:8000
+  # Used by capture_run_config to snapshot the per-collection chunk params
+  # at evaluation start. Same-namespace DNS — works in both prod and QA.
+  INGESTION_SERVICE_URL: http://ingestion:8000
   LLM_PROVIDER: ollama
   LLM_BASE_URL: http://ollama:11434
   LLM_MODEL: qwen2.5:14b

@@ -15,3 +15,6 @@ data:
   CHUNK_OVERLAP: "200"
   MAX_FILE_SIZE_MB: "50"
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
+  # Per-collection chunk metadata SQLite store. Mounted under /app/data
+  # via the existing volume mount on the ingestion deployment.
+  COLLECTION_META_DB_PATH: /app/data/collection_meta.db

@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     allowed_origins: str = "https://kylebradshaw.dev"
     jwt_secret: str = ""
 
+    # Retrieval tuning — number of chunks pulled from Qdrant per query.
+    top_k: int = 5
+
+    # Prompt versioning — selects which template in app.prompt.PROMPTS is active.
+    # Validated in self.validate() to fail fast on typos.
+    prompt_version: str = "v1-baseline"
+
     def get_llm_base_url(self) -> str:
         if self.llm_provider == "ollama":
             return self.llm_base_url or self.ollama_base_url
@@ -38,7 +45,7 @@ class Settings(BaseSettings):
         return self.embedding_base_url
 
     def validate(self) -> None:
-        """Fail fast if provider-required secrets are missing."""
+        """Fail fast if provider-required secrets are missing or prompt unknown."""
         api_key_providers = ("openai", "anthropic")
         if self.llm_provider in api_key_providers and not self.llm_api_key:
             raise ValueError(
@@ -48,6 +55,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"embedding_api_key is required when embedding_provider is "
                 f"'{self.embedding_provider}'"
+            )
+        # Lazy import: app.prompt imports settings, so a top-level import here
+        # would create a cycle.
+        from app.prompt import PROMPTS
+
+        if self.prompt_version not in PROMPTS:
+            raise ValueError(
+                f"prompt_version '{self.prompt_version}' is not in the registry "
+                f"(known: {sorted(PROMPTS)})"
             )
 
 

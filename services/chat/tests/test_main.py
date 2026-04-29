@@ -8,6 +8,55 @@ from fastapi.testclient import TestClient
 client = TestClient(app)
 
 
+def test_config_endpoint_returns_active_settings():
+    from app.config import settings
+
+    response = client.get("/config")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["llm_model"] == settings.get_llm_model()
+    assert body["embedding_model"] == settings.embedding_model
+    assert body["top_k"] == settings.top_k
+    assert body["prompt_version"] == settings.prompt_version
+
+
+@patch("app.main.rag_query")
+def test_chat_threads_settings_top_k_into_rag_query(mock_rag_query):
+    captured = {}
+
+    async def fake(**kwargs):
+        captured.update(kwargs)
+        yield {"done": True, "sources": []}
+
+    mock_rag_query.side_effect = fake
+
+    from app.config import settings
+
+    original = settings.top_k
+    settings.top_k = 9
+    try:
+        response = client.post(
+            "/chat",
+            json={"question": "hi"},
+            headers={"Accept": "application/json"},
+        )
+    finally:
+        settings.top_k = original
+
+    assert response.status_code == 200
+    assert captured["top_k"] == 9
+
+
+def test_config_endpoint_omits_secrets():
+    response = client.get("/config")
+    body = response.json()
+    # Sanity: never leak base URLs or API keys.
+    for key in body:
+        assert "key" not in key.lower()
+        assert "secret" not in key.lower()
+        assert "url" not in key.lower()
+
+
 @patch("app.main._llm_provider")
 @patch("app.main.QdrantClient")
 def test_health(mock_qdrant_cls, mock_provider):
