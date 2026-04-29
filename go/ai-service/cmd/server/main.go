@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"log/slog"
 	"net/http"
@@ -23,9 +24,12 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/composite"
 	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
+
+	_ "github.com/jackc/pgx/v5/stdlib" // registers "pgx" driver for database/sql
 )
 
 func main() {
@@ -123,6 +127,33 @@ func runServe() {
 	registry.Register(tools.NewAskDocumentTool(ragClient))
 	registry.Register(tools.Cached(tools.NewListCollectionsTool(ragClient), toolCache, 60*time.Second))
 
+	// Composite investigate_my_order tool: open bounded *sql.DB connections to each
+	// ecommerce database. Errors from sql.Open are fatal (DSN is syntactically wrong);
+	// PingContext failures are warn-only — the tool degrades gracefully per-call.
+	investigateHTTP := &http.Client{Timeout: 5 * time.Second}
+	orderDB := mustOpenDB(cfg.OrderDBURL, "orderdb")
+	defer orderDB.Close()
+	pingDB(ctx, orderDB, "orderdb")
+
+	paymentDB := mustOpenDB(cfg.PaymentDBURL, "paymentdb")
+	defer paymentDB.Close()
+	pingDB(ctx, paymentDB, "paymentdb")
+
+	cartDB := mustOpenDB(cfg.CartDBURL, "cartdb")
+	defer cartDB.Close()
+	pingDB(ctx, cartDB, "cartdb")
+
+	investigateFetcher := composite.EvidenceFetcher{
+		Order:   composite.PostgresOrderSource{DB: orderDB},
+		Saga:    composite.PostgresSagaSource{DB: orderDB}, // saga_step lives on the orders row
+		Payment: composite.PostgresPaymentSource{DB: paymentDB},
+		Cart:    composite.PostgresCartSource{DB: cartDB},
+		Rabbit:  composite.NopRabbitSource{},
+		Trace:   composite.JaegerTraceSource{BaseURL: cfg.JaegerQueryURL, HTTP: investigateHTTP},
+		Logs:    composite.LokiLogSource{BaseURL: cfg.LokiURL, HTTP: investigateHTTP},
+	}
+	registry.Register(composite.NewInvestigateMyOrderTool(investigateFetcher))
+
 	// MCP streamable HTTP endpoint
 	mcpSrv := mcpadapter.NewServer(registry, mcpadapter.Defaults{})
 	mcpHandler := sdkmcp.NewStreamableHTTPHandler(func(_ *http.Request) *sdkmcp.Server {
@@ -197,5 +228,39 @@ func runMCP() {
 	slog.Info("ai-service MCP server starting (stdio)")
 	if err := mcpSrv.Run(context.Background(), &sdkmcp.StdioTransport{}); err != nil {
 		log.Fatalf("mcp server: %v", err)
+	}
+}
+
+// mustOpenDB opens a *sql.DB for the pgx driver and applies standard pool
+// limits for read-only composite tool queries. It fatals on a syntactically
+// invalid DSN but does NOT ping — callers should call pingDB separately so
+// a transient network failure at startup doesn't prevent the service from
+// starting.
+func mustOpenDB(dsn, name string) *sql.DB {
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		log.Fatalf("sql.Open %s: %v", name, err)
+	}
+	// Small pool — these connections serve read-only diagnostic queries from
+	// the composite investigate_my_order tool, not hot-path traffic.
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxIdleTime(2 * time.Minute)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	return db
+}
+
+// pingDB verifies connectivity at startup. A failure is logged as a warning
+// rather than a fatal: the investigate_my_order tool degrades gracefully and
+// surfaces per-call errors; a transient DB blip at startup should not prevent
+// the broader ai-service from starting.
+func pingDB(ctx context.Context, db *sql.DB, name string) {
+	pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if err := db.PingContext(pingCtx); err != nil {
+		slog.Warn("composite tool DB unreachable at startup — will retry per-call",
+			"db", name, "error", err)
+	} else {
+		slog.Info("composite tool DB connected", "db", name)
 	}
 }
