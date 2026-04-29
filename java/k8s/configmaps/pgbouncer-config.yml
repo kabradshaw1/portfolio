@@ -12,13 +12,24 @@ data:
     [pgbouncer]
     listen_addr = 0.0.0.0
     listen_port = 6432
+    ; Disable the unix socket — the container has readOnlyRootFilesystem
+    ; and pgbouncer's default unix_socket_dir is /tmp, which it can't bind
+    ; on a read-only root. Clients reach pgbouncer via TCP on 6432 anyway.
+    unix_socket_dir =
 
     ; --- Auth ---
     auth_type = scram-sha-256
     auth_user = pgbouncer_auth
     auth_query = SELECT usename, passwd FROM public.pgbouncer_get_auth($1)
+    ; Newer pgbouncer (1.23+) refuses to run auth_query against the
+    ; reserved "pgbouncer" admin database when a client connects to it
+    ; (e.g. the pgbouncer-exporter sidecar). Pin the auth_query to a
+    ; real database so admin connections still authenticate.
+    auth_dbname = postgres
     ; userlist.txt holds ONLY pgbouncer_auth itself (chicken-and-egg for auth_query).
-    auth_file = /etc/pgbouncer/userlist.txt
+    ; Rendered at runtime by the initContainer into the /rendered emptyDir
+    ; (the image's /etc/pgbouncer/userlist.txt is the empty stock stub).
+    auth_file = /rendered/userlist.txt
 
     ; --- Pooling ---
     pool_mode = transaction

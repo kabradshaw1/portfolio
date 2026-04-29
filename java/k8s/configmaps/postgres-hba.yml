@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-hba
+  namespace: java-tasks
+data:
+  pg_hba.conf: |
+    # Managed by Kubernetes. Keep replication access declarative so a
+    # replacement Postgres pod does not rely on a hand-edited data PVC file.
+    local   all             all                                     trust
+    host    all             all             127.0.0.1/32            trust
+    host    all             all             ::1/128                 trust
+    local   replication     all                                     trust
+    host    replication     all             127.0.0.1/32            trust
+    host    replication     all             ::1/128                 trust
+    host    replication     replicator      10.244.0.0/16           scram-sha-256
+    host    all             all             all                     scram-sha-256

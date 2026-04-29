@@ -295,3 +295,21 @@ patches:
       kind: PersistentVolumeClaim
       metadata:
         name: postgres-basebackup
+  - target:
+      kind: PersistentVolumeClaim
+      name: postgres-backup
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: postgres-backup
+  - target:
+      kind: PersistentVolumeClaim
+      name: postgres-backup-readonly
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: postgres-backup-readonly

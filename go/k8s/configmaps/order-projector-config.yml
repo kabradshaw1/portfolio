@@ -9,7 +9,7 @@ data:
   # order-projector-db SealedSecret and assembles the postgres:// DSN
   # at startup in cmd/server/config.go. The migration Job assembles
   # the same DSN in shell using the *_DIRECT variants (PgBouncer
-  # bypass — see CLAUDE.md "Go migration Jobs bypass PgBouncer").
+  # bypass — see AGENTS.md "Go migration Jobs bypass PgBouncer").
   DB_HOST: "pgbouncer.java-tasks.svc.cluster.local"
   DB_PORT: "6432"
   DB_NAME: "projectordb"
