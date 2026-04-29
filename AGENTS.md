@@ -11,6 +11,79 @@ unless the user explicitly asks for those files or the task cannot be completed
 without them. In normal work, avoid `frontend/node_modules/`, generated build
 output, caches, Jupyter checkpoints, `docs/superpowers/`, and `docs/adr/`.
 
+## Context Discipline
+
+Treat context as a limited engineering resource. Prefer targeted lookup over
+broad reading.
+
+- Start with `rg`, `git diff`, `git status`, and narrow `sed -n` ranges. Do
+  not read whole large files unless the task truly requires the full document.
+- For handoffs, specs, and plans, read the TL;DR, status, or current-task
+  sections first, then jump only to referenced sections needed for the
+  immediate next step.
+- For skill files, read only the workflow sections needed for the current turn.
+  Do not bulk-load multiple skills "just in case."
+- For CI logs, never stream full logs into the conversation by default. Use a
+  targeted `gh run view ... --log | rg ...` filter first. If that is
+  insufficient, redirect logs to a temp file and search locally.
+- For code exploration, search for symbols and open nearby ranges. Avoid
+  opening generated files, lockfiles, vendored code, `node_modules`, build
+  output, or ignored paths unless directly relevant.
+- Summarize findings in your own words instead of pasting long command output.
+- If a command may produce huge output, cap it with a narrow query, `--limit`,
+  `head`, `tail`, or a specific file/range before running it.
+- Before loading another doc or log, ask: "What decision will this let me make?"
+  If there is no specific answer, don't load it.
+
+### Resuming Plans and Handoffs
+
+When picking up a previous plan or interrupted session, do not reread the whole
+plan by default. First establish the actual work state:
+
+```bash
+git worktree list
+git branch --show-current
+git status --short
+git log --oneline -10
+```
+
+Use existing commits and changed files as the source of truth. Then read only
+the next relevant plan section:
+
+```bash
+rg -n "Group F|Step F|Next|TODO|unchecked" docs/superpowers/plans/<plan>.md
+sed -n '<start>,<end>p' docs/superpowers/plans/<plan>.md
+```
+
+Keep the `sed` window small, usually 100-150 lines. Do not stream thousands of
+lines of a plan/spec/handoff unless the user explicitly asks for a full review.
+
+### Merge Conflict Context
+
+When resolving merge conflicts, start with the conflict list:
+
+```bash
+git diff --name-only --diff-filter=U
+```
+
+Only inspect hunks for files where the feature branch likely made meaningful
+changes. For encrypted sealed secrets, generated files, lockfiles, and broad
+shared-infra files unrelated to the feature, avoid dumping full hunks into
+context. Prefer the base branch (`qa`) version unless the feature explicitly
+changed that exact file for a known reason.
+
+### Existence Checks
+
+For questions like "does this ADR/file exist?" or "was this merged?", use
+branch-level existence checks before opening file contents:
+
+```bash
+git ls-tree -r --name-only origin/qa docs/adr/go-ai-service
+git cat-file -e origin/qa:docs/adr/go-ai-service/02-mcp-depth.md
+```
+
+Open the file only if the user asks to review or change its content.
+
 ## Quality Bar
 
 This portfolio must demonstrate production-grade engineering, not just working demos. Every component should be something a hiring manager would feel safe dropping into a real production system. Err on the side of overly polished — if a shortcut wouldn't pass code review at a serious company, don't take it. The constraint is cost (no paid cloud services), not effort. Where a production system would use a managed service (RDS, Cloud SQL, S3 backups), implement the self-hosted equivalent with the same operational rigor: automated backups, recovery procedures, health checks, and alerting that doesn't cry wolf.
@@ -28,7 +101,7 @@ This portfolio must demonstrate production-grade engineering, not just working d
 ## Infrastructure
 
 - **Mac (dev machine):** Code editing, frontend dev server, no GPU. Docker runtime is Colima (start with `colima start` before `docker compose`).
-- **Debian 13 (kyle@100.82.52.82 via Tailscale):** Ollama (RTX 3090), Minikube (all backend services)
+- **Debian 13 (kyle@100.82.52.82 via Tailscale):** Ollama (RTX 3090), Minikube (all backend services). Do not use Debian as a general-purpose CI substitute; it hosts runtime services only.
 - **SSH:** `ssh debian` (configured in `~/.ssh/config`, key-based auth)
 - **Minikube:** All backend services run in Kubernetes on the Debian server
   - `ai-services` namespace: Python AI services + Qdrant
@@ -52,6 +125,26 @@ This portfolio must demonstrate production-grade engineering, not just working d
   - Ingress routes by path: `/ingestion/*`, `/chat/*`, `/debug/*` → Python services; `/graphql`, `/api/auth/*` → Java services; `/go-api/*`, `/go-auth/*`, `/go-products/*` → Go services; `/grafana/*` → monitoring
   - Cloudflared runs as systemd service (auto-starts on boot)
   - `minikube tunnel` runs as systemd service (auto-starts on boot)
+
+## Execution Locality
+
+The Debian server is runtime infrastructure, not a build or test worker.
+
+Agents must not run tests, linters, compilers, package managers, or ad hoc
+build verification on Debian. Debian should only be used for runtime/deployment
+operations that actually belong there: Minikube/Kubernetes diagnostics, image
+pulls during deploys, Ollama runtime checks, observability queries, and
+read-only service health inspection.
+
+All verification must run either:
+
+- locally on the Mac dev machine, or
+- in the GitHub Actions CI/CD pipeline.
+
+If local verification is blocked by missing tools, disk pressure, platform
+limits, or other workstation issues, report the blocker clearly and leave the
+remaining verification to CI. Do not move the test run to Debian as a workaround
+unless Kyle explicitly authorizes that specific exception.
 
 ### Vercel CLI
 
@@ -195,7 +288,7 @@ The Go analytics-service (`go/analytics-service/`, port 8094) consumes events fr
 
 Java services use `-Xmx512m` heap cap (set in Dockerfiles) with 768Mi container memory limits. Without the heap cap, JVM auto-sizing can cause OOM kills. If adding a new Java service, always include `-Xmx512m` in the `ENTRYPOINT`.
 
-**`make preflight-java` fails on Mac** — requires JDK 21 which is not installed locally. Java compilation and tests run correctly in CI (Debian server has JDK 21). This is a known limitation of the local dev setup.
+**`make preflight-java` fails on Mac** — requires JDK 21 which is not installed locally. Java compilation and tests run correctly in CI. Do not run Java tests on Debian as a workaround; this is a known limitation of the local dev setup.
 
 
 ## Architecture Decision Records (ADRs)
@@ -240,12 +333,12 @@ make install-pre-commit
 
 This installs both commit-stage hooks (gitleaks, bandit, hadolint, ruff, java-checkstyle, frontend tsc/lint, go-lint covering all 8 services) and pre-push-stage hooks (frontend `next build`). After this, every commit triggers the relevant subset based on what files changed.
 
-Before every commit, run the relevant preflight checks and fix any failures. Only escalate to Kyle if you can't resolve the issue.
+Before every commit, run the relevant preflight checks locally and fix any failures. Only escalate to Kyle if you can't resolve the issue. If a local check cannot run because of missing tools, disk pressure, or platform limits, report the blocker and leave that verification to CI. Do not run tests or build verification on Debian unless Kyle explicitly authorizes that specific exception.
 
 - **Python changes:** `make preflight-python` and `make preflight-security`
 - **Frontend changes:** `make preflight-frontend` and `make preflight-e2e`
 - **Java changes:** `make preflight-java` (checkstyle + unit tests, runs locally)
-- **Java integration tests:** `make preflight-java-integration` (runs over SSH on Debian server, on-demand)
+- **Java integration tests:** run in CI unless Kyle explicitly authorizes a specific local/remote exception.
 - **Go changes:** `make preflight-go` (lint + tests)
 - **Go migration changes:** `make preflight-go-migrations` (requires Docker via Colima + `golang-migrate`; spins up Postgres, runs all migrations, verifies tables)
 - **Full sweep:** `make preflight` (runs Python + frontend + security + Java + Go locally)
@@ -268,6 +361,25 @@ Single unified workflow (`.github/workflows/ci.yml`) handles all CI/CD:
 **QA:** `qa-api.kylebradshaw.dev` (backend), `qa.kylebradshaw.dev` (frontend on Vercel)
 
 **Compose-smoke realism:** Job 3 (`compose-smoke`) runs the Python AI stack via `docker-compose.yml` with a mocked Ollama. Any change to Python service configuration (env vars, ports, depends_on, env_file references) must be reflected in BOTH `docker-compose.yml` and the corresponding k8s manifests under `k8s/ai-services/`, or compose-smoke will drift from prod and stop catching real regressions.
+
+### CI Log Handling
+
+When debugging GitHub Actions, identify the failed job first:
+
+```bash
+gh pr view <pr> --json statusCheckRollup
+```
+
+Then inspect only the failed job with a targeted filter:
+
+```bash
+gh run view <run-id> --job <job-id> --log \
+  | rg -n "##\\[error\\]|FAIL|failed|Error|panic|Exception|required|unhealthy"
+```
+
+Only fetch broader logs after the filtered output identifies the failing step
+or proves insufficient. Prefer redirecting full logs to a temp file and using
+`rg`/`sed` locally over streaming large logs into the conversation.
 
 **Tailscale authkey:** Expires every 90 days (free plan). Regenerate at Tailscale admin → Keys and update `TAILSCALE_AUTHKEY` in GitHub repo secrets.
 
