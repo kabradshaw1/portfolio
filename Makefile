@@ -209,7 +209,7 @@ preflight-security:
 # --- Worktree cleanup ---
 worktree-cleanup:
 	@echo "\n=== Cleaning up merged worktrees ==="
-	@for wt in $$(git worktree list --porcelain | grep '^worktree' | awk '{print $$2}' | grep '.claude/worktrees'); do \
+	@for wt in $$(git worktree list --porcelain | grep '^worktree' | awk '{print $$2}' | grep -E '(\.codex|\.claude)/worktrees'); do \
 		branch=$$(git worktree list --porcelain | grep -A2 "$$wt" | grep '^branch' | sed 's|branch refs/heads/||'); \
 		if [ -n "$$branch" ] && ! git rev-parse --verify "$$branch" >/dev/null 2>&1; then \
 			echo "  Removing stale worktree: $$wt (branch $$branch deleted)"; \

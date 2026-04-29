@@ -10,24 +10,34 @@
 A pgbouncer-auth incident on 2026-04-28 surfaced a recurring pattern in
 how this project handles operational changes:
 
-1. The pgbouncer-auth secret was rotated as part of the Phase 4 DSN
-   component split (`ae6ebd8`), but the corresponding
-   `ALTER ROLE pgbouncer_auth PASSWORD …` against Postgres never ran. Sync
-   between the secret and the database role drifted.
-2. A latent ConfigMap bug (`auth_file = /etc/pgbouncer/userlist.txt`,
-   pointing at the image's empty stock stub instead of the rendered
-   emptyDir at `/rendered/userlist.txt`) was masked by the fact that
-   nobody had previously had to re-authenticate against pgbouncer.
-3. Recovery required ~half a dozen ad-hoc bash heredocs written into
-   `/tmp/`, copy-pasted into the user's terminal over SSH, with the only
-   record of what ran living in chat scrollback.
+1. **Root cause:** a latent ConfigMap bug
+   (`auth_file = /etc/pgbouncer/userlist.txt`, pointing at the image's
+   empty stock stub instead of the rendered emptyDir at
+   `/rendered/userlist.txt`) meant pgbouncer started with zero
+   credentials for `pgbouncer_auth`. Masked until the v1.23.1-p3 image
+   bump rolled the pod and forced a fresh auth attempt.
+2. **What we mistakenly assumed first:** that the secret rotation in
+   `ae6ebd8` (Phase 4 DSN component split) had drifted from the role's
+   stored password. It hadn't —
+   `java/k8s/jobs/pgbouncer-auth-bootstrap.yml` runs on every prod
+   deploy and idempotently `ALTER ROLE …`s the role to match the
+   secret. Direct TCP login as `pgbouncer_auth` with the secret value
+   worked throughout. The bootstrap Job had been doing its job.
+3. **Recovery process failure:** despite the existing reconciler doing
+   what it should, recovery still required ~half a dozen ad-hoc bash
+   heredocs written into `/tmp/`, copy-pasted into the user's terminal
+   over SSH, to fix the ConfigMap, roll pgbouncer, and verify. The
+   only record of what ran lived in chat scrollback.
 
-Item (1) is the kind of operational reconciliation that *should have run
-as part of the deploy pipeline*. Item (2) is a manifest bug — orthogonal.
-Item (3) is the specific failure this spec addresses: **mutating actions
-against shared environments routinely existed only in transient
-terminals, with no record, no review, and no way for a future agent or
-human to reconstruct what changed when.**
+Item (3) is the specific failure this spec addresses: **mutating
+actions against shared environments routinely existed only in
+transient terminals, with no record, no review, and no way for a
+future agent or human to reconstruct what changed when.** The
+existence of `pgbouncer-auth-bootstrap` proves the project's
+instincts on Tier 1 (deploy-time reconciliation) are already sound —
+this spec formalizes that pattern, adds Tier 2 (committed scripts for
+incident response and procedures that aren't deploy-cadence), and
+binds both with the artifact rule.
 
 The incident also exposed a friction with auto mode: the harness
 correctly refuses agent-driven `kubectl exec … ALTER ROLE` calls against
@@ -133,11 +143,14 @@ there's a specific reason to want one.
 | Any of the above + want a "click-to-run" button | + 3 |
 
 Today's pgbouncer incident maps to:
-- `java/k8s/jobs/ops/pgbouncer-auth-sync.yml` (Tier 1) — keeps
-  `pgbouncer_auth`'s Postgres password in lockstep with the secret on
-  every deploy. Would have prevented today's incident.
+- `java/k8s/jobs/pgbouncer-auth-bootstrap.yml` (Tier 1, **already exists**) —
+  reconciles `pgbouncer_auth`'s Postgres password to the secret on
+  every prod deploy. The pattern this spec formalizes is already in use
+  for this case. Improvements: ensure CI `kubectl wait`s on it so
+  failures are visible, and document it as the canonical Tier 1 example.
 - `scripts/ops/2026-04-28-pgbouncer-config-fix-rollout.sh` (Tier 2,
-  date-prefixed) — the actual one-shot we ran, captured as a record.
+  date-prefixed) — the actual one-shot we ran during recovery (apply
+  the corrected ConfigMap, roll pgbouncer), captured as a record.
 
 ## Job shape (Tier 1 template)
 
@@ -272,20 +285,35 @@ When acting under auto mode or otherwise:
 
 ## First concrete instances (in scope)
 
-1. **`java/k8s/jobs/ops/pgbouncer-auth-sync.yml`** — Tier 1 Job that
-   reconciles `pgbouncer_auth`'s Postgres password to the secret on
-   every deploy. Closes the gap today's incident exposed.
+1. **CI `kubectl wait` on existing bootstrap Jobs** —
+   `pgbouncer-auth-bootstrap`, `postgres-replicator-bootstrap`,
+   `postgres-grafana-reader`, `postgres-extensions-bootstrap` are all
+   currently fire-and-forget in the prod deploy. Add `kubectl wait
+   --for=condition=complete --timeout=180s job/<name>` after each so a
+   silent failure is visible. Mirrors the pattern already used for Go
+   migrate Jobs (`.github/workflows/ci.yml:1419-1420`).
 2. **`scripts/ops/2026-04-28-pgbouncer-config-fix-rollout.sh`** —
    Tier 2 capture of the one-shot ConfigMap apply + rollout we ran
-   during recovery. Already executed; committing it backfills the
-   record.
-3. **Per-namespace `ops-runner` RBAC** —
-   `java/k8s/rbac/ops-runner.yml` and `go/k8s/rbac/ops-runner.yml`
-   defining the ServiceAccount + Role + RoleBinding that Tier 1 Jobs
-   bind to. Permissions limited to the specific Secret reads each
-   namespace's Jobs need.
-4. **`docs/runbooks/ops-as-code.md`** — short reference page indexing
-   the conventions of this spec for quick lookup.
+   during recovery (apply corrected `pgbouncer-config`, roll pgbouncer
+   Deployment). Already executed; committing it backfills the record.
+3. **`docs/runbooks/ops-as-code.md`** — short reference page
+   indexing the conventions of this spec for quick lookup, with the
+   existing `pgbouncer-auth-bootstrap` Job documented as the canonical
+   Tier 1 example.
+
+## First concrete instances (deferred to a follow-up)
+
+- **Per-namespace `ops-runner` RBAC** — a dedicated ServiceAccount
+  with narrow Role/RoleBinding for ops Jobs. The existing bootstrap
+  Jobs use the namespace's default SA, which works but isn't
+  least-privilege. Worth doing, but not urgent — defer until we have
+  a second new Tier 1 Job that wants different permissions, so the
+  RBAC isn't designed in a vacuum.
+- **`<area>/k8s/jobs/ops/` reorganization** — moving existing
+  bootstrap Jobs into a dedicated subdirectory. Pure refactor; risks
+  breaking CI for no immediate benefit. New Tier 1 Jobs land in
+  `jobs/ops/`; existing ones stay where they are during a transitional
+  period.
 
 ## Out of scope (deferred)
 
