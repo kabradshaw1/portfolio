@@ -74,12 +74,14 @@ func loadConfig() Config {
 		OTELEndpoint:    os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 
 		// Database URLs for the composite investigate_my_order tool.
-		// Defaults point at the in-cluster Postgres server using the same
-		// application_name convention as the owning services (ai-service suffix
-		// makes these connections identifiable in pg_stat_activity).
-		OrderDBURL:   getenv("ORDER_DB_URL", "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/orderdb?sslmode=disable&application_name=ai-service"),
-		PaymentDBURL: getenv("PAYMENT_DB_URL", "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/paymentdb?sslmode=disable&application_name=ai-service"),
-		CartDBURL:    getenv("CART_DB_URL", "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/cartdb?sslmode=disable&application_name=ai-service"),
+		// No default — credentials must be supplied via the ORDER_DB_URL,
+		// PAYMENT_DB_URL, and CART_DB_URL environment variables (injected from
+		// SealedSecrets). An empty DSN causes sql.Open("pgx","") to succeed
+		// (pgx parses lazily) but the startup ping will fail and log a warning;
+		// the tool then degrades gracefully on call.
+		OrderDBURL:   getenv("ORDER_DB_URL", ""),
+		PaymentDBURL: getenv("PAYMENT_DB_URL", ""),
+		CartDBURL:    getenv("CART_DB_URL", ""),
 
 		// Observability endpoints for the composite investigate_my_order tool.
 		JaegerQueryURL: getenv("JAEGER_QUERY_URL", "http://jaeger-query.monitoring.svc.cluster.local:16686"),

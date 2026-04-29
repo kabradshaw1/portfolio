@@ -254,8 +254,11 @@ func mustOpenDB(dsn, name string) *sql.DB {
 // rather than a fatal: the investigate_my_order tool degrades gracefully and
 // surfaces per-call errors; a transient DB blip at startup should not prevent
 // the broader ai-service from starting.
-func pingDB(ctx context.Context, db *sql.DB, name string) {
-	pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+func pingDB(_ context.Context, db *sql.DB, name string) {
+	// Use an independent background context so a constrained parent (e.g. a
+	// deadline already close to expiry at startup) cannot cause the ping to
+	// fail for the wrong reason.
+	pingCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := db.PingContext(pingCtx); err != nil {
 		slog.Warn("composite tool DB unreachable at startup — will retry per-call",
