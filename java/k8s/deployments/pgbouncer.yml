@@ -62,7 +62,12 @@ spec:
               mountPath: /rendered
       containers:
         - name: pgbouncer
-          image: edoburu/pgbouncer:1.23.1
+          # edoburu/pgbouncer renames its tags every patch (e.g. 1.23.1 →
+          # v1.23.1-p3). The plain `1.23.1` tag was removed from Docker Hub
+          # and the image stopped pulling once it aged out of the local
+          # cache, so any new pgbouncer pod hit ImagePullBackOff. Pin to the
+          # current convention; bump alongside upstream patches.
+          image: edoburu/pgbouncer:v1.23.1-p3
           args:
             - /rendered/pgbouncer.ini
           ports:
