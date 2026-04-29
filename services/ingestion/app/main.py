@@ -1,3 +1,4 @@
+import os
 import re
 import uuid
 from io import BytesIO
@@ -18,6 +19,7 @@ from slowapi.util import get_remote_address
 from starlette.requests import Request
 
 from app.chunker import chunk_pages
+from app.collection_meta import CollectionMetaDB
 from app.config import settings
 from app.embedder import embed_texts
 from app.metrics import CHUNKS_CREATED, instrumentator
@@ -63,6 +65,7 @@ _embedding_provider = get_embedding_provider(
 )
 
 _store: QdrantStore | None = None
+_meta_db: CollectionMetaDB | None = None
 
 
 def get_store() -> QdrantStore:
@@ -74,6 +77,23 @@ def get_store() -> QdrantStore:
             collection_name=settings.collection_name,
         )
     return _store
+
+
+async def get_meta_db() -> CollectionMetaDB:
+    global _meta_db
+    if _meta_db is None:
+        os.makedirs(
+            os.path.dirname(settings.collection_meta_db_path) or ".", exist_ok=True
+        )
+        _meta_db = CollectionMetaDB(settings.collection_meta_db_path)
+        await _meta_db.init()
+    return _meta_db
+
+
+@app.on_event("shutdown")
+async def shutdown_meta_db():
+    if _meta_db is not None:
+        await _meta_db.close()
 
 
 @app.get("/health")
@@ -118,6 +138,26 @@ async def list_collections(request: Request, user_id: str = Depends(require_auth
         logger.error("Qdrant error listing collections: %s", e, exc_info=True)
         raise HTTPException(status_code=503, detail="Vector store unavailable")
     return {"collections": collections}
+
+
+@app.get("/collections/{name}/config")
+@limiter.limit("30/minute")
+async def get_collection_config(
+    request: Request, name: str, user_id: str = Depends(require_auth)
+):
+    """Return the chunk params and embedding model used to populate `name`.
+
+    Read by the eval service at evaluation start so each run is
+    self-describing. 404 if the collection has no recorded metadata
+    (either the name is unknown or it predates this code).
+    """
+    if not _COLLECTION_NAME_RE.match(name):
+        raise HTTPException(status_code=422, detail="Invalid collection name")
+    db = await get_meta_db()
+    cfg = await db.get(name)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+    return cfg
 
 
 @app.post("/ingest")
@@ -172,6 +212,7 @@ async def ingest(
         raise HTTPException(status_code=503, detail="Embedding service unavailable")
 
     document_id = str(uuid.uuid4())
+    target_collection = collection or settings.collection_name
     try:
         if collection:
             store = QdrantStore(
@@ -190,6 +231,24 @@ async def ingest(
     except Exception as e:
         logger.error("vector_store_error", error=str(e), exc_info=True)
         raise HTTPException(status_code=503, detail="Vector store unavailable")
+
+    # Record the chunk params and embedding model that produced this
+    # collection so the eval service can reproduce/explain its scores later.
+    # Idempotent: ON CONFLICT DO UPDATE means re-uploading with new params
+    # overwrites — last-writer-wins matches Qdrant's actual on-disk state.
+    try:
+        meta_db = await get_meta_db()
+        await meta_db.upsert(
+            collection=target_collection,
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+            embedding_model=settings.embedding_model,
+        )
+    except Exception as e:
+        # Metadata write failure must not poison a successful upload — log it
+        # and continue. Eval service treats a missing collection config as
+        # "config unavailable" rather than a hard failure.
+        logger.error("collection_meta_write_failed", error=str(e), exc_info=True)
 
     CHUNKS_CREATED.labels(service="ingestion").inc(len(chunks))
 
