@@ -28,6 +28,8 @@ SECRETS=(
   "java-tasks-qa/java-secrets"
   "go-ecommerce/go-secrets"
   "go-ecommerce/stripe-secrets"
+  "go-ecommerce/order-projector-db"
+  "go-ecommerce-qa/order-projector-db"
   "monitoring/telegram-bot"
 )
 
