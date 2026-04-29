@@ -177,6 +177,57 @@ def test_list_evaluations(mock_get_db):
     assert len(response.json()["evaluations"]) == 1
 
 
+@patch("app.main.get_db")
+def test_start_evaluation_persists_notes_and_baseline(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-789"
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "notes": "bumped chunk overlap to 300",
+            "baseline_eval_id": "eval-prev",
+        },
+    )
+    assert response.status_code == 202
+    mock_db.create_evaluation.assert_awaited_once_with(
+        dataset_id="ds-123",
+        collection="documents",
+        notes="bumped chunk overlap to 300",
+        baseline_eval_id="eval-prev",
+    )
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_omits_optional_fields(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-noopt"
+    mock_get_db.return_value = mock_db
+
+    response = client.post("/evaluations", json={"dataset_id": "ds-123"})
+    assert response.status_code == 202
+    mock_db.create_evaluation.assert_awaited_once_with(
+        dataset_id="ds-123",
+        collection="documents",
+        notes=None,
+        baseline_eval_id=None,
+    )
+
+
 # --- Health check ---
 
 

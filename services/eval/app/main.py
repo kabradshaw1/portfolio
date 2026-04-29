@@ -163,7 +163,10 @@ async def start_evaluation(
         raise HTTPException(status_code=404, detail="Dataset not found")
 
     eval_id = await db.create_evaluation(
-        dataset_id=body.dataset_id, collection=body.collection or "documents"
+        dataset_id=body.dataset_id,
+        collection=body.collection or "documents",
+        notes=body.notes,
+        baseline_eval_id=body.baseline_eval_id,
     )
 
     background_tasks.add_task(
