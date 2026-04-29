@@ -16,6 +16,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from app.config import settings
+from app.config_capture import capture_run_config
 from app.db import EvalDB
 from app.evaluator import run_evaluation
 from app.metrics import eval_queries_total, eval_ragas_score, eval_run_duration_seconds
@@ -119,8 +120,19 @@ async def _run_evaluation_task(eval_id: str, items: list[dict], collection: str 
     db = await get_db()
     rag_client = RAGClient(base_url=settings.chat_service_url)
     start = time.perf_counter()
+    coll_name = collection or "documents"
 
     try:
+        # Snapshot the RAG configuration that produced this run before we
+        # invoke retrieval. capture_run_config never raises; failures are
+        # recorded under _capture_error so the eval still completes.
+        config = await capture_run_config(
+            chat_url=settings.chat_service_url,
+            ingestion_url=settings.ingestion_service_url,
+            collection=coll_name,
+        )
+        await db.set_evaluation_config(eval_id, config)
+
         aggregate, results = await run_evaluation(
             items=items,
             rag_client=rag_client,

@@ -206,6 +206,65 @@ def test_start_evaluation_persists_notes_and_baseline(mock_get_db):
     )
 
 
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_run_persists_config_snapshot(mock_get_db, mock_capture, mock_run_evaluation):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-cfg",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-cfg-1"
+    mock_get_db.return_value = mock_db
+
+    captured_config = {
+        "chat": {"llm_model": "qwen2.5:14b", "top_k": 5},
+        "collection": {"chunk_size": 1000, "chunk_overlap": 200},
+        "captured_at": "2026-04-28T00:00:00+00:00",
+    }
+    mock_capture.return_value = captured_config
+    mock_run_evaluation.return_value = ({"faithfulness": 0.9}, [])
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-cfg", "collection": "documents"},
+    )
+    assert response.status_code == 202
+
+    mock_capture.assert_awaited_once()
+    call_kwargs = mock_capture.await_args.kwargs
+    assert call_kwargs["collection"] == "documents"
+    mock_db.set_evaluation_config.assert_awaited_once_with(
+        "eval-cfg-1", captured_config
+    )
+
+
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_run_uses_default_collection_when_none_provided(
+    mock_get_db, mock_capture, mock_run_evaluation
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-d",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-d"
+    mock_get_db.return_value = mock_db
+    mock_capture.return_value = {"captured_at": "x"}
+    mock_run_evaluation.return_value = ({"faithfulness": 0.5}, [])
+
+    client.post("/evaluations", json={"dataset_id": "ds-d"})
+
+    assert mock_capture.await_args.kwargs["collection"] == "documents"
+
+
 @patch("app.main.get_db")
 def test_start_evaluation_omits_optional_fields(mock_get_db):
     mock_db = AsyncMock()
