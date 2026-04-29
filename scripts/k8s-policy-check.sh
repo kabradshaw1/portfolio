@@ -9,10 +9,41 @@
 #   R2. Any ConfigMap data key ending in DATABASE_URL whose value starts with
 #       postgres:// MUST include sslmode=disable. Rationale: the Go pq driver
 #       defaults to sslmode=require against a non-SSL postgres.
+#   R3. ConfigMap data values MUST NOT contain credential URLs of the form
+#       <scheme>://<user>:<pass>@<host>. Rationale: ConfigMaps are unencrypted
+#       and broadly readable; credentials belong in (Sealed) Secrets. The
+#       application should assemble the DSN at startup from a host/port/db
+#       ConfigMap and a user/password Secret. The migration to that shape is
+#       Phase 4 of docs/superpowers/specs/2026-04-28-secrets-management-design.md;
+#       files still carrying the old shape are listed in R3_ALLOWLIST below
+#       and entries should be removed as each service migrates.
 #
 # Usage: scripts/k8s-policy-check.sh [dir ...]
 # Exits 0 on success, 1 on any violation. Prints each violation to stderr.
 set -euo pipefail
+
+# R3 allowlist — ConfigMap files that contain credential URLs today and are
+# scheduled for the DSN-component split in Phase 4. Remove an entry once the
+# corresponding service stops shipping a user:pass@host string in its
+# ConfigMap. New ConfigMaps must NOT be added here.
+R3_ALLOWLIST=(
+  "go/k8s/configmaps/auth-service-config.yml"
+  "go/k8s/configmaps/cart-service-config.yml"
+  "go/k8s/configmaps/order-service-config.yml"
+  "go/k8s/configmaps/payment-service-config.yml"
+  "go/k8s/configmaps/product-service-config.yml"
+)
+
+is_r3_allowlisted() {
+  local needle="$1"
+  local entry
+  for entry in "${R3_ALLOWLIST[@]}"; do
+    if [ "$entry" = "$needle" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 if ! command -v yq >/dev/null 2>&1; then
   echo "k8s-policy-check.sh: yq is required (v4, Go rewrite)" >&2
@@ -46,6 +77,9 @@ check_file() {
     if [ "$kind" = "Deployment" ]; then
       local n_containers
       n_containers=$(yq "select(di == $i) | .spec.template.spec.containers | length" "$file")
+      if [ "$n_containers" -le 0 ]; then
+        continue
+      fi
       local c
       for c in $(seq 0 $((n_containers - 1))); do
         local image probe
@@ -67,10 +101,11 @@ check_file() {
       local key
       while IFS= read -r key; do
         [ -z "$key" ] && continue
+        local value
+        value=$(yq "select(di == $i) | .data[\"$key\"]" "$file")
+
         case "$key" in
           *DATABASE_URL)
-            local value
-            value=$(yq "select(di == $i) | .data[\"$key\"]" "$file")
             if echo "$value" | grep -q '^postgres://'; then
               if ! echo "$value" | grep -q 'sslmode=disable'; then
                 local name
@@ -80,6 +115,20 @@ check_file() {
             fi
             ;;
         esac
+
+        # R3: scheme://user:pass@host pattern. Match a scheme of one or more
+        # lowercase letters (optionally with `+letters`, e.g. mongodb+srv),
+        # then `://`, then a userinfo run with no `/`, no `:`, no whitespace,
+        # then `:`, then a password run with no `/`, no `@`, no whitespace,
+        # then `@`. The trailing `@` is what distinguishes credentials from
+        # `host:port`.
+        if echo "$value" | grep -Eq '[a-z][a-z0-9+]*://[^/:[:space:]]+:[^/@[:space:]]+@'; then
+          if ! is_r3_allowlisted "$file"; then
+            local name
+            name=$(yq "select(di == $i) | .metadata.name" "$file")
+            report "$file: ConfigMap/$name key '$key' embeds credentials in a URL (R3 — split into ConfigMap host/port + Secret user/password)"
+          fi
+        fi
       done <<< "$keys"
     fi
   done

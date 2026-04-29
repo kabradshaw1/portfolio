@@ -122,3 +122,44 @@ async def test_get_dataset_not_found(db):
 async def test_get_evaluation_not_found(db):
     result = await db.get_evaluation("nonexistent")
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_create_run_with_notes_and_baseline(db):
+    ds_id = await db.create_dataset(name="ds", items=SIMPLE_ITEM)
+    eval_id = await db.create_evaluation(
+        dataset_id=ds_id,
+        collection="documents",
+        notes="bumped overlap to 300",
+        baseline_eval_id=None,
+    )
+
+    evaluation = await db.get_evaluation(eval_id)
+    assert evaluation["notes"] == "bumped overlap to 300"
+    assert evaluation["baseline_eval_id"] is None
+    assert evaluation["config"] is None
+
+
+@pytest.mark.asyncio
+async def test_set_config_persists_json(db):
+    ds_id = await db.create_dataset(name="ds", items=SIMPLE_ITEM)
+    eval_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+
+    config = {"chat": {"llm_model": "qwen"}, "collection": {"chunk_size": 1000}}
+    await db.set_evaluation_config(eval_id, config)
+
+    evaluation = await db.get_evaluation(eval_id)
+    assert evaluation["config"] == config
+
+
+@pytest.mark.asyncio
+async def test_init_is_idempotent_after_columns_exist(tmp_path):
+    db_path = str(tmp_path / "idempotent.db")
+
+    db1 = EvalDB(db_path)
+    await db1.init()
+    await db1.close()
+
+    db2 = EvalDB(db_path)
+    await db2.init()  # must not raise even though columns already exist
+    await db2.close()

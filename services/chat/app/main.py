@@ -76,6 +76,20 @@ class SearchRequest(BaseModel):
     limit: int = Field(default=5, ge=1, le=20)
 
 
+@app.get("/config")
+async def get_config():
+    """Read-only RAG-config snapshot. Consumed by the eval service to record
+    the parameters in effect for each evaluation run. Intentionally returns
+    no secrets (no base URLs, no API keys).
+    """
+    return {
+        "llm_model": settings.get_llm_model(),
+        "embedding_model": settings.embedding_model,
+        "top_k": settings.top_k,
+        "prompt_version": settings.prompt_version,
+    }
+
+
 @app.get("/health")
 async def health():
     qdrant_ok = False
@@ -128,6 +142,7 @@ async def chat(
                 qdrant_host=settings.qdrant_host,
                 qdrant_port=settings.qdrant_port,
                 collection_name=body.collection or settings.collection_name,
+                top_k=settings.top_k,
             ):
                 if "token" in event:
                     tokens.append(event["token"])
@@ -152,6 +167,7 @@ async def chat(
                 qdrant_host=settings.qdrant_host,
                 qdrant_port=settings.qdrant_port,
                 collection_name=body.collection or settings.collection_name,
+                top_k=settings.top_k,
             ):
                 yield {"data": json.dumps(event)}
         except (httpx.ConnectError, httpx.TimeoutException) as e:

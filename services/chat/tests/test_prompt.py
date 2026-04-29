@@ -1,4 +1,5 @@
-from app.prompt import build_rag_prompt
+import pytest
+from app.prompt import PROMPTS, build_rag_prompt
 
 
 def test_build_rag_prompt_includes_context():
@@ -33,3 +34,37 @@ def test_build_rag_prompt_empty_chunks():
     prompt = build_rag_prompt(question="Anything?", chunks=[])
     assert "Anything?" in prompt
     assert "no relevant context" in prompt.lower() or "don't have" in prompt.lower()
+
+
+def test_v1_baseline_is_registered():
+    assert "v1-baseline" in PROMPTS
+    template = PROMPTS["v1-baseline"]
+    assert "{question}" in template
+    assert "{context}" in template
+
+
+def test_build_rag_prompt_uses_active_version(monkeypatch):
+    monkeypatch.setattr("app.config.settings.prompt_version", "v1-baseline")
+    chunks = [
+        {"text": "X is a thing.", "filename": "f.pdf", "page_number": 1},
+    ]
+    prompt = build_rag_prompt(question="What is X?", chunks=chunks)
+    assert "X" in prompt
+    assert "f.pdf" in prompt
+
+
+def test_build_rag_prompt_raises_for_unknown_version(monkeypatch):
+    monkeypatch.setattr("app.config.settings.prompt_version", "v999-missing")
+    chunks = [
+        {"text": "X is a thing.", "filename": "f.pdf", "page_number": 1},
+    ]
+    with pytest.raises(KeyError):
+        build_rag_prompt(question="q", chunks=chunks)
+
+
+def test_settings_validate_rejects_unknown_prompt_version():
+    from app.config import Settings
+
+    s = Settings(prompt_version="v999-missing")
+    with pytest.raises(ValueError, match="prompt_version"):
+        s.validate()

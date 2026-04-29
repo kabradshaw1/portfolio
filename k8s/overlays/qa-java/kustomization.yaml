@@ -247,6 +247,32 @@ patches:
       kind: Job
       metadata:
         name: postgres-replicator-bootstrap
+  # postgres-grafana-reader and postgres-extensions-bootstrap mirror
+  # pgbouncer-auth-bootstrap and postgres-replicator-bootstrap above:
+  # they create global roles or extensions in the SHARED prod postgres
+  # (java-tasks namespace, reached from QA via ExternalName). Letting
+  # them run from the QA overlay re-CREATEs/ALTERs prod-side state with
+  # whatever passwords live in java-tasks-qa/java-secrets, silently
+  # overwriting the prod role passwords on every QA deploy. Prod is the
+  # single source of truth for these bootstrap operations.
+  - target:
+      kind: Job
+      name: postgres-grafana-reader
+    patch: |
+      $patch: delete
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: postgres-grafana-reader
+  - target:
+      kind: Job
+      name: postgres-extensions-bootstrap
+    patch: |
+      $patch: delete
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: postgres-extensions-bootstrap
   # --- Remove WAL-archive PVCs (the underlying PVs are claimed by prod) ---
   # Without these deletes, QA's PVCs raced prod's for the only two matching PVs
   # and cross-bound, leaving prod's postgres pod unschedulable.
@@ -269,3 +295,21 @@ patches:
       kind: PersistentVolumeClaim
       metadata:
         name: postgres-basebackup
+  - target:
+      kind: PersistentVolumeClaim
+      name: postgres-backup
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: postgres-backup
+  - target:
+      kind: PersistentVolumeClaim
+      name: postgres-backup-readonly
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: postgres-backup-readonly

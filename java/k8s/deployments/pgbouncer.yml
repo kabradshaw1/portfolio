@@ -54,6 +54,11 @@ spec:
               sed "s|PLACEHOLDER_REPLACED_BY_INITCONTAINER|${PGBOUNCER_AUTH_PASSWORD}|" \
                 /config/userlist.txt > /rendered/userlist.txt
               cp /config/pgbouncer.ini /rendered/pgbouncer.ini
+              # The pgbouncer container runs as uid 70 (postgres) per its
+              # securityContext below; this init runs as root. chown so the
+              # file is readable by the runtime user, then chmod 600 keeps
+              # the password-bearing userlist owner-only.
+              chown 70:70 /rendered/userlist.txt
               chmod 600 /rendered/userlist.txt
           volumeMounts:
             - name: config
@@ -62,7 +67,12 @@ spec:
               mountPath: /rendered
       containers:
         - name: pgbouncer
-          image: edoburu/pgbouncer:1.23.1
+          # edoburu/pgbouncer renames its tags every patch (e.g. 1.23.1 →
+          # v1.23.1-p3). The plain `1.23.1` tag was removed from Docker Hub
+          # and the image stopped pulling once it aged out of the local
+          # cache, so any new pgbouncer pod hit ImagePullBackOff. Pin to the
+          # current convention; bump alongside upstream patches.
+          image: edoburu/pgbouncer:v1.23.1-p3
           args:
             - /rendered/pgbouncer.ini
           ports:

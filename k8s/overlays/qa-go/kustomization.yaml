@@ -192,12 +192,13 @@ patches:
       - op: replace
         path: /data/ALLOWED_ORIGINS
         value: "https://qa.kylebradshaw.dev,http://localhost:3000"
+      # DSN component split (Phase 4): host/port/options are shared with prod
+      # (same Postgres reached by ExternalName), so QA only overrides the
+      # database name. DB_USER/DB_PASSWORD come from the go-ecommerce-qa
+      # namespace's order-projector-db SealedSecret.
       - op: replace
-        path: /data/DATABASE_URL
-        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/projectordb_qa?sslmode=disable&application_name=order-projector"
-      - op: add
-        path: /data/DATABASE_URL_DIRECT
-        value: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/projectordb_qa?sslmode=disable&application_name=order-projector-migrate"
+        path: /data/DB_NAME
+        value: "projectordb_qa"
       - op: replace
         path: /data/KAFKA_BROKERS
         value: "kafka.go-ecommerce-qa.svc.cluster.local:9092"

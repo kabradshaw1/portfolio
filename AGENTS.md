@@ -1,8 +1,15 @@
-# CLAUDE.md
+# AGENTS.md
 
 ## Project Intent
 
 Portfolio project for a Golang Engineer job applications.  
+
+## Search Scope
+
+Respect `.ignore` for repo searches. Do not scan or summarize ignored paths
+unless the user explicitly asks for those files or the task cannot be completed
+without them. In normal work, avoid `frontend/node_modules/`, generated build
+output, caches, Jupyter checkpoints, `docs/superpowers/`, and `docs/adr/`.
 
 ## Quality Bar
 
@@ -12,7 +19,7 @@ This portfolio must demonstrate production-grade engineering, not just working d
 
 - **Python:** FastAPI microservices (ingestion, chat, debug), LangChain text splitters, Qdrant vector DB
 - **Java:** Spring Boot microservices (task, activity, notification, gateway), PostgreSQL, MongoDB, Redis, RabbitMQ, GraphQL
-- **Go:** Auth, product, ecommerce, AI agent, and analytics services, gRPC + REST, PostgreSQL, Redis, RabbitMQ, Kafka, protobuf/buf, shared `go/pkg/` module (see `go/CLAUDE.md`)
+- **Go:** Auth, product, ecommerce, AI agent, and analytics services, gRPC + REST, PostgreSQL, Redis, RabbitMQ, Kafka, protobuf/buf, shared `go/pkg/` module (see `go/AGENTS.md`)
 - **AI/ML:** Ollama (Qwen 2.5 14B for chat/debug, nomic-embed-text for embeddings)
 - **Frontend:** Next.js + TypeScript + shadcn/ui, Apollo Client (GraphQL)
 - **Testing:** pytest, JUnit, Go test/benchmarks, Playwright (E2E)
@@ -125,6 +132,14 @@ The Go ai-service (`go/ai-service/`) is the MCP gateway for all AI functionality
 - **Frontend integration:** POST /chat with SSE streaming. Frontend client in `frontend/src/lib/ai-service.ts` parses event types.
 - **Roadmap:** tracked in GitHub issues #75-#85 (AI platform phases, eval service, RAG improvements).
 
+## Codex Skills
+
+Use the installed project-specific Codex skills when their trigger conditions match:
+
+- `debug-observability`: runtime errors, alerts, circuit breakers, saga issues, gRPC failures, incident verification, or service misbehavior in QA/prod.
+- `ops-as-code`: before any mutating action against a shared environment, including `kubectl apply/exec/rollout/scale/delete`, database mutations, secret edits, queue purges, or one-off prod fixes.
+- `scaffold-go-service`: when creating or extracting a decomposed Go microservice.
+
 ## gRPC & Proto Toolchain
 
 Decomposed Go services use gRPC for inter-service communication and REST for frontend traffic. Each service runs a dual server (REST + gRPC) from a single binary.
@@ -141,7 +156,7 @@ Decomposed Go services use gRPC for inter-service communication and REST for fro
 
 Decomposed ecommerce: order-service, cart-service, product-service, payment-service with gRPC inter-service communication and a RabbitMQ-based checkout saga. Database-per-service on shared Postgres (`authdb`, `orderdb`, `productdb`, `cartdb`, `paymentdb`). QA uses a separate RabbitMQ `/qa` vhost for queue isolation.
 
-**Adding a new Go service:** Use the `/scaffold-go-service` skill for the full 15-item checklist.
+**Adding a new Go service:** Use the `scaffold-go-service` Codex skill for the full 15-item checklist.
 
 ## Monitoring & Observability
 
@@ -157,9 +172,9 @@ Three pillars in the `monitoring` namespace: Prometheus (metrics), Loki+Promtail
 **Debugging triage hierarchy** — follow this order:
 
 1. **Pods down / CrashLoopBackOff:** `kubectl get pods` + `kubectl logs` directly. Observability can't help if the monitoring target is dead. Fix the pod first, then assess.
-2. **Alerts firing:** Use `/debug-observability` — it has a structured alert triage routine that classifies stale vs real alerts and identifies what actually needs attention.
-3. **Pods running but errors:** Use `/debug-observability` — Loki logs, Jaeger traces, circuit breaker queries. Don't SSH and grep logs manually.
-4. **Post-incident verification:** Use `/debug-observability` — it has a health verification checklist and stale alert cleanup procedure.
+2. **Alerts firing:** Use the `debug-observability` Codex skill — it has a structured alert triage routine that classifies stale vs real alerts and identifies what actually needs attention.
+3. **Pods running but errors:** Use the `debug-observability` Codex skill — Loki logs, Jaeger traces, circuit breaker queries. Don't SSH and grep logs manually.
+4. **Post-incident verification:** Use the `debug-observability` Codex skill — it has a health verification checklist and stale alert cleanup procedure.
 
 Rule: only skip the observability skill for step 1 (pods down). For everything else, use the skill first.
 
@@ -194,12 +209,12 @@ Design decisions documented in `docs/adr/`, organized by service. Jupyter notebo
 - Feature branches (`agent/feat-*`) — created by agents from `main`, short-lived, deleted after merge.
 - `staging` — retired. Replaced by `qa`.
 
-**Per-branch rules for Claude Code:**
+**Per-branch rules for Codex:**
 
 - **On a feature branch:** The full autonomous flow is:
   1. **Spec approved** — Kyle reviews and approves the spec. This is the human gate. After writing the spec, update the status line marker so Kyle can see which spec is active:
      ```bash
-     echo "spec-name-here" > ~/.claude/current-spec.txt
+     echo "spec-name-here" > ~/.codex/current-spec.txt
      ```
      Use the spec filename without the date prefix or `.md` extension (e.g., `restore-e2e-prestaging-design`).
   2. **Plan + execute** — Write the implementation plan and execute it. Don't ask to approve the plan — just do it.
@@ -208,12 +223,12 @@ Design decisions documented in `docs/adr/`, organized by service. Jupyter notebo
   
   Don't ask for approval at any point in this flow. The spec review is the gate — everything after that is autonomous. Do NOT watch or monitor CI — Kyle will check CI results himself and report back if there are failures to fix.
 - **On `qa`:** commit and push autonomously. Don't ask before pushing. Do NOT watch CI after pushing. For CI fixes Kyle reports: lint errors, formatting, type errors, and config issues are fine to fix autonomously. For anything that changes application behavior (logic, API contracts, data flow), stop and check with Kyle before fixing.
-  - **Doc-only changes:** Do NOT push commits that only touch docs (`CLAUDE.md`, `docs/`, specs, plans, ADRs). Commit them locally — Kyle views them locally. Push them along with the next code change that has a reason to trigger CI. This avoids unnecessary CI/CD runs.
+  - **Doc-only changes:** Do NOT push commits that only touch docs (`AGENTS.md`, `docs/`, specs, plans, ADRs). Commit them locally — Kyle views them locally. Push them along with the next code change that has a reason to trigger CI. This avoids unnecessary CI/CD runs.
 - **On `main`:** never push autonomously. When Kyle explicitly says to merge/ship to main, handle the full flow: merge `qa` into `main`, push, clean up worktree, delete feature branch (local + remote). Do NOT watch CI.
 
-Claude Code determines the current branch via `git branch --show-current` and follows the rules for that branch. No special mode or prompt needed.
+Codex determines the current branch via `git branch --show-current` and follows the rules for that branch. No special mode or prompt needed.
 
-**Agent worktrees:** Agents create worktrees in `.claude/worktrees/<branch-name>/` for feature work. Worktrees are cleaned up as part of the "ship to main" flow.
+**Agent worktrees:** Agents create worktrees in `.codex/worktrees/<branch-name>/` for feature work when a separate worktree is needed. Worktrees are cleaned up as part of the "ship to main" flow.
 
 ## Pre-commit Requirements
 

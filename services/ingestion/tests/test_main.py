@@ -250,3 +250,65 @@ def test_list_collections(mock_get_store):
     data = response.json()
     assert len(data["collections"]) == 2
     assert data["collections"][0]["name"] == "documents"
+
+
+@patch("app.main.get_meta_db")
+def test_get_collection_config_returns_metadata(mock_get_meta_db):
+    mock_db = AsyncMock()
+    mock_db.get.return_value = {
+        "chunk_size": 1000,
+        "chunk_overlap": 200,
+        "embedding_model": "nomic-embed-text",
+    }
+    mock_get_meta_db.return_value = mock_db
+
+    response = client.get("/collections/documents/config")
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "chunk_size": 1000,
+        "chunk_overlap": 200,
+        "embedding_model": "nomic-embed-text",
+    }
+
+
+@patch("app.main.get_meta_db")
+def test_get_collection_config_404_when_unknown(mock_get_meta_db):
+    mock_db = AsyncMock()
+    mock_db.get.return_value = None
+    mock_get_meta_db.return_value = mock_db
+
+    response = client.get("/collections/nope/config")
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"]
+
+
+@patch("app.main.get_meta_db")
+@patch("app.main.get_store")
+@patch("app.main.embed_texts", new_callable=AsyncMock)
+@patch("app.main.extract_pages")
+def test_ingest_persists_collection_metadata(
+    mock_extract, mock_embed, mock_get_store, mock_get_meta_db
+):
+    mock_extract.return_value = [{"page_number": 1, "text": "Hello world. " * 100}]
+    mock_embed.return_value = [[0.1] * 768] * 2
+    mock_store = MagicMock()
+    mock_get_store.return_value = mock_store
+    mock_db = AsyncMock()
+    mock_get_meta_db.return_value = mock_db
+
+    pdf_content = b"%PDF-1.4 fake content"
+    response = client.post(
+        "/ingest",
+        files={"file": ("test.pdf", io.BytesIO(pdf_content), "application/pdf")},
+    )
+    assert response.status_code == 200
+
+    from app.config import settings
+
+    mock_db.upsert.assert_awaited_once_with(
+        collection=settings.collection_name,
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+        embedding_model=settings.embedding_model,
+    )

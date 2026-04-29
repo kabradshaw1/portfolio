@@ -50,6 +50,7 @@ spec:
                 secretKeyRef:
                   name: grafana-secrets
                   key: grafana-reader-password
+                  optional: true
           volumeMounts:
             - name: datasource
               mountPath: /etc/grafana/provisioning/datasources/datasources.yml

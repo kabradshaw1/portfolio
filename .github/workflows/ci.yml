@@ -1566,6 +1566,11 @@ jobs:
           for f in $(find k8s go/k8s java/k8s -name 'namespace.yml' 2>/dev/null); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/ai-services -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           $SSH "minikube ssh 'sudo mkdir -p /backups/postgres && sudo chmod 777 /backups/postgres'"
+          # Bootstrap Jobs have immutable spec.template — a stale Job from a
+          # prior deploy with a different command/env fails the apply below
+          # with `field is immutable`. Delete first; mirrors the pattern used
+          # for Go migrate Jobs further down.
+          $SSH "kubectl delete job -n java-tasks pgbouncer-auth-bootstrap postgres-replicator-bootstrap postgres-grafana-reader postgres-extensions-bootstrap --ignore-not-found --wait=true"
           for f in $(find java/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           for f in $(find k8s/monitoring -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 

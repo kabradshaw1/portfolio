@@ -4,8 +4,19 @@ metadata:
   name: order-projector-config
   namespace: go-ecommerce
 data:
-  DATABASE_URL: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/projectordb?sslmode=disable&application_name=order-projector"
-  DATABASE_URL_DIRECT: "postgres://taskuser:taskpass@postgres.java-tasks.svc.cluster.local:5432/projectordb?sslmode=disable&application_name=order-projector-migrate"
+  # DSN component split (Phase 4 of the secrets-management migration).
+  # The app reads these DB_* keys plus DB_USER/DB_PASSWORD from the
+  # order-projector-db SealedSecret and assembles the postgres:// DSN
+  # at startup in cmd/server/config.go. The migration Job assembles
+  # the same DSN in shell using the *_DIRECT variants (PgBouncer
+  # bypass — see AGENTS.md "Go migration Jobs bypass PgBouncer").
+  DB_HOST: "pgbouncer.java-tasks.svc.cluster.local"
+  DB_PORT: "6432"
+  DB_NAME: "projectordb"
+  DB_OPTIONS: "sslmode=disable&application_name=order-projector"
+  DB_HOST_DIRECT: "postgres.java-tasks.svc.cluster.local"
+  DB_PORT_DIRECT: "5432"
+  DB_OPTIONS_DIRECT: "sslmode=disable&application_name=order-projector-migrate"
   KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
   PORT: "8097"
   ALLOWED_ORIGINS: "http://localhost:3000,https://kylebradshaw.dev"

@@ -62,6 +62,8 @@ spec:
             - "max_slot_wal_keep_size=4GB"
             - "-c"
             - "hot_standby=on"
+            - "-c"
+            - "hba_file=/etc/postgresql/pg_hba.conf"
           lifecycle:
             preStop:
               exec:
@@ -96,6 +98,10 @@ spec:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
               subPath: pgdata
+            - name: postgres-hba
+              mountPath: /etc/postgresql/pg_hba.conf
+              subPath: pg_hba.conf
+              readOnly: true
             - name: wal-scripts
               mountPath: /usr/local/bin/pg-archive-wal.sh
               subPath: pg-archive-wal.sh
@@ -144,6 +150,9 @@ spec:
         - name: postgres-data
           persistentVolumeClaim:
             claimName: postgres-data
+        - name: postgres-hba
+          configMap:
+            name: postgres-hba
         - name: exporter-queries
           configMap:
             name: postgres-exporter-queries
