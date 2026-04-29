@@ -3,6 +3,7 @@ package composite
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -22,9 +23,15 @@ func (f fakeUserHistory) RecentlyViewed(ctx context.Context, userID string) ([]H
 	return f.views, nil
 }
 
-type fakeNeighborSearch struct{ results []NeighborResult }
+type fakeNeighborSearch struct {
+	results []NeighborResult
+	err     error
+}
 
 func (f fakeNeighborSearch) Nearest(ctx context.Context, vec []float32, k int, excludeIDs []string, category string) ([]NeighborResult, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	return f.results, nil
 }
 
@@ -116,5 +123,19 @@ func TestRecommendRationaleHistoryWithoutEmbeddingsFallsBack(t *testing.T) {
 	}
 	if len(r.Products) != 0 {
 		t.Fatalf("expected no products without embeddings, got %d", len(r.Products))
+	}
+}
+
+func TestRecommendRationalePropagatesNearestError(t *testing.T) {
+	hist := fakeUserHistory{
+		orders: []HistoricalItem{
+			{ProductID: "shoe-trail", Embedding: []float32{1, 0, 0}, Source: "order:o1", Name: "Trail Shoe"},
+		},
+	}
+	neigh := fakeNeighborSearch{err: errors.New("qdrant down")}
+	tool := NewRecommendWithRationaleTool(hist, neigh)
+	_, err := tool.Call(context.Background(), []byte(`{"user_id":"u1"}`), "u1")
+	if err == nil {
+		t.Fatalf("expected error from Nearest to propagate")
 	}
 }

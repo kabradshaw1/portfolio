@@ -100,9 +100,24 @@ func (t *recommendTool) Call(ctx context.Context, args json.RawMessage, userID s
 	}
 	_ = userID // no per-user authorization beyond the explicit user_id arg in v1
 
-	orders, _ := t.hist.Orders(ctx, req.UserID)
-	cart, _ := t.hist.CartItems(ctx, req.UserID)
-	views, _ := t.hist.RecentlyViewed(ctx, req.UserID)
+	orders, err := t.hist.Orders(ctx, req.UserID)
+	if err != nil {
+		slog.WarnContext(ctx, "recommend_with_rationale: orders fetch failed",
+			"tool", "recommend_with_rationale", "user_id", req.UserID, "error", err)
+		orders = nil
+	}
+	cart, err := t.hist.CartItems(ctx, req.UserID)
+	if err != nil {
+		slog.WarnContext(ctx, "recommend_with_rationale: cart fetch failed",
+			"tool", "recommend_with_rationale", "user_id", req.UserID, "error", err)
+		cart = nil
+	}
+	views, err := t.hist.RecentlyViewed(ctx, req.UserID)
+	if err != nil {
+		slog.WarnContext(ctx, "recommend_with_rationale: views fetch failed",
+			"tool", "recommend_with_rationale", "user_id", req.UserID, "error", err)
+		views = nil
+	}
 
 	signals := make([]HistoricalItem, 0, len(orders)+len(cart)+len(views))
 	signals = append(signals, orders...)
@@ -137,13 +152,17 @@ func (t *recommendTool) Call(ctx context.Context, args json.RawMessage, userID s
 	recs := make([]Recommendation, 0, len(results))
 	for _, r := range results {
 		nearestSignal := closestSignal(r, embeddedSignals)
+		category := r.Category
+		if category == "" {
+			category = "this category"
+		}
+		rationale := fmt.Sprintf("Similar to %s; matches your interest in %s.",
+			nearestSignal.Source, category)
 		recs = append(recs, Recommendation{
-			ID:    r.ProductID,
-			Name:  r.Name,
-			Score: r.Score,
-			Rationale: fmt.Sprintf(
-				"Similar to %s; matches your interest in %s.",
-				nearestSignal.Source, r.Category),
+			ID:              r.ProductID,
+			Name:            r.Name,
+			Score:           r.Score,
+			Rationale:       rationale,
 			SurfacedSignals: []string{nearestSignal.Source},
 		})
 	}
