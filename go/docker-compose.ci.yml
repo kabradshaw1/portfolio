@@ -47,7 +47,12 @@ services:
       - "8096:8096"
       - "9096:9096"
     environment:
-      DATABASE_URL: postgres://taskuser:taskpass@postgres:5432/cartdb?sslmode=disable
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: cartdb
+      DB_OPTIONS: sslmode=disable
+      DB_USER: taskuser
+      DB_PASSWORD: taskpass
       JWT_SECRET: ci-test-secret
       ALLOWED_ORIGINS: "*"
       PORT: "8096"
@@ -55,7 +60,10 @@ services:
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
       PRODUCT_GRPC_ADDR: product-service:9095
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      MQ_HOST: rabbitmq
+      MQ_PORT: "5672"
+      MQ_USER: guest
+      MQ_PASSWORD: guest
       AUTH_GRPC_URL: auth-service:9091
     depends_on:
       postgres:
