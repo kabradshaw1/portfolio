@@ -167,6 +167,19 @@ func runServe() {
 	}
 	registry.Register(composite.NewCompareProductsTool(productCatalog, composite.NopEmbeddingSource{}))
 
+	// recommend_with_rationale tool: builds recommendations from a user's order
+	// history (joined orders→order_items) and active cart items. NopNeighborSearch
+	// is used because products are not currently indexed in Qdrant — the tool
+	// degrades to the no_embeddings path, which still surfaces which signal types
+	// exist. Swap NopNeighborSearch for a QdrantNeighborSearch once product
+	// embeddings land in Qdrant. orderDB and cartDB are already open above.
+	recommendHistory := composite.PostgresUserHistory{
+		OrdersDB: orderDB, // orderdb: holds orders + order_items, joined to resolve user_id
+		CartDB:   cartDB,  // cartdb: holds cart_items with direct user_id column
+	}
+	recommendNeighbor := composite.NopNeighborSearch{}
+	registry.Register(composite.NewRecommendWithRationaleTool(recommendHistory, recommendNeighbor))
+
 	// MCP streamable HTTP endpoint
 	mcpSrv := mcpadapter.NewServer(registry, mcpadapter.Defaults{})
 	mcpHandler := sdkmcp.NewStreamableHTTPHandler(func(_ *http.Request) *sdkmcp.Server {
