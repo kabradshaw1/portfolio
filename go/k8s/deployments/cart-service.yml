@@ -42,6 +42,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: cart-service-config
+            - secretRef:
+                name: cart-service-db
+            - secretRef:
+                name: cart-service-mq
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
