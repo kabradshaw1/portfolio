@@ -40,6 +40,22 @@ class EvalDB:
             );
             """
         )
+
+        # Idempotent migrations for new tracking columns. SQLite has no
+        # `ADD COLUMN IF NOT EXISTS`, so each ALTER is wrapped and we ignore
+        # only the "duplicate column name" error from re-running init().
+        for column_ddl in (
+            "ALTER TABLE evaluations ADD COLUMN notes TEXT",
+            "ALTER TABLE evaluations ADD COLUMN config TEXT",
+            "ALTER TABLE evaluations "
+            "ADD COLUMN baseline_eval_id TEXT REFERENCES evaluations(id)",
+        ):
+            try:
+                await self._db.execute(column_ddl)
+            except aiosqlite.OperationalError as exc:
+                if "duplicate column name" not in str(exc).lower():
+                    raise
+
         await self._db.commit()
 
     async def close(self):
@@ -85,17 +101,51 @@ class EvalDB:
             for r in rows
         ]
 
-    async def create_evaluation(self, dataset_id: str, collection: str) -> str:
+    async def create_evaluation(
+        self,
+        dataset_id: str,
+        collection: str,
+        notes: str | None = None,
+        baseline_eval_id: str | None = None,
+    ) -> str:
         eval_id = str(uuid.uuid4())
         now = datetime.now(_UTC).isoformat()
         await self._db.execute(
             "INSERT INTO evaluations "
-            "(id, dataset_id, status, collection, created_at) "
-            "VALUES (?, ?, 'running', ?, ?)",
-            (eval_id, dataset_id, collection, now),
+            "(id, dataset_id, status, collection, created_at, notes, baseline_eval_id) "
+            "VALUES (?, ?, 'running', ?, ?, ?, ?)",
+            (eval_id, dataset_id, collection, now, notes, baseline_eval_id),
         )
         await self._db.commit()
         return eval_id
+
+    def _row_to_dict(self, row, *, include_results: bool = True) -> dict:
+        """Shared row → dict conversion for evaluation rows."""
+        out = {
+            "id": row["id"],
+            "dataset_id": row["dataset_id"],
+            "status": row["status"],
+            "collection": row["collection"],
+            "aggregate_scores": (
+                json.loads(row["aggregate_scores"]) if row["aggregate_scores"] else None
+            ),
+            "created_at": row["created_at"],
+            "completed_at": row["completed_at"],
+            "notes": row["notes"],
+            "config": json.loads(row["config"]) if row["config"] else None,
+            "baseline_eval_id": row["baseline_eval_id"],
+        }
+        if include_results:
+            out["results"] = json.loads(row["results"]) if row["results"] else None
+            out["error"] = row["error"]
+        return out
+
+    async def set_evaluation_config(self, eval_id: str, config: dict) -> None:
+        await self._db.execute(
+            "UPDATE evaluations SET config = ? WHERE id = ?",
+            (json.dumps(config), eval_id),
+        )
+        await self._db.commit()
 
     async def get_evaluation(self, eval_id: str) -> dict | None:
         cursor = await self._db.execute(
@@ -104,42 +154,15 @@ class EvalDB:
         row = await cursor.fetchone()
         if not row:
             return None
-        return {
-            "id": row["id"],
-            "dataset_id": row["dataset_id"],
-            "status": row["status"],
-            "collection": row["collection"],
-            "aggregate_scores": (
-                json.loads(row["aggregate_scores"]) if row["aggregate_scores"] else None
-            ),
-            "results": json.loads(row["results"]) if row["results"] else None,
-            "error": row["error"],
-            "created_at": row["created_at"],
-            "completed_at": row["completed_at"],
-        }
+        return self._row_to_dict(row)
 
     async def list_evaluations(self, limit: int = 20, offset: int = 0) -> list[dict]:
         cursor = await self._db.execute(
-            "SELECT id, dataset_id, status, collection, "
-            "aggregate_scores, created_at, completed_at "
-            "FROM evaluations ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            "SELECT * FROM evaluations ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (limit, offset),
         )
         rows = await cursor.fetchall()
-        return [
-            {
-                "id": r["id"],
-                "dataset_id": r["dataset_id"],
-                "status": r["status"],
-                "collection": r["collection"],
-                "aggregate_scores": (
-                    json.loads(r["aggregate_scores"]) if r["aggregate_scores"] else None
-                ),
-                "created_at": r["created_at"],
-                "completed_at": r["completed_at"],
-            }
-            for r in rows
-        ]
+        return [self._row_to_dict(r, include_results=False) for r in rows]
 
     async def complete_evaluation(
         self, eval_id: str, aggregate_scores: dict, results: list[dict]
