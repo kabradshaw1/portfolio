@@ -25,6 +25,11 @@ type PostgresUserHistory struct {
 // It joins orders → order_items so that the user_id filter works across the
 // table boundary. Each row becomes one HistoricalItem with Source = "order:<order_id>".
 func (p PostgresUserHistory) Orders(ctx context.Context, userID string) ([]HistoricalItem, error) {
+	// Empty userID short-circuits to nil rather than round-tripping the DB.
+	// Unlike sibling adapters in sources_postgres.go (which let an empty arg
+	// run safely against a single-table query), Orders runs a JOIN whose cost
+	// is non-trivial — guarding here keeps the recommend tool snappy for
+	// anonymous sessions where the userID arrives empty.
 	if userID == "" {
 		return nil, nil
 	}
@@ -32,7 +37,9 @@ func (p PostgresUserHistory) Orders(ctx context.Context, userID string) ([]Histo
 		SELECT oi.order_id, oi.product_id
 		FROM order_items oi
 		JOIN orders o ON o.id = oi.order_id
-		WHERE o.user_id = $1`
+		WHERE o.user_id = $1
+		ORDER BY o.created_at DESC
+		LIMIT 200`
 	rows, err := p.OrdersDB.QueryContext(ctx, q, userID)
 	if err != nil {
 		return nil, err
@@ -56,6 +63,7 @@ func (p PostgresUserHistory) Orders(ctx context.Context, userID string) ([]Histo
 // The Source is set to "cart:current" for every row — there is no
 // distinct cart-session concept in the schema.
 func (p PostgresUserHistory) CartItems(ctx context.Context, userID string) ([]HistoricalItem, error) {
+	// Empty userID short-circuits to nil for consistency with Orders.
 	if userID == "" {
 		return nil, nil
 	}

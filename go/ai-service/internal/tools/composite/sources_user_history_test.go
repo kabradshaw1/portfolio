@@ -73,6 +73,9 @@ func TestPostgresUserHistoryCartItems(t *testing.T) {
 	if got[0].Source != "cart:current" || got[1].Source != "cart:current" {
 		t.Fatalf("unexpected Source values: %+v", got)
 	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPostgresUserHistoryCartItemsEmptyUserID(t *testing.T) {
