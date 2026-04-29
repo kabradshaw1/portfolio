@@ -17,8 +17,8 @@ func TestPostgresOrderSourceHappyPath(t *testing.T) {
 	}
 	defer db.Close()
 
-	rows := sqlmock.NewRows([]string{"id", "status", "saga_step", "created_unix", "updated_unix"}).
-		AddRow("ord-1", "completed", "COMPLETED", int64(1000), int64(2000))
+	rows := sqlmock.NewRows([]string{"id", "status", "user_id", "saga_step", "created_unix", "updated_unix"}).
+		AddRow("ord-1", "completed", "u1", "COMPLETED", int64(1000), int64(2000))
 	mock.ExpectQuery(`SELECT id`).WithArgs("ord-1").WillReturnRows(rows)
 
 	src := PostgresOrderSource{DB: db}
@@ -31,6 +31,9 @@ func TestPostgresOrderSourceHappyPath(t *testing.T) {
 	}
 	if got.Status != "completed" {
 		t.Fatalf("Status: want %q, got %q", "completed", got.Status)
+	}
+	if got.UserID != "u1" {
+		t.Fatalf("UserID: want %q, got %q", "u1", got.UserID)
 	}
 	if got.CreatedUnix != 1000 {
 		t.Fatalf("CreatedUnix: want 1000, got %d", got.CreatedUnix)

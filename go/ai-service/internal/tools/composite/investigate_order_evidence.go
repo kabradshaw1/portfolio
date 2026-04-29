@@ -11,6 +11,7 @@ import (
 type OrderRecord struct {
 	ID            string
 	Status        string
+	UserID        string
 	TraceID       string
 	CorrelationID string
 	CreatedUnix   int64
@@ -155,7 +156,13 @@ func (f EvidenceFetcher) Fetch(ctx context.Context, orderID string) (EvidenceBun
 		return nil
 	})
 	g.Go(func() error {
-		v, e := f.Cart.FetchCartReservation(gctx, orderID)
+		// A missing user_id is a data-integrity gap on the order row; skip cart
+		// silently rather than marking partial — this is not a transient fetch
+		// failure, and flagging it as partial would mislead incident triage.
+		if order.UserID == "" {
+			return nil
+		}
+		v, e := f.Cart.FetchCartReservation(gctx, order.UserID)
 		if e != nil {
 			mark("cart: " + e.Error())
 			return nil

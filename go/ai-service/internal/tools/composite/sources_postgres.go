@@ -30,6 +30,7 @@ func (p PostgresOrderSource) FetchOrder(ctx context.Context, id string) (OrderRe
 	const q = `
 SELECT id,
        status,
+       COALESCE(user_id::text, ''),
        COALESCE(saga_step, ''),
        EXTRACT(EPOCH FROM created_at)::bigint,
        EXTRACT(EPOCH FROM updated_at)::bigint
@@ -41,7 +42,7 @@ LIMIT 1`
 	r.ID = id
 	var sagaStep string
 	err := p.DB.QueryRowContext(ctx, q, id).
-		Scan(&r.ID, &r.Status, &sagaStep, &r.CreatedUnix, &r.UpdatedUnix)
+		Scan(&r.ID, &r.Status, &r.UserID, &sagaStep, &r.CreatedUnix, &r.UpdatedUnix)
 	if err != nil {
 		return OrderRecord{}, err
 	}

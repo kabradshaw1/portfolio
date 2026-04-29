@@ -72,7 +72,7 @@ func (f fakeLogSource) FetchLogs(ctx context.Context, services []string, from, t
 
 func TestFanOutAllSourcesSucceed(t *testing.T) {
 	f := EvidenceFetcher{
-		Order:   fakeOrderSource{data: OrderRecord{ID: "ord1", Status: "completed", TraceID: "t1", CorrelationID: "c1", CreatedUnix: 1, UpdatedUnix: 2}},
+		Order:   fakeOrderSource{data: OrderRecord{ID: "ord1", Status: "completed", UserID: "u1", TraceID: "t1", CorrelationID: "c1", CreatedUnix: 1, UpdatedUnix: 2}},
 		Saga:    fakeSagaSource{data: SagaHistory{Step: "completed"}},
 		Payment: fakePaymentSource{data: PaymentRecord{StripeChargeID: "ch_1"}},
 		Cart:    fakeCartSource{data: CartReservation{Released: true}},
@@ -94,7 +94,7 @@ func TestFanOutAllSourcesSucceed(t *testing.T) {
 
 func TestFanOutSingleFailureMarksPartial(t *testing.T) {
 	f := EvidenceFetcher{
-		Order:   fakeOrderSource{data: OrderRecord{ID: "ord1", TraceID: "t1", CorrelationID: "c1"}},
+		Order:   fakeOrderSource{data: OrderRecord{ID: "ord1", UserID: "u1", TraceID: "t1", CorrelationID: "c1"}},
 		Saga:    fakeSagaSource{err: errors.New("saga down")},
 		Payment: fakePaymentSource{data: PaymentRecord{StripeChargeID: "ch_1"}},
 		Cart:    fakeCartSource{data: CartReservation{Released: true}},
