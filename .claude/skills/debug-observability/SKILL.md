@@ -7,6 +7,15 @@ description: Debug service issues and triage alerts using Loki, Jaeger, Grafana,
 
 **Rule: Use Grafana/Loki/Jaeger before SSH.** Every runtime issue should be diagnosable from the observability stack. SSH + `kubectl logs` is a last resort — the only exception is pods in CrashLoopBackOff where the monitoring target is dead.
 
+**Rule: No mutating action exists only in chat.** Diagnostic commands (`kubectl get/describe/logs`, `psql -c "SELECT ..."`, `loki-query`, Prometheus queries) are unrestricted. But any *write* to a shared environment — `kubectl apply`, `kubectl exec ... ALTER ROLE/UPDATE/DELETE`, `kubectl rollout restart`, `kubectl scale`, `kubectl delete pod`, secret edits, queue purges — must exist as committed code in this repo before it runs. Concretely:
+
+- **Never write executable scripts to `/tmp/`.** If a script is needed, it goes in `scripts/ops/<name>.sh` (or `scripts/ops/break-glass/<name>.sh` for pre-staged recovery actions) and gets committed first.
+- **Reconciliation tied to declarative state goes in a K8s Job manifest** at `<area>/k8s/jobs/ops/<name>.yml`, idempotent, applied as part of the deploy pipeline. Same model as the existing migrate Jobs.
+- **Harness denials are signals.** When auto mode blocks `kubectl exec ... <mutation>`, the response is to commit the procedure as code and run it through the proper channel — not to find another command form.
+- **Date-prefix one-shot incident scripts** (`scripts/ops/2026-04-28-pgbouncer-config-fix-rollout.sh`) so a future agent reading `git log scripts/ops/` can reconstruct what changed and why.
+
+Full design: `docs/superpowers/specs/2026-04-28-ops-as-code-design.md`.
+
 ## When to Use This Skill
 
 - **Alerts firing** — triage whether alerts are real or stale (see Alert Triage below)
