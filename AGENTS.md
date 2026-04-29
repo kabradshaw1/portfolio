@@ -11,6 +11,79 @@ unless the user explicitly asks for those files or the task cannot be completed
 without them. In normal work, avoid `frontend/node_modules/`, generated build
 output, caches, Jupyter checkpoints, `docs/superpowers/`, and `docs/adr/`.
 
+## Context Discipline
+
+Treat context as a limited engineering resource. Prefer targeted lookup over
+broad reading.
+
+- Start with `rg`, `git diff`, `git status`, and narrow `sed -n` ranges. Do
+  not read whole large files unless the task truly requires the full document.
+- For handoffs, specs, and plans, read the TL;DR, status, or current-task
+  sections first, then jump only to referenced sections needed for the
+  immediate next step.
+- For skill files, read only the workflow sections needed for the current turn.
+  Do not bulk-load multiple skills "just in case."
+- For CI logs, never stream full logs into the conversation by default. Use a
+  targeted `gh run view ... --log | rg ...` filter first. If that is
+  insufficient, redirect logs to a temp file and search locally.
+- For code exploration, search for symbols and open nearby ranges. Avoid
+  opening generated files, lockfiles, vendored code, `node_modules`, build
+  output, or ignored paths unless directly relevant.
+- Summarize findings in your own words instead of pasting long command output.
+- If a command may produce huge output, cap it with a narrow query, `--limit`,
+  `head`, `tail`, or a specific file/range before running it.
+- Before loading another doc or log, ask: "What decision will this let me make?"
+  If there is no specific answer, don't load it.
+
+### Resuming Plans and Handoffs
+
+When picking up a previous plan or interrupted session, do not reread the whole
+plan by default. First establish the actual work state:
+
+```bash
+git worktree list
+git branch --show-current
+git status --short
+git log --oneline -10
+```
+
+Use existing commits and changed files as the source of truth. Then read only
+the next relevant plan section:
+
+```bash
+rg -n "Group F|Step F|Next|TODO|unchecked" docs/superpowers/plans/<plan>.md
+sed -n '<start>,<end>p' docs/superpowers/plans/<plan>.md
+```
+
+Keep the `sed` window small, usually 100-150 lines. Do not stream thousands of
+lines of a plan/spec/handoff unless the user explicitly asks for a full review.
+
+### Merge Conflict Context
+
+When resolving merge conflicts, start with the conflict list:
+
+```bash
+git diff --name-only --diff-filter=U
+```
+
+Only inspect hunks for files where the feature branch likely made meaningful
+changes. For encrypted sealed secrets, generated files, lockfiles, and broad
+shared-infra files unrelated to the feature, avoid dumping full hunks into
+context. Prefer the base branch (`qa`) version unless the feature explicitly
+changed that exact file for a known reason.
+
+### Existence Checks
+
+For questions like "does this ADR/file exist?" or "was this merged?", use
+branch-level existence checks before opening file contents:
+
+```bash
+git ls-tree -r --name-only origin/qa docs/adr/go-ai-service
+git cat-file -e origin/qa:docs/adr/go-ai-service/02-mcp-depth.md
+```
+
+Open the file only if the user asks to review or change its content.
+
 ## Quality Bar
 
 This portfolio must demonstrate production-grade engineering, not just working demos. Every component should be something a hiring manager would feel safe dropping into a real production system. Err on the side of overly polished — if a shortcut wouldn't pass code review at a serious company, don't take it. The constraint is cost (no paid cloud services), not effort. Where a production system would use a managed service (RDS, Cloud SQL, S3 backups), implement the self-hosted equivalent with the same operational rigor: automated backups, recovery procedures, health checks, and alerting that doesn't cry wolf.
@@ -288,6 +361,25 @@ Single unified workflow (`.github/workflows/ci.yml`) handles all CI/CD:
 **QA:** `qa-api.kylebradshaw.dev` (backend), `qa.kylebradshaw.dev` (frontend on Vercel)
 
 **Compose-smoke realism:** Job 3 (`compose-smoke`) runs the Python AI stack via `docker-compose.yml` with a mocked Ollama. Any change to Python service configuration (env vars, ports, depends_on, env_file references) must be reflected in BOTH `docker-compose.yml` and the corresponding k8s manifests under `k8s/ai-services/`, or compose-smoke will drift from prod and stop catching real regressions.
+
+### CI Log Handling
+
+When debugging GitHub Actions, identify the failed job first:
+
+```bash
+gh pr view <pr> --json statusCheckRollup
+```
+
+Then inspect only the failed job with a targeted filter:
+
+```bash
+gh run view <run-id> --job <job-id> --log \
+  | rg -n "##\\[error\\]|FAIL|failed|Error|panic|Exception|required|unhealthy"
+```
+
+Only fetch broader logs after the filtered output identifies the failing step
+or proves insufficient. Prefer redirecting full logs to a temp file and using
+`rg`/`sed` locally over streaming large logs into the conversation.
 
 **Tailscale authkey:** Expires every 90 days (free plan). Regenerate at Tailscale admin → Keys and update `TAILSCALE_AUTHKEY` in GitHub repo secrets.
 
