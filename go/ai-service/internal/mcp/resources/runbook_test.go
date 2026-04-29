@@ -64,11 +64,17 @@ func TestRunbookResourceCachesContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got1, _ := r.Read(context.Background())
+	got1, err := r.Read(context.Background())
+	if err != nil {
+		t.Fatalf("first read: %v", err)
+	}
 	if err := os.WriteFile(path, []byte("v2"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got2, _ := r.Read(context.Background())
+	got2, err := r.Read(context.Background())
+	if err != nil {
+		t.Fatalf("second read: %v", err)
+	}
 	if got1.Text != got2.Text {
 		t.Fatalf("expected cached content; got1=%q got2=%q", got1.Text, got2.Text)
 	}
