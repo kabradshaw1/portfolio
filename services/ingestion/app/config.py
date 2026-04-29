@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     allowed_origins: str = "https://kylebradshaw.dev"
     jwt_secret: str = ""
 
+    # Per-collection metadata is stored in a tiny SQLite file so the eval
+    # service can read back the chunk params and embedding model that
+    # produced a collection. Qdrant has no first-class collection metadata.
+    collection_meta_db_path: str = "data/collection_meta.db"
+
     def get_embedding_base_url(self) -> str:
         if self.embedding_provider == "ollama":
             return self.embedding_base_url or self.ollama_base_url
