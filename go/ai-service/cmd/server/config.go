@@ -36,6 +36,9 @@ type Config struct {
 	// Observability endpoints for the composite investigate_my_order tool.
 	JaegerQueryURL string
 	LokiURL        string
+
+	// Product service URL for the composite compare_products tool.
+	ProductServiceURL string
 }
 
 // loadConfig reads environment variables and returns a populated Config.
@@ -86,6 +89,10 @@ func loadConfig() Config {
 		// Observability endpoints for the composite investigate_my_order tool.
 		JaegerQueryURL: getenv("JAEGER_QUERY_URL", "http://jaeger-query.monitoring.svc.cluster.local:16686"),
 		LokiURL:        getenv("LOKI_URL", "http://loki.monitoring.svc.cluster.local:3100"),
+
+		// Product service URL for the composite compare_products tool.
+		// Defaults to the in-cluster K8s DNS address on the standard REST port.
+		ProductServiceURL: getenv("PRODUCT_SERVICE_URL", "http://product-service.go-ecommerce.svc.cluster.local:8095"),
 	}
 }
 

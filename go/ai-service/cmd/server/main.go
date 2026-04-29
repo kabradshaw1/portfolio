@@ -154,6 +154,17 @@ func runServe() {
 	}
 	registry.Register(composite.NewInvestigateMyOrderTool(investigateFetcher))
 
+	// compare_products tool: fetches structural data from product-service (REST)
+	// and skips similarity scoring with NopEmbeddingSource because products are
+	// not currently stored in Qdrant (ingestion only creates a "documents"
+	// collection for PDFs).  Swap NopEmbeddingSource for QdrantEmbeddingSource
+	// once product embeddings are added.
+	productCatalog := composite.ProductServiceCatalog{
+		BaseURL: cfg.ProductServiceURL,
+		HTTP:    &http.Client{Timeout: 5 * time.Second},
+	}
+	registry.Register(composite.NewCompareProductsTool(productCatalog, composite.NopEmbeddingSource{}))
+
 	// MCP streamable HTTP endpoint
 	mcpSrv := mcpadapter.NewServer(registry, mcpadapter.Defaults{})
 	mcpHandler := sdkmcp.NewStreamableHTTPHandler(func(_ *http.Request) *sdkmcp.Server {
