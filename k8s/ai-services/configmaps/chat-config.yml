@@ -13,3 +13,7 @@ data:
   QDRANT_PORT: "6333"
   COLLECTION_NAME: documents
   ALLOWED_ORIGINS: http://localhost:3000,https://kylebradshaw.dev
+  # Retrieval tuning — number of chunks pulled from Qdrant per /chat call.
+  TOP_K: "5"
+  # Selects which template in app.prompt.PROMPTS is used; validated at startup.
+  PROMPT_VERSION: v1-baseline

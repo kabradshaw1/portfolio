@@ -27,6 +27,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: ingestion-config
+          volumeMounts:
+            # Hosts the per-collection metadata SQLite store.
+            - name: ingestion-data
+              mountPath: /app/data
           resources:
             requests:
               memory: "128Mi"
@@ -41,3 +45,6 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
+      volumes:
+        - name: ingestion-data
+          emptyDir: {}
