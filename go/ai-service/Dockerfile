@@ -18,6 +18,7 @@ RUN apk add --no-cache ca-certificates \
     && adduser -D -u 1001 appuser
 
 COPY --from=builder /ai-service /ai-service
+COPY --from=builder /app/ai-service/resources /app/resources
 
 USER appuser
 

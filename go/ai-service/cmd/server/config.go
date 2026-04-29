@@ -25,6 +25,24 @@ type Config struct {
 	KafkaBrokers    string
 	MCPServersJSON  string
 	OTELEndpoint    string
+
+	// Database URLs for the composite investigate_my_order tool.
+	// Each ecommerce service owns its own database, so we need three separate
+	// connection URLs. These default to the in-cluster K8s addresses.
+	OrderDBURL   string
+	PaymentDBURL string
+	CartDBURL    string
+
+	// Observability endpoints for the composite investigate_my_order tool.
+	JaegerQueryURL string
+	LokiURL        string
+
+	// Product service URL for the composite compare_products tool.
+	ProductServiceURL string
+
+	// File-backed MCP resources.
+	RunbookPath string
+	SchemaPath  string
 }
 
 // loadConfig reads environment variables and returns a populated Config.
@@ -61,6 +79,27 @@ func loadConfig() Config {
 		KafkaBrokers:    os.Getenv("KAFKA_BROKERS"),
 		MCPServersJSON:  os.Getenv("MCP_SERVERS"),
 		OTELEndpoint:    os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+
+		// Database URLs for the composite investigate_my_order tool.
+		// No default — credentials must be supplied via the ORDER_DB_URL,
+		// PAYMENT_DB_URL, and CART_DB_URL environment variables (injected from
+		// SealedSecrets). An empty DSN causes sql.Open("pgx","") to succeed
+		// (pgx parses lazily) but the startup ping will fail and log a warning;
+		// the tool then degrades gracefully on call.
+		OrderDBURL:   getenv("ORDER_DB_URL", ""),
+		PaymentDBURL: getenv("PAYMENT_DB_URL", ""),
+		CartDBURL:    getenv("CART_DB_URL", ""),
+
+		// Observability endpoints for the composite investigate_my_order tool.
+		JaegerQueryURL: getenv("JAEGER_QUERY_URL", "http://jaeger.monitoring.svc.cluster.local:16686"),
+		LokiURL:        getenv("LOKI_URL", "http://loki.monitoring.svc.cluster.local:3100"),
+
+		// Product service URL for the composite compare_products tool.
+		// Defaults to the in-cluster K8s DNS address on the standard REST port.
+		ProductServiceURL: getenv("PRODUCT_SERVICE_URL", "http://go-product-service.go-ecommerce.svc.cluster.local:8095"),
+
+		RunbookPath: getenv("MCP_RESOURCES_RUNBOOK_PATH", "/app/resources/runbook.md"),
+		SchemaPath:  getenv("MCP_RESOURCES_SCHEMA_PATH", "/app/resources/schema-ecommerce.md"),
 	}
 }
 

@@ -19,6 +19,7 @@ func OptionalJWTMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 				uid, err := auth.ParseBearer(authHeader, jwtSecret)
 				if err == nil {
 					ctx := WithUserID(r.Context(), uid)
+					ctx = jwtctx.WithUserID(ctx, uid)
 					ctx = jwtctx.WithJWT(ctx, strings.TrimPrefix(authHeader, "Bearer "))
 					r = r.WithContext(ctx)
 				}
