@@ -170,16 +170,22 @@ func differingAttrs(ps []Product) []DifferingAttribute {
 		out = append(out, DifferingAttribute{Field: "price_cents", Values: priceVals})
 	}
 	nameVals := map[string]string{}
-	for _, p := range ps {
+	namesAllSame := true
+	for i, p := range ps {
 		nameVals[p.ID] = p.Name
+		if i > 0 && p.Name != ps[0].Name {
+			namesAllSame = false
+		}
 	}
-	out = append(out, DifferingAttribute{Field: "name", Values: nameVals})
+	if !namesAllSame {
+		out = append(out, DifferingAttribute{Field: "name", Values: nameVals})
+	}
 	return out
 }
 
 func pairSimilarities(ids []string, embs map[string][]float32) []PairSimilarity {
 	out := []PairSimilarity{}
-	for i := 0; i < len(ids); i++ {
+	for i := range ids {
 		for j := i + 1; j < len(ids); j++ {
 			a, ok1 := embs[ids[i]]
 			b, ok2 := embs[ids[j]]
