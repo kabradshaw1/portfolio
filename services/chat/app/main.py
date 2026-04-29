@@ -142,6 +142,7 @@ async def chat(
                 qdrant_host=settings.qdrant_host,
                 qdrant_port=settings.qdrant_port,
                 collection_name=body.collection or settings.collection_name,
+                top_k=settings.top_k,
             ):
                 if "token" in event:
                     tokens.append(event["token"])
@@ -166,6 +167,7 @@ async def chat(
                 qdrant_host=settings.qdrant_host,
                 qdrant_port=settings.qdrant_port,
                 collection_name=body.collection or settings.collection_name,
+                top_k=settings.top_k,
             ):
                 yield {"data": json.dumps(event)}
         except (httpx.ConnectError, httpx.TimeoutException) as e:
