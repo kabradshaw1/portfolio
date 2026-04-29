@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
 // ProductServiceCatalog calls product-service over REST to retrieve product data.
@@ -27,7 +28,11 @@ type productServiceResponse struct {
 // GetProduct fetches a single product from product-service.
 // Returns errProductNotFound on HTTP 404, a generic error for any other non-200.
 func (p ProductServiceCatalog) GetProduct(ctx context.Context, id string) (Product, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.BaseURL+"/products/"+id, nil)
+	u, err := url.JoinPath(p.BaseURL, "products", id)
+	if err != nil {
+		return Product{}, fmt.Errorf("product-service: build url: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return Product{}, err
 	}

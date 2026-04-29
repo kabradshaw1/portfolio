@@ -159,9 +159,11 @@ func runServe() {
 	// not currently stored in Qdrant (ingestion only creates a "documents"
 	// collection for PDFs).  Swap NopEmbeddingSource for QdrantEmbeddingSource
 	// once product embeddings are added.
+	//
+	// investigateHTTP is the shared client for composite-tool source adapters.
 	productCatalog := composite.ProductServiceCatalog{
 		BaseURL: cfg.ProductServiceURL,
-		HTTP:    &http.Client{Timeout: 5 * time.Second},
+		HTTP:    investigateHTTP,
 	}
 	registry.Register(composite.NewCompareProductsTool(productCatalog, composite.NopEmbeddingSource{}))
 
