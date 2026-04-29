@@ -9,6 +9,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 )
 
@@ -87,16 +94,27 @@ func (t *recommendTool) Schema() json.RawMessage {
 
 func (t *recommendTool) Call(ctx context.Context, args json.RawMessage, userID string) (tools.Result, error) {
 	start := time.Now()
+	timer := prometheus.NewTimer(metrics.MCPCompositeToolDuration.WithLabelValues(t.Name()))
+	defer timer.ObserveDuration()
+	ctx, span := otel.Tracer("ai-service/mcp").Start(ctx, "mcp.composite_tool.call",
+		trace.WithAttributes(attribute.String("tool.name", t.Name())))
+	defer span.End()
+
 	var req struct {
 		UserID   string `json:"user_id"`
 		Category string `json:"category,omitempty"`
 	}
 	if err := json.Unmarshal(args, &req); err != nil {
 		slog.WarnContext(ctx, "recommend_with_rationale: invalid args", "tool", "recommend_with_rationale", "error", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return tools.Result{}, fmt.Errorf("recommend_with_rationale: invalid args: %w", err)
 	}
 	if req.UserID == "" {
-		return tools.Result{}, errors.New("recommend_with_rationale: user_id is required")
+		err := errors.New("recommend_with_rationale: user_id is required")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return tools.Result{}, err
 	}
 	_ = userID // no per-user authorization beyond the explicit user_id arg in v1
 
@@ -145,6 +163,8 @@ func (t *recommendTool) Call(ctx context.Context, args json.RawMessage, userID s
 	results, err := t.neigh.Nearest(ctx, avg, 5, exclude, req.Category)
 	if err != nil {
 		slog.WarnContext(ctx, "recommend_with_rationale: nearest", "tool", "recommend_with_rationale", "error", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return tools.Result{}, fmt.Errorf("recommend_with_rationale: nearest: %w", err)
 	}
 

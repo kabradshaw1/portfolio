@@ -10,6 +10,13 @@ import (
 	"errors"
 	"strings"
 	"sync"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 )
 
 // ErrResourceNotFound is returned by Registry.Read when no resource is
@@ -89,6 +96,22 @@ func (r *Registry) List() []Resource {
 // Read looks up the Resource for uri and returns its current Content.
 // Returns ErrResourceNotFound if no Resource is registered.
 func (r *Registry) Read(ctx context.Context, uri string) (Content, error) {
+	ctx, span := otel.Tracer("ai-service/mcp").Start(ctx, "mcp.resource.read",
+		trace.WithAttributes(attribute.String("mcp.resource.uri", uri)))
+	defer span.End()
+
+	content, err := r.read(ctx, uri)
+	result := "ok"
+	if err != nil {
+		result = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	metrics.MCPResourcesReadTotal.WithLabelValues(uri, result).Inc()
+	return content, err
+}
+
+func (r *Registry) read(ctx context.Context, uri string) (Content, error) {
 	r.mu.RLock()
 	res, ok := r.resources[uri]
 	catalog := r.catalog

@@ -57,6 +57,22 @@ var (
 		Help:    "Ollama model evaluation duration (from response metadata).",
 		Buckets: prometheus.ExponentialBuckets(0.1, 2, 10),
 	}, []string{"service", "model"})
+
+	MCPResourcesReadTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mcp_resources_read_total",
+		Help: "MCP resource read attempts.",
+	}, []string{"uri", "result"})
+
+	MCPPromptsGetTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mcp_prompts_get_total",
+		Help: "MCP prompt get calls.",
+	}, []string{"name", "result"})
+
+	MCPCompositeToolDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mcp_composite_tool_duration_seconds",
+		Help:    "Duration of composite MCP tool calls.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"tool"})
 )
 
 // Recorder is the interface the agent loop uses to emit metrics. It keeps the
@@ -98,6 +114,6 @@ func (PromRecorder) RecordOllamaCall(model, operation string, dur time.Duration,
 // NopRecorder is the zero-value substitute for tests that don't care about metrics.
 type NopRecorder struct{}
 
-func (NopRecorder) RecordTurn(string, int, time.Duration)    {}
-func (NopRecorder) RecordTool(string, string, time.Duration) {}
+func (NopRecorder) RecordTurn(string, int, time.Duration)                         {}
+func (NopRecorder) RecordTool(string, string, time.Duration)                      {}
 func (NopRecorder) RecordOllamaCall(string, string, time.Duration, int, int, int) {}

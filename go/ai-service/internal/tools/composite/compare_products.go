@@ -10,6 +10,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 )
 
@@ -88,18 +95,32 @@ func (t *compareProductsTool) Schema() json.RawMessage {
 
 func (t *compareProductsTool) Call(ctx context.Context, args json.RawMessage, userID string) (tools.Result, error) {
 	start := time.Now()
+	timer := prometheus.NewTimer(metrics.MCPCompositeToolDuration.WithLabelValues(t.Name()))
+	defer timer.ObserveDuration()
+	ctx, span := otel.Tracer("ai-service/mcp").Start(ctx, "mcp.composite_tool.call",
+		trace.WithAttributes(attribute.String("tool.name", t.Name())))
+	defer span.End()
+
 	var req struct {
 		ProductIDs []string `json:"product_ids"`
 	}
 	if err := json.Unmarshal(args, &req); err != nil {
 		slog.WarnContext(ctx, "compare_products: invalid args", "tool", "compare_products", "error", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return tools.Result{}, fmt.Errorf("compare_products: invalid args: %w", err)
 	}
 	if len(req.ProductIDs) < 2 {
-		return tools.Result{}, errors.New("compare_products: at least 2 product_ids required")
+		err := errors.New("compare_products: at least 2 product_ids required")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return tools.Result{}, err
 	}
 	if len(req.ProductIDs) > 5 {
-		return tools.Result{}, errors.New("compare_products: at most 5 product_ids supported")
+		err := errors.New("compare_products: at most 5 product_ids supported")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return tools.Result{}, err
 	}
 	_ = userID // tool is read-only; per-user authorization not required
 
@@ -109,6 +130,8 @@ func (t *compareProductsTool) Call(ctx context.Context, args json.RawMessage, us
 		p, err := t.catalog.GetProduct(ctx, id)
 		if err != nil {
 			slog.WarnContext(ctx, "compare_products: get product", "tool", "compare_products", "product_id", id, "error", err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			return tools.Result{}, fmt.Errorf("compare_products: get product %s: %w", id, err)
 		}
 		products = append(products, p)

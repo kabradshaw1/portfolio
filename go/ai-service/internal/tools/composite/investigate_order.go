@@ -9,6 +9,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 )
 
@@ -114,21 +121,34 @@ func (t *investigateMyOrderTool) Schema() json.RawMessage {
 
 func (t *investigateMyOrderTool) Call(ctx context.Context, args json.RawMessage, userID string) (tools.Result, error) {
 	start := time.Now()
+	timer := prometheus.NewTimer(metrics.MCPCompositeToolDuration.WithLabelValues(t.Name()))
+	defer timer.ObserveDuration()
+	ctx, span := otel.Tracer("ai-service/mcp").Start(ctx, "mcp.composite_tool.call",
+		trace.WithAttributes(attribute.String("tool.name", t.Name())))
+	defer span.End()
+
 	var req struct {
 		OrderID string `json:"order_id"`
 	}
 	if err := json.Unmarshal(args, &req); err != nil {
 		slog.WarnContext(ctx, "tool error", "tool", "investigate_my_order", "error", err.Error())
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return tools.Result{}, fmt.Errorf("investigate_my_order: invalid args: %w", err)
 	}
 	if req.OrderID == "" {
-		return tools.Result{}, errors.New("investigate_my_order: order_id is required")
+		err := errors.New("investigate_my_order: order_id is required")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return tools.Result{}, err
 	}
 	// TODO(auth): verify order.UserID == userID once source adapters are wired (A5).
 	_ = userID
 	bundle, err := t.fetcher.Fetch(ctx, req.OrderID)
 	if err != nil {
 		slog.WarnContext(ctx, "tool error", "tool", "investigate_my_order", "order_id", req.OrderID, "error", err.Error())
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return tools.Result{}, fmt.Errorf("investigate_my_order: %w", err)
 	}
 	verdict := ComputeVerdict(bundle)

@@ -8,6 +8,13 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
 )
 
 // ErrPromptNotFound is returned by Registry.Get when no prompt is registered
@@ -75,6 +82,22 @@ func (r *Registry) List() []Prompt {
 // Get looks up the Prompt by name and renders it with args. Returns
 // ErrPromptNotFound if no prompt is registered under name.
 func (r *Registry) Get(ctx context.Context, name string, args map[string]string) (Rendered, error) {
+	ctx, span := otel.Tracer("ai-service/mcp").Start(ctx, "mcp.prompt.get",
+		trace.WithAttributes(attribute.String("mcp.prompt.name", name)))
+	defer span.End()
+
+	rendered, err := r.get(ctx, name, args)
+	result := "ok"
+	if err != nil {
+		result = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	metrics.MCPPromptsGetTotal.WithLabelValues(name, result).Inc()
+	return rendered, err
+}
+
+func (r *Registry) get(ctx context.Context, name string, args map[string]string) (Rendered, error) {
 	r.mu.RLock()
 	p, ok := r.prompts[name]
 	r.mu.RUnlock()
