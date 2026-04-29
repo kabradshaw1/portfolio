@@ -45,7 +45,7 @@ class Settings(BaseSettings):
         return self.embedding_base_url
 
     def validate(self) -> None:
-        """Fail fast if provider-required secrets are missing."""
+        """Fail fast if provider-required secrets are missing or prompt unknown."""
         api_key_providers = ("openai", "anthropic")
         if self.llm_provider in api_key_providers and not self.llm_api_key:
             raise ValueError(
@@ -55,6 +55,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"embedding_api_key is required when embedding_provider is "
                 f"'{self.embedding_provider}'"
+            )
+        # Lazy import: app.prompt imports settings, so a top-level import here
+        # would create a cycle.
+        from app.prompt import PROMPTS
+
+        if self.prompt_version not in PROMPTS:
+            raise ValueError(
+                f"prompt_version '{self.prompt_version}' is not in the registry "
+                f"(known: {sorted(PROMPTS)})"
             )
 
 
