@@ -164,6 +164,33 @@ class EvalDB:
         rows = await cursor.fetchall()
         return [self._row_to_dict(r, include_results=False) for r in rows]
 
+    async def get_evaluations_by_ids(self, ids: list[str]) -> list[dict]:
+        """Return rows in the same order as `ids`. Missing ids are skipped."""
+        if not ids:
+            return []
+        # placeholders is a sequence of '?' characters built from ids length.
+        # All user values flow through SQLite parameter binding via the
+        # tuple(ids) below — no untrusted strings are interpolated.
+        placeholders = ",".join("?" for _ in ids)
+        cursor = await self._db.execute(
+            f"SELECT * FROM evaluations WHERE id IN ({placeholders})",  # nosec B608
+            tuple(ids),
+        )
+        rows = await cursor.fetchall()
+        by_id = {r["id"]: r for r in rows}
+        return [self._row_to_dict(by_id[eid]) for eid in ids if eid in by_id]
+
+    async def get_history(self, dataset_id: str, collection: str) -> list[dict]:
+        """Completed runs for the given dataset+collection, ordered ASC."""
+        cursor = await self._db.execute(
+            "SELECT * FROM evaluations "
+            "WHERE dataset_id = ? AND collection = ? AND status = 'completed' "
+            "ORDER BY created_at ASC",
+            (dataset_id, collection),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_dict(r) for r in rows]
+
     async def complete_evaluation(
         self, eval_id: str, aggregate_scores: dict, results: list[dict]
     ):

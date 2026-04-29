@@ -188,18 +188,6 @@ async def start_evaluation(
     return {"id": eval_id, "status": "running"}
 
 
-@app.get("/evaluations/{eval_id}")
-@limiter.limit("30/minute")
-async def get_evaluation(
-    request: Request, eval_id: str, user_id: str = Depends(require_auth)
-):
-    db = await get_db()
-    evaluation = await db.get_evaluation(eval_id)
-    if not evaluation:
-        raise HTTPException(status_code=404, detail="Evaluation not found")
-    return evaluation
-
-
 @app.get("/evaluations")
 @limiter.limit("30/minute")
 async def list_evaluations(
@@ -211,3 +199,98 @@ async def list_evaluations(
     db = await get_db()
     evaluations = await db.list_evaluations(limit=limit, offset=offset)
     return {"evaluations": evaluations}
+
+
+_RAGAS_METRICS = (
+    "faithfulness",
+    "answer_relevancy",
+    "context_precision",
+    "context_recall",
+)
+
+
+# NOTE: /evaluations/compare and /evaluations/history must be defined BEFORE
+# /evaluations/{eval_id} so FastAPI matches the literal paths first instead
+# of treating "compare"/"history" as an eval_id.
+
+
+@app.get("/evaluations/compare")
+@limiter.limit("30/minute")
+async def compare_evaluations(
+    request: Request,
+    ids: str,
+    user_id: str = Depends(require_auth),
+):
+    """Side-by-side comparison of 2-5 runs with deltas vs the first run.
+
+    All runs must reference the same dataset_id (cross-dataset comparison
+    is mathematically meaningless — different golden questions). Returns
+    400 on cardinality or dataset-mismatch violations, 404 if any id is
+    unknown.
+    """
+    id_list = [i for i in ids.split(",") if i]
+    if not (2 <= len(id_list) <= 5):
+        raise HTTPException(status_code=400, detail="compare requires 2-5 ids")
+
+    db = await get_db()
+    runs = await db.get_evaluations_by_ids(id_list)
+    if len(runs) != len(id_list):
+        missing = sorted(set(id_list) - {r["id"] for r in runs})
+        raise HTTPException(
+            status_code=404, detail=f"unknown evaluation id(s): {missing}"
+        )
+
+    datasets = {r["dataset_id"] for r in runs}
+    if len(datasets) > 1:
+        raise HTTPException(
+            status_code=400, detail="all runs must belong to the same dataset"
+        )
+
+    deltas: dict[str, list[float]] = {}
+    for metric in _RAGAS_METRICS:
+        baseline = (runs[0].get("aggregate_scores") or {}).get(metric)
+        deltas[metric] = []
+        for r in runs:
+            score = (r.get("aggregate_scores") or {}).get(metric)
+            if baseline is None or score is None:
+                deltas[metric].append(0.0)
+            else:
+                deltas[metric].append(round(score - baseline, 6))
+
+    return {"runs": runs, "deltas": deltas}
+
+
+@app.get("/evaluations/history")
+@limiter.limit("30/minute")
+async def get_history(
+    request: Request,
+    dataset_id: str | None = None,
+    collection: str | None = None,
+    user_id: str = Depends(require_auth),
+):
+    """Time-series of completed runs for a dataset+collection pair.
+
+    Both query params are required so the response is unambiguous (a
+    dataset evaluated against multiple collections has incomparable
+    score curves). Empty result returns 200 with an empty list.
+    """
+    if not dataset_id or not collection:
+        raise HTTPException(
+            status_code=400,
+            detail="dataset_id and collection are both required",
+        )
+    db = await get_db()
+    runs = await db.get_history(dataset_id=dataset_id, collection=collection)
+    return {"runs": runs}
+
+
+@app.get("/evaluations/{eval_id}")
+@limiter.limit("30/minute")
+async def get_evaluation(
+    request: Request, eval_id: str, user_id: str = Depends(require_auth)
+):
+    db = await get_db()
+    evaluation = await db.get_evaluation(eval_id)
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+    return evaluation
