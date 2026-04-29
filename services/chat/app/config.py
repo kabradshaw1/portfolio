@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     allowed_origins: str = "https://kylebradshaw.dev"
     jwt_secret: str = ""
 
+    # Retrieval tuning — number of chunks pulled from Qdrant per query.
+    top_k: int = 5
+
+    # Prompt versioning — selects which template in app.prompt.PROMPTS is active.
+    # Validated in self.validate() to fail fast on typos.
+    prompt_version: str = "v1-baseline"
+
     def get_llm_base_url(self) -> str:
         if self.llm_provider == "ollama":
             return self.llm_base_url or self.ollama_base_url
