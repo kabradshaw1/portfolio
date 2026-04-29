@@ -28,7 +28,6 @@ set -euo pipefail
 # ConfigMap. New ConfigMaps must NOT be added here.
 R3_ALLOWLIST=(
   "go/k8s/configmaps/auth-service-config.yml"
-  "go/k8s/configmaps/cart-service-config.yml"
   "go/k8s/configmaps/order-service-config.yml"
   "go/k8s/configmaps/payment-service-config.yml"
   "go/k8s/configmaps/product-service-config.yml"

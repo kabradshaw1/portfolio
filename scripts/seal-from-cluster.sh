@@ -29,7 +29,11 @@ SECRETS=(
   "go-ecommerce/go-secrets"
   "go-ecommerce/stripe-secrets"
   "go-ecommerce/order-projector-db"
+  "go-ecommerce/cart-service-db"
+  "go-ecommerce/cart-service-mq"
   "go-ecommerce-qa/order-projector-db"
+  "go-ecommerce-qa/cart-service-db"
+  "go-ecommerce-qa/cart-service-mq"
   "monitoring/telegram-bot"
 )
 

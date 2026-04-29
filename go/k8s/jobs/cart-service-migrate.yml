@@ -19,16 +19,20 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              set -e
+              set -eu
+              # Assemble the migrate-target DSN from component env vars.
+              # The *_DIRECT host/port/options bypass PgBouncer because
+              # golang-migrate uses session-level features that PgBouncer's
+              # transaction-pool mode doesn't preserve.
+              DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST_DIRECT}:${DB_PORT_DIRECT}/${DB_NAME}?${DB_OPTIONS_DIRECT}"
               echo "Running cart-service migrations..."
               /usr/local/bin/migrate -path=/migrations -database="${DATABASE_URL}&x-migrations-table=cart_schema_migrations" up
               echo "Done."
-          env:
-            - name: DATABASE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: cart-service-config
-                  key: DATABASE_URL_DIRECT
+          envFrom:
+            - configMapRef:
+                name: cart-service-config
+            - secretRef:
+                name: cart-service-db
           resources:
             requests:
               memory: "32Mi"
