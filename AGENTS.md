@@ -28,7 +28,7 @@ This portfolio must demonstrate production-grade engineering, not just working d
 ## Infrastructure
 
 - **Mac (dev machine):** Code editing, frontend dev server, no GPU. Docker runtime is Colima (start with `colima start` before `docker compose`).
-- **Debian 13 (kyle@100.82.52.82 via Tailscale):** Ollama (RTX 3090), Minikube (all backend services)
+- **Debian 13 (kyle@100.82.52.82 via Tailscale):** Ollama (RTX 3090), Minikube (all backend services). Do not use Debian as a general-purpose CI substitute; it hosts runtime services only.
 - **SSH:** `ssh debian` (configured in `~/.ssh/config`, key-based auth)
 - **Minikube:** All backend services run in Kubernetes on the Debian server
   - `ai-services` namespace: Python AI services + Qdrant
@@ -52,6 +52,26 @@ This portfolio must demonstrate production-grade engineering, not just working d
   - Ingress routes by path: `/ingestion/*`, `/chat/*`, `/debug/*` → Python services; `/graphql`, `/api/auth/*` → Java services; `/go-api/*`, `/go-auth/*`, `/go-products/*` → Go services; `/grafana/*` → monitoring
   - Cloudflared runs as systemd service (auto-starts on boot)
   - `minikube tunnel` runs as systemd service (auto-starts on boot)
+
+## Execution Locality
+
+The Debian server is runtime infrastructure, not a build or test worker.
+
+Agents must not run tests, linters, compilers, package managers, or ad hoc
+build verification on Debian. Debian should only be used for runtime/deployment
+operations that actually belong there: Minikube/Kubernetes diagnostics, image
+pulls during deploys, Ollama runtime checks, observability queries, and
+read-only service health inspection.
+
+All verification must run either:
+
+- locally on the Mac dev machine, or
+- in the GitHub Actions CI/CD pipeline.
+
+If local verification is blocked by missing tools, disk pressure, platform
+limits, or other workstation issues, report the blocker clearly and leave the
+remaining verification to CI. Do not move the test run to Debian as a workaround
+unless Kyle explicitly authorizes that specific exception.
 
 ### Vercel CLI
 
@@ -195,7 +215,7 @@ The Go analytics-service (`go/analytics-service/`, port 8094) consumes events fr
 
 Java services use `-Xmx512m` heap cap (set in Dockerfiles) with 768Mi container memory limits. Without the heap cap, JVM auto-sizing can cause OOM kills. If adding a new Java service, always include `-Xmx512m` in the `ENTRYPOINT`.
 
-**`make preflight-java` fails on Mac** — requires JDK 21 which is not installed locally. Java compilation and tests run correctly in CI (Debian server has JDK 21). This is a known limitation of the local dev setup.
+**`make preflight-java` fails on Mac** — requires JDK 21 which is not installed locally. Java compilation and tests run correctly in CI. Do not run Java tests on Debian as a workaround; this is a known limitation of the local dev setup.
 
 
 ## Architecture Decision Records (ADRs)
@@ -240,12 +260,12 @@ make install-pre-commit
 
 This installs both commit-stage hooks (gitleaks, bandit, hadolint, ruff, java-checkstyle, frontend tsc/lint, go-lint covering all 8 services) and pre-push-stage hooks (frontend `next build`). After this, every commit triggers the relevant subset based on what files changed.
 
-Before every commit, run the relevant preflight checks and fix any failures. Only escalate to Kyle if you can't resolve the issue.
+Before every commit, run the relevant preflight checks locally and fix any failures. Only escalate to Kyle if you can't resolve the issue. If a local check cannot run because of missing tools, disk pressure, or platform limits, report the blocker and leave that verification to CI. Do not run tests or build verification on Debian unless Kyle explicitly authorizes that specific exception.
 
 - **Python changes:** `make preflight-python` and `make preflight-security`
 - **Frontend changes:** `make preflight-frontend` and `make preflight-e2e`
 - **Java changes:** `make preflight-java` (checkstyle + unit tests, runs locally)
-- **Java integration tests:** `make preflight-java-integration` (runs over SSH on Debian server, on-demand)
+- **Java integration tests:** run in CI unless Kyle explicitly authorizes a specific local/remote exception.
 - **Go changes:** `make preflight-go` (lint + tests)
 - **Go migration changes:** `make preflight-go-migrations` (requires Docker via Colima + `golang-migrate`; spins up Postgres, runs all migrations, verifies tables)
 - **Full sweep:** `make preflight` (runs Python + frontend + security + Java + Go locally)
