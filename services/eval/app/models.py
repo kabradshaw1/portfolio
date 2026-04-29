@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -28,6 +30,8 @@ class DatasetDetail(BaseModel):
 class StartEvaluationRequest(BaseModel):
     dataset_id: str
     collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
+    notes: str | None = Field(default=None, max_length=500)
+    baseline_eval_id: str | None = None
 
 
 class QueryScore(BaseModel):
@@ -52,6 +56,9 @@ class EvaluationSummary(BaseModel):
     aggregate_scores: QueryScore | None
     created_at: str
     completed_at: str | None
+    notes: str | None = None
+    config: dict[str, Any] | None = None
+    baseline_eval_id: str | None = None
 
 
 class EvaluationDetail(BaseModel):
@@ -64,3 +71,15 @@ class EvaluationDetail(BaseModel):
     error: str | None
     created_at: str
     completed_at: str | None
+    notes: str | None = None
+    config: dict[str, Any] | None = None
+    baseline_eval_id: str | None = None
+
+
+class RunComparison(BaseModel):
+    runs: list[EvaluationDetail]
+    deltas: dict[str, list[float]]
+
+
+class RunHistory(BaseModel):
+    runs: list[EvaluationDetail]
