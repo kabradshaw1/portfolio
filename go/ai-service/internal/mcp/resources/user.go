@@ -7,6 +7,11 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/jwtctx"
 )
 
+const (
+	uriUserOrders = "user://orders"
+	uriUserCart   = "user://cart"
+)
+
 // UserClient fetches a single authenticated user's order/cart data. The data
 // is returned as opaque JSON text — the resources do not re-marshal it.
 type UserClient interface {
@@ -21,7 +26,7 @@ type userOrdersResource struct{ c UserClient }
 // the JWT subject in the request context; anonymous reads return
 // ErrResourceNotFound rather than another user's data.
 func NewUserOrdersResource(c UserClient) Resource { return userOrdersResource{c: c} }
-func (r userOrdersResource) URI() string          { return "user://orders" }
+func (r userOrdersResource) URI() string          { return uriUserOrders }
 func (r userOrdersResource) Name() string         { return "Your orders" }
 func (r userOrdersResource) Description() string  { return "Order history for the authenticated user." }
 func (r userOrdersResource) MIMEType() string     { return mimeJSON }
@@ -32,7 +37,7 @@ func (r userOrdersResource) Read(ctx context.Context) (Content, error) {
 	}
 	body, err := r.c.Orders(ctx, uid)
 	if err != nil {
-		return Content{}, fmt.Errorf("user://orders: %w", err)
+		return Content{}, fmt.Errorf("%s: %w", uriUserOrders, err)
 	}
 	return Content{URI: r.URI(), MIMEType: r.MIMEType(), Text: body}, nil
 }
@@ -43,7 +48,7 @@ type userCartResource struct{ c UserClient }
 // NewUserCartResource returns the user://cart resource. JWT-scoped like
 // userOrdersResource.
 func NewUserCartResource(c UserClient) Resource { return userCartResource{c: c} }
-func (r userCartResource) URI() string          { return "user://cart" }
+func (r userCartResource) URI() string          { return uriUserCart }
 func (r userCartResource) Name() string         { return "Your cart" }
 func (r userCartResource) Description() string  { return "Current cart for the authenticated user." }
 func (r userCartResource) MIMEType() string     { return mimeJSON }
@@ -54,7 +59,7 @@ func (r userCartResource) Read(ctx context.Context) (Content, error) {
 	}
 	body, err := r.c.Cart(ctx, uid)
 	if err != nil {
-		return Content{}, fmt.Errorf("user://cart: %w", err)
+		return Content{}, fmt.Errorf("%s: %w", uriUserCart, err)
 	}
 	return Content{URI: r.URI(), MIMEType: r.MIMEType(), Text: body}, nil
 }

@@ -92,3 +92,13 @@ func TestUserOrdersPropagatesClientError(t *testing.T) {
 		t.Fatalf("expected error from client")
 	}
 }
+
+func TestUserCartPropagatesClientError(t *testing.T) {
+	c := fakeUserClient{err: errors.New("downstream")}
+	ctx := jwtctx.WithUserID(context.Background(), "u1")
+	r := NewUserCartResource(c)
+	_, err := r.Read(ctx)
+	if err == nil {
+		t.Fatalf("expected error from client")
+	}
+}
