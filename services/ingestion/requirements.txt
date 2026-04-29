@@ -14,7 +14,7 @@ prometheus-fastapi-instrumentator==7.1.0
 slowapi==0.1.9
 openai>=1.0
 anthropic>=0.30
-pyjwt==2.12.0
+pyjwt==2.12.1
 
 # Structured logging + tracing
 structlog==25.5.0
