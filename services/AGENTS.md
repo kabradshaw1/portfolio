@@ -1,39 +1,60 @@
-# Services
+# Python AI Services
 
-All backend services are Python/FastAPI microservices.
+All backend services under `services/` are Python/FastAPI microservices.
+
+## AI Service Topology
+
+- `ingestion` - PDF upload, parse, chunk, embed, store, delete
+- `chat` - question embed, search, RAG prompt, stream
+- `debug` - code indexing, agent loop, tool execution, debug streaming
+- `eval` - RAG evaluation metrics and experiment support when present
+
+The services use Qdrant for vector storage. Ollama runs on Debian with GPU
+access; chat/debug use Qwen 2.5 14B where configured, and embeddings use
+`nomic-embed-text`.
+
+Shared LLM and model-loading code lives under `services/shared/llm/`.
 
 ## Package Selection
 
-- Prefer minimal, focused packages over large frameworks (e.g., `langchain-text-splitters` not the full `langchain` framework)
-- When adding or updating dependencies, use context7 to:
-  - Verify the package is not deprecated or renamed
-  - Check current recommended import paths
-  - Confirm API usage patterns are current
-  - Review version compatibility
+- Prefer minimal, focused packages over large frameworks, such as
+  `langchain-text-splitters` instead of the full `langchain` framework.
+- When adding or updating dependencies, verify the package is current, not
+  deprecated or renamed, and that import paths match the installed version.
 
-### Known Deprecations
+Known deprecation: PyPDF2 was renamed to `pypdf` by the same authors.
 
-- PyPDF2 → `pypdf` (same API, renamed by the same authors)
+## Local And Runtime Notes
 
-## Pre-commit Requirements
+Local development can use Docker Compose for Python services, nginx, and
+Qdrant. Minikube is not required for local Python development.
 
-Before every commit touching `services/`:
-- `ruff check services/` must pass
-- `ruff format --check services/` must pass
-- Pre-commit hooks run automatically (ruff lint + format)
-- If pre-commit rejects a commit, stage the auto-fixed files and re-commit
+Production and QA Kubernetes service configuration should stay aligned with
+`docker-compose.yml` when changing Python service env vars, ports,
+`depends_on`, or `env_file` references. The CI `compose-smoke` job depends on
+that realism.
 
-## Known Issues
+## Adding A New Python Service
 
-- langchain-community removed (unused). Only langchain-text-splitters is used (ingestion + debug services).
+When adding a service under `services/`, update:
 
-## Adding a New Service
+1. `.github/workflows/ci.yml` backend test matrix
+2. `.github/workflows/ci.yml` docker build matrix
+3. `.github/workflows/ci.yml` pip-audit matrix
+4. `.github/workflows/ci.yml` Hadolint Dockerfile matrix
+5. `docker-compose.yml`
+6. CI deploy pull commands
+7. A companion ADR or notebook under `docs/adr/<service-name>/` when the design
+   needs explanation
 
-When adding a new service under `services/`, update these:
-1. `ci.yml` — add to `backend-tests.strategy.matrix.service`
-2. `ci.yml` — add to `docker-build.strategy.matrix.service`
-3. `ci.yml` — add to `security-pip-audit.strategy.matrix.service`
-4. `ci.yml` — add Dockerfile path to `security-hadolint.strategy.matrix.dockerfile`
-5. `docker-compose.yml` — add service with GHCR image
-6. `ci.yml` deploy step — add service name to `docker compose pull` command
-7. `docs/adr/<service-name>/` — create companion ADR notebooks explaining the service's design decisions step-by-step
+## Verification
+
+Before committing Python changes, run:
+
+```bash
+make preflight-python
+make preflight-security
+```
+
+Pre-commit hooks run ruff lint and format checks for relevant Python changes.
+If pre-commit auto-fixes files, stage the fixed files and re-commit.
