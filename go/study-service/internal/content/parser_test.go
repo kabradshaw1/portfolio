@@ -49,15 +49,55 @@ Follow-ups:
 	if base.Priority != 10 {
 		t.Fatalf("expected high priority for 02 file, got %d", base.Priority)
 	}
+	if base.Tier != 1 {
+		t.Fatalf("expected curated base question to be tier 1, got %d", base.Tier)
+	}
 
 	if questions[1].Prompt != "When is sync.Map appropriate?" || !questions[1].IsFollowUp {
 		t.Fatalf("unexpected first follow-up: %#v", questions[1])
+	}
+	if questions[1].Tier != 2 {
+		t.Fatalf("expected follow-up to be tier 2, got %d", questions[1].Tier)
 	}
 	if questions[1].ExpectedAnswer != "" {
 		t.Fatalf("follow-up should not have expected answer, got %q", questions[1].ExpectedAnswer)
 	}
 	if questions[2].Prompt != "How do you shard a map?" || !questions[2].IsFollowUp {
 		t.Fatalf("unexpected second follow-up: %#v", questions[2])
+	}
+}
+
+func TestParseFileAssignsTierOneToCodingExercisePrompts(t *testing.T) {
+	data := []byte(`# Timed Coding Exercises
+
+### 3. Worker pool with cancellation
+
+Prompt:
+
+> Write a worker pool that processes jobs from a channel, stops on context
+> cancellation, returns results, and does not leak goroutines.
+
+Fast design:
+
+> Use a parent context, bounded job channel, result channel, and sync.WaitGroup.
+
+Follow-ups:
+
+- Who closes the jobs channel?
+`)
+
+	questions, err := ParseFile("08-coding-exercises.md", data)
+	if err != nil {
+		t.Fatalf("ParseFile returned error: %v", err)
+	}
+	if len(questions) != 2 {
+		t.Fatalf("expected 2 questions, got %d: %#v", len(questions), questions)
+	}
+	if questions[0].Tier != 1 {
+		t.Fatalf("expected coding exercise prompt to be tier 1, got %d", questions[0].Tier)
+	}
+	if questions[1].Tier != 2 {
+		t.Fatalf("expected coding exercise follow-up to be tier 2, got %d", questions[1].Tier)
 	}
 }
 

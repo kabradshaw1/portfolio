@@ -50,8 +50,13 @@ args = [
 The server is self-describing enough that the user should only need to say:
 
 ```text
-Study for micro1.
+Study tier 1 for micro1.
 ```
+
+Tier 1 is the focused interview path: likely role questions plus coding
+exercise prompts. Tier 2 contains likely follow-ups and secondary drills. Tier 3
+contains deep-drill material. Questions are not removed; the tier only controls
+which pool the next-question selector uses.
 
 The MCP server exposes:
 
@@ -71,5 +76,5 @@ The MCP server exposes:
 Agents should start with `study_micro1` or `start_study_session`. The returned
 workflow tells the agent to ask one question at a time, wait for the user's
 answer, call `submit_answer_and_prepare_next`, compare against the expected
-answer, prepare feedback for storage on the next turn, and ask the next question
-in the same response.
+answer, prepare feedback for storage on the next turn, stay within the requested
+tier, and ask the next question in the same response.

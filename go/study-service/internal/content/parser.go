@@ -10,7 +10,11 @@ import (
 	"strings"
 )
 
-var numberedHeading = regexp.MustCompile(`^#+\s+\d+\.\s+(.+)$`)
+var (
+	numberedHeading = regexp.MustCompile(`^#+\s+\d+\.\s+(.+)$`)
+	exerciseHeading = regexp.MustCompile(`^#+\s+Exercise\s+\d+:\s+(.+)$`)
+	scenarioHeading = regexp.MustCompile(`^#+\s+Scenario(?:\s+\d+)?:\s+(.+)$`)
+)
 
 // Question is one imported study prompt from the interview-prep material.
 type Question struct {
@@ -20,6 +24,7 @@ type Question struct {
 	ExpectedAnswer string
 	IsFollowUp     bool
 	Priority       int
+	Tier           int
 }
 
 // ParseDir parses every markdown file directly under root in lexical order.
@@ -90,12 +95,13 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 				Topic:      topic,
 				Prompt:     prompt,
 				Priority:   priorityForPath(path),
+				Tier:       tierForQuestion(path, prompt, false),
 			}
 			continue
 		}
 
 		switch {
-		case line == "Fast answer:":
+		case line == "Fast answer:" || line == "Fast design:" || line == "Expected discussion:" || line == "What to say while coding:":
 			mode = "answer"
 		case line == "Follow-ups:":
 			flush()
@@ -111,6 +117,7 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 					Prompt:     prompt,
 					IsFollowUp: true,
 					Priority:   priorityForPath(path),
+					Tier:       tierForQuestion(path, prompt, true),
 				})
 			}
 		}
@@ -120,12 +127,98 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 	return questions, nil
 }
 
+func tierForQuestion(path, prompt string, followUp bool) int {
+	if followUp {
+		return 2
+	}
+	name := filepath.Base(path)
+	if tierOneQuestions[prompt] {
+		return 1
+	}
+	if name == "08-coding-exercises.md" {
+		return 1
+	}
+	if strings.Contains(prompt, "Scenario") || strings.Contains(prompt, "Exercise") {
+		return 2
+	}
+	return 3
+}
+
+var tierOneQuestions = map[string]bool{
+	"Tell me about a Go backend system you built.":                    true,
+	"Tell me about a distributed workflow you designed.":              true,
+	"Tell me about your AI agent experience.":                         true,
+	"How do you handle third-party API failures?":                     true,
+	"How do you debug high latency across services?":                  true,
+	"How do maps work under concurrency?":                             true,
+	"How should errors be handled in Go?":                             true,
+	"How do you use `context.Context`?":                               true,
+	"Goroutines versus channels versus mutexes?":                      true,
+	"How do you write tests in Go?":                                   true,
+	"How do you structure a Go service?":                              true,
+	"What makes a Go API production-grade?":                           true,
+	"How do you design a good REST API?":                              true,
+	"What belongs in API gateway middleware?":                         true,
+	"How do you make POST requests safe under retries?":               true,
+	"How do you design rate limiting?":                                true,
+	"How should API errors be shaped?":                                true,
+	"What is the role of an API gateway in microservices?":            true,
+	"How do you stream responses from an API?":                        true,
+	"How do you design a robust third-party API client?":              true,
+	"Which third-party API errors should you retry?":                  true,
+	"How do idempotency keys apply to external APIs?":                 true,
+	"How do you handle webhooks safely?":                              true,
+	"How do you prevent provider outages from cascading?":             true,
+	"How do context timeouts and HTTP client timeouts work together?": true,
+	"How do you handle external API rate limits?":                     true,
+	"How do you handle transactions across multiple microservices?":   true,
+	"What is eventual consistency, and when is it acceptable?":        true,
+	"How do you make message consumers reliable?":                     true,
+	"What is the outbox pattern?":                                     true,
+	"How do retries and idempotency work together?":                   true,
+	"How do circuit breakers help distributed systems?":               true,
+	"How do you design for backpressure?":                             true,
+	"How do you debug high latency in a distributed system?":          true,
+	"How do you design graceful shutdown?":                            true,
+	"How does a tool-calling agent work?":                             true,
+	"How do you prevent runaway agent loops?":                         true,
+	"What is a tool registry?":                                        true,
+	"How do you integrate RAG into an agent?":                         true,
+	"How do you stream agent responses?":                              true,
+	"How do you handle tool errors?":                                  true,
+	"What guardrails belong in an AI gateway?":                        true,
+	"How do you observe an agent in production?":                      true,
+}
+
 func questionHeading(line string) (string, bool) {
 	matches := numberedHeading.FindStringSubmatch(line)
-	if len(matches) != 2 {
-		return "", false
+	if len(matches) == 2 {
+		return strings.TrimSpace(matches[1]), true
 	}
-	return strings.TrimSpace(matches[1]), true
+	matches = exerciseHeading.FindStringSubmatch(line)
+	if len(matches) == 2 {
+		return strings.TrimSpace(matches[1]), true
+	}
+	matches = scenarioHeading.FindStringSubmatch(line)
+	if len(matches) == 2 {
+		return "Scenario: " + strings.TrimSpace(matches[1]), true
+	}
+	if strings.HasPrefix(line, "### ") {
+		prompt := strings.TrimSpace(strings.TrimPrefix(line, "### "))
+		if looksLikePrompt(prompt) {
+			return prompt, true
+		}
+	}
+	return "", false
+}
+
+func looksLikePrompt(prompt string) bool {
+	return strings.HasSuffix(prompt, "?") ||
+		strings.HasPrefix(prompt, "Tell me ") ||
+		strings.HasPrefix(prompt, "How ") ||
+		strings.HasPrefix(prompt, "What ") ||
+		strings.HasPrefix(prompt, "Which ") ||
+		strings.HasPrefix(prompt, "Why ")
 }
 
 func cleanAnswer(lines []string) string {

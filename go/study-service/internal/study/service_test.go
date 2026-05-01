@@ -17,6 +17,7 @@ type fakeStore struct {
 	submitted       store.SubmitAnswerInput
 	feedback        store.FeedbackInput
 	next            store.Question
+	nextFilter      store.QuestionFilter
 	attempt         store.AnswerAttempt
 }
 
@@ -34,7 +35,8 @@ func (f *fakeStore) ListTopics(context.Context) ([]store.Topic, error) {
 	return []store.Topic{{Name: "Go", QuestionCount: 1}}, nil
 }
 
-func (f *fakeStore) NextQuestion(context.Context) (store.Question, error) {
+func (f *fakeStore) NextQuestion(_ context.Context, filter store.QuestionFilter) (store.Question, error) {
+	f.nextFilter = filter
 	return f.next, nil
 }
 
@@ -110,6 +112,22 @@ func TestRecordFeedbackRejectsInvalidScores(t *testing.T) {
 	err := svc.RecordFeedback(context.Background(), FeedbackInput{AttemptID: 1, Score: 4})
 	if err == nil {
 		t.Fatal("expected invalid score error")
+	}
+}
+
+func TestGetNextQuestionPassesTierFilter(t *testing.T) {
+	fake := &fakeStore{next: store.Question{ID: 7, Prompt: "Tier one?", Tier: 1}}
+	svc := New(fake, "/unused")
+
+	next, err := svc.GetNextQuestion(context.Background(), store.QuestionFilter{Tier: 1})
+	if err != nil {
+		t.Fatalf("GetNextQuestion returned error: %v", err)
+	}
+	if next.ID != 7 {
+		t.Fatalf("unexpected next question: %#v", next)
+	}
+	if fake.nextFilter.Tier != 1 {
+		t.Fatalf("expected tier filter to be passed, got %#v", fake.nextFilter)
 	}
 }
 

@@ -63,7 +63,7 @@ func TestSubmitAnswerAndFeedbackArePersisted(t *testing.T) {
 		t.Fatalf("upsert question: %v", err)
 	}
 
-	q, err := db.NextQuestion(ctx)
+	q, err := db.NextQuestion(ctx, QuestionFilter{})
 	if err != nil {
 		t.Fatalf("next question: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestNextQuestionPrefersUnansweredThenWeakest(t *testing.T) {
 		t.Fatalf("upsert questions: %v", err)
 	}
 
-	first, err := db.NextQuestion(ctx)
+	first, err := db.NextQuestion(ctx, QuestionFilter{})
 	if err != nil {
 		t.Fatalf("first next question: %v", err)
 	}
@@ -132,11 +132,38 @@ func TestNextQuestionPrefersUnansweredThenWeakest(t *testing.T) {
 		t.Fatalf("record feedback: %v", err)
 	}
 
-	second, err := db.NextQuestion(ctx)
+	second, err := db.NextQuestion(ctx, QuestionFilter{})
 	if err != nil {
 		t.Fatalf("second next question: %v", err)
 	}
 	if second.ID == first.ID {
 		t.Fatalf("expected unanswered question before weak repeat, got same id %d", second.ID)
+	}
+}
+
+func TestNextQuestionFiltersByTier(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	if err := db.UpsertQuestions(ctx, []content.Question{
+		{SourcePath: "02-go.md", Topic: "Go", Prompt: "Tier two?", ExpectedAnswer: "Follow-up.", Priority: 10, Tier: 2},
+		{SourcePath: "03-api.md", Topic: "API", Prompt: "Tier one?", ExpectedAnswer: "Likely.", Priority: 10, Tier: 1},
+	}); err != nil {
+		t.Fatalf("upsert questions: %v", err)
+	}
+
+	next, err := db.NextQuestion(ctx, QuestionFilter{Tier: 1})
+	if err != nil {
+		t.Fatalf("next tier 1 question: %v", err)
+	}
+	if next.Prompt != "Tier one?" || next.Tier != 1 {
+		t.Fatalf("expected tier 1 question, got %#v", next)
+	}
+
+	next, err = db.NextQuestion(ctx, QuestionFilter{Tier: 2})
+	if err != nil {
+		t.Fatalf("next tier 2 question: %v", err)
+	}
+	if next.Prompt != "Tier two?" || next.Tier != 2 {
+		t.Fatalf("expected tier 2 question, got %#v", next)
 	}
 }

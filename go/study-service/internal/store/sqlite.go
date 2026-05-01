@@ -33,6 +33,11 @@ type Question struct {
 	ExpectedAnswer string `json:"expected_answer"`
 	IsFollowUp     bool   `json:"is_follow_up"`
 	Priority       int    `json:"priority"`
+	Tier           int    `json:"tier"`
+}
+
+type QuestionFilter struct {
+	Tier int `json:"tier,omitempty"`
 }
 
 type SubmitAnswerInput struct {
@@ -110,6 +115,7 @@ CREATE TABLE IF NOT EXISTS questions (
 	expected_answer TEXT NOT NULL DEFAULT '',
 	is_follow_up INTEGER NOT NULL DEFAULT 0,
 	priority INTEGER NOT NULL DEFAULT 0,
+	tier INTEGER NOT NULL DEFAULT 3,
 	active INTEGER NOT NULL DEFAULT 1,
 	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -144,6 +150,38 @@ CREATE TABLE IF NOT EXISTS feedback (
 	if err != nil {
 		return fmt.Errorf("migrate sqlite: %w", err)
 	}
+	if err := d.ensureColumn(ctx, "questions", "tier", "INTEGER NOT NULL DEFAULT 3"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *DB) ensureColumn(ctx context.Context, table, column, definition string) error {
+	rows, err := d.db.QueryContext(ctx, `PRAGMA table_info(`+table+`);`)
+	if err != nil {
+		return fmt.Errorf("inspect %s columns: %w", table, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("scan %s column: %w", table, err)
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect %s columns: %w", table, err)
+	}
+	if _, err := d.db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", table, column, definition)); err != nil {
+		return fmt.Errorf("add %s.%s column: %w", table, column, err)
+	}
 	return nil
 }
 
@@ -155,8 +193,8 @@ func (d *DB) UpsertQuestions(ctx context.Context, questions []content.Question) 
 	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.PrepareContext(ctx, `
-INSERT INTO questions (source_path, topic, prompt, expected_answer, is_follow_up, priority, active, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+INSERT INTO questions (source_path, topic, prompt, expected_answer, is_follow_up, priority, tier, active, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
 ON CONFLICT(source_path, prompt, is_follow_up) DO UPDATE SET
 	topic = excluded.topic,
 	expected_answer = CASE
@@ -164,6 +202,7 @@ ON CONFLICT(source_path, prompt, is_follow_up) DO UPDATE SET
 		ELSE questions.expected_answer
 	END,
 	priority = excluded.priority,
+	tier = excluded.tier,
 	active = 1,
 	updated_at = CURRENT_TIMESTAMP;
 `)
@@ -176,7 +215,11 @@ ON CONFLICT(source_path, prompt, is_follow_up) DO UPDATE SET
 		if q.Prompt == "" {
 			continue
 		}
-		if _, err := stmt.ExecContext(ctx, q.SourcePath, q.Topic, q.Prompt, q.ExpectedAnswer, boolInt(q.IsFollowUp), q.Priority); err != nil {
+		tier := q.Tier
+		if tier == 0 {
+			tier = 3
+		}
+		if _, err := stmt.ExecContext(ctx, q.SourcePath, q.Topic, q.Prompt, q.ExpectedAnswer, boolInt(q.IsFollowUp), q.Priority, tier); err != nil {
 			return fmt.Errorf("upsert question %q: %w", q.Prompt, err)
 		}
 	}
@@ -219,25 +262,33 @@ ORDER BY q.topic;
 	return topics, rows.Err()
 }
 
-func (d *DB) NextQuestion(ctx context.Context) (Question, error) {
-	row := d.db.QueryRowContext(ctx, `
-SELECT q.id, q.source_path, q.topic, q.prompt, q.expected_answer, q.is_follow_up, q.priority
+func (d *DB) NextQuestion(ctx context.Context, filter QuestionFilter) (Question, error) {
+	query := `
+SELECT q.id, q.source_path, q.topic, q.prompt, q.expected_answer, q.is_follow_up, q.priority, q.tier
 FROM questions q
 LEFT JOIN answer_attempts aa ON aa.question_id = q.id
 LEFT JOIN feedback f ON f.attempt_id = aa.id
-WHERE q.active = 1
+WHERE q.active = 1`
+	var args []any
+	if filter.Tier > 0 {
+		query += ` AND q.tier = ?`
+		args = append(args, filter.Tier)
+	}
+	query += `
 GROUP BY q.id
 ORDER BY
 	CASE WHEN COUNT(aa.id) = 0 THEN 0 ELSE 1 END,
+	q.tier ASC,
 	q.priority DESC,
 	COALESCE(MIN(f.score), 4) ASC,
 	MAX(aa.created_at) ASC,
 	q.id ASC
 LIMIT 1;
-`)
+`
+	row := d.db.QueryRowContext(ctx, query, args...)
 	var q Question
 	var followUp int
-	if err := row.Scan(&q.ID, &q.SourcePath, &q.Topic, &q.Prompt, &q.ExpectedAnswer, &followUp, &q.Priority); err != nil {
+	if err := row.Scan(&q.ID, &q.SourcePath, &q.Topic, &q.Prompt, &q.ExpectedAnswer, &followUp, &q.Priority, &q.Tier); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Question{}, ErrNotFound
 		}

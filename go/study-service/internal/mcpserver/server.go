@@ -17,7 +17,7 @@ const workflowResourceURI = "study://micro1/workflow"
 type StudyService interface {
 	ImportMaterial(context.Context) (study.ImportResult, error)
 	ListTopics(context.Context) ([]store.Topic, error)
-	GetNextQuestion(context.Context) (store.Question, error)
+	GetNextQuestion(context.Context, store.QuestionFilter) (store.Question, error)
 	SubmitAnswer(context.Context, int64, string) (study.AnswerReview, error)
 	RecordFeedback(context.Context, study.FeedbackInput) error
 	ProgressSummary(context.Context) (store.ProgressSummary, error)
@@ -26,6 +26,7 @@ type StudyService interface {
 
 type studySession struct {
 	StudySet     string                `json:"study_set"`
+	Tier         int                   `json:"tier,omitempty"`
 	Instructions string                `json:"instructions"`
 	Topics       []store.Topic         `json:"topics"`
 	Progress     store.ProgressSummary `json:"progress"`
@@ -35,6 +36,7 @@ type studySession struct {
 type studyTurn struct {
 	Review                   study.AnswerReview `json:"review"`
 	NextQuestion             store.Question     `json:"next_question"`
+	Tier                     int                `json:"tier,omitempty"`
 	PreviousFeedbackRecorded bool               `json:"previous_feedback_recorded"`
 }
 
@@ -45,7 +47,7 @@ func New(service StudyService) *sdkmcp.Server {
 	addTool(srv, "start_study_session", "Start a Micro1 study session with workflow instructions, progress, topics, and the next question.", startStudySessionSchema(), startStudySessionHandler(service))
 	addTool(srv, "import_material", "Import or refresh study questions from markdown.", emptySchema(), importMaterialHandler(service))
 	addTool(srv, "list_topics", "List study topics and progress counts.", emptySchema(), listTopicsHandler(service))
-	addTool(srv, "get_next_question", "Return the next unseen or weak study question.", emptySchema(), nextQuestionHandler(service))
+	addTool(srv, "get_next_question", "Return the next unseen or weak study question.", nextQuestionSchema(), nextQuestionHandler(service))
 	addTool(srv, "submit_answer", "Store an answer attempt and return expected answer data.", submitAnswerSchema(), submitAnswerHandler(service))
 	addTool(srv, "submit_answer_and_prepare_next", "Store the current answer, optionally record previous feedback, and return expected answer data plus the next question.", submitAnswerAndPrepareNextSchema(), submitAnswerAndPrepareNextHandler(service))
 	addTool(srv, "record_feedback", "Store critique and score for an answer attempt.", recordFeedbackSchema(), recordFeedbackHandler(service))
@@ -69,6 +71,7 @@ func addTool(srv *sdkmcp.Server, name, description string, schema json.RawMessag
 func startStudySessionHandler(service StudyService) sdkmcp.ToolHandler {
 	type input struct {
 		StudySet string `json:"study_set"`
+		Tier     int    `json:"tier,omitempty"`
 	}
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		in := input{StudySet: "micro1"}
@@ -83,6 +86,9 @@ func startStudySessionHandler(service StudyService) sdkmcp.ToolHandler {
 		if in.StudySet != "micro1" {
 			return toolError("study_set must be micro1"), nil
 		}
+		if !validTier(in.Tier) {
+			return toolError("tier must be 1, 2, or 3"), nil
+		}
 		topics, err := service.ListTopics(ctx)
 		if err != nil {
 			return toolError(err.Error()), nil
@@ -91,12 +97,14 @@ func startStudySessionHandler(service StudyService) sdkmcp.ToolHandler {
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
-		nextQuestion, err := service.GetNextQuestion(ctx)
+		filter := store.QuestionFilter{Tier: in.Tier}
+		nextQuestion, err := service.GetNextQuestion(ctx, filter)
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
 		return jsonResult(studySession{
 			StudySet:     in.StudySet,
+			Tier:         in.Tier,
 			Instructions: studyWorkflowInstructions(),
 			Topics:       topics,
 			Progress:     progress,
@@ -120,8 +128,20 @@ func listTopicsHandler(service StudyService) sdkmcp.ToolHandler {
 }
 
 func nextQuestionHandler(service StudyService) sdkmcp.ToolHandler {
-	return func(ctx context.Context, _ *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
-		result, err := service.GetNextQuestion(ctx)
+	type input struct {
+		Tier int `json:"tier,omitempty"`
+	}
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var in input
+		if req != nil && req.Params != nil && len(req.Params.Arguments) > 0 {
+			if err := decodeArgs(req, &in); err != nil {
+				return toolError(err.Error()), nil
+			}
+		}
+		if !validTier(in.Tier) {
+			return toolError("tier must be 1, 2, or 3"), nil
+		}
+		result, err := service.GetNextQuestion(ctx, store.QuestionFilter{Tier: in.Tier})
 		return resultOrError(result, err), nil
 	}
 }
@@ -145,12 +165,16 @@ func submitAnswerAndPrepareNextHandler(service StudyService) sdkmcp.ToolHandler 
 	type input struct {
 		QuestionID       int64                `json:"question_id"`
 		Answer           string               `json:"answer"`
+		Tier             int                  `json:"tier,omitempty"`
 		PreviousFeedback *study.FeedbackInput `json:"previous_feedback,omitempty"`
 	}
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var in input
 		if err := decodeArgs(req, &in); err != nil {
 			return toolError(err.Error()), nil
+		}
+		if !validTier(in.Tier) {
+			return toolError("tier must be 1, 2, or 3"), nil
 		}
 
 		previousFeedbackRecorded := false
@@ -168,13 +192,14 @@ func submitAnswerAndPrepareNextHandler(service StudyService) sdkmcp.ToolHandler 
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
-		nextQuestion, err := service.GetNextQuestion(ctx)
+		nextQuestion, err := service.GetNextQuestion(ctx, store.QuestionFilter{Tier: in.Tier})
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
 		return jsonResult(studyTurn{
 			Review:                   review,
 			NextQuestion:             nextQuestion,
+			Tier:                     in.Tier,
 			PreviousFeedbackRecorded: previousFeedbackRecorded,
 		}), nil
 	}
@@ -226,7 +251,7 @@ func studyMicro1PromptHandler() sdkmcp.PromptHandler {
 			Description: "Start a Micro1 Go developer interview-practice session.",
 			Messages: []*sdkmcp.PromptMessage{{
 				Role:    sdkmcp.Role("user"),
-				Content: &sdkmcp.TextContent{Text: "Study for micro1. Call start_study_session with study_set=micro1, use the returned workflow instructions and next_question, then continue one question at a time."},
+				Content: &sdkmcp.TextContent{Text: "Study tier 1 for micro1. Call start_study_session with study_set=micro1 and tier=1 unless the user requested a different tier, use the returned workflow instructions and next_question, then continue one question at a time within that tier."},
 			}},
 		}, nil
 	}
@@ -252,16 +277,18 @@ When the user asks to study for micro1, use this MCP server as the source of dur
 
 1. Call start_study_session with study_set=micro1.
 2. Ask the returned next_question.prompt exactly enough to quiz the user. Do not reveal expected_answer before the user answers.
-3. After the user answers, call submit_answer_and_prepare_next with question_id, answer, and any previous_feedback payload you prepared for the prior answer.
-4. Compare review.answer to review.expected_answer. Point out missing or inaccurate parts clearly.
-5. Respond with this exact section structure:
+3. Stay within the requested tier. After the user answers, call exactly one MCP tool: submit_answer_and_prepare_next with question_id, answer, tier, and any previous_feedback payload you prepared for the prior answer.
+4. Do not call record_feedback or get_next_question separately in the same turn.
+5. Compare review.answer to review.expected_answer. Point out missing or inaccurate parts clearly.
+6. Respond in this teaching-first style:
    Score: X/3
-   Best answer: a thorough interview-quality answer with the important distinctions, tradeoffs, and one concrete example when helpful.
-   Better-than-nothing answer: a short 1-3 sentence answer that is easy to memorize and good enough under pressure.
-   Memory hook: a compact phrase that helps the user remember the idea.
-6. Decide concise missing_points, inaccurate_points, suggested_answer, and the 0-3 score for the current answer, but do not call record_feedback yet.
-7. Keep that feedback payload in context and send it as previous_feedback on the next submit_answer_and_prepare_next call.
-8. Ask next_question.prompt in the same response as the feedback so the user never has to ask for the next question.
+   Explanation: explain the concept thoroughly, including why the expected answer is correct, key distinctions, tradeoffs, and concrete examples when helpful. Include a small Go code snippet when it would make the concept clearer. Do not force code when the idea is better explained in prose. Do not compress this section just because the next question is included.
+   Interview answer: provide a polished answer the user could say in an interview.
+   Minimum answer, only when useful: provide a short memorization-friendly fallback answer.
+   Memory hook, only when useful: provide a compact phrase that helps the user remember the idea.
+7. Decide concise missing_points, inaccurate_points, suggested_answer, and the 0-3 score for the current answer, but do not call record_feedback yet.
+8. Keep that feedback payload in context and send it as previous_feedback on the next submit_answer_and_prepare_next call.
+9. Ask next_question.prompt in the same response as the feedback so the user never has to ask for the next question.
 
 Use list_topics and get_progress_summary when the user asks about coverage, weak areas, or progress.
 `)
@@ -301,12 +328,20 @@ func toolError(message string) *sdkmcp.CallToolResult {
 	}
 }
 
+func validTier(tier int) bool {
+	return tier >= 0 && tier <= 3
+}
+
 func emptySchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","additionalProperties":false}`)
 }
 
 func startStudySessionSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"study_set":{"type":"string","enum":["micro1"],"default":"micro1"}},"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"study_set":{"type":"string","enum":["micro1"],"default":"micro1"},"tier":{"type":"integer","minimum":1,"maximum":3}},"additionalProperties":false}`)
+}
+
+func nextQuestionSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"tier":{"type":"integer","minimum":1,"maximum":3}},"additionalProperties":false}`)
 }
 
 func submitAnswerSchema() json.RawMessage {
@@ -314,7 +349,7 @@ func submitAnswerSchema() json.RawMessage {
 }
 
 func submitAnswerAndPrepareNextSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"question_id":{"type":"integer"},"answer":{"type":"string"},"previous_feedback":{"type":"object","properties":{"attempt_id":{"type":"integer"},"score":{"type":"integer","minimum":0,"maximum":3},"missing_points":{"type":"string"},"inaccurate_points":{"type":"string"},"suggested_answer":{"type":"string"}},"required":["attempt_id","score"],"additionalProperties":false}},"required":["question_id","answer"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"question_id":{"type":"integer"},"answer":{"type":"string"},"tier":{"type":"integer","minimum":1,"maximum":3},"previous_feedback":{"type":"object","properties":{"attempt_id":{"type":"integer"},"score":{"type":"integer","minimum":0,"maximum":3},"missing_points":{"type":"string"},"inaccurate_points":{"type":"string"},"suggested_answer":{"type":"string"}},"required":["attempt_id","score"],"additionalProperties":false}},"required":["question_id","answer"],"additionalProperties":false}`)
 }
 
 func recordFeedbackSchema() json.RawMessage {

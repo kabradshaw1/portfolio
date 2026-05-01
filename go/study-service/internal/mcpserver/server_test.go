@@ -16,6 +16,7 @@ type fakeStudy struct {
 	submittedQuestionID int64
 	submittedAnswer     string
 	feedback            study.FeedbackInput
+	nextFilter          store.QuestionFilter
 	nextQuestionCalls   int
 }
 
@@ -27,9 +28,10 @@ func (f *fakeStudy) ListTopics(context.Context) ([]store.Topic, error) {
 	return []store.Topic{{Name: "Go", QuestionCount: 2, AnsweredCount: 1}}, nil
 }
 
-func (f *fakeStudy) GetNextQuestion(context.Context) (store.Question, error) {
+func (f *fakeStudy) GetNextQuestion(_ context.Context, filter store.QuestionFilter) (store.Question, error) {
+	f.nextFilter = filter
 	f.nextQuestionCalls++
-	return store.Question{ID: 3, Topic: "Go", Prompt: "How do maps work?", ExpectedAnswer: "Use synchronization.", Priority: 10}, nil
+	return store.Question{ID: 3, Topic: "Go", Prompt: "How do maps work?", ExpectedAnswer: "Use synchronization.", Priority: 10, Tier: filter.Tier}, nil
 }
 
 func (f *fakeStudy) SubmitAnswer(_ context.Context, questionID int64, answer string) (study.AnswerReview, error) {
@@ -96,6 +98,7 @@ func TestSubmitAnswerAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWithNextQ
 	result, err := handler(context.Background(), callReq(map[string]any{
 		"question_id": float64(2),
 		"answer":      "Use channels.",
+		"tier":        float64(1),
 		"previous_feedback": map[string]any{
 			"attempt_id":        float64(8),
 			"score":             float64(1),
@@ -119,6 +122,9 @@ func TestSubmitAnswerAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWithNextQ
 	if fake.nextQuestionCalls != 1 {
 		t.Fatalf("expected next question to be loaded once, got %d", fake.nextQuestionCalls)
 	}
+	if fake.nextFilter.Tier != 1 {
+		t.Fatalf("expected tier filter to be passed, got %#v", fake.nextFilter)
+	}
 
 	var payload studyTurn
 	unmarshalTextResult(t, result, &payload)
@@ -127,6 +133,9 @@ func TestSubmitAnswerAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWithNextQ
 	}
 	if payload.NextQuestion.ID != 3 {
 		t.Fatalf("unexpected next question: %#v", payload.NextQuestion)
+	}
+	if payload.Tier != 1 {
+		t.Fatalf("expected turn payload tier, got %#v", payload)
 	}
 	if !payload.PreviousFeedbackRecorded {
 		t.Fatalf("expected previous feedback recorded flag")
@@ -138,6 +147,7 @@ func TestStartStudySessionReturnsWorkflowAndCurrentState(t *testing.T) {
 	handler := startStudySessionHandler(fake)
 	result, err := handler(context.Background(), callReq(map[string]any{
 		"study_set": "micro1",
+		"tier":      float64(1),
 	}))
 	if err != nil {
 		t.Fatalf("handler returned error: %v", err)
@@ -154,6 +164,9 @@ func TestStartStudySessionReturnsWorkflowAndCurrentState(t *testing.T) {
 	if payload.NextQuestion.ID != 3 {
 		t.Fatalf("expected next question in session payload, got %#v", payload.NextQuestion)
 	}
+	if payload.Tier != 1 || fake.nextFilter.Tier != 1 {
+		t.Fatalf("expected tier 1 session and filter, payload=%#v filter=%#v", payload, fake.nextFilter)
+	}
 	if len(payload.Topics) == 0 {
 		t.Fatalf("expected topics in session payload")
 	}
@@ -163,20 +176,29 @@ func TestStartStudySessionReturnsWorkflowAndCurrentState(t *testing.T) {
 	if !strings.Contains(payload.Instructions, "submit_answer_and_prepare_next") {
 		t.Fatalf("expected workflow instructions to mention submit_answer_and_prepare_next, got %q", payload.Instructions)
 	}
+	if !strings.Contains(payload.Instructions, "requested tier") {
+		t.Fatalf("workflow should require staying within the requested tier, got %q", payload.Instructions)
+	}
 	if strings.Contains(strings.ToLower(payload.Instructions), "clarifying questions") {
 		t.Fatalf("workflow should not pause for clarifying questions: %q", payload.Instructions)
 	}
 	if strings.Contains(payload.Instructions, "immediately call get_next_question") {
 		t.Fatalf("workflow should not require a separate get_next_question call after feedback, got %q", payload.Instructions)
 	}
-	if !strings.Contains(payload.Instructions, "Best answer:") {
-		t.Fatalf("workflow should require a thorough best answer, got %q", payload.Instructions)
+	if !strings.Contains(payload.Instructions, "exactly one MCP tool") {
+		t.Fatalf("workflow should require exactly one MCP tool after an answer, got %q", payload.Instructions)
 	}
-	if !strings.Contains(payload.Instructions, "Better-than-nothing answer:") {
-		t.Fatalf("workflow should require a memorization-friendly answer, got %q", payload.Instructions)
+	if !strings.Contains(payload.Instructions, "Explanation:") {
+		t.Fatalf("workflow should require an explanation section, got %q", payload.Instructions)
 	}
-	if !strings.Contains(payload.Instructions, "Memory hook:") {
-		t.Fatalf("workflow should require a memory hook, got %q", payload.Instructions)
+	if !strings.Contains(payload.Instructions, "Interview answer:") {
+		t.Fatalf("workflow should require an interview answer section, got %q", payload.Instructions)
+	}
+	if !strings.Contains(payload.Instructions, "Minimum answer") {
+		t.Fatalf("workflow should mention an optional minimum answer, got %q", payload.Instructions)
+	}
+	if !strings.Contains(payload.Instructions, "Go code snippet") {
+		t.Fatalf("workflow should mention useful Go code snippets, got %q", payload.Instructions)
 	}
 }
 
@@ -212,20 +234,29 @@ func TestWorkflowResourceDescribesMicro1StudyFlow(t *testing.T) {
 	if !strings.Contains(content.Text, "submit_answer_and_prepare_next") {
 		t.Fatalf("expected workflow resource to mention submit_answer_and_prepare_next, got %q", content.Text)
 	}
+	if !strings.Contains(content.Text, "requested tier") {
+		t.Fatalf("workflow resource should require staying within the requested tier, got %q", content.Text)
+	}
 	if strings.Contains(strings.ToLower(content.Text), "clarifying questions") {
 		t.Fatalf("workflow resource should not pause for clarifying questions: %q", content.Text)
 	}
 	if strings.Contains(content.Text, "immediately call get_next_question") {
 		t.Fatalf("workflow resource should not require a separate get_next_question call after feedback, got %q", content.Text)
 	}
-	if !strings.Contains(content.Text, "Best answer:") {
-		t.Fatalf("workflow resource should require a thorough best answer, got %q", content.Text)
+	if !strings.Contains(content.Text, "exactly one MCP tool") {
+		t.Fatalf("workflow resource should require exactly one MCP tool after an answer, got %q", content.Text)
 	}
-	if !strings.Contains(content.Text, "Better-than-nothing answer:") {
-		t.Fatalf("workflow resource should require a memorization-friendly answer, got %q", content.Text)
+	if !strings.Contains(content.Text, "Explanation:") {
+		t.Fatalf("workflow resource should require an explanation section, got %q", content.Text)
 	}
-	if !strings.Contains(content.Text, "Memory hook:") {
-		t.Fatalf("workflow resource should require a memory hook, got %q", content.Text)
+	if !strings.Contains(content.Text, "Interview answer:") {
+		t.Fatalf("workflow resource should require an interview answer section, got %q", content.Text)
+	}
+	if !strings.Contains(content.Text, "Minimum answer") {
+		t.Fatalf("workflow resource should mention an optional minimum answer, got %q", content.Text)
+	}
+	if !strings.Contains(content.Text, "Go code snippet") {
+		t.Fatalf("workflow resource should mention useful Go code snippets, got %q", content.Text)
 	}
 }
 

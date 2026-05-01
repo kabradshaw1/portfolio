@@ -12,7 +12,7 @@ type Store interface {
 	UpsertQuestions(context.Context, []content.Question) error
 	CreateSession(context.Context) (int64, error)
 	ListTopics(context.Context) ([]store.Topic, error)
-	NextQuestion(context.Context) (store.Question, error)
+	NextQuestion(context.Context, store.QuestionFilter) (store.Question, error)
 	SubmitAnswer(context.Context, store.SubmitAnswerInput) (store.AnswerAttempt, error)
 	RecordFeedback(context.Context, store.FeedbackInput) error
 	UpdateExpectedAnswer(context.Context, int64, string) error
@@ -63,8 +63,8 @@ func (s *Service) ListTopics(ctx context.Context) ([]store.Topic, error) {
 	return s.store.ListTopics(ctx)
 }
 
-func (s *Service) GetNextQuestion(ctx context.Context) (store.Question, error) {
-	return s.store.NextQuestion(ctx)
+func (s *Service) GetNextQuestion(ctx context.Context, filter store.QuestionFilter) (store.Question, error) {
+	return s.store.NextQuestion(ctx, filter)
 }
 
 func (s *Service) SubmitAnswer(ctx context.Context, questionID int64, answer string) (AnswerReview, error) {
