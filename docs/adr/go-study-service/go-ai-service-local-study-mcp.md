@@ -35,6 +35,7 @@ to be launched by an MCP client as a subprocess.
 
 The service exposes study-specific MCP tools:
 
+- `start_study_session`
 - `import_material`
 - `list_topics`
 - `get_next_question`
@@ -43,11 +44,20 @@ The service exposes study-specific MCP tools:
 - `get_progress_summary`
 - `add_or_update_expected_answer`
 
-The agent owns the conversational behavior: asking one question, waiting for the
-answer, comparing it against the expected answer, identifying shortcomings,
-pausing for clarifying questions, recording feedback, and moving to the next
-question. The service owns deterministic state: imported questions, expected
-answers, raw attempts, scores, feedback, and progress summaries.
+The service also exposes:
+
+- MCP prompt `study_micro1`, a reusable prompt for starting a Micro1 session.
+- MCP resource `study://micro1/workflow`, a text workflow describing how an
+  agent should quiz, submit answers, record feedback, and continue.
+
+The service should be self-describing enough that a user can tell an
+MCP-capable agent "study for micro1" without pasting tool-by-tool instructions.
+The agent still owns qualitative conversational behavior and answer critique,
+but the service advertises the expected workflow through MCP prompt/resource
+metadata and `start_study_session`. That tool returns the study set name,
+workflow instructions, topics, progress summary, and next question. The service
+owns deterministic state: imported questions, expected answers, raw attempts,
+scores, feedback, and progress summaries.
 
 The service should use the official `github.com/modelcontextprotocol/go-sdk`
 for consistency with `go/ai-service`, but it should not be embedded in the
@@ -95,6 +105,8 @@ Positive outcomes:
 - Local study can start quickly with a small Go process and a SQLite file.
 - MCP practice reinforces the same protocol story already present in
   `go/ai-service`.
+- Agents can discover the Micro1 study workflow from MCP metadata instead of
+  requiring repeated manual prompt instructions.
 - Interview answers, critique, and scores become durable instead of living only
   in chat history.
 - Follow-up questions can be imported without complete expected answers and
@@ -106,6 +118,8 @@ Trade-offs:
 
 - The service is not a polished standalone product.
 - MCP client configuration is required before an agent can use it.
+- Client support for MCP prompts and resources varies, so `start_study_session`
+  also carries workflow instructions as tool output.
 - SQLite is appropriate for local single-user practice but not for future
   multi-user deployment.
 - The agent, not the service, performs qualitative answer grading in the first

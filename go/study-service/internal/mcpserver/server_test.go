@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -15,6 +16,7 @@ type fakeStudy struct {
 	submittedQuestionID int64
 	submittedAnswer     string
 	feedback            study.FeedbackInput
+	nextQuestionCalls   int
 }
 
 func (f *fakeStudy) ImportMaterial(context.Context) (study.ImportResult, error) {
@@ -26,6 +28,7 @@ func (f *fakeStudy) ListTopics(context.Context) ([]store.Topic, error) {
 }
 
 func (f *fakeStudy) GetNextQuestion(context.Context) (store.Question, error) {
+	f.nextQuestionCalls++
 	return store.Question{ID: 3, Topic: "Go", Prompt: "How do maps work?", ExpectedAnswer: "Use synchronization.", Priority: 10}, nil
 }
 
@@ -84,6 +87,145 @@ func TestRecordFeedbackHandlerValidatesScore(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatalf("expected MCP tool error for invalid score")
+	}
+}
+
+func TestSubmitAnswerAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWithNextQuestion(t *testing.T) {
+	fake := &fakeStudy{}
+	handler := submitAnswerAndPrepareNextHandler(fake)
+	result, err := handler(context.Background(), callReq(map[string]any{
+		"question_id": float64(2),
+		"answer":      "Use channels.",
+		"previous_feedback": map[string]any{
+			"attempt_id":        float64(8),
+			"score":             float64(1),
+			"missing_points":    "mutex tradeoffs",
+			"inaccurate_points": "",
+			"suggested_answer":  "Use a mutex or sharding.",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	if fake.feedback.AttemptID != 8 || fake.feedback.Score != 1 {
+		t.Fatalf("expected previous feedback to be recorded, got %#v", fake.feedback)
+	}
+	if fake.submittedQuestionID != 2 || fake.submittedAnswer != "Use channels." {
+		t.Fatalf("unexpected submit args: id=%d answer=%q", fake.submittedQuestionID, fake.submittedAnswer)
+	}
+	if fake.nextQuestionCalls != 1 {
+		t.Fatalf("expected next question to be loaded once, got %d", fake.nextQuestionCalls)
+	}
+
+	var payload studyTurn
+	unmarshalTextResult(t, result, &payload)
+	if payload.Review.AttemptID != 9 || payload.Review.ExpectedAnswer == "" {
+		t.Fatalf("unexpected review payload: %#v", payload.Review)
+	}
+	if payload.NextQuestion.ID != 3 {
+		t.Fatalf("unexpected next question: %#v", payload.NextQuestion)
+	}
+	if !payload.PreviousFeedbackRecorded {
+		t.Fatalf("expected previous feedback recorded flag")
+	}
+}
+
+func TestStartStudySessionReturnsWorkflowAndCurrentState(t *testing.T) {
+	fake := &fakeStudy{}
+	handler := startStudySessionHandler(fake)
+	result, err := handler(context.Background(), callReq(map[string]any{
+		"study_set": "micro1",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+
+	var payload studySession
+	unmarshalTextResult(t, result, &payload)
+	if payload.StudySet != "micro1" {
+		t.Fatalf("unexpected study set: %q", payload.StudySet)
+	}
+	if payload.NextQuestion.ID != 3 {
+		t.Fatalf("expected next question in session payload, got %#v", payload.NextQuestion)
+	}
+	if len(payload.Topics) == 0 {
+		t.Fatalf("expected topics in session payload")
+	}
+	if payload.Progress.TotalAttempts != 1 {
+		t.Fatalf("expected progress summary in session payload, got %#v", payload.Progress)
+	}
+	if !strings.Contains(payload.Instructions, "submit_answer_and_prepare_next") {
+		t.Fatalf("expected workflow instructions to mention submit_answer_and_prepare_next, got %q", payload.Instructions)
+	}
+	if strings.Contains(strings.ToLower(payload.Instructions), "clarifying questions") {
+		t.Fatalf("workflow should not pause for clarifying questions: %q", payload.Instructions)
+	}
+	if strings.Contains(payload.Instructions, "immediately call get_next_question") {
+		t.Fatalf("workflow should not require a separate get_next_question call after feedback, got %q", payload.Instructions)
+	}
+	if !strings.Contains(payload.Instructions, "Best answer:") {
+		t.Fatalf("workflow should require a thorough best answer, got %q", payload.Instructions)
+	}
+	if !strings.Contains(payload.Instructions, "Better-than-nothing answer:") {
+		t.Fatalf("workflow should require a memorization-friendly answer, got %q", payload.Instructions)
+	}
+	if !strings.Contains(payload.Instructions, "Memory hook:") {
+		t.Fatalf("workflow should require a memory hook, got %q", payload.Instructions)
+	}
+}
+
+func TestStudyMicro1PromptInstructsAgentToStartSession(t *testing.T) {
+	result, err := studyMicro1PromptHandler()(context.Background(), &sdkmcp.GetPromptRequest{})
+	if err != nil {
+		t.Fatalf("prompt handler returned error: %v", err)
+	}
+	if len(result.Messages) != 1 {
+		t.Fatalf("expected one prompt message, got %d", len(result.Messages))
+	}
+	text, ok := result.Messages[0].Content.(*sdkmcp.TextContent)
+	if !ok {
+		t.Fatalf("expected text prompt content, got %T", result.Messages[0].Content)
+	}
+	if !strings.Contains(text.Text, "start_study_session") {
+		t.Fatalf("expected prompt to mention start_study_session, got %q", text.Text)
+	}
+}
+
+func TestWorkflowResourceDescribesMicro1StudyFlow(t *testing.T) {
+	result, err := workflowResourceHandler()(context.Background(), &sdkmcp.ReadResourceRequest{})
+	if err != nil {
+		t.Fatalf("resource handler returned error: %v", err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatalf("expected one resource content item, got %d", len(result.Contents))
+	}
+	content := result.Contents[0]
+	if content.URI != workflowResourceURI {
+		t.Fatalf("unexpected resource URI: %q", content.URI)
+	}
+	if !strings.Contains(content.Text, "submit_answer_and_prepare_next") {
+		t.Fatalf("expected workflow resource to mention submit_answer_and_prepare_next, got %q", content.Text)
+	}
+	if strings.Contains(strings.ToLower(content.Text), "clarifying questions") {
+		t.Fatalf("workflow resource should not pause for clarifying questions: %q", content.Text)
+	}
+	if strings.Contains(content.Text, "immediately call get_next_question") {
+		t.Fatalf("workflow resource should not require a separate get_next_question call after feedback, got %q", content.Text)
+	}
+	if !strings.Contains(content.Text, "Best answer:") {
+		t.Fatalf("workflow resource should require a thorough best answer, got %q", content.Text)
+	}
+	if !strings.Contains(content.Text, "Better-than-nothing answer:") {
+		t.Fatalf("workflow resource should require a memorization-friendly answer, got %q", content.Text)
+	}
+	if !strings.Contains(content.Text, "Memory hook:") {
+		t.Fatalf("workflow resource should require a memory hook, got %q", content.Text)
 	}
 }
 
