@@ -192,6 +192,15 @@ func (d *DB) UpsertQuestions(ctx context.Context, questions []content.Question) 
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	sourcePaths := uniqueSourcePaths(questions)
+	for _, sourcePath := range sourcePaths {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE questions SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE source_path = ? AND active = 1;
+`, sourcePath); err != nil {
+			return fmt.Errorf("deactivate stale questions for %s: %w", sourcePath, err)
+		}
+	}
+
 	stmt, err := tx.PrepareContext(ctx, `
 INSERT INTO questions (source_path, topic, prompt, expected_answer, is_follow_up, priority, tier, active, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
@@ -227,6 +236,19 @@ ON CONFLICT(source_path, prompt, is_follow_up) DO UPDATE SET
 		return fmt.Errorf("commit question import: %w", err)
 	}
 	return nil
+}
+
+func uniqueSourcePaths(questions []content.Question) []string {
+	seen := make(map[string]bool)
+	var paths []string
+	for _, q := range questions {
+		if q.SourcePath == "" || seen[q.SourcePath] {
+			continue
+		}
+		seen[q.SourcePath] = true
+		paths = append(paths, q.SourcePath)
+	}
+	return paths
 }
 
 func (d *DB) CreateSession(ctx context.Context) (int64, error) {

@@ -50,6 +50,38 @@ func TestUpsertQuestionsIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestUpsertQuestionsDeactivatesStaleQuestionsFromSameSource(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	if err := db.UpsertQuestions(ctx, []content.Question{
+		{SourcePath: "08-coding-exercises.md", Topic: "Timed Coding Exercises", Prompt: "Sharded cache", Priority: 10, Tier: 1},
+	}); err != nil {
+		t.Fatalf("initial upsert: %v", err)
+	}
+
+	if err := db.UpsertQuestions(ctx, []content.Question{
+		{SourcePath: "08-coding-exercises.md", Topic: "Timed Coding Exercises", Prompt: "Implement a cache with 32 shards, `Get`, `Set`, `Delete`, and TTL expiration.", Priority: 10, Tier: 1},
+	}); err != nil {
+		t.Fatalf("refresh upsert: %v", err)
+	}
+
+	topics, err := db.ListTopics(ctx)
+	if err != nil {
+		t.Fatalf("list topics: %v", err)
+	}
+	if len(topics) != 1 || topics[0].QuestionCount != 1 {
+		t.Fatalf("expected one active refreshed question, got %#v", topics)
+	}
+
+	next, err := db.NextQuestion(ctx, QuestionFilter{Tier: 1})
+	if err != nil {
+		t.Fatalf("next question: %v", err)
+	}
+	if next.Prompt != "Implement a cache with 32 shards, `Get`, `Set`, `Delete`, and TTL expiration." {
+		t.Fatalf("expected refreshed prompt, got %q", next.Prompt)
+	}
+}
+
 func TestSubmitAnswerAndFeedbackArePersisted(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()

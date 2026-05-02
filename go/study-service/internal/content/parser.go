@@ -65,6 +65,7 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 	var questions []Question
 	var topic string
 	var current *Question
+	var promptLines []string
 	var answerLines []string
 	mode := ""
 
@@ -72,11 +73,16 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 		if current == nil {
 			return
 		}
+		if prompt := cleanPrompt(promptLines); prompt != "" {
+			current.Prompt = prompt
+			current.Tier = tierForQuestion(current.SourcePath, current.Prompt, current.IsFollowUp)
+		}
 		current.ExpectedAnswer = cleanAnswer(answerLines)
 		if current.Prompt != "" {
 			questions = append(questions, *current)
 		}
 		current = nil
+		promptLines = nil
 		answerLines = nil
 		mode = ""
 	}
@@ -101,8 +107,17 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 		}
 
 		switch {
+		case line == "Prompt:":
+			mode = "prompt"
 		case line == "Fast answer:" || line == "Fast design:" || line == "Expected discussion:" || line == "What to say while coding:":
+			if prompt := cleanPrompt(promptLines); current != nil && prompt != "" {
+				current.Prompt = prompt
+				current.Tier = tierForQuestion(current.SourcePath, current.Prompt, current.IsFollowUp)
+				promptLines = nil
+			}
 			mode = "answer"
+		case mode == "prompt" && current != nil:
+			promptLines = append(promptLines, raw)
 		case line == "Follow-ups:":
 			flush()
 			mode = "followups"
@@ -237,6 +252,18 @@ func cleanAnswer(lines []string) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(cleaned, "\n"))
+}
+
+func cleanPrompt(lines []string) string {
+	var fields []string
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		line = strings.TrimSpace(strings.TrimPrefix(line, ">"))
+		if line != "" {
+			fields = append(fields, strings.Fields(line)...)
+		}
+	}
+	return strings.Join(fields, " ")
 }
 
 func priorityForPath(path string) int {

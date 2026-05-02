@@ -93,6 +93,9 @@ Follow-ups:
 	if len(questions) != 2 {
 		t.Fatalf("expected 2 questions, got %d: %#v", len(questions), questions)
 	}
+	if questions[0].Prompt != "Write a worker pool that processes jobs from a channel, stops on context cancellation, returns results, and does not leak goroutines." {
+		t.Fatalf("expected coding exercise prompt body, got %q", questions[0].Prompt)
+	}
 	if questions[0].Tier != 1 {
 		t.Fatalf("expected coding exercise prompt to be tier 1, got %d", questions[0].Tier)
 	}
