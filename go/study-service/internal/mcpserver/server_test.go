@@ -99,6 +99,7 @@ func TestSubmitAnswerAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWithNextQ
 		"question_id": float64(2),
 		"answer":      "Use channels.",
 		"tier":        float64(1),
+		"category":    "golang",
 		"previous_feedback": map[string]any{
 			"attempt_id":        float64(8),
 			"score":             float64(1),
@@ -125,6 +126,9 @@ func TestSubmitAnswerAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWithNextQ
 	if fake.nextFilter.Tier != 1 {
 		t.Fatalf("expected tier filter to be passed, got %#v", fake.nextFilter)
 	}
+	if fake.nextFilter.Category != "golang" {
+		t.Fatalf("expected category filter to be passed, got %#v", fake.nextFilter)
+	}
 
 	var payload studyTurn
 	unmarshalTextResult(t, result, &payload)
@@ -148,6 +152,7 @@ func TestStartStudySessionReturnsWorkflowAndCurrentState(t *testing.T) {
 	result, err := handler(context.Background(), callReq(map[string]any{
 		"study_set": "micro1",
 		"tier":      float64(1),
+		"category":  "golang",
 	}))
 	if err != nil {
 		t.Fatalf("handler returned error: %v", err)
@@ -167,6 +172,9 @@ func TestStartStudySessionReturnsWorkflowAndCurrentState(t *testing.T) {
 	if payload.Tier != 1 || fake.nextFilter.Tier != 1 {
 		t.Fatalf("expected tier 1 session and filter, payload=%#v filter=%#v", payload, fake.nextFilter)
 	}
+	if payload.Category != "golang" || fake.nextFilter.Category != "golang" {
+		t.Fatalf("expected golang category session and filter, payload=%#v filter=%#v", payload, fake.nextFilter)
+	}
 	if len(payload.Topics) == 0 {
 		t.Fatalf("expected topics in session payload")
 	}
@@ -178,6 +186,12 @@ func TestStartStudySessionReturnsWorkflowAndCurrentState(t *testing.T) {
 	}
 	if !strings.Contains(payload.Instructions, "requested tier") {
 		t.Fatalf("workflow should require staying within the requested tier, got %q", payload.Instructions)
+	}
+	if !strings.Contains(payload.Instructions, "requested category") {
+		t.Fatalf("workflow should require staying within the requested category, got %q", payload.Instructions)
+	}
+	if !strings.Contains(payload.Instructions, "coding_exercise") {
+		t.Fatalf("workflow should describe coding exercise handling, got %q", payload.Instructions)
 	}
 	if strings.Contains(strings.ToLower(payload.Instructions), "clarifying questions") {
 		t.Fatalf("workflow should not pause for clarifying questions: %q", payload.Instructions)
@@ -236,6 +250,12 @@ func TestWorkflowResourceDescribesMicro1StudyFlow(t *testing.T) {
 	}
 	if !strings.Contains(content.Text, "requested tier") {
 		t.Fatalf("workflow resource should require staying within the requested tier, got %q", content.Text)
+	}
+	if !strings.Contains(content.Text, "requested category") {
+		t.Fatalf("workflow resource should require staying within the requested category, got %q", content.Text)
+	}
+	if !strings.Contains(content.Text, "coding_exercise") {
+		t.Fatalf("workflow resource should describe coding exercise handling, got %q", content.Text)
 	}
 	if strings.Contains(strings.ToLower(content.Text), "clarifying questions") {
 		t.Fatalf("workflow resource should not pause for clarifying questions: %q", content.Text)

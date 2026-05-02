@@ -199,3 +199,22 @@ func TestNextQuestionFiltersByTier(t *testing.T) {
 		t.Fatalf("expected tier 2 question, got %#v", next)
 	}
 }
+
+func TestNextQuestionFiltersByCategory(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	if err := db.UpsertQuestions(ctx, []content.Question{
+		{SourcePath: "02-go.md", Topic: "Go", Category: "golang", Kind: "qa", Prompt: "Go question?", ExpectedAnswer: "Go answer.", Priority: 10, Tier: 3},
+		{SourcePath: "03-api.md", Topic: "API", Category: "api", Kind: "qa", Prompt: "API question?", ExpectedAnswer: "API answer.", Priority: 10, Tier: 3},
+	}); err != nil {
+		t.Fatalf("upsert questions: %v", err)
+	}
+
+	next, err := db.NextQuestion(ctx, QuestionFilter{Tier: 3, Category: "golang"})
+	if err != nil {
+		t.Fatalf("next golang tier 3 question: %v", err)
+	}
+	if next.Prompt != "Go question?" || next.Category != "golang" || next.Kind != "qa" {
+		t.Fatalf("expected golang question with metadata, got %#v", next)
+	}
+}

@@ -52,6 +52,12 @@ Follow-ups:
 	if base.Tier != 1 {
 		t.Fatalf("expected curated base question to be tier 1, got %d", base.Tier)
 	}
+	if base.Category != "golang" {
+		t.Fatalf("expected Go category, got %q", base.Category)
+	}
+	if base.Kind != "qa" {
+		t.Fatalf("expected qa kind, got %q", base.Kind)
+	}
 
 	if questions[1].Prompt != "When is sync.Map appropriate?" || !questions[1].IsFollowUp {
 		t.Fatalf("unexpected first follow-up: %#v", questions[1])
@@ -99,8 +105,17 @@ Follow-ups:
 	if questions[0].Tier != 1 {
 		t.Fatalf("expected coding exercise prompt to be tier 1, got %d", questions[0].Tier)
 	}
+	if questions[0].Category != "coding" {
+		t.Fatalf("expected coding category, got %q", questions[0].Category)
+	}
+	if questions[0].Kind != "coding_exercise" {
+		t.Fatalf("expected coding exercise kind, got %q", questions[0].Kind)
+	}
 	if questions[1].Tier != 2 {
 		t.Fatalf("expected coding exercise follow-up to be tier 2, got %d", questions[1].Tier)
+	}
+	if questions[1].Kind != "qa" {
+		t.Fatalf("expected coding follow-up to use qa kind, got %q", questions[1].Kind)
 	}
 }
 

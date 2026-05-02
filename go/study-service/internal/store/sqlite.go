@@ -21,6 +21,7 @@ type DB struct {
 
 type Topic struct {
 	Name          string `json:"name"`
+	Category      string `json:"category"`
 	QuestionCount int    `json:"question_count"`
 	AnsweredCount int    `json:"answered_count"`
 }
@@ -29,6 +30,8 @@ type Question struct {
 	ID             int64  `json:"id"`
 	SourcePath     string `json:"source_path"`
 	Topic          string `json:"topic"`
+	Category       string `json:"category"`
+	Kind           string `json:"kind"`
 	Prompt         string `json:"prompt"`
 	ExpectedAnswer string `json:"expected_answer"`
 	IsFollowUp     bool   `json:"is_follow_up"`
@@ -37,7 +40,8 @@ type Question struct {
 }
 
 type QuestionFilter struct {
-	Tier int `json:"tier,omitempty"`
+	Tier     int    `json:"tier,omitempty"`
+	Category string `json:"category,omitempty"`
 }
 
 type SubmitAnswerInput struct {
@@ -111,6 +115,8 @@ CREATE TABLE IF NOT EXISTS questions (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	source_path TEXT NOT NULL,
 	topic TEXT NOT NULL,
+	category TEXT NOT NULL DEFAULT '',
+	kind TEXT NOT NULL DEFAULT 'qa',
 	prompt TEXT NOT NULL,
 	expected_answer TEXT NOT NULL DEFAULT '',
 	is_follow_up INTEGER NOT NULL DEFAULT 0,
@@ -151,6 +157,12 @@ CREATE TABLE IF NOT EXISTS feedback (
 		return fmt.Errorf("migrate sqlite: %w", err)
 	}
 	if err := d.ensureColumn(ctx, "questions", "tier", "INTEGER NOT NULL DEFAULT 3"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn(ctx, "questions", "category", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn(ctx, "questions", "kind", "TEXT NOT NULL DEFAULT 'qa'"); err != nil {
 		return err
 	}
 	return nil
@@ -202,10 +214,12 @@ UPDATE questions SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE source_pat
 	}
 
 	stmt, err := tx.PrepareContext(ctx, `
-INSERT INTO questions (source_path, topic, prompt, expected_answer, is_follow_up, priority, tier, active, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+INSERT INTO questions (source_path, topic, category, kind, prompt, expected_answer, is_follow_up, priority, tier, active, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
 ON CONFLICT(source_path, prompt, is_follow_up) DO UPDATE SET
 	topic = excluded.topic,
+	category = excluded.category,
+	kind = excluded.kind,
 	expected_answer = CASE
 		WHEN excluded.expected_answer != '' THEN excluded.expected_answer
 		ELSE questions.expected_answer
@@ -228,7 +242,15 @@ ON CONFLICT(source_path, prompt, is_follow_up) DO UPDATE SET
 		if tier == 0 {
 			tier = 3
 		}
-		if _, err := stmt.ExecContext(ctx, q.SourcePath, q.Topic, q.Prompt, q.ExpectedAnswer, boolInt(q.IsFollowUp), q.Priority, tier); err != nil {
+		category := q.Category
+		if category == "" {
+			category = "general"
+		}
+		kind := q.Kind
+		if kind == "" {
+			kind = "qa"
+		}
+		if _, err := stmt.ExecContext(ctx, q.SourcePath, q.Topic, category, kind, q.Prompt, q.ExpectedAnswer, boolInt(q.IsFollowUp), q.Priority, tier); err != nil {
 			return fmt.Errorf("upsert question %q: %w", q.Prompt, err)
 		}
 	}
@@ -261,11 +283,11 @@ func (d *DB) CreateSession(ctx context.Context) (int64, error) {
 
 func (d *DB) ListTopics(ctx context.Context) ([]Topic, error) {
 	rows, err := d.db.QueryContext(ctx, `
-SELECT q.topic, COUNT(*) AS question_count, COUNT(DISTINCT aa.question_id) AS answered_count
+SELECT q.topic, q.category, COUNT(*) AS question_count, COUNT(DISTINCT aa.question_id) AS answered_count
 FROM questions q
 LEFT JOIN answer_attempts aa ON aa.question_id = q.id
 WHERE q.active = 1
-GROUP BY q.topic
+GROUP BY q.topic, q.category
 ORDER BY q.topic;
 `)
 	if err != nil {
@@ -276,7 +298,7 @@ ORDER BY q.topic;
 	var topics []Topic
 	for rows.Next() {
 		var topic Topic
-		if err := rows.Scan(&topic.Name, &topic.QuestionCount, &topic.AnsweredCount); err != nil {
+		if err := rows.Scan(&topic.Name, &topic.Category, &topic.QuestionCount, &topic.AnsweredCount); err != nil {
 			return nil, fmt.Errorf("scan topic: %w", err)
 		}
 		topics = append(topics, topic)
@@ -286,7 +308,7 @@ ORDER BY q.topic;
 
 func (d *DB) NextQuestion(ctx context.Context, filter QuestionFilter) (Question, error) {
 	query := `
-SELECT q.id, q.source_path, q.topic, q.prompt, q.expected_answer, q.is_follow_up, q.priority, q.tier
+SELECT q.id, q.source_path, q.topic, q.category, q.kind, q.prompt, q.expected_answer, q.is_follow_up, q.priority, q.tier
 FROM questions q
 LEFT JOIN answer_attempts aa ON aa.question_id = q.id
 LEFT JOIN feedback f ON f.attempt_id = aa.id
@@ -295,6 +317,10 @@ WHERE q.active = 1`
 	if filter.Tier > 0 {
 		query += ` AND q.tier = ?`
 		args = append(args, filter.Tier)
+	}
+	if filter.Category != "" {
+		query += ` AND q.category = ?`
+		args = append(args, filter.Category)
 	}
 	query += `
 GROUP BY q.id
@@ -310,7 +336,7 @@ LIMIT 1;
 	row := d.db.QueryRowContext(ctx, query, args...)
 	var q Question
 	var followUp int
-	if err := row.Scan(&q.ID, &q.SourcePath, &q.Topic, &q.Prompt, &q.ExpectedAnswer, &followUp, &q.Priority, &q.Tier); err != nil {
+	if err := row.Scan(&q.ID, &q.SourcePath, &q.Topic, &q.Category, &q.Kind, &q.Prompt, &q.ExpectedAnswer, &followUp, &q.Priority, &q.Tier); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Question{}, ErrNotFound
 		}

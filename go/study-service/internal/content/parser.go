@@ -20,6 +20,8 @@ var (
 type Question struct {
 	SourcePath     string
 	Topic          string
+	Category       string
+	Kind           string
 	Prompt         string
 	ExpectedAnswer string
 	IsFollowUp     bool
@@ -99,6 +101,8 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 			current = &Question{
 				SourcePath: path,
 				Topic:      topic,
+				Category:   categoryForPath(path),
+				Kind:       kindForQuestion(path, false),
 				Prompt:     prompt,
 				Priority:   priorityForPath(path),
 				Tier:       tierForQuestion(path, prompt, false),
@@ -129,6 +133,8 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 				questions = append(questions, Question{
 					SourcePath: path,
 					Topic:      topic,
+					Category:   categoryForPath(path),
+					Kind:       kindForQuestion(path, true),
 					Prompt:     prompt,
 					IsFollowUp: true,
 					Priority:   priorityForPath(path),
@@ -157,6 +163,43 @@ func tierForQuestion(path, prompt string, followUp bool) int {
 		return 2
 	}
 	return 3
+}
+
+func kindForQuestion(path string, followUp bool) string {
+	if followUp {
+		return "qa"
+	}
+	if filepath.Base(path) == "08-coding-exercises.md" {
+		return "coding_exercise"
+	}
+	return "qa"
+}
+
+func categoryForPath(path string) string {
+	switch filepath.Base(path) {
+	case "01-portfolio-recall-matrix.md":
+		return "portfolio"
+	case "02-go-language-fundamentals.md":
+		return "golang"
+	case "03-rest-api-gateway-questions.md":
+		return "api"
+	case "04-third-party-integrations.md":
+		return "integrations"
+	case "05-distributed-systems-scalability.md":
+		return "distributed"
+	case "06-ai-agent-systems.md":
+		return "ai"
+	case "07-database-observability-security.md":
+		return "db_observability_security"
+	case "08-coding-exercises.md":
+		return "coding"
+	case "09-go-performance-and-concurrency-drills.md":
+		return "performance_concurrency"
+	case "10-mock-interview-drills.md":
+		return "mock_interview"
+	default:
+		return "general"
+	}
 }
 
 var tierOneQuestions = map[string]bool{
