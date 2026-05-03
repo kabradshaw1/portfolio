@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -46,7 +47,20 @@ func (f *fakeCoding) RecordFeedback(_ context.Context, input coding.FeedbackInpu
 }
 
 func (f *fakeCoding) ProgressSummary(context.Context) (store.ProgressSummary, error) {
-	return store.ProgressSummary{TotalAttempts: 1, AverageScore: 2}, nil
+	score := 2
+	return store.ProgressSummary{
+		TotalAttempts: 1,
+		AverageScore:  2,
+		RecentAttempts: []store.RecentAttempt{{
+			AttemptID:  7,
+			QuestionID: 3,
+			Topic:      "Go",
+			Prompt:     "Build a worker pool.",
+			Answer:     "Reviewed worker_pool.go and worker_pool_test.go.",
+			Score:      &score,
+			CreatedAt:  time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC),
+		}},
+	}, nil
 }
 
 func (f *fakeCoding) UpdateExpectedAnswer(context.Context, int64, string) error {
@@ -144,6 +158,16 @@ func TestSubmitCodingReviewAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWit
 	if !payload.PreviousFeedbackRecorded {
 		t.Fatalf("expected previous feedback recorded flag")
 	}
+
+	var raw map[string]any
+	unmarshalTextResult(t, result, &raw)
+	nextExercise, ok := raw["next_exercise"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected next_exercise object, got %#v", raw["next_exercise"])
+	}
+	if _, ok := nextExercise["expected_answer"]; ok {
+		t.Fatalf("next_exercise should not expose expected_answer before review: %#v", nextExercise)
+	}
 }
 
 func TestStartCodingExerciseSessionReturnsWorkflowAndCurrentState(t *testing.T) {
@@ -177,6 +201,9 @@ func TestStartCodingExerciseSessionReturnsWorkflowAndCurrentState(t *testing.T) 
 	if payload.Progress.TotalAttempts != 1 {
 		t.Fatalf("expected progress summary in session payload, got %#v", payload.Progress)
 	}
+	if len(payload.Progress.RecentAttempts) != 1 || payload.Progress.RecentAttempts[0].ReviewSummary == "" {
+		t.Fatalf("expected progress summary to use review_summary, got %#v", payload.Progress)
+	}
 	if !strings.Contains(payload.Instructions, "submit_coding_review_and_prepare_next") {
 		t.Fatalf("expected workflow instructions to mention submit_coding_review_and_prepare_next, got %q", payload.Instructions)
 	}
@@ -206,6 +233,87 @@ func TestStartCodingExerciseSessionReturnsWorkflowAndCurrentState(t *testing.T) 
 	}
 	if strings.Contains(payload.Instructions, "immediately call get_next_question") {
 		t.Fatalf("workflow should not require a separate get_next_question call after feedback, got %q", payload.Instructions)
+	}
+
+	var raw map[string]any
+	unmarshalTextResult(t, result, &raw)
+	nextExercise, ok := raw["next_exercise"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected next_exercise object, got %#v", raw["next_exercise"])
+	}
+	if _, ok := nextExercise["expected_answer"]; ok {
+		t.Fatalf("session next_exercise should not expose expected_answer before review: %#v", nextExercise)
+	}
+	progress, ok := raw["progress"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected progress object, got %#v", raw["progress"])
+	}
+	recent, ok := progress["recent_attempts"].([]any)
+	if !ok || len(recent) != 1 {
+		t.Fatalf("expected one recent attempt, got %#v", progress["recent_attempts"])
+	}
+	recentAttempt, ok := recent[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected recent attempt object, got %#v", recent[0])
+	}
+	if _, ok := recentAttempt["answer"]; ok {
+		t.Fatalf("progress summary should not expose answer field: %#v", recentAttempt)
+	}
+	if recentAttempt["review_summary"] == "" {
+		t.Fatalf("progress summary should expose review_summary: %#v", recentAttempt)
+	}
+}
+
+func TestGetNextCodingExerciseOmitsExpectedAnswer(t *testing.T) {
+	fake := &fakeCoding{}
+	handler := nextQuestionHandler(fake)
+	result, err := handler(context.Background(), callReq(map[string]any{
+		"tier":     float64(1),
+		"category": "coding",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+
+	var raw map[string]any
+	unmarshalTextResult(t, result, &raw)
+	if _, ok := raw["expected_answer"]; ok {
+		t.Fatalf("get_next_coding_exercise should not expose expected_answer before review: %#v", raw)
+	}
+	if raw["id"] != float64(3) {
+		t.Fatalf("unexpected exercise payload: %#v", raw)
+	}
+}
+
+func TestProgressSummaryHandlerUsesCodingVocabulary(t *testing.T) {
+	fake := &fakeCoding{}
+	handler := progressSummaryHandler(fake)
+	result, err := handler(context.Background(), &sdkmcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+
+	var raw map[string]any
+	unmarshalTextResult(t, result, &raw)
+	recent, ok := raw["recent_attempts"].([]any)
+	if !ok || len(recent) != 1 {
+		t.Fatalf("expected one recent attempt, got %#v", raw["recent_attempts"])
+	}
+	recentAttempt, ok := recent[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected recent attempt object, got %#v", recent[0])
+	}
+	if _, ok := recentAttempt["answer"]; ok {
+		t.Fatalf("progress summary should not expose answer field: %#v", recentAttempt)
+	}
+	if recentAttempt["review_summary"] == "" {
+		t.Fatalf("progress summary should expose review_summary: %#v", recentAttempt)
 	}
 }
 

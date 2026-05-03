@@ -156,6 +156,12 @@ CREATE TABLE IF NOT EXISTS feedback (
 	if err != nil {
 		return fmt.Errorf("migrate sqlite: %w", err)
 	}
+	if err := d.dedupeFeedback(ctx); err != nil {
+		return err
+	}
+	if _, err := d.db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS feedback_attempt_id_unique ON feedback(attempt_id);`); err != nil {
+		return fmt.Errorf("create feedback attempt unique index: %w", err)
+	}
 	if err := d.ensureColumn(ctx, "questions", "tier", "INTEGER NOT NULL DEFAULT 3"); err != nil {
 		return err
 	}
@@ -164,6 +170,21 @@ CREATE TABLE IF NOT EXISTS feedback (
 	}
 	if err := d.ensureColumn(ctx, "questions", "kind", "TEXT NOT NULL DEFAULT 'qa'"); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (d *DB) dedupeFeedback(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, `
+DELETE FROM feedback
+WHERE id NOT IN (
+	SELECT MAX(id)
+	FROM feedback
+	GROUP BY attempt_id
+);
+`)
+	if err != nil {
+		return fmt.Errorf("dedupe feedback: %w", err)
 	}
 	return nil
 }
@@ -379,9 +400,21 @@ func (d *DB) RecordFeedback(ctx context.Context, in FeedbackInput) error {
 	if in.Score < 0 || in.Score > 3 {
 		return fmt.Errorf("score must be between 0 and 3")
 	}
+	var exists int
+	if err := d.db.QueryRowContext(ctx, `SELECT 1 FROM answer_attempts WHERE id = ?;`, in.AttemptID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("load answer attempt: %w", err)
+	}
 	_, err := d.db.ExecContext(ctx, `
 INSERT INTO feedback (attempt_id, score, missing_points, inaccurate_points, suggested_answer)
-VALUES (?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(attempt_id) DO UPDATE SET
+	score = excluded.score,
+	missing_points = excluded.missing_points,
+	inaccurate_points = excluded.inaccurate_points,
+	suggested_answer = excluded.suggested_answer;
 `, in.AttemptID, in.Score, in.MissingPoints, in.InaccuratePoints, in.SuggestedAnswer)
 	if err != nil {
 		return fmt.Errorf("record feedback: %w", err)

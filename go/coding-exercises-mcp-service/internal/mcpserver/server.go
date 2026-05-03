@@ -29,16 +29,45 @@ type codingSession struct {
 	Category     string                `json:"category,omitempty"`
 	Instructions string                `json:"instructions"`
 	Topics       []store.Topic         `json:"topics"`
-	Progress     store.ProgressSummary `json:"progress"`
-	NextExercise store.Question        `json:"next_exercise"`
+	Progress     codingProgressSummary `json:"progress"`
+	NextExercise exercise              `json:"next_exercise"`
 }
 
 type codingTurn struct {
 	Review                   coding.AnswerReview `json:"review"`
-	NextExercise             store.Question      `json:"next_exercise"`
+	NextExercise             exercise            `json:"next_exercise"`
 	Tier                     int                 `json:"tier,omitempty"`
 	Category                 string              `json:"category,omitempty"`
 	PreviousFeedbackRecorded bool                `json:"previous_feedback_recorded"`
+}
+
+type exercise struct {
+	ID         int64  `json:"id"`
+	SourcePath string `json:"source_path"`
+	Topic      string `json:"topic"`
+	Category   string `json:"category"`
+	Kind       string `json:"kind"`
+	Prompt     string `json:"prompt"`
+	IsFollowUp bool   `json:"is_follow_up"`
+	Priority   int    `json:"priority"`
+	Tier       int    `json:"tier"`
+}
+
+type codingProgressSummary struct {
+	TotalAttempts  int                   `json:"total_attempts"`
+	AverageScore   float64               `json:"average_score"`
+	RecentAttempts []codingRecentAttempt `json:"recent_attempts"`
+	WeakTopics     []store.WeakTopic     `json:"weak_topics"`
+}
+
+type codingRecentAttempt struct {
+	AttemptID     int64  `json:"attempt_id"`
+	QuestionID    int64  `json:"question_id"`
+	Topic         string `json:"topic"`
+	Prompt        string `json:"prompt"`
+	ReviewSummary string `json:"review_summary"`
+	Score         *int   `json:"score,omitempty"`
+	CreatedAt     string `json:"created_at"`
 }
 
 func New(service CodingService) *sdkmcp.Server {
@@ -102,8 +131,8 @@ func startCodingExerciseSessionHandler(service CodingService) sdkmcp.ToolHandler
 			Category:     filter.Category,
 			Instructions: codingWorkflowInstructions(),
 			Topics:       topics,
-			Progress:     progress,
-			NextExercise: nextQuestion,
+			Progress:     codingProgress(progress),
+			NextExercise: exerciseFromQuestion(nextQuestion),
 		}), nil
 	}
 }
@@ -138,7 +167,10 @@ func nextQuestionHandler(service CodingService) sdkmcp.ToolHandler {
 			return toolError("tier must be 1, 2, or 3"), nil
 		}
 		result, err := service.GetNextQuestion(ctx, store.QuestionFilter{Tier: in.Tier, Category: normalizeCategory(in.Category)})
-		return resultOrError(result, err), nil
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(exerciseFromQuestion(result)), nil
 	}
 }
 
@@ -196,7 +228,7 @@ func submitCodingReviewAndPrepareNextHandler(service CodingService) sdkmcp.ToolH
 		}
 		return jsonResult(codingTurn{
 			Review:                   review,
-			NextExercise:             nextQuestion,
+			NextExercise:             exerciseFromQuestion(nextQuestion),
 			Tier:                     in.Tier,
 			Category:                 category,
 			PreviousFeedbackRecorded: previousFeedbackRecorded,
@@ -223,7 +255,10 @@ func recordFeedbackHandler(service CodingService) sdkmcp.ToolHandler {
 func progressSummaryHandler(service CodingService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, _ *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		result, err := service.ProgressSummary(ctx)
-		return resultOrError(result, err), nil
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(codingProgress(result)), nil
 	}
 }
 
@@ -330,6 +365,41 @@ func validTier(tier int) bool {
 
 func normalizeCategory(category string) string {
 	return strings.ToLower(strings.TrimSpace(category))
+}
+
+func exerciseFromQuestion(question store.Question) exercise {
+	return exercise{
+		ID:         question.ID,
+		SourcePath: question.SourcePath,
+		Topic:      question.Topic,
+		Category:   question.Category,
+		Kind:       question.Kind,
+		Prompt:     question.Prompt,
+		IsFollowUp: question.IsFollowUp,
+		Priority:   question.Priority,
+		Tier:       question.Tier,
+	}
+}
+
+func codingProgress(summary store.ProgressSummary) codingProgressSummary {
+	recent := make([]codingRecentAttempt, 0, len(summary.RecentAttempts))
+	for _, attempt := range summary.RecentAttempts {
+		recent = append(recent, codingRecentAttempt{
+			AttemptID:     attempt.AttemptID,
+			QuestionID:    attempt.QuestionID,
+			Topic:         attempt.Topic,
+			Prompt:        attempt.Prompt,
+			ReviewSummary: attempt.Answer,
+			Score:         attempt.Score,
+			CreatedAt:     attempt.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+	return codingProgressSummary{
+		TotalAttempts:  summary.TotalAttempts,
+		AverageScore:   summary.AverageScore,
+		RecentAttempts: recent,
+		WeakTopics:     summary.WeakTopics,
+	}
 }
 
 func emptySchema() json.RawMessage {

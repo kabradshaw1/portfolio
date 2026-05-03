@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/kabradshaw1/portfolio/go/coding-exercises-mcp-service/internal/content"
@@ -135,6 +136,144 @@ func TestSubmitAnswerAndFeedbackArePersisted(t *testing.T) {
 	}
 	if len(summary.RecentAttempts) != 1 || summary.RecentAttempts[0].Score == nil || *summary.RecentAttempts[0].Score != 2 {
 		t.Fatalf("recent attempt missing score: %#v", summary.RecentAttempts)
+	}
+}
+
+func TestRecordFeedbackIsIdempotentPerAttempt(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	if err := db.UpsertQuestions(ctx, []content.Question{{
+		SourcePath:     "08-coding-exercises.md",
+		Topic:          "Timed Coding Exercises",
+		Category:       "coding",
+		Kind:           "coding_exercise",
+		Prompt:         "Build a worker pool.",
+		ExpectedAnswer: "Use context cancellation and wait groups.",
+		Priority:       10,
+		Tier:           1,
+	}}); err != nil {
+		t.Fatalf("upsert question: %v", err)
+	}
+
+	q, err := db.NextQuestion(ctx, QuestionFilter{Tier: 1, Category: "coding"})
+	if err != nil {
+		t.Fatalf("next question: %v", err)
+	}
+	sessionID, err := db.CreateSession(ctx)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	attempt, err := db.SubmitAnswer(ctx, SubmitAnswerInput{
+		SessionID:  sessionID,
+		QuestionID: q.ID,
+		Answer:     "Reviewed worker_pool.go and worker_pool_test.go.",
+	})
+	if err != nil {
+		t.Fatalf("submit answer: %v", err)
+	}
+
+	if err := db.RecordFeedback(ctx, FeedbackInput{AttemptID: attempt.ID, Score: 1, MissingPoints: "cancellation"}); err != nil {
+		t.Fatalf("first feedback: %v", err)
+	}
+	if err := db.RecordFeedback(ctx, FeedbackInput{AttemptID: attempt.ID, Score: 3, MissingPoints: ""}); err != nil {
+		t.Fatalf("second feedback: %v", err)
+	}
+
+	summary, err := db.ProgressSummary(ctx)
+	if err != nil {
+		t.Fatalf("progress summary: %v", err)
+	}
+	if summary.TotalAttempts != 1 || summary.AverageScore != 3 {
+		t.Fatalf("expected one scored attempt with updated score, got %#v", summary)
+	}
+	if len(summary.RecentAttempts) != 1 || summary.RecentAttempts[0].Score == nil || *summary.RecentAttempts[0].Score != 3 {
+		t.Fatalf("expected one recent attempt with updated score, got %#v", summary.RecentAttempts)
+	}
+}
+
+func TestRecordFeedbackRejectsUnknownAttempt(t *testing.T) {
+	db := newTestDB(t)
+	err := db.RecordFeedback(context.Background(), FeedbackInput{
+		AttemptID: 999,
+		Score:     2,
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for unknown attempt, got %v", err)
+	}
+}
+
+func TestMigrateDeduplicatesLegacyFeedbackBeforeUniqueIndex(t *testing.T) {
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	ctx := context.Background()
+
+	if _, err := sqlDB.ExecContext(ctx, `
+CREATE TABLE questions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	source_path TEXT NOT NULL,
+	topic TEXT NOT NULL,
+	category TEXT NOT NULL DEFAULT '',
+	kind TEXT NOT NULL DEFAULT 'qa',
+	prompt TEXT NOT NULL,
+	expected_answer TEXT NOT NULL DEFAULT '',
+	is_follow_up INTEGER NOT NULL DEFAULT 0,
+	priority INTEGER NOT NULL DEFAULT 0,
+	tier INTEGER NOT NULL DEFAULT 3,
+	active INTEGER NOT NULL DEFAULT 1,
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(source_path, prompt, is_follow_up)
+);
+CREATE TABLE sessions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	ended_at TEXT
+);
+CREATE TABLE answer_attempts (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	session_id INTEGER NOT NULL REFERENCES sessions(id),
+	question_id INTEGER NOT NULL REFERENCES questions(id),
+	answer TEXT NOT NULL,
+	expected_answer_snapshot TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE feedback (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	attempt_id INTEGER NOT NULL REFERENCES answer_attempts(id),
+	score INTEGER NOT NULL CHECK(score >= 0 AND score <= 3),
+	missing_points TEXT NOT NULL DEFAULT '',
+	inaccurate_points TEXT NOT NULL DEFAULT '',
+	suggested_answer TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO questions (id, source_path, topic, category, kind, prompt, expected_answer)
+VALUES (1, '08-coding-exercises.md', 'Timed Coding Exercises', 'coding', 'coding_exercise', 'Build a worker pool.', 'Use context cancellation.');
+INSERT INTO sessions (id) VALUES (1);
+INSERT INTO answer_attempts (id, session_id, question_id, answer, expected_answer_snapshot)
+VALUES (1, 1, 1, 'Reviewed worker_pool.go.', 'Use context cancellation.');
+INSERT INTO feedback (attempt_id, score, missing_points) VALUES (1, 1, 'first');
+INSERT INTO feedback (attempt_id, score, missing_points) VALUES (1, 3, 'latest');
+`); err != nil {
+		t.Fatalf("seed legacy schema: %v", err)
+	}
+
+	db := OpenSQL(sqlDB)
+	if err := db.Migrate(ctx); err != nil {
+		t.Fatalf("migrate legacy duplicate feedback db: %v", err)
+	}
+
+	summary, err := db.ProgressSummary(ctx)
+	if err != nil {
+		t.Fatalf("progress summary: %v", err)
+	}
+	if summary.TotalAttempts != 1 || summary.AverageScore != 3 {
+		t.Fatalf("expected deduped latest score, got %#v", summary)
+	}
+	if len(summary.RecentAttempts) != 1 || summary.RecentAttempts[0].Score == nil || *summary.RecentAttempts[0].Score != 3 {
+		t.Fatalf("expected one recent attempt with latest score, got %#v", summary.RecentAttempts)
 	}
 }
 
