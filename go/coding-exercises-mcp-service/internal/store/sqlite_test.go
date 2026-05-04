@@ -83,6 +83,56 @@ func TestUpsertQuestionsDeactivatesStaleQuestionsFromSameSource(t *testing.T) {
 	}
 }
 
+func TestUpsertQuestionsPersistsCodingRepoAnchorsAndParentLink(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	err := db.UpsertQuestions(ctx, []content.Question{
+		{
+			SourcePath:     "coding.md",
+			Topic:          "Timed Coding Exercises",
+			Category:       "coding",
+			Kind:           "coding_exercise",
+			Prompt:         "Build a retry client.",
+			ExpectedAnswer: "Use bounded retries and context cancellation.",
+			Tier:           1,
+			RepoAnchors:    []content.RepoAnchor{{Path: "go/pkg/resilience", Note: "Contains retry helpers."}},
+		},
+		{
+			SourcePath:     "coding.md",
+			Topic:          "Timed Coding Exercises",
+			Category:       "coding",
+			Kind:           "qa",
+			Prompt:         "Which errors should be retried?",
+			ExpectedAnswer: "Retry transient transport, 429, and 5xx errors when the request is safe.",
+			IsFollowUp:     true,
+			ParentPrompt:   "Build a retry client.",
+			Tier:           2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpsertQuestions returned error: %v", err)
+	}
+
+	base, err := db.NextQuestion(ctx, QuestionFilter{Tier: 1, Category: "coding"})
+	if err != nil {
+		t.Fatalf("NextQuestion returned error: %v", err)
+	}
+	if len(base.RepoAnchors) != 1 || base.RepoAnchors[0].Path != "go/pkg/resilience" {
+		t.Fatalf("unexpected anchors: %#v", base.RepoAnchors)
+	}
+	follow, err := db.NextFollowUp(ctx, base.ID)
+	if err != nil {
+		t.Fatalf("NextFollowUp returned error: %v", err)
+	}
+	if follow.ParentQuestionID == nil || *follow.ParentQuestionID != base.ID {
+		t.Fatalf("missing parent link: %#v", follow)
+	}
+	if len(follow.RepoAnchors) != 1 || follow.RepoAnchors[0].Path != "go/pkg/resilience" {
+		t.Fatalf("expected inherited anchors: %#v", follow.RepoAnchors)
+	}
+}
+
 func TestSubmitAnswerAndFeedbackArePersisted(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
