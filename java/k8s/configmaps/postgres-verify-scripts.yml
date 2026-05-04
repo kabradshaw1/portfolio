@@ -10,7 +10,7 @@ data:
     # smoke-check it, and push per-DB metrics to Pushgateway.
     set -eu
 
-    DBS="${VERIFY_DBS:-authdb productdb orderdb cartdb paymentdb ecommercedb projectordb}"
+    DBS="${VERIFY_DBS:-authdb productdb orderdb cartdb paymentdb projectordb}"
     PUSHGATEWAY="${PUSHGATEWAY_URL:-http://pushgateway.monitoring.svc.cluster.local:9091}"
     DUMPS_DIR="${DUMPS_DIR:-/backups/postgres}"
     DATA_DIR="${PG_DATA_DIR:-/var/lib/postgresql/data}"

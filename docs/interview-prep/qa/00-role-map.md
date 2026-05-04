@@ -65,23 +65,3 @@ Example:
 > handling and compensation matter. I would test this with fake dependencies,
 > timeout cases, and metrics around retry count and latency.
 
-## Three-Day Rehearsal Plan
-
-### Day 1
-
-- Read `01-portfolio-recall-matrix.md`.
-- Practice the P0 answers out loud.
-- Do one Go concurrency coding drill.
-
-### Day 2
-
-- Rehearse REST/API gateway, third-party integration, and distributed systems.
-- Do one middleware or retry-client coding drill.
-- Convert weak answers into flashcards or frontend practice prompts.
-
-### Day 3
-
-- Run 2-3 mock interview loops.
-- Practice the Go map/goroutine performance scenario until the answer is fluent.
-- Do one timed coding exercise with no notes.
-

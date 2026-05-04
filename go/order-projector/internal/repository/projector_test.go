@@ -2,6 +2,7 @@ package repository
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -238,5 +239,29 @@ func TestNewRepository(t *testing.T) {
 	r := New(nil, nil)
 	if r == nil {
 		t.Fatal("New returned nil")
+	}
+}
+
+func TestRepositoryQueriesUseMigrationColumnNames(t *testing.T) {
+	t.Parallel()
+
+	queries := []string{
+		insertTimelineEventSQL,
+		upsertOrderSummarySQL,
+		selectTimelineSQL,
+		selectOrderSummarySQL,
+		listOrderSummariesSQL,
+	}
+	text := strings.Join(queries, "\n")
+
+	for _, column := range []string{"data_json", "items_json"} {
+		if !strings.Contains(text, column) {
+			t.Fatalf("repository SQL does not reference migration column %q", column)
+		}
+	}
+	for _, stale := range []string{"event_version, data, timestamp", "currency, items, created_at"} {
+		if strings.Contains(text, stale) {
+			t.Fatalf("repository SQL still references stale column sequence %q", stale)
+		}
 	}
 }
