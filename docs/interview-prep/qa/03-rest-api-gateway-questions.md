@@ -39,9 +39,13 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I choose status codes by separating syntax, authorization, resource state,
+> and dependency failures. Bad JSON or a missing `Idempotency-Key` is a 400,
+> validation with field errors is a 422, duplicates in flight are 409, and
+> rate limiting is 429 with retry guidance. The failure mode is returning
+> everything as 500 or 200-with-error, because clients cannot make safe retry
+> decisions. In this repo, `go/pkg/apperror` centralizes that envelope so
+> handlers can return precise codes consistently.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -50,9 +54,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I use POST when the server creates a subordinate resource or triggers an
+> operation where the server owns the final identity, and PUT when the client
+> is replacing a known resource at a stable URI. The tradeoff is idempotency:
+> PUT is naturally retryable if the representation is complete, while POST
+> needs an `Idempotency-Key` for safe retries. In this repo, mutating cart and
+> order POST paths use Redis-backed idempotency middleware because
+> checkout-style operations can have side effects.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -61,9 +69,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I prefer additive evolution first, then explicit versioning when the
+> response contract truly breaks. URI versions are easy for clients and
+> gateways to reason about, while header versions keep URLs cleaner but are
+> easier to miss in caches and tooling. The failure mode is changing field
+> meaning under the same contract. In this repo, I would keep REST changes
+> backward-compatible and apply the same discipline to protobuf and event
+> schemas.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -72,9 +84,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I avoid breaking clients by making responses tolerant: add optional fields,
+> keep old fields stable, and never repurpose a code or enum value silently.
+> The production tradeoff is carrying old behavior longer, but that is usually
+> cheaper than forcing synchronized deploys. I would lock that down with
+> handler tests that assert status codes and `go/pkg/apperror` JSON shapes.
+> For generated clients or protobuf contracts, I would add compatibility tests
+> before removing anything.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -97,9 +113,13 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Middleware should not contain route-specific business decisions like cart
+> quantity rules, payment state transitions, or product lookup semantics. Its
+> job is cross-cutting policy: auth, tracing, metrics, CORS, rate limiting,
+> idempotency, and error shaping. The failure mode is a hidden business
+> workflow in the gateway that bypasses service tests. In this repo, route
+> setup composes middleware while handlers and services own cart/order
+> behavior.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -108,9 +128,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I order middleware from outer safety and observability toward route-specific
+> controls: recovery and security headers first, then tracing/logging/metrics,
+> then CORS/auth/rate limiting, then idempotency around mutating handlers. The
+> tradeoff is that early middleware sees more failures and can attach request
+> IDs or spans before later middleware rejects. If the order is wrong, aborted
+> auth requests may miss metrics or panics may bypass structured errors. The
+> cart and order route composition is the anchor I would inspect for this.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -119,9 +143,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Once auth writes a response and aborts the request, downstream handlers must
+> not run and later middleware must not try to write a second JSON body. The
+> failure mode is partial responses, duplicate writes, or side effects after a
+> rejected request. In Gin, that means using `c.Abort()` after attaching a
+> structured `apperror` or writing the response. Tests should assert that the
+> downstream handler counter stays at zero on missing or invalid auth.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -130,9 +157,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I test middleware with a tiny in-memory router and a downstream handler that
+> records whether it ran. Each test should cover pass-through, rejection,
+> malformed inputs, headers, and the final JSON/status shape after
+> `apperror.ErrorHandler` runs. The production tradeoff is catching ordering
+> bugs without needing a full service stack. This repo already uses that style
+> for idempotency, auth, and shared error middleware.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -154,9 +184,13 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I store enough to prove request identity and safely replay the result: key
+> scope, status, response status code, and response body, plus a short
+> processing marker while the first request is still running. The production
+> detail I would add for stricter APIs is a request-body hash to reject key
+> reuse with different parameters. In this repo, cart and order idempotency
+> stores `processing` and `done` entries in Redis under a user-scoped key.
+> That prevents a retry from creating duplicate side effects after a timeout.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -165,9 +199,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The TTL should cover the realistic retry window for clients and
+> infrastructure, not become permanent state. In this repo, the processing
+> marker is short, around 30 seconds, and completed responses live for 24
+> hours. The tradeoff is storage cost versus protection from delayed retries.
+> If the TTL is too short, a mobile client retry after a lost response can
+> repeat the side effect; if it is too long, Redis fills with stale keys.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -176,9 +213,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> If the first request succeeds but the response is lost, the retry should
+> return the cached original response, not run the operation again. That is
+> the main reason to store the completed status code and body, not just a
+> boolean. The failure mode is duplicate checkout, duplicate cart mutation, or
+> duplicate external payment. In this repo, the idempotency middleware replays
+> the cached `done` response for the same user and key.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -187,9 +227,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Reusing the same key with a different body should be rejected as a conflict
+> or bad request, because otherwise the server might replay a response for the
+> wrong operation. The usual implementation is storing a normalized request
+> hash with the idempotency record. The current repo validates UUID keys and
+> scopes them by user, and it caches status/body; for a stricter production
+> API, I would add that body-hash check. The test would send the same key with
+> two different payloads and expect no second side effect.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -211,9 +255,12 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Fixed window is simple and cheap: increment a Redis key and expire it after
+> the window. Token bucket is smoother because it allows bursts while
+> enforcing an average rate. The failure mode with fixed windows is boundary
+> bursts where a client gets two windows back to back. This repo's cart and
+> order rate limiter uses the simple Redis fixed-window pattern, which is fine
+> for portfolio ecommerce endpoints but worth calling out as a tradeoff.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -222,9 +269,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I use per-user limits for authenticated business APIs because they match
+> abuse and fairness better than IP alone. I still keep global or per-IP
+> limits for anonymous routes, login, and dependency protection. The failure
+> mode is one tenant or NATed network starving everyone else. In this repo,
+> the middleware currently keys by client IP, while a stricter authenticated
+> cart API could key by user ID plus route.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -233,9 +283,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> To avoid unbounded growth, rate-limit state needs bounded keys and
+> expirations. Redis keys should have TTLs, and in-memory limiters need
+> eviction or a maximum cardinality policy. The failure mode is accepting
+> attacker-controlled identifiers and keeping a bucket forever. In this repo,
+> the Redis fixed-window limiter expires each key after the window, which
+> bounds growth for normal traffic.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -244,9 +297,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I return 429 with a stable error code and retry metadata, usually
+> `Retry-After` and optionally remaining/reset headers. The body should use
+> the same error envelope as the rest of the API so clients do not need
+> special parsing. The failure mode is just dropping the connection or
+> returning a vague 500, which causes clients to retry harder. This repo's
+> limiter returns `RATE_LIMITED` and sets `Retry-After` from the Redis key
+> TTL.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -267,9 +324,12 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I use 400 when the request cannot be parsed or is structurally invalid, like
+> malformed JSON or a missing required header. I use 422 when the JSON is
+> syntactically valid but violates business validation, like an invalid
+> quantity or field constraint. The tradeoff is client ergonomics: 422 can
+> include field-level errors that forms can render directly. In this repo,
+> `apperror.BadRequest` and `apperror.Validation` make that split explicit.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -278,9 +338,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I expose stable error codes, safe messages, field names, and request IDs; I
+> do not expose stack traces, SQL, provider secrets, or internal topology. The
+> server log can keep the wrapped cause with the request ID. The failure mode
+> is helping attackers or binding clients to internals. In this repo,
+> `apperror.ErrorHandler` logs unknown errors and returns `INTERNAL_ERROR`
+> with a safe message.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -289,9 +352,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Clients should treat validation errors as structured data, not scrape
+> message strings. A good envelope has a stable top-level code plus `fields`
+> entries with field names and messages. The production tradeoff is keeping
+> those field identifiers stable because clients may bind UI behavior to them.
+> In this repo, `go/pkg/apperror` has a dedicated validation response shape
+> with field-level details.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -300,9 +366,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I preserve request IDs by creating or accepting one at the edge, putting it
+> in context, returning it in the response header, and including it in error
+> bodies and logs. The failure mode is losing correlation exactly when a
+> request fails across gateway, service, and database layers. In this repo,
+> logging middleware sets `X-Request-ID`, and `apperror.ErrorHandler` includes
+> the same request ID in the JSON envelope. Tracing then carries the deeper
+> distributed path.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -324,9 +394,12 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Offset pagination is easy for humans and admin screens, but it becomes
+> expensive and unstable as rows are inserted or deleted. Cursor pagination
+> uses the last seen sort value and ID, so it is better for large changing
+> collections. The failure mode is duplicates or skipped rows between pages.
+> In this repo, product listing supports cursor-style behavior through
+> `go/order-service/internal/pagination` and handler response metadata.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -335,9 +408,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Consistent sorting needs a deterministic tie-breaker, usually a unique ID
+> after the primary sort key. Sorting only by `created_at` or price can
+> produce unstable pages when many rows share the same value. The repository
+> should use the same sort fields that the cursor encodes. In this repo,
+> product cursors encode values such as price, name, or created time plus the
+> product ID.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -346,9 +422,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The response metadata should include the page size actually used, the next
+> cursor when more data exists, and sometimes total count if it is cheap and
+> meaningful. I avoid promising expensive totals on hot paths unless the
+> product needs them. The failure mode is clients guessing whether to fetch
+> more or relying on stale counts. In this repo, product responses include
+> `limit` and `nextCursor`, with page/total support where offset-style listing
+> is used.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -357,9 +437,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Created-time pagination is safe only if the order is stable and ties are
+> handled. I use `(created_at, id)` as the cursor boundary, encode it
+> opaquely, and query with the same composite ordering. The failure mode is
+> missing rows created at the same timestamp or duplicating rows when new
+> items arrive. In this repo, the product handler formats created time with
+> `time.RFC3339Nano` and pairs it with the product ID in the cursor.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -380,9 +463,12 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> URI versioning is explicit and easy to route, document, and cache, which is
+> useful for public REST APIs. Header versioning keeps resources conceptually
+> cleaner but can hide behavior in clients, proxies, and logs. The production
+> tradeoff is discoverability versus URL churn. For this repo, I would use URI
+> versions for external ecommerce REST routes and reserve header negotiation
+> for narrow compatibility cases.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -391,9 +477,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I retire old versions with telemetry, published dates, compatibility tests,
+> and a staged removal plan. First I measure usage, then mark deprecated, then
+> stop new clients, then remove after the window. The failure mode is deleting
+> a version that an active mobile or partner client still uses. In this repo,
+> request metrics and route-level tests would be the guardrails before
+> removing an old REST contract.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -402,9 +491,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Event schemas need explicit versions because producers and consumers deploy
+> independently. I prefer additive fields, tolerant consumers, and reserved or
+> never-reused field names for protobuf-style contracts. The failure mode is a
+> consumer crashing or silently misreading an event after a producer deploy.
+> This repo's Kafka and RabbitMQ paths already carry structured messages, so I
+> would version event payloads with the same backward-compatibility mindset as
+> the REST API.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -413,9 +506,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I test backward compatibility with contract fixtures: old request bodies,
+> old response assertions, and generated client or consumer tests where
+> applicable. The goal is proving old clients still parse the new server
+> response. The failure mode is a refactor that changes JSON field names,
+> status codes, or error shapes without noticing. In this repo, handler tests
+> around `apperror` envelopes and product pagination responses are the right
+> place to pin those contracts.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -437,9 +534,12 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> A gateway is a general edge for routing, auth, limits, telemetry, and
+> protocol translation across clients. A BFF is client-specific and may shape
+> responses for a web or mobile experience. The tradeoff is avoiding
+> duplicated logic while still giving clients ergonomic APIs. In this repo,
+> the AI HTTP chat endpoint behaves closer to a BFF for agent workflows, while
+> ecommerce service routes are more conventional gateway-style REST edges.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -448,9 +548,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Gateway failure modes include becoming a single bottleneck, hiding
+> downstream failures, retry amplification, bad auth propagation, and
+> inconsistent error translation. The production risk is that every client
+> path depends on the gateway, so a small bug has broad blast radius. I
+> mitigate that with timeouts, circuit breakers, metrics, and structured
+> errors. In this repo, `go/pkg/resilience` wrappers and OpenTelemetry
+> middleware are the mechanisms I would point to.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -459,9 +563,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I avoid a gateway bottleneck by keeping business logic out of it, setting
+> deadlines, bounding payload sizes, streaming long work, and avoiding
+> unbounded fan-out. Aggregation should be measured and cached only when it is
+> safe. The failure mode is one client request triggering slow serial calls
+> across many services. In this repo, the AI service wraps ecommerce calls
+> with resilience and streams agent progress instead of making the client wait
+> blindly.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -470,9 +578,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I enforce authentication at the gateway or edge, but authorization must also
+> be checked at the service/resource boundary. The gateway can validate the
+> token and forward user context, but the cart or order service still needs to
+> verify ownership. The failure mode is trusting an upstream hop too much and
+> allowing cross-user access through an internal route. In this repo, AI tool
+> clients forward the bearer token to ecommerce services so user-scoped checks
+> stay with the data-owning service.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -494,9 +606,12 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> SSE is best for one-way server-to-browser progress: it is simple HTTP,
+> auto-reconnects, and works well for text events. WebSockets are better for
+> bidirectional, low-latency interaction where the client also streams
+> frequent messages. The tradeoff is operational complexity. In this repo, the
+> AI chat handler uses SSE because agent turns emit progress events like
+> `tool_call`, `tool_result`, and `final` back to the browser.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -505,9 +620,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> After headers are sent, I cannot switch back to a normal JSON error response
+> or change the status code. I need to emit a stream-level `error` event,
+> flush it, and end the stream cleanly. The failure mode is logging an error
+> while the client waits forever or receives malformed data. In this repo, the
+> chat handler explicitly comments that after the SSE boundary, errors go
+> through emitted events rather than `c.Error()`.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -516,9 +634,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Client disconnects show up through the request context being canceled or
+> writes failing. The handler and any downstream tool calls should select on
+> `ctx.Done()` and stop work quickly. The failure mode is continuing an
+> expensive LLM or ecommerce call after the browser tab closed. In this repo,
+> the chat handler passes `c.Request.Context()` into the agent runner and tool
+> clients use context-aware HTTP requests.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -527,9 +648,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Streaming endpoints need longer read or idle policies for the response path,
+> while still keeping bounded total work with context deadlines. A normal
+> write timeout can kill a valid long SSE response if no bytes are written for
+> a while, so the handler should flush heartbeats or progress events. The
+> failure mode is either premature disconnects or unbounded hung streams. In
+> this repo, the SSE handler flushes events and the agent turn should remain
+> capped by context and guardrail limits.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -551,9 +676,13 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Authentication proves who the caller is; authorization decides whether that
+> caller can perform this action on this resource. The production failure mode
+> is validating a JWT and then forgetting to check ownership. In this repo,
+> middleware validates bearer tokens, and user-scoped ecommerce calls forward
+> the JWT so cart and order services can enforce resource access. Tests should
+> cover both missing auth and authenticated access to the wrong user's
+> resource.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -562,9 +691,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> JWTs are stateless and work well across services, but revocation and
+> short-lived claims need careful handling. Sessions are easier to revoke
+> centrally but require a shared store and add a dependency on every request.
+> The tradeoff is operational simplicity versus control. In this repo, JWTs
+> fit the microservice shape because the AI service can forward the bearer
+> token to ecommerce services without sharing session state.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -573,9 +705,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Cross-tenant access is prevented by deriving tenant or user scope from
+> trusted auth context, not from client-submitted path or body fields alone.
+> Every repository query should include that scope where data is user-owned.
+> The failure mode is an IDOR bug: a valid user changes an ID and reads
+> someone else's data. In this repo, cart and order paths should use the
+> authenticated `userId`, and AI ecommerce clients forward the JWT rather than
+> letting the agent invent identity.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -584,9 +720,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Secrets, bearer tokens, cookies, raw payment data, passwords, private
+> prompts, and provider keys should never appear in logs. I also avoid logging
+> full request bodies on auth, checkout, or LLM endpoints because they can
+> contain user or business-sensitive data. The failure mode is turning
+> observability into a data leak. In this repo, structured logs should keep
+> request IDs, status, latency, and stable codes while redacting authorization
+> headers and secrets.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -608,9 +748,13 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Retryable errors are usually transient transport failures, timeouts,
+> connection resets, 408s, 429s when allowed by policy, and 5xx responses from
+> dependencies. I do not retry validation errors, auth failures, or unsafe
+> side effects unless idempotency exists. The failure mode is retry
+> amplification during an outage. In this repo, `go/pkg/resilience` lets
+> clients define `IsRetryable`, and ecommerce/RAG clients wrap calls with
+> bounded retry and circuit breaker behavior.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -619,9 +763,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I treat external rate limits as a dependency contract, not just an error.
+> For 429s, I respect `Retry-After` when it is safe, apply jitter, cap retry
+> budgets, and translate sustained limits into a client-safe 429 or 503. The
+> failure mode is synchronizing retries across replicas and making the
+> provider block you harder. In this repo, the same retry and breaker patterns
+> used by AI tool clients are where I would enforce that policy.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -630,9 +777,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I test behind a fake provider using `httptest.Server` or a small fake
+> client, not the real API in unit tests. The fake should assert request
+> method, path, headers like `Authorization`, timeout behavior, and
+> representative error responses. The production tradeoff is speed and
+> determinism versus occasional contract coverage. In this repo, ecommerce
+> client tests already use fake HTTP servers to verify JWT forwarding and
+> response handling.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -641,9 +792,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I cache stable, non-user-sensitive reads where freshness requirements allow
+> it, such as product list responses without cursor parameters. I avoid
+> caching personalized, authorization-sensitive, or side-effect responses
+> unless the cache key includes the full user and request scope. The failure
+> mode is serving one user's data to another or keeping stale inventory
+> decisions. In this repo, product service caching skips cursor queries
+> because cursor values are unique per request and would waste cache space.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -664,9 +819,12 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Unit tests cover handler logic with fake services and in-memory routers;
+> integration tests cover real middleware, Redis, database, migrations, and
+> repository behavior. The tradeoff is speed versus confidence. I want most
+> edge cases in unit tests and a smaller set of integration tests for wiring
+> and persistence. In this repo, handler tests assert JSON/status behavior,
+> while idempotency integration tests verify Redis-backed replay semantics.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -675,9 +833,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I test idempotency by sending the same mutating request twice with the same
+> valid UUID key and asserting the handler side effect only happens once and
+> the second response matches the first. I also test missing keys, invalid
+> UUIDs, in-flight conflicts, and different keys creating separate work. The
+> failure mode is a retry after a lost response creating duplicate state. This
+> repo has middleware and integration tests around those Redis-backed cases.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -686,9 +847,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I test auth with missing tokens, malformed tokens, expired or invalid
+> signatures, valid tokens, and valid tokens that lack ownership or role
+> permission. The assertion should include both status code and that the
+> downstream handler did not run on rejection. The failure mode is an auth
+> middleware that rejects correctly but still allows side effects. In this
+> repo, cart auth middleware and AI chat JWT tests are the patterns I would
+> follow.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
@@ -697,9 +862,13 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I test streaming with an in-memory server or recorder that can observe
+> headers, event framing, flush behavior, and final/error events. The test
+> should verify `Content-Type: text/event-stream`, expected event names, and
+> behavior when the runner returns an error after streaming starts. The
+> failure mode is passing normal JSON handler tests while the browser receives
+> malformed SSE. In this repo, `go/ai-service/internal/http/chat_test.go`
+> verifies the chat handler streams SSE events.
 
 Repo anchors:
 - `go/cart-service/cmd/server/routes.go` - route composition with recovery,
