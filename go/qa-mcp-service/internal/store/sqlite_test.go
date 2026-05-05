@@ -82,6 +82,79 @@ func TestUpsertQuestionsDeactivatesStaleQuestionsFromSameSource(t *testing.T) {
 	}
 }
 
+func TestUpsertQuestionsPersistsRepoAnchorsAndParentLink(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	err := db.UpsertQuestions(ctx, []content.Question{
+		{
+			SourcePath:     "qa.md",
+			Topic:          "Go",
+			Category:       "golang",
+			Kind:           "qa",
+			Prompt:         "How do maps work under concurrency?",
+			ExpectedAnswer: "Use synchronization.",
+			Tier:           1,
+			RepoAnchors:    []content.RepoAnchor{{Path: "go/pkg/resilience", Note: "Shows shared helpers."}},
+		},
+		{
+			SourcePath:     "qa.md",
+			Topic:          "Go",
+			Category:       "golang",
+			Kind:           "qa",
+			Prompt:         "When is sync.Map appropriate?",
+			ExpectedAnswer: "Read-heavy stable-key maps.",
+			IsFollowUp:     true,
+			ParentPrompt:   "How do maps work under concurrency?",
+			Tier:           2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpsertQuestions returned error: %v", err)
+	}
+
+	base, err := db.NextQuestion(ctx, QuestionFilter{Tier: 1, Category: "golang"})
+	if err != nil {
+		t.Fatalf("NextQuestion returned error: %v", err)
+	}
+	if len(base.RepoAnchors) != 1 || base.RepoAnchors[0].Path != "go/pkg/resilience" {
+		t.Fatalf("unexpected base anchors: %#v", base.RepoAnchors)
+	}
+
+	follow, err := db.NextFollowUp(ctx, base.ID)
+	if err != nil {
+		t.Fatalf("NextFollowUp returned error: %v", err)
+	}
+	if follow.ParentQuestionID == nil || *follow.ParentQuestionID != base.ID {
+		t.Fatalf("follow-up missing parent id: %#v", follow)
+	}
+	if follow.ParentPrompt != base.Prompt {
+		t.Fatalf("unexpected parent prompt: %q", follow.ParentPrompt)
+	}
+	if len(follow.RepoAnchors) != 1 || follow.RepoAnchors[0].Path != "go/pkg/resilience" {
+		t.Fatalf("expected inherited anchors: %#v", follow.RepoAnchors)
+	}
+}
+
+func TestNextQuestionDoesNotReturnStandaloneFollowUps(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	if err := db.UpsertQuestions(ctx, []content.Question{
+		{SourcePath: "qa.md", Topic: "Go", Category: "golang", Kind: "qa", Prompt: "Base?", ExpectedAnswer: "Base.", Tier: 2},
+		{SourcePath: "qa.md", Topic: "Go", Category: "golang", Kind: "qa", Prompt: "Follow?", ExpectedAnswer: "Follow.", IsFollowUp: true, ParentPrompt: "Base?", Tier: 2},
+	}); err != nil {
+		t.Fatalf("UpsertQuestions returned error: %v", err)
+	}
+
+	q, err := db.NextQuestion(ctx, QuestionFilter{Tier: 2, Category: "golang"})
+	if err != nil {
+		t.Fatalf("NextQuestion returned error: %v", err)
+	}
+	if q.IsFollowUp {
+		t.Fatalf("NextQuestion returned standalone follow-up: %#v", q)
+	}
+}
+
 func TestSubmitAnswerAndFeedbackArePersisted(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()

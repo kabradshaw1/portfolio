@@ -27,16 +27,24 @@ type Topic struct {
 }
 
 type Question struct {
-	ID             int64  `json:"id"`
-	SourcePath     string `json:"source_path"`
-	Topic          string `json:"topic"`
-	Category       string `json:"category"`
-	Kind           string `json:"kind"`
-	Prompt         string `json:"prompt"`
-	ExpectedAnswer string `json:"expected_answer"`
-	IsFollowUp     bool   `json:"is_follow_up"`
-	Priority       int    `json:"priority"`
-	Tier           int    `json:"tier"`
+	ID               int64        `json:"id"`
+	SourcePath       string       `json:"source_path"`
+	Topic            string       `json:"topic"`
+	Category         string       `json:"category"`
+	Kind             string       `json:"kind"`
+	Prompt           string       `json:"prompt"`
+	ExpectedAnswer   string       `json:"expected_answer"`
+	ParentQuestionID *int64       `json:"parent_question_id,omitempty"`
+	ParentPrompt     string       `json:"parent_prompt,omitempty"`
+	RepoAnchors      []RepoAnchor `json:"repo_anchors,omitempty"`
+	IsFollowUp       bool         `json:"is_follow_up"`
+	Priority         int          `json:"priority"`
+	Tier             int          `json:"tier"`
+}
+
+type RepoAnchor struct {
+	Path string `json:"path"`
+	Note string `json:"note"`
 }
 
 type QuestionFilter struct {
@@ -119,6 +127,8 @@ CREATE TABLE IF NOT EXISTS questions (
 	kind TEXT NOT NULL DEFAULT 'qa',
 	prompt TEXT NOT NULL,
 	expected_answer TEXT NOT NULL DEFAULT '',
+	parent_question_id INTEGER REFERENCES questions(id),
+	parent_prompt TEXT NOT NULL DEFAULT '',
 	is_follow_up INTEGER NOT NULL DEFAULT 0,
 	priority INTEGER NOT NULL DEFAULT 0,
 	tier INTEGER NOT NULL DEFAULT 3,
@@ -126,6 +136,15 @@ CREATE TABLE IF NOT EXISTS questions (
 	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	UNIQUE(source_path, prompt, is_follow_up)
+);
+
+CREATE TABLE IF NOT EXISTS question_repo_anchors (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+	path TEXT NOT NULL,
+	note TEXT NOT NULL DEFAULT '',
+	position INTEGER NOT NULL DEFAULT 0,
+	UNIQUE(question_id, path, note)
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -163,6 +182,12 @@ CREATE TABLE IF NOT EXISTS feedback (
 		return err
 	}
 	if err := d.ensureColumn(ctx, "questions", "kind", "TEXT NOT NULL DEFAULT 'qa'"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn(ctx, "questions", "parent_question_id", "INTEGER"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn(ctx, "questions", "parent_prompt", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	return nil
@@ -213,13 +238,16 @@ UPDATE questions SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE source_pat
 		}
 	}
 
+	anchorsByQuestion := baseAnchorsByQuestion(questions)
+
 	stmt, err := tx.PrepareContext(ctx, `
-INSERT INTO questions (source_path, topic, category, kind, prompt, expected_answer, is_follow_up, priority, tier, active, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+INSERT INTO questions (source_path, topic, category, kind, prompt, expected_answer, parent_prompt, is_follow_up, priority, tier, active, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
 ON CONFLICT(source_path, prompt, is_follow_up) DO UPDATE SET
 	topic = excluded.topic,
 	category = excluded.category,
 	kind = excluded.kind,
+	parent_prompt = excluded.parent_prompt,
 	expected_answer = CASE
 		WHEN excluded.expected_answer != '' THEN excluded.expected_answer
 		ELSE questions.expected_answer
@@ -250,12 +278,92 @@ ON CONFLICT(source_path, prompt, is_follow_up) DO UPDATE SET
 		if kind == "" {
 			kind = "qa"
 		}
-		if _, err := stmt.ExecContext(ctx, q.SourcePath, q.Topic, category, kind, q.Prompt, q.ExpectedAnswer, boolInt(q.IsFollowUp), q.Priority, tier); err != nil {
+		if _, err := stmt.ExecContext(ctx, q.SourcePath, q.Topic, category, kind, q.Prompt, q.ExpectedAnswer, q.ParentPrompt, boolInt(q.IsFollowUp), q.Priority, tier); err != nil {
 			return fmt.Errorf("upsert question %q: %w", q.Prompt, err)
 		}
+		questionID, err := questionID(ctx, tx, q.SourcePath, q.Prompt, q.IsFollowUp)
+		if err != nil {
+			return err
+		}
+		anchors := q.RepoAnchors
+		if q.IsFollowUp && len(anchors) == 0 && q.ParentPrompt != "" {
+			anchors = anchorsByQuestion[questionKey{sourcePath: q.SourcePath, prompt: q.ParentPrompt}]
+		}
+		if err := replaceAnchors(ctx, tx, questionID, anchors); err != nil {
+			return fmt.Errorf("replace anchors for %q: %w", q.Prompt, err)
+		}
+	}
+	if err := resolveParentQuestionIDs(ctx, tx, sourcePaths); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit question import: %w", err)
+	}
+	return nil
+}
+
+type questionKey struct {
+	sourcePath string
+	prompt     string
+}
+
+func baseAnchorsByQuestion(questions []content.Question) map[questionKey][]content.RepoAnchor {
+	out := make(map[questionKey][]content.RepoAnchor)
+	for _, q := range questions {
+		if q.IsFollowUp || len(q.RepoAnchors) == 0 {
+			continue
+		}
+		out[questionKey{sourcePath: q.SourcePath, prompt: q.Prompt}] = q.RepoAnchors
+	}
+	return out
+}
+
+func questionID(ctx context.Context, tx *sql.Tx, sourcePath, prompt string, isFollowUp bool) (int64, error) {
+	var id int64
+	if err := tx.QueryRowContext(ctx, `
+SELECT id FROM questions WHERE source_path = ? AND prompt = ? AND is_follow_up = ?;
+`, sourcePath, prompt, boolInt(isFollowUp)).Scan(&id); err != nil {
+		return 0, fmt.Errorf("load upserted question id for %q: %w", prompt, err)
+	}
+	return id, nil
+}
+
+func replaceAnchors(ctx context.Context, tx *sql.Tx, questionID int64, anchors []content.RepoAnchor) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM question_repo_anchors WHERE question_id = ?;`, questionID); err != nil {
+		return err
+	}
+	for i, anchor := range anchors {
+		if anchor.Path == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO question_repo_anchors (question_id, path, note, position)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(question_id, path, note) DO UPDATE SET position = excluded.position;
+`, questionID, anchor.Path, anchor.Note, i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func resolveParentQuestionIDs(ctx context.Context, tx *sql.Tx, sourcePaths []string) error {
+	for _, sourcePath := range sourcePaths {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE questions
+SET parent_question_id = (
+	SELECT parent.id
+	FROM questions parent
+	WHERE parent.source_path = questions.source_path
+		AND parent.prompt = questions.parent_prompt
+		AND parent.is_follow_up = 0
+		AND parent.active = 1
+	LIMIT 1
+)
+WHERE source_path = ? AND is_follow_up = 1 AND active = 1;
+`, sourcePath); err != nil {
+			return fmt.Errorf("resolve parent questions for %s: %w", sourcePath, err)
+		}
 	}
 	return nil
 }
@@ -308,11 +416,12 @@ ORDER BY q.topic;
 
 func (d *DB) NextQuestion(ctx context.Context, filter QuestionFilter) (Question, error) {
 	query := `
-SELECT q.id, q.source_path, q.topic, q.category, q.kind, q.prompt, q.expected_answer, q.is_follow_up, q.priority, q.tier
+SELECT q.id, q.source_path, q.topic, q.category, q.kind, q.prompt, q.expected_answer,
+	q.parent_question_id, q.parent_prompt, q.is_follow_up, q.priority, q.tier
 FROM questions q
 LEFT JOIN answer_attempts aa ON aa.question_id = q.id
 LEFT JOIN feedback f ON f.attempt_id = aa.id
-WHERE q.active = 1`
+WHERE q.active = 1 AND q.is_follow_up = 0`
 	var args []any
 	if filter.Tier > 0 {
 		query += ` AND q.tier = ?`
@@ -336,14 +445,87 @@ LIMIT 1;
 	row := d.db.QueryRowContext(ctx, query, args...)
 	var q Question
 	var followUp int
-	if err := row.Scan(&q.ID, &q.SourcePath, &q.Topic, &q.Category, &q.Kind, &q.Prompt, &q.ExpectedAnswer, &followUp, &q.Priority, &q.Tier); err != nil {
+	var parentQuestionID sql.NullInt64
+	if err := row.Scan(&q.ID, &q.SourcePath, &q.Topic, &q.Category, &q.Kind, &q.Prompt, &q.ExpectedAnswer, &parentQuestionID, &q.ParentPrompt, &followUp, &q.Priority, &q.Tier); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Question{}, ErrNotFound
 		}
 		return Question{}, fmt.Errorf("next question: %w", err)
 	}
+	if parentQuestionID.Valid {
+		q.ParentQuestionID = &parentQuestionID.Int64
+	}
 	q.IsFollowUp = followUp == 1
+	anchors, err := d.loadAnchors(ctx, q.ID)
+	if err != nil {
+		return Question{}, err
+	}
+	q.RepoAnchors = anchors
 	return q, nil
+}
+
+func (d *DB) NextFollowUp(ctx context.Context, parentQuestionID int64) (Question, error) {
+	row := d.db.QueryRowContext(ctx, `
+SELECT q.id, q.source_path, q.topic, q.category, q.kind, q.prompt, q.expected_answer,
+	q.parent_question_id, q.parent_prompt, q.is_follow_up, q.priority, q.tier
+FROM questions q
+LEFT JOIN answer_attempts aa ON aa.question_id = q.id
+LEFT JOIN feedback f ON f.attempt_id = aa.id
+WHERE q.active = 1 AND q.is_follow_up = 1 AND q.parent_question_id = ?
+GROUP BY q.id
+ORDER BY
+	CASE WHEN COUNT(aa.id) = 0 THEN 0 ELSE 1 END,
+	COALESCE(MIN(f.score), 4) ASC,
+	MAX(aa.created_at) ASC,
+	q.id ASC
+LIMIT 1;
+`, parentQuestionID)
+
+	var q Question
+	var followUp int
+	var parentID sql.NullInt64
+	if err := row.Scan(&q.ID, &q.SourcePath, &q.Topic, &q.Category, &q.Kind, &q.Prompt, &q.ExpectedAnswer, &parentID, &q.ParentPrompt, &followUp, &q.Priority, &q.Tier); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Question{}, ErrNotFound
+		}
+		return Question{}, fmt.Errorf("next follow-up: %w", err)
+	}
+	if parentID.Valid {
+		q.ParentQuestionID = &parentID.Int64
+	}
+	q.IsFollowUp = followUp == 1
+	anchors, err := d.loadAnchors(ctx, q.ID)
+	if err != nil {
+		return Question{}, err
+	}
+	q.RepoAnchors = anchors
+	return q, nil
+}
+
+func (d *DB) loadAnchors(ctx context.Context, questionID int64) ([]RepoAnchor, error) {
+	rows, err := d.db.QueryContext(ctx, `
+SELECT path, note
+FROM question_repo_anchors
+WHERE question_id = ?
+ORDER BY position ASC, id ASC;
+`, questionID)
+	if err != nil {
+		return nil, fmt.Errorf("load question anchors: %w", err)
+	}
+	defer rows.Close()
+
+	var anchors []RepoAnchor
+	for rows.Next() {
+		var anchor RepoAnchor
+		if err := rows.Scan(&anchor.Path, &anchor.Note); err != nil {
+			return nil, fmt.Errorf("scan question anchor: %w", err)
+		}
+		anchors = append(anchors, anchor)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("load question anchors: %w", err)
+	}
+	return anchors, nil
 }
 
 func (d *DB) SubmitAnswer(ctx context.Context, in SubmitAnswerInput) (AnswerAttempt, error) {

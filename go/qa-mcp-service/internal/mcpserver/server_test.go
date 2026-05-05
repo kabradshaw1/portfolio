@@ -15,6 +15,7 @@ import (
 type fakeQA struct {
 	submittedQuestionID int64
 	submittedAnswer     string
+	submitAndNextInput  qa.SubmitAndNextInput
 	feedback            qa.FeedbackInput
 	nextFilter          store.QuestionFilter
 	nextQuestionCalls   int
@@ -38,6 +39,22 @@ func (f *fakeQA) SubmitAnswer(_ context.Context, questionID int64, answer string
 	f.submittedQuestionID = questionID
 	f.submittedAnswer = answer
 	return qa.AnswerReview{AttemptID: 9, QuestionID: questionID, Answer: answer, ExpectedAnswer: "Use synchronization."}, nil
+}
+
+func (f *fakeQA) SubmitAnswerAndPrepareNext(_ context.Context, in qa.SubmitAndNextInput) (qa.SubmitAndNextResult, error) {
+	f.submitAndNextInput = in
+	f.submittedQuestionID = in.QuestionID
+	f.submittedAnswer = in.Answer
+	f.nextFilter = store.QuestionFilter{Tier: in.Tier, Category: in.Category}
+	return qa.SubmitAndNextResult{
+		Review: qa.AnswerReview{AttemptID: 9, QuestionID: in.QuestionID, Answer: in.Answer, ExpectedAnswer: "Use synchronization."},
+		NextQuestion: store.Question{
+			ID:          4,
+			Prompt:      "When is sync.Map appropriate?",
+			IsFollowUp:  true,
+			RepoAnchors: []store.RepoAnchor{{Path: "go/pkg/resilience", Note: "Shows helpers."}},
+		},
+	}, nil
 }
 
 func (f *fakeQA) RecordFeedback(_ context.Context, input qa.FeedbackInput) error {
@@ -96,10 +113,11 @@ func TestSubmitAnswerAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWithNextQ
 	fake := &fakeQA{}
 	handler := submitAnswerAndPrepareNextHandler(fake)
 	result, err := handler(context.Background(), callReq(map[string]any{
-		"question_id": float64(2),
-		"answer":      "Use channels.",
-		"tier":        float64(1),
-		"category":    "golang",
+		"question_id":   float64(2),
+		"answer":        "Use channels.",
+		"tier":          float64(1),
+		"category":      "golang",
+		"current_score": float64(3),
 		"previous_feedback": map[string]any{
 			"attempt_id":        float64(8),
 			"score":             float64(1),
@@ -120,8 +138,11 @@ func TestSubmitAnswerAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWithNextQ
 	if fake.submittedQuestionID != 2 || fake.submittedAnswer != "Use channels." {
 		t.Fatalf("unexpected submit args: id=%d answer=%q", fake.submittedQuestionID, fake.submittedAnswer)
 	}
-	if fake.nextQuestionCalls != 1 {
-		t.Fatalf("expected next question to be loaded once, got %d", fake.nextQuestionCalls)
+	if fake.nextQuestionCalls != 0 {
+		t.Fatalf("expected combined submit-and-next service call, got %d next question calls", fake.nextQuestionCalls)
+	}
+	if fake.submitAndNextInput.CurrentScore != 3 {
+		t.Fatalf("expected current score to be passed, got %#v", fake.submitAndNextInput)
 	}
 	if fake.nextFilter.Tier != 1 {
 		t.Fatalf("expected tier filter to be passed, got %#v", fake.nextFilter)
@@ -135,8 +156,11 @@ func TestSubmitAnswerAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWithNextQ
 	if payload.Review.AttemptID != 9 || payload.Review.ExpectedAnswer == "" {
 		t.Fatalf("unexpected review payload: %#v", payload.Review)
 	}
-	if payload.NextQuestion.ID != 3 {
+	if payload.NextQuestion.ID != 4 {
 		t.Fatalf("unexpected next question: %#v", payload.NextQuestion)
+	}
+	if len(payload.NextQuestion.RepoAnchors) != 1 || payload.NextQuestion.RepoAnchors[0].Path != "go/pkg/resilience" {
+		t.Fatalf("unexpected repo anchors: %#v", payload.NextQuestion.RepoAnchors)
 	}
 	if payload.Tier != 1 {
 		t.Fatalf("expected turn payload tier, got %#v", payload)

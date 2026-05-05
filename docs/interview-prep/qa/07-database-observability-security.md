@@ -40,10 +40,49 @@ Fast answer:
 
 Follow-ups:
 
-- How do you choose primary keys?
-- What belongs in a unique constraint?
-- When do you denormalize?
-- How do you represent workflow state?
+#### Follow-up: How do you choose primary keys?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: What belongs in a unique constraint?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: When do you denormalize?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do you represent workflow state?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
 
 ### 2. How do you optimize a slow SQL query?
 
@@ -57,10 +96,49 @@ Fast answer:
 
 Follow-ups:
 
-- What does `EXPLAIN ANALYZE` show?
-- How do you know an index is unused?
-- When can an index hurt writes?
-- How do you optimize `ILIKE` search?
+#### Follow-up: What does `EXPLAIN ANALYZE` show?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do you know an index is unused?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: When can an index hurt writes?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do you optimize `ILIKE` search?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
 
 ### 3. How do you handle migrations safely?
 
@@ -75,10 +153,49 @@ Fast answer:
 
 Follow-ups:
 
-- Why can `CREATE INDEX` be risky?
-- How do you roll back a bad migration?
-- What is an expand-contract migration?
-- Why do migration jobs use a direct database URL?
+#### Follow-up: Why can `CREATE INDEX` be risky?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do you roll back a bad migration?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: What is an expand-contract migration?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: Why do migration jobs use a direct database URL?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
 
 ### 4. How do pgx pools and PgBouncer fit together?
 
@@ -93,10 +210,49 @@ Fast answer:
 
 Follow-ups:
 
-- How do you size a pool?
-- What happens when the pool is exhausted?
-- Transaction pooling versus session pooling?
-- Why set `application_name`?
+#### Follow-up: How do you size a pool?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: What happens when the pool is exhausted?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: Transaction pooling versus session pooling?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: Why set `application_name`?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
 
 ### 5. What database errors are retryable?
 
@@ -111,10 +267,49 @@ Fast answer:
 
 Follow-ups:
 
-- Would you retry serialization failures?
-- How do retries interact with transactions?
-- How do you avoid retry storms?
-- What metrics show retry pressure?
+#### Follow-up: Would you retry serialization failures?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do retries interact with transactions?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do you avoid retry storms?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: What metrics show retry pressure?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
 
 ### 6. How do you secure database access?
 
@@ -129,10 +324,49 @@ Fast answer:
 
 Follow-ups:
 
-- How do you prevent SQL injection?
-- What should never be logged?
-- App role versus migration role?
-- How do you rotate database credentials?
+#### Follow-up: How do you prevent SQL injection?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: What should never be logged?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: App role versus migration role?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do you rotate database credentials?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
 
 ### 7. What belongs in a health check?
 
@@ -146,10 +380,49 @@ Fast answer:
 
 Follow-ups:
 
-- When should readiness fail?
-- Should liveness check the database?
-- How do probes affect rolling deploys?
-- How do you avoid health-check thundering herds?
+#### Follow-up: When should readiness fail?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: Should liveness check the database?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do probes affect rolling deploys?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do you avoid health-check thundering herds?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
 
 ### 8. How do structured errors help security and operations?
 
@@ -163,10 +436,49 @@ Fast answer:
 
 Follow-ups:
 
-- What should a 422 response include?
-- How do you preserve request IDs?
-- What details are safe for clients?
-- How do you test error middleware?
+#### Follow-up: What should a 422 response include?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do you preserve request IDs?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: What details are safe for clients?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do you test error middleware?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
 
 ### 9. How do traces, logs, and metrics work together?
 
@@ -180,10 +492,49 @@ Fast answer:
 
 Follow-ups:
 
-- What would you put in a span?
-- What should be a metric versus a log?
-- How do you trace async workflows?
-- What if traces are sampled out?
+#### Follow-up: What would you put in a span?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: What should be a metric versus a log?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How do you trace async workflows?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: What if traces are sampled out?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
 
 ### 10. How do you design backups and WAL recovery?
 
@@ -197,10 +548,49 @@ Fast answer:
 
 Follow-ups:
 
-- RPO versus RTO?
-- What is point-in-time recovery?
-- How often should restore be tested?
-- Who can access backups?
+#### Follow-up: RPO versus RTO?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: What is point-in-time recovery?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: How often should restore be tested?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
+
+#### Follow-up: Who can access backups?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - structured error envelope, validation errors, safe 500
 
 ## Scenario Drills
 
@@ -231,47 +621,3 @@ Answer outline:
 > backfill or clean invalid rows, validate the constraint later, and make sure
 > the app can run during every step. I would also include a rollback plan and run
 > migration preflight before commit.
-
-## Coding Exercises
-
-### Exercise 1: Safe repository method
-
-Prompt:
-
-> Write a repository method that fetches a row by ID using context, parameterized
-> SQL, maps no rows to a typed not-found error, and wraps unexpected database
-> errors safely.
-
-What to say while coding:
-
-- Always pass `context.Context`.
-- Use `$1` parameters, never string formatting.
-- Treat `pgx.ErrNoRows` as not found.
-- Return safe app errors at the boundary.
-
-### Exercise 2: Health handler
-
-Prompt:
-
-> Implement an HTTP health handler that pings Postgres and Redis with a short
-> timeout and returns a structured checks object.
-
-What to say while coding:
-
-- Use a child context with timeout.
-- Report each dependency separately.
-- Return 503 if a critical dependency fails.
-- Do not leak credentials or DSNs.
-
-### Exercise 3: Query optimization explanation
-
-Prompt:
-
-> Given a slow `WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50` query,
-> explain and write the index you would add.
-
-Fast answer:
-
-> I would use a composite index on `(user_id, created_at DESC)` because the
-> filter narrows by user and the order can be satisfied from the same index.
-> Then I would confirm with `EXPLAIN ANALYZE` and watch write overhead.

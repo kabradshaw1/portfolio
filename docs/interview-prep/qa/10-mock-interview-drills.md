@@ -22,10 +22,49 @@ Prompt:
 
 Follow-ups:
 
-- Why split those services?
-- Which part is most production-like?
-- What would you change if traffic increased 10x?
-- How did you test the service boundaries?
+#### Follow-up: Why split those services?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: Which part is most production-like?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What would you change if traffic increased 10x?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How did you test the service boundaries?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 ## Mock 2: Heavy-Traffic REST API
 
@@ -45,10 +84,49 @@ Prompt:
 
 Follow-ups:
 
-- How do you make POST idempotent?
-- What metrics would you monitor?
-- How do you handle database pool exhaustion?
-- How do you version the API?
+#### Follow-up: How do you make POST idempotent?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What metrics would you monitor?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you handle database pool exhaustion?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you version the API?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 ## Mock 3: 10,000 Goroutines Accessing A Map
 
@@ -67,10 +145,49 @@ Prompt:
 
 Follow-ups:
 
-- Mutex map versus `sync.Map`?
-- How would sharding work?
-- How do you prevent goroutine leaks?
-- How would you design producer/consumer backpressure?
+#### Follow-up: Mutex map versus `sync.Map`?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How would sharding work?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you prevent goroutine leaks?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How would you design producer/consumer backpressure?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 ## Mock 4: Distributed Checkout
 
@@ -90,10 +207,49 @@ Prompt:
 
 Follow-ups:
 
-- What if payment succeeds but order update fails?
-- How do you handle duplicate messages?
-- Where is saga state stored?
-- What alerts catch stuck sagas?
+#### Follow-up: What if payment succeeds but order update fails?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you handle duplicate messages?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: Where is saga state stored?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What alerts catch stuck sagas?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 ## Mock 5: AI Agent Gateway
 
@@ -113,10 +269,49 @@ Prompt:
 
 Follow-ups:
 
-- How do you stop runaway tool loops?
-- What happens when a tool fails?
-- How do you evaluate the agent?
-- What guardrails are in the gateway?
+#### Follow-up: How do you stop runaway tool loops?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What happens when a tool fails?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you evaluate the agent?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What guardrails are in the gateway?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 ## Mock 6: SQL Optimization
 
@@ -135,10 +330,49 @@ Prompt:
 
 Follow-ups:
 
-- When can an index hurt?
-- How do you optimize pagination?
-- How do you detect pool exhaustion?
-- What is a safe migration path for a new index?
+#### Follow-up: When can an index hurt?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you optimize pagination?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you detect pool exhaustion?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What is a safe migration path for a new index?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 ## Mock 7: Difficult Bug
 
@@ -158,10 +392,49 @@ Prompt:
 
 Follow-ups:
 
-- How did you find the root cause?
-- What did you change in tests?
-- What did you change in monitoring?
-- What would you do differently now?
+#### Follow-up: How did you find the root cause?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What did you change in tests?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What did you change in monitoring?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What would you do differently now?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 ## Mock 8: Remote Independent Work
 
@@ -181,10 +454,49 @@ Prompt:
 
 Follow-ups:
 
-- How do you handle vague requirements?
-- How often do you communicate progress?
-- How do you ask for help?
-- How do you avoid overengineering?
+#### Follow-up: How do you handle vague requirements?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How often do you communicate progress?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you ask for help?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you avoid overengineering?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 ## Mock 9: Technical Tradeoff Communication
 
@@ -204,10 +516,49 @@ Prompt:
 
 Follow-ups:
 
-- How do you know the tradeoff is acceptable?
-- What risks would you call out?
-- How do you explain eventual consistency?
-- When would you choose the simpler option?
+#### Follow-up: How do you know the tradeoff is acceptable?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What risks would you call out?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you explain eventual consistency?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: When would you choose the simpler option?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 ## Mock 10: Go GC And Arrays
 
@@ -226,7 +577,46 @@ Prompt:
 
 Follow-ups:
 
-- Array versus slice?
-- How do you detect memory retention?
-- What does escape analysis tell you?
-- How do you reduce allocations?
+#### Follow-up: Array versus slice?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you detect memory retention?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What does escape analysis tell you?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you reduce allocations?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.

@@ -16,6 +16,11 @@ var (
 	scenarioHeading = regexp.MustCompile(`^#+\s+Scenario(?:\s+\d+)?:\s+(.+)$`)
 )
 
+type RepoAnchor struct {
+	Path string
+	Note string
+}
+
 // Question is one imported QA prompt from the interview-prep material.
 type Question struct {
 	SourcePath     string
@@ -24,6 +29,8 @@ type Question struct {
 	Kind           string
 	Prompt         string
 	ExpectedAnswer string
+	ParentPrompt   string
+	RepoAnchors    []RepoAnchor
 	IsFollowUp     bool
 	Priority       int
 	Tier           int
@@ -38,7 +45,8 @@ func ParseDir(root string) ([]Question, error) {
 
 	var paths []string
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" || entry.Name() == "08-coding-exercises.md" {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" ||
+			entry.Name() == "00-role-map.md" || entry.Name() == "08-coding-exercises.md" {
 			continue
 		}
 		paths = append(paths, filepath.Join(root, entry.Name()))
@@ -67,9 +75,12 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 	var questions []Question
 	var topic string
 	var current *Question
+	var lastBasePrompt string
+	var lastBaseAnchors []RepoAnchor
 	var promptLines []string
 	var answerLines []string
 	mode := ""
+	skipCodingExercises := false
 
 	flush := func() {
 		if current == nil {
@@ -81,7 +92,14 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 		}
 		current.ExpectedAnswer = cleanAnswer(answerLines)
 		if current.Prompt != "" {
+			if current.IsFollowUp && len(current.RepoAnchors) == 0 {
+				current.RepoAnchors = cloneAnchors(lastBaseAnchors)
+			}
 			questions = append(questions, *current)
+			if !current.IsFollowUp {
+				lastBasePrompt = current.Prompt
+				lastBaseAnchors = cloneAnchors(current.RepoAnchors)
+			}
 		}
 		current = nil
 		promptLines = nil
@@ -91,8 +109,37 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 
 	for _, raw := range lines {
 		line := strings.TrimSpace(raw)
+		if line == "## Coding Exercises" {
+			flush()
+			skipCodingExercises = true
+			continue
+		}
+		if skipCodingExercises {
+			if strings.HasPrefix(line, "## ") {
+				skipCodingExercises = false
+			} else {
+				continue
+			}
+		}
+
 		if strings.HasPrefix(line, "# ") {
 			topic = strings.TrimSpace(strings.TrimPrefix(line, "# "))
+			continue
+		}
+
+		if prompt, ok := followUpHeading(line); ok {
+			flush()
+			current = &Question{
+				SourcePath:   path,
+				Topic:        topic,
+				Category:     categoryForPath(path),
+				Kind:         kindForQuestion(path, true),
+				Prompt:       prompt,
+				ParentPrompt: lastBasePrompt,
+				IsFollowUp:   true,
+				Priority:     priorityForPath(path),
+				Tier:         tierForQuestion(path, prompt, true),
+			}
 			continue
 		}
 
@@ -125,20 +172,28 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 		case line == "Follow-ups:":
 			flush()
 			mode = "followups"
+		case line == "Repo anchors:":
+			mode = "anchors"
+		case mode == "anchors" && current != nil && strings.HasPrefix(line, "- "):
+			if anchor, ok := cleanAnchorLine(line); ok {
+				current.RepoAnchors = append(current.RepoAnchors, anchor)
+			}
 		case mode == "answer" && current != nil:
 			answerLines = append(answerLines, raw)
 		case mode == "followups" && strings.HasPrefix(line, "- "):
 			prompt := strings.TrimSpace(strings.TrimPrefix(line, "- "))
 			if prompt != "" {
 				questions = append(questions, Question{
-					SourcePath: path,
-					Topic:      topic,
-					Category:   categoryForPath(path),
-					Kind:       kindForQuestion(path, true),
-					Prompt:     prompt,
-					IsFollowUp: true,
-					Priority:   priorityForPath(path),
-					Tier:       tierForQuestion(path, prompt, true),
+					SourcePath:   path,
+					Topic:        topic,
+					Category:     categoryForPath(path),
+					Kind:         kindForQuestion(path, true),
+					Prompt:       prompt,
+					ParentPrompt: lastBasePrompt,
+					RepoAnchors:  cloneAnchors(lastBaseAnchors),
+					IsFollowUp:   true,
+					Priority:     priorityForPath(path),
+					Tier:         tierForQuestion(path, prompt, true),
 				})
 			}
 		}
@@ -146,6 +201,34 @@ func ParseFile(path string, data []byte) ([]Question, error) {
 	flush()
 
 	return questions, nil
+}
+
+func cleanAnchorLine(line string) (RepoAnchor, bool) {
+	line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "- "))
+	if !strings.HasPrefix(line, "`") {
+		return RepoAnchor{}, false
+	}
+	line = strings.TrimPrefix(line, "`")
+	path, rest, ok := strings.Cut(line, "`")
+	if !ok {
+		return RepoAnchor{}, false
+	}
+	path = strings.TrimSpace(path)
+	rest = strings.TrimSpace(rest)
+	rest = strings.TrimSpace(strings.TrimPrefix(rest, "-"))
+	if path == "" {
+		return RepoAnchor{}, false
+	}
+	return RepoAnchor{Path: path, Note: rest}, true
+}
+
+func cloneAnchors(in []RepoAnchor) []RepoAnchor {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]RepoAnchor, len(in))
+	copy(out, in)
+	return out
 }
 
 func tierForQuestion(path, prompt string, followUp bool) int {
@@ -262,6 +345,15 @@ func questionHeading(line string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func followUpHeading(line string) (string, bool) {
+	const prefix = "#### Follow-up:"
+	if !strings.HasPrefix(line, prefix) {
+		return "", false
+	}
+	prompt := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	return prompt, prompt != ""
 }
 
 func looksLikePrompt(prompt string) bool {

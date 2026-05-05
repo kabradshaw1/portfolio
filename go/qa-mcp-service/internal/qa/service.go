@@ -2,6 +2,7 @@ package qa
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/kabradshaw1/portfolio/go/qa-mcp-service/internal/content"
@@ -13,6 +14,7 @@ type Store interface {
 	CreateSession(context.Context) (int64, error)
 	ListTopics(context.Context) ([]store.Topic, error)
 	NextQuestion(context.Context, store.QuestionFilter) (store.Question, error)
+	NextFollowUp(context.Context, int64) (store.Question, error)
 	SubmitAnswer(context.Context, store.SubmitAnswerInput) (store.AnswerAttempt, error)
 	RecordFeedback(context.Context, store.FeedbackInput) error
 	UpdateExpectedAnswer(context.Context, int64, string) error
@@ -42,6 +44,19 @@ type FeedbackInput struct {
 	MissingPoints    string `json:"missing_points"`
 	InaccuratePoints string `json:"inaccurate_points"`
 	SuggestedAnswer  string `json:"suggested_answer"`
+}
+
+type SubmitAndNextInput struct {
+	QuestionID   int64
+	Answer       string
+	Tier         int
+	Category     string
+	CurrentScore int
+}
+
+type SubmitAndNextResult struct {
+	Review       AnswerReview   `json:"review"`
+	NextQuestion store.Question `json:"next_question"`
 }
 
 func New(store Store, materialPath string) *Service {
@@ -95,6 +110,27 @@ func (s *Service) SubmitAnswer(ctx context.Context, questionID int64, answer str
 		Answer:         attempt.Answer,
 		ExpectedAnswer: attempt.ExpectedAnswerSnapshot,
 	}, nil
+}
+
+func (s *Service) SubmitAnswerAndPrepareNext(ctx context.Context, in SubmitAndNextInput) (SubmitAndNextResult, error) {
+	review, err := s.SubmitAnswer(ctx, in.QuestionID, in.Answer)
+	if err != nil {
+		return SubmitAndNextResult{}, err
+	}
+	if in.Tier == 2 && in.CurrentScore >= 2 {
+		followUp, err := s.store.NextFollowUp(ctx, in.QuestionID)
+		if err == nil {
+			return SubmitAndNextResult{Review: review, NextQuestion: followUp}, nil
+		}
+		if !errors.Is(err, store.ErrNotFound) {
+			return SubmitAndNextResult{}, err
+		}
+	}
+	next, err := s.store.NextQuestion(ctx, store.QuestionFilter{Tier: in.Tier, Category: in.Category})
+	if err != nil {
+		return SubmitAndNextResult{}, err
+	}
+	return SubmitAndNextResult{Review: review, NextQuestion: next}, nil
 }
 
 func (s *Service) RecordFeedback(ctx context.Context, input FeedbackInput) error {

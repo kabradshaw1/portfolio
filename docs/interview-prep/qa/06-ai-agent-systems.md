@@ -40,10 +40,49 @@ Fast answer:
 
 Follow-ups:
 
-- What is the difference between model state and backend state?
-- Why do tool schemas matter?
-- How do you handle multiple tool calls in one step?
-- What gets returned to the client versus fed back to the model?
+#### Follow-up: What is the difference between model state and backend state?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: Why do tool schemas matter?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you handle multiple tool calls in one step?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: What gets returned to the client versus fed back to the model?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
 
 ### 2. How do you prevent runaway agent loops?
 
@@ -57,10 +96,49 @@ Fast answer:
 
 Follow-ups:
 
-- What happens when max steps is reached?
-- How do you choose the max step count?
-- How do you handle client disconnects?
-- How do you distinguish tool failure from LLM failure?
+#### Follow-up: What happens when max steps is reached?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you choose the max step count?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you handle client disconnects?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you distinguish tool failure from LLM failure?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
 
 ### 3. What is a tool registry?
 
@@ -75,10 +153,49 @@ Fast answer:
 
 Follow-ups:
 
-- How do you version a tool contract?
-- How do you test a new tool?
-- What if the model calls an unknown tool?
-- How do you keep tool output compact?
+#### Follow-up: How do you version a tool contract?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you test a new tool?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: What if the model calls an unknown tool?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you keep tool output compact?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
 
 ### 4. How do you integrate RAG into an agent?
 
@@ -93,10 +210,49 @@ Fast answer:
 
 Follow-ups:
 
-- What should be in the model context?
-- How do you cite sources?
-- How do you avoid retrying bad RAG requests?
-- What happens when retrieval is down?
+#### Follow-up: What should be in the model context?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you cite sources?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you avoid retrying bad RAG requests?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: What happens when retrieval is down?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
 
 ### 5. How do you stream agent responses?
 
@@ -111,10 +267,49 @@ Fast answer:
 
 Follow-ups:
 
-- SSE versus WebSocket?
-- What if a tool errors after streaming starts?
-- How do you detect disconnected clients?
-- What write timeout should a streaming server use?
+#### Follow-up: SSE versus WebSocket?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: What if a tool errors after streaming starts?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you detect disconnected clients?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: What write timeout should a streaming server use?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
 
 ### 6. How do you handle tool errors?
 
@@ -129,10 +324,49 @@ Fast answer:
 
 Follow-ups:
 
-- Which errors should stop the turn?
-- How much error detail should the model see?
-- How do you prevent secret leakage in errors?
-- How would you test panic recovery?
+#### Follow-up: Which errors should stop the turn?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How much error detail should the model see?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you prevent secret leakage in errors?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How would you test panic recovery?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
 
 ### 7. What guardrails belong in an AI gateway?
 
@@ -147,10 +381,49 @@ Fast answer:
 
 Follow-ups:
 
-- What should be enforced before the LLM call?
-- What should be enforced after the LLM response?
-- How do you handle anonymous users?
-- What do you log without storing sensitive prompts?
+#### Follow-up: What should be enforced before the LLM call?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: What should be enforced after the LLM response?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you handle anonymous users?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: What do you log without storing sensitive prompts?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
 
 ### 8. How do you evaluate an agent?
 
@@ -164,10 +437,49 @@ Fast answer:
 
 Follow-ups:
 
-- Unit tests versus offline evals?
-- What metrics define agent quality?
-- How do you catch regressions in tool choice?
-- How do you test without Ollama running?
+#### Follow-up: Unit tests versus offline evals?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: What metrics define agent quality?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you catch regressions in tool choice?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you test without Ollama running?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
 
 ### 9. How do you observe an agent in production?
 
@@ -181,10 +493,49 @@ Fast answer:
 
 Follow-ups:
 
-- What would you alert on?
-- How do you debug high p99 agent latency?
-- How do you know if a tool is flaky?
-- How do you correlate a frontend report to backend traces?
+#### Follow-up: What would you alert on?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you debug high p99 agent latency?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you know if a tool is flaky?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you correlate a frontend report to backend traces?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
 
 ### 10. Why use a provider abstraction?
 
@@ -197,10 +548,49 @@ Fast answer:
 
 Follow-ups:
 
-- What belongs in the provider interface?
-- How do you handle provider-specific token metrics?
-- What changes when switching models?
-- How would you test timeout handling?
+#### Follow-up: What belongs in the provider interface?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How do you handle provider-specific token metrics?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: What changes when switching models?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
+
+#### Follow-up: How would you test timeout handling?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
 
 ## Scenario Drills
 
@@ -231,48 +621,3 @@ Answer outline:
 > `safeCall` recovers from panics, logs the tool name, emits a tool error, and
 > feeds an error result back to the model. I would add a regression eval and fix
 > the tool input validation or nil handling that caused the panic.
-
-## Coding Exercises
-
-### Exercise 1: Simple tool registry
-
-Prompt:
-
-> Implement a registry that registers tools by name, returns schemas, rejects
-> duplicate names, and safely handles unknown tools.
-
-What to say while coding:
-
-- Use an interface for `Name`, `Schema`, and `Call`.
-- Store tools in a `map[string]Tool`.
-- Validate duplicate names at registration time.
-- Unit test unknown tool and schema output.
-
-### Exercise 2: ReAct loop with max steps
-
-Prompt:
-
-> Given a fake LLM that returns tool calls and a fake tool, implement a loop that
-> stops on final answer, propagates context cancellation, and returns
-> `ErrMaxSteps` after N iterations.
-
-What to say while coding:
-
-- Keep the loop deterministic and bounded.
-- Append tool results back into messages.
-- Treat tool errors as model-visible results.
-- Test final answer, tool error recovery, and max-step behavior.
-
-### Exercise 3: SSE event writer
-
-Prompt:
-
-> Write an HTTP handler helper that encodes named events as SSE and flushes
-> after every event.
-
-What to say while coding:
-
-- Set `Content-Type: text/event-stream`.
-- Marshal each payload to JSON.
-- Write `event:` and `data:` lines.
-- Flush if the writer supports `http.Flusher`.

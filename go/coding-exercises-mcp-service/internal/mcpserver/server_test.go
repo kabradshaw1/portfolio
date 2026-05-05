@@ -32,7 +32,16 @@ func (f *fakeCoding) ListTopics(context.Context) ([]store.Topic, error) {
 func (f *fakeCoding) GetNextQuestion(_ context.Context, filter store.QuestionFilter) (store.Question, error) {
 	f.nextFilter = filter
 	f.nextQuestionCalls++
-	return store.Question{ID: 3, Topic: "Go", Prompt: "How do maps work?", ExpectedAnswer: "Use synchronization.", Priority: 10, Tier: filter.Tier}, nil
+	return store.Question{
+		ID:             3,
+		Topic:          "Go",
+		Prompt:         "Build a retry client.",
+		ExpectedAnswer: "Use bounded retries.",
+		Kind:           "coding_exercise",
+		RepoAnchors:    []store.RepoAnchor{{Path: "go/pkg/resilience", Note: "Contains retry helpers."}},
+		Priority:       10,
+		Tier:           filter.Tier,
+	}, nil
 }
 
 func (f *fakeCoding) SubmitAnswer(_ context.Context, questionID int64, reviewSummary string) (coding.AnswerReview, error) {
@@ -168,6 +177,10 @@ func TestSubmitCodingReviewAndPrepareNextRecordsPriorFeedbackAndReturnsReviewWit
 	if _, ok := nextExercise["expected_answer"]; ok {
 		t.Fatalf("next_exercise should not expose expected_answer before review: %#v", nextExercise)
 	}
+	anchors := nextExercise["repo_anchors"].([]any)
+	if anchors[0].(map[string]any)["path"] != "go/pkg/resilience" {
+		t.Fatalf("unexpected repo anchors: %#v", anchors)
+	}
 }
 
 func TestStartCodingExerciseSessionReturnsWorkflowAndCurrentState(t *testing.T) {
@@ -244,6 +257,10 @@ func TestStartCodingExerciseSessionReturnsWorkflowAndCurrentState(t *testing.T) 
 	if _, ok := nextExercise["expected_answer"]; ok {
 		t.Fatalf("session next_exercise should not expose expected_answer before review: %#v", nextExercise)
 	}
+	anchors := nextExercise["repo_anchors"].([]any)
+	if anchors[0].(map[string]any)["path"] != "go/pkg/resilience" {
+		t.Fatalf("unexpected repo anchors: %#v", anchors)
+	}
 	progress, ok := raw["progress"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected progress object, got %#v", raw["progress"])
@@ -282,6 +299,10 @@ func TestGetNextCodingExerciseOmitsExpectedAnswer(t *testing.T) {
 	unmarshalTextResult(t, result, &raw)
 	if _, ok := raw["expected_answer"]; ok {
 		t.Fatalf("get_next_coding_exercise should not expose expected_answer before review: %#v", raw)
+	}
+	anchors := raw["repo_anchors"].([]any)
+	if anchors[0].(map[string]any)["path"] != "go/pkg/resilience" {
+		t.Fatalf("unexpected repo anchors: %#v", anchors)
 	}
 	if raw["id"] != float64(3) {
 		t.Fatalf("unexpected exercise payload: %#v", raw)

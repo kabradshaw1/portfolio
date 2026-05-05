@@ -38,10 +38,49 @@ Fast answer:
 
 Follow-ups:
 
-- What belongs in the client versus service layer?
-- How do you test without calling the real provider?
-- What do you log?
-- How do you handle provider-specific error formats?
+#### Follow-up: What belongs in the client versus service layer?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you test without calling the real provider?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What do you log?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you handle provider-specific error formats?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 2. Which third-party API errors should you retry?
 
@@ -57,10 +96,49 @@ Fast answer:
 
 Follow-ups:
 
-- Should you retry 408?
-- How do you handle 429?
-- What is a retry budget?
-- How can retries make an outage worse?
+#### Follow-up: Should you retry 408?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you handle 429?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What is a retry budget?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How can retries make an outage worse?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 3. How do idempotency keys apply to external APIs?
 
@@ -75,10 +153,49 @@ Fast answer:
 
 Follow-ups:
 
-- What should the key be based on?
-- How long should the provider retain it?
-- What if the same key is reused with different parameters?
-- Do refunds need idempotency too?
+#### Follow-up: What should the key be based on?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How long should the provider retain it?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What if the same key is reused with different parameters?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: Do refunds need idempotency too?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 4. How do you handle webhooks safely?
 
@@ -93,10 +210,49 @@ Fast answer:
 
 Follow-ups:
 
-- Why do you need the raw body for signature verification?
-- How do you handle duplicate webhook delivery?
-- What HTTP status do you return on processing failure?
-- How do you replay failed webhooks?
+#### Follow-up: Why do you need the raw body for signature verification?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you handle duplicate webhook delivery?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What HTTP status do you return on processing failure?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you replay failed webhooks?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 5. How do you prevent provider outages from cascading?
 
@@ -110,10 +266,49 @@ Fast answer:
 
 Follow-ups:
 
-- What is the difference between retry and circuit breaker?
-- When should a circuit breaker open?
-- What do you return to the user while the provider is down?
-- How do you alert on provider degradation?
+#### Follow-up: What is the difference between retry and circuit breaker?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: When should a circuit breaker open?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What do you return to the user while the provider is down?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you alert on provider degradation?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 6. How do context timeouts and HTTP client timeouts work together?
 
@@ -128,10 +323,49 @@ Fast answer:
 
 Follow-ups:
 
-- Where do you create the timeout?
-- Do retries get fresh contexts?
-- What happens when the client disconnects?
-- How do you test timeout behavior?
+#### Follow-up: Where do you create the timeout?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: Do retries get fresh contexts?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What happens when the client disconnects?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you test timeout behavior?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 7. How do you translate provider errors into API errors?
 
@@ -146,10 +380,49 @@ Fast answer:
 
 Follow-ups:
 
-- Do you expose provider error messages?
-- How do you distinguish client error from dependency error?
-- What status code should dependency unavailable return?
-- How do you preserve root cause for logs?
+#### Follow-up: Do you expose provider error messages?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you distinguish client error from dependency error?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What status code should dependency unavailable return?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you preserve root cause for logs?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 8. How do you test third-party integrations?
 
@@ -164,10 +437,49 @@ Fast answer:
 
 Follow-ups:
 
-- When do you use contract tests?
-- Do you hit sandbox APIs in CI?
-- How do you simulate rate limits?
-- How do you test retries without slow sleeps?
+#### Follow-up: When do you use contract tests?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: Do you hit sandbox APIs in CI?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you simulate rate limits?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you test retries without slow sleeps?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 9. How do you manage credentials for third-party APIs?
 
@@ -182,10 +494,49 @@ Fast answer:
 
 Follow-ups:
 
-- How do you rotate a key safely?
-- What should be redacted?
-- How do you separate prod and QA credentials?
-- How do you handle a leaked key?
+#### Follow-up: How do you rotate a key safely?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What should be redacted?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you separate prod and QA credentials?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you handle a leaked key?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 10. How do you integrate multiple LLM providers?
 
@@ -200,10 +551,49 @@ Fast answer:
 
 Follow-ups:
 
-- How do you normalize tool calls?
-- How do you handle provider-specific streaming?
-- How do you fail over between providers?
-- How do you evaluate model/provider quality?
+#### Follow-up: How do you normalize tool calls?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you handle provider-specific streaming?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you fail over between providers?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you evaluate model/provider quality?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 11. How do you handle external API rate limits?
 
@@ -218,10 +608,49 @@ Fast answer:
 
 Follow-ups:
 
-- Do you always retry 429?
-- What if requests are user-facing?
-- How do you avoid synchronized retries?
-- What is jitter?
+#### Follow-up: Do you always retry 429?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What if requests are user-facing?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: How do you avoid synchronized retries?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What is jitter?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ### 12. How do you keep local state consistent with an external provider?
 
@@ -236,10 +665,49 @@ Fast answer:
 
 Follow-ups:
 
-- What if local DB write succeeds but provider call fails?
-- What if provider succeeds but local update fails?
-- What is an outbox pattern?
-- What is the source of truth for payment status?
+#### Follow-up: What if local DB write succeeds but provider call fails?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What if provider succeeds but local update fails?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What is an outbox pattern?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
+
+#### Follow-up: What is the source of truth for payment status?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/payment-service/internal/stripe/client.go` - Stripe Checkout and refund
 
 ## Scenario Drills
 
@@ -304,82 +772,3 @@ Repo tie-in:
 
 - AI service has typed RAG clients, agent tool error events, resilience wrappers,
   and an agent turn timeout.
-
-## Coding Exercises
-
-### Exercise 1: Retryable API Client
-
-Time target: 40 minutes.
-
-Build:
-
-- `Client.GetThing(ctx, id string) (Thing, error)`
-- Uses `http.NewRequestWithContext`.
-- Adds `Authorization: Bearer <token>`.
-- Retries network errors and 5xx.
-- Does not retry 4xx.
-- Closes response bodies.
-- Decodes JSON into a typed struct.
-
-Expected discussion:
-
-- Retry budget and jitter.
-- Request context versus client timeout.
-- Testing with `httptest.Server`.
-- Error classification.
-
-### Exercise 2: Webhook Receiver
-
-Time target: 45 minutes.
-
-Build:
-
-- `POST /webhooks/provider`
-- Reads raw body.
-- Verifies a fake HMAC signature.
-- Extracts `event_id` and `type`.
-- Stores processed event IDs.
-- Ignores duplicate events.
-
-Expected discussion:
-
-- Why raw body matters.
-- Replay protection.
-- Idempotent processing.
-- Returning 2xx for duplicates.
-
-### Exercise 3: Payment State Machine
-
-Time target: 45 minutes.
-
-Build:
-
-- `pending -> succeeded`
-- `pending -> failed`
-- `succeeded -> refunded`
-- Invalid transitions return an error.
-
-Expected discussion:
-
-- Local state versus provider state.
-- Webhooks as asynchronous status updates.
-- Transaction boundaries.
-- Audit logging.
-
-### Exercise 4: LLM Provider Interface
-
-Time target: 35 minutes.
-
-Build:
-
-- `type Client interface { Chat(ctx context.Context, req ChatRequest) (ChatResponse, error) }`
-- Two fake providers with different response shapes.
-- Adapter functions normalize both into `ChatResponse`.
-
-Expected discussion:
-
-- Provider-neutral domain types.
-- Tool-call normalization.
-- Provider-specific error handling.
-- Testing agent loop against an interface.
-

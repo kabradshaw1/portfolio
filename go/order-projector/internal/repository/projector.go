@@ -13,6 +13,37 @@ import (
 	gobreaker "github.com/sony/gobreaker/v2"
 )
 
+const (
+	insertTimelineEventSQL = `INSERT INTO order_timeline (event_id, order_id, event_type, event_version, data_json, timestamp)
+			 VALUES ($1, $2, $3, $4, $5, $6)
+			 ON CONFLICT (event_id) DO NOTHING`
+	upsertOrderSummarySQL = `INSERT INTO order_summary
+			   (order_id, user_id, status, total_cents, currency, items_json, created_at, updated_at, completed_at, failure_reason)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			 ON CONFLICT (order_id) DO UPDATE SET
+			   user_id        = COALESCE(EXCLUDED.user_id, order_summary.user_id),
+			   status         = EXCLUDED.status,
+			   total_cents    = COALESCE(EXCLUDED.total_cents, order_summary.total_cents),
+			   currency       = COALESCE(EXCLUDED.currency, order_summary.currency),
+			   items_json     = COALESCE(EXCLUDED.items_json, order_summary.items_json),
+			   updated_at     = EXCLUDED.updated_at,
+			   completed_at   = COALESCE(EXCLUDED.completed_at, order_summary.completed_at),
+			   failure_reason = COALESCE(EXCLUDED.failure_reason, order_summary.failure_reason)`
+	selectTimelineSQL = `SELECT event_id, order_id, event_type, event_version, data_json, timestamp
+			 FROM order_timeline
+			 WHERE order_id = $1
+			 ORDER BY timestamp ASC`
+	selectOrderSummarySQL = `SELECT order_id, user_id, status, total_cents, currency, items_json,
+			        created_at, updated_at, completed_at, failure_reason
+			 FROM order_summary
+			 WHERE order_id = $1`
+	listOrderSummariesSQL = `SELECT order_id, user_id, status, total_cents, currency, items_json,
+			        created_at, updated_at, completed_at, failure_reason
+			 FROM order_summary
+			 ORDER BY updated_at DESC
+			 LIMIT $1 OFFSET $2`
+)
+
 // TimelineEvent represents a single event in an order's timeline.
 type TimelineEvent struct {
 	EventID      string          `json:"eventId"`
@@ -80,9 +111,7 @@ func New(pool *pgxpool.Pool, breaker *gobreaker.CircuitBreaker[any]) *Repository
 func (r *Repository) InsertTimelineEvent(ctx context.Context, ev TimelineEvent) error {
 	return resilience.Do(ctx, r.breaker, r.retryCfg, func(ctx context.Context) error {
 		_, err := r.pool.Exec(ctx,
-			`INSERT INTO order_timeline (event_id, order_id, event_type, event_version, data, timestamp)
-			 VALUES ($1, $2, $3, $4, $5, $6)
-			 ON CONFLICT (event_id) DO NOTHING`,
+			insertTimelineEventSQL,
 			ev.EventID, ev.OrderID, ev.EventType, ev.EventVersion, ev.Data, ev.Timestamp,
 		)
 		if err != nil {
@@ -97,18 +126,7 @@ func (r *Repository) InsertTimelineEvent(ctx context.Context, ev TimelineEvent) 
 func (r *Repository) UpsertOrderSummary(ctx context.Context, s OrderSummary) error {
 	return resilience.Do(ctx, r.breaker, r.retryCfg, func(ctx context.Context) error {
 		_, err := r.pool.Exec(ctx,
-			`INSERT INTO order_summary
-			   (order_id, user_id, status, total_cents, currency, items, created_at, updated_at, completed_at, failure_reason)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-			 ON CONFLICT (order_id) DO UPDATE SET
-			   user_id        = COALESCE(EXCLUDED.user_id, order_summary.user_id),
-			   status         = EXCLUDED.status,
-			   total_cents    = COALESCE(EXCLUDED.total_cents, order_summary.total_cents),
-			   currency       = COALESCE(EXCLUDED.currency, order_summary.currency),
-			   items          = COALESCE(EXCLUDED.items, order_summary.items),
-			   updated_at     = EXCLUDED.updated_at,
-			   completed_at   = COALESCE(EXCLUDED.completed_at, order_summary.completed_at),
-			   failure_reason = COALESCE(EXCLUDED.failure_reason, order_summary.failure_reason)`,
+			upsertOrderSummarySQL,
 			s.OrderID, s.UserID, s.Status, s.TotalCents, s.Currency,
 			s.Items, s.CreatedAt, s.UpdatedAt, s.CompletedAt, s.FailureReason,
 		)
@@ -221,10 +239,7 @@ func (r *Repository) TruncateProjection(ctx context.Context, projection string) 
 func (r *Repository) GetTimeline(ctx context.Context, orderID string) ([]TimelineEvent, error) {
 	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) ([]TimelineEvent, error) {
 		rows, err := r.pool.Query(ctx,
-			`SELECT event_id, order_id, event_type, event_version, data, timestamp
-			 FROM order_timeline
-			 WHERE order_id = $1
-			 ORDER BY timestamp ASC`,
+			selectTimelineSQL,
 			orderID,
 		)
 		if err != nil {
@@ -252,10 +267,7 @@ func (r *Repository) GetOrderSummary(ctx context.Context, orderID string) (*Orde
 	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) (*OrderSummary, error) {
 		var s OrderSummary
 		err := r.pool.QueryRow(ctx,
-			`SELECT order_id, user_id, status, total_cents, currency, items,
-			        created_at, updated_at, completed_at, failure_reason
-			 FROM order_summary
-			 WHERE order_id = $1`,
+			selectOrderSummarySQL,
 			orderID,
 		).Scan(&s.OrderID, &s.UserID, &s.Status, &s.TotalCents, &s.Currency, &s.Items,
 			&s.CreatedAt, &s.UpdatedAt, &s.CompletedAt, &s.FailureReason)
@@ -273,11 +285,7 @@ func (r *Repository) GetOrderSummary(ctx context.Context, orderID string) (*Orde
 func (r *Repository) ListOrderSummaries(ctx context.Context, limit, offset int) ([]OrderSummary, error) {
 	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) ([]OrderSummary, error) {
 		rows, err := r.pool.Query(ctx,
-			`SELECT order_id, user_id, status, total_cents, currency, items,
-			        created_at, updated_at, completed_at, failure_reason
-			 FROM order_summary
-			 ORDER BY updated_at DESC
-			 LIMIT $1 OFFSET $2`,
+			listOrderSummariesSQL,
 			limit, offset,
 		)
 		if err != nil {
