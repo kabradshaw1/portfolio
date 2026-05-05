@@ -31,11 +31,60 @@ Fast answer:
 
 Follow-ups:
 
-- When is `sync.Map` worse than `map` plus `RWMutex`?
-- How do you choose shard count?
-- How do you prevent hot shards?
-- What happens if one goroutine panics while holding a lock?
-- How do you shut this down cleanly?
+#### Follow-up: When is `sync.Map` worse than `map` plus `RWMutex`?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you choose shard count?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you prevent hot shards?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What happens if one goroutine panics while holding a lock?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you shut this down cleanly?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 Repo tie-in:
 
@@ -56,11 +105,60 @@ Fast answer:
 
 Follow-ups:
 
-- Who closes the jobs channel?
-- How do workers report errors?
-- How do you avoid goroutine leaks?
-- What if consumers are slower than producers?
-- What metrics do you collect?
+#### Follow-up: Who closes the jobs channel?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do workers report errors?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you avoid goroutine leaks?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What if consumers are slower than producers?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What metrics do you collect?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 Repo tie-in:
 
@@ -81,11 +179,60 @@ Fast answer:
 
 Follow-ups:
 
-- How do you resize shards?
-- How do you handle hot keys?
-- Would you use consistent hashing?
-- How do you prevent shard leaks?
-- How do you test concurrent correctness?
+#### Follow-up: How do you resize shards?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you handle hot keys?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: Would you use consistent hashing?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you prevent shard leaks?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you test concurrent correctness?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 Repo tie-in:
 
@@ -106,11 +253,60 @@ Fast answer:
 
 Follow-ups:
 
-- What is escape analysis?
-- How can a small slice keep a large array alive?
-- When is `sync.Pool` useful?
-- Why can pointer-heavy structures increase GC work?
-- How would you prove GC is causing latency?
+#### Follow-up: What is escape analysis?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How can a small slice keep a large array alive?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: When is `sync.Pool` useful?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: Why can pointer-heavy structures increase GC work?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How would you prove GC is causing latency?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 Repo tie-in:
 
@@ -130,11 +326,60 @@ Fast answer:
 
 Follow-ups:
 
-- How do you detect leaks in tests?
-- How do HTTP clients leak resources?
-- What is the difference between canceling context and closing a channel?
-- How do you shut down streaming responses?
-- How do you handle worker errors?
+#### Follow-up: How do you detect leaks in tests?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do HTTP clients leak resources?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What is the difference between canceling context and closing a channel?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you shut down streaming responses?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you handle worker errors?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 Repo tie-in:
 
@@ -154,11 +399,60 @@ Fast answer:
 
 Follow-ups:
 
-- Token bucket versus fixed window?
-- How do you avoid unbounded key growth?
-- What happens if Redis is down?
-- How does an API gateway change the design?
-- How would you test it?
+#### Follow-up: Token bucket versus fixed window?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you avoid unbounded key growth?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What happens if Redis is down?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How does an API gateway change the design?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How would you test it?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 Repo tie-in:
 
@@ -178,93 +472,62 @@ Fast answer:
 
 Follow-ups:
 
-- Where do you set the timeout?
-- Do you create a new context per retry?
-- How do you preserve trace context?
-- What do you retry?
-- How does idempotency affect retries?
+#### Follow-up: Where do you set the timeout?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: Do you create a new context per retry?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How do you preserve trace context?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: What do you retry?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
+
+#### Follow-up: How does idempotency affect retries?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/` - Relevant implementation anchor for this topic.
 
 Repo tie-in:
 
 - Payment/API clients, AI-service RAG/Ollama bridges, and resilience helpers all
   depend on deadlines and retry boundaries.
-
-## Coding Exercises
-
-### Exercise 1: Concurrent Counter Store
-
-Time target: 25 minutes.
-
-Build:
-
-- `Increment(key string)`
-- `Get(key string) int`
-- `Snapshot() map[string]int`
-
-Constraints:
-
-- Safe under concurrent access.
-- Include tests with `t.Parallel()` or goroutines.
-- Mention how you would benchmark global lock versus sharded lock.
-
-Expected discussion:
-
-- `RWMutex` versus sharding.
-- Copying snapshot to avoid exposing internal map.
-- Race detector.
-
-### Exercise 2: Worker Pool With Cancellation
-
-Time target: 35 minutes.
-
-Build:
-
-- A worker pool that accepts jobs.
-- Stops on context cancellation.
-- Returns results and errors.
-- Does not leak goroutines when producers or consumers stop early.
-
-Expected discussion:
-
-- Bounded channels.
-- Single owner for channel close.
-- `WaitGroup` or `errgroup`.
-- Backpressure and timeout behavior.
-
-### Exercise 3: Retryable HTTP Client
-
-Time target: 40 minutes.
-
-Build:
-
-- `Do(ctx context.Context, req *http.Request) (*http.Response, error)`
-- Retry on 429 and 5xx.
-- Do not retry 400/401/403/404.
-- Use exponential backoff with jitter.
-- Stop when context is canceled.
-
-Expected discussion:
-
-- Request body replay.
-- Idempotency keys.
-- Retry budget.
-- Metrics and tracing.
-
-### Exercise 4: Sharded Idempotency Store
-
-Time target: 45 minutes.
-
-Build:
-
-- `Start(key string) (started bool)`
-- `Finish(key string, result Result)`
-- `Get(key string) (Result, bool)`
-- TTL cleanup can be described instead of fully implemented.
-
-Expected discussion:
-
-- Duplicate POST protection.
-- Pending versus completed states.
-- Lock granularity.
-- Memory cleanup.
-

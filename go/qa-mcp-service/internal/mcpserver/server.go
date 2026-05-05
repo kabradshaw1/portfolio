@@ -19,6 +19,7 @@ type QAService interface {
 	ListTopics(context.Context) ([]store.Topic, error)
 	GetNextQuestion(context.Context, store.QuestionFilter) (store.Question, error)
 	SubmitAnswer(context.Context, int64, string) (qa.AnswerReview, error)
+	SubmitAnswerAndPrepareNext(context.Context, qa.SubmitAndNextInput) (qa.SubmitAndNextResult, error)
 	RecordFeedback(context.Context, qa.FeedbackInput) error
 	ProgressSummary(context.Context) (store.ProgressSummary, error)
 	UpdateExpectedAnswer(context.Context, int64, string) error
@@ -163,6 +164,7 @@ func submitAnswerAndPrepareNextHandler(service QAService) sdkmcp.ToolHandler {
 		Answer           string            `json:"answer"`
 		Tier             int               `json:"tier,omitempty"`
 		Category         string            `json:"category,omitempty"`
+		CurrentScore     int               `json:"current_score,omitempty"`
 		PreviousFeedback *qa.FeedbackInput `json:"previous_feedback,omitempty"`
 	}
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
@@ -172,6 +174,9 @@ func submitAnswerAndPrepareNextHandler(service QAService) sdkmcp.ToolHandler {
 		}
 		if !validTier(in.Tier) {
 			return toolError("tier must be 1, 2, or 3"), nil
+		}
+		if in.Tier == 2 && (in.CurrentScore < 0 || in.CurrentScore > 3) {
+			return toolError("current_score must be between 0 and 3"), nil
 		}
 
 		previousFeedbackRecorded := false
@@ -185,18 +190,20 @@ func submitAnswerAndPrepareNextHandler(service QAService) sdkmcp.ToolHandler {
 			previousFeedbackRecorded = true
 		}
 
-		review, err := service.SubmitAnswer(ctx, in.QuestionID, in.Answer)
-		if err != nil {
-			return toolError(err.Error()), nil
-		}
 		category := normalizeCategory(in.Category)
-		nextQuestion, err := service.GetNextQuestion(ctx, store.QuestionFilter{Tier: in.Tier, Category: category})
+		turn, err := service.SubmitAnswerAndPrepareNext(ctx, qa.SubmitAndNextInput{
+			QuestionID:   in.QuestionID,
+			Answer:       in.Answer,
+			Tier:         in.Tier,
+			Category:     category,
+			CurrentScore: in.CurrentScore,
+		})
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
 		return jsonResult(qaTurn{
-			Review:                   review,
-			NextQuestion:             nextQuestion,
+			Review:                   turn.Review,
+			NextQuestion:             turn.NextQuestion,
 			Tier:                     in.Tier,
 			Category:                 category,
 			PreviousFeedbackRecorded: previousFeedbackRecorded,
@@ -289,6 +296,10 @@ When the user asks for interview Q&A practice, use this MCP server as the source
 8. Decide concise missing_points, inaccurate_points, suggested_answer, and the 0-3 score for the current answer, but do not call record_qa_feedback yet.
 9. Keep that feedback payload in context and send it as previous_feedback on the next submit_qa_answer_and_prepare_next call.
 10. Ask the next QA prompt in the same response as the feedback so the user never has to ask for the next question.
+
+For tier 2, ask a base question first. After grading the base answer, pass current_score to submit_qa_answer_and_prepare_next. If the score is 2 or 3 and a parent-linked follow-up exists, the tool may return that follow-up with parent context. Ask that follow-up as a continuation of the parent. If the score is 0 or 1, teach the gap and use the returned base question instead.
+
+Use next_question.repo_anchors as portfolio citations. In Explanation and Interview answer, cite the concrete repo paths that show where the concept applies.
 
 Use list_qa_topics and get_qa_progress_summary when the user asks about coverage, weak areas, or progress.
 `)

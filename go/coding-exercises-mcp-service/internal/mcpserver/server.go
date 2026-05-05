@@ -42,15 +42,18 @@ type codingTurn struct {
 }
 
 type exercise struct {
-	ID         int64  `json:"id"`
-	SourcePath string `json:"source_path"`
-	Topic      string `json:"topic"`
-	Category   string `json:"category"`
-	Kind       string `json:"kind"`
-	Prompt     string `json:"prompt"`
-	IsFollowUp bool   `json:"is_follow_up"`
-	Priority   int    `json:"priority"`
-	Tier       int    `json:"tier"`
+	ID               int64              `json:"id"`
+	SourcePath       string             `json:"source_path"`
+	Topic            string             `json:"topic"`
+	Category         string             `json:"category"`
+	Kind             string             `json:"kind"`
+	Prompt           string             `json:"prompt"`
+	ParentQuestionID *int64             `json:"parent_question_id,omitempty"`
+	ParentPrompt     string             `json:"parent_prompt,omitempty"`
+	RepoAnchors      []store.RepoAnchor `json:"repo_anchors,omitempty"`
+	IsFollowUp       bool               `json:"is_follow_up"`
+	Priority         int                `json:"priority"`
+	Tier             int                `json:"tier"`
 }
 
 type codingProgressSummary struct {
@@ -321,6 +324,10 @@ When the user asks for coding exercises, use this MCP server as the source of du
 10. Keep that feedback payload in context and send it as previous_feedback on the next submit_coding_review_and_prepare_next call.
 11. Present the next coding_exercise prompt as a repo implementation task and wait for the user to write code.
 
+Use next_exercise.repo_anchors to decide which portfolio files are relevant to inspect or cite. When reviewing an implementation, mention the anchor paths that show where the same concept appears in the repo.
+
+If a coding follow-up is returned, ask it only as a continuation of its parent exercise or review. Do not treat follow-ups as standalone random prompts.
+
 Use list_coding_exercise_topics and get_coding_exercise_progress_summary when the user asks about coverage, weak areas, or progress.
 `)
 }
@@ -369,15 +376,18 @@ func normalizeCategory(category string) string {
 
 func exerciseFromQuestion(question store.Question) exercise {
 	return exercise{
-		ID:         question.ID,
-		SourcePath: question.SourcePath,
-		Topic:      question.Topic,
-		Category:   question.Category,
-		Kind:       question.Kind,
-		Prompt:     question.Prompt,
-		IsFollowUp: question.IsFollowUp,
-		Priority:   question.Priority,
-		Tier:       question.Tier,
+		ID:               question.ID,
+		SourcePath:       question.SourcePath,
+		Topic:            question.Topic,
+		Category:         question.Category,
+		Kind:             question.Kind,
+		Prompt:           question.Prompt,
+		ParentQuestionID: question.ParentQuestionID,
+		ParentPrompt:     question.ParentPrompt,
+		RepoAnchors:      question.RepoAnchors,
+		IsFollowUp:       question.IsFollowUp,
+		Priority:         question.Priority,
+		Tier:             question.Tier,
 	}
 }
 

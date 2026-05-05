@@ -37,10 +37,49 @@ Fast answer:
 
 Follow-ups:
 
-- Where is Go weaker than Java or Python?
-- What does Go force you to be explicit about?
-- How do you structure a medium-sized Go service?
-- How do you avoid overengineering interfaces?
+#### Follow-up: Where is Go weaker than Java or Python?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: What does Go force you to be explicit about?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do you structure a medium-sized Go service?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do you avoid overengineering interfaces?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 2. Arrays versus slices?
 
@@ -54,10 +93,49 @@ Fast answer:
 
 Follow-ups:
 
-- What does `len` versus `cap` mean?
-- When does `append` allocate?
-- How can a small slice retain a large array?
-- Why can passing arrays be expensive?
+#### Follow-up: What does `len` versus `cap` mean?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: When does `append` allocate?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How can a small slice retain a large array?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: Why can passing arrays be expensive?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 3. How do maps work under concurrency?
 
@@ -71,10 +149,49 @@ Fast answer:
 
 Follow-ups:
 
-- When is `sync.Map` appropriate?
-- How do you shard a map?
-- What is a map zero value?
-- Why copy a map before returning it?
+#### Follow-up: When is `sync.Map` appropriate?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do you shard a map?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: What is a map zero value?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: Why copy a map before returning it?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 4. How do interfaces work in Go?
 
@@ -88,10 +205,49 @@ Fast answer:
 
 Follow-ups:
 
-- Pointer receiver versus value receiver?
-- What is a nil interface trap?
-- Where should interfaces live?
-- How do interfaces help tests?
+#### Follow-up: Pointer receiver versus value receiver?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: What is a nil interface trap?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: Where should interfaces live?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do interfaces help tests?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 5. How should errors be handled in Go?
 
@@ -105,10 +261,49 @@ Fast answer:
 
 Follow-ups:
 
-- `errors.Is` versus `errors.As`?
-- When do you wrap an error?
-- Panic versus error?
-- How do you avoid exposing secrets in errors?
+#### Follow-up: `errors.Is` versus `errors.As`?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: When do you wrap an error?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: Panic versus error?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do you avoid exposing secrets in errors?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 6. How do you use `context.Context`?
 
@@ -122,10 +317,49 @@ Fast answer:
 
 Follow-ups:
 
-- What belongs in context values?
-- How do deadlines interact with retries?
-- How do you avoid context leaks?
-- Why should context be the first parameter?
+#### Follow-up: What belongs in context values?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do deadlines interact with retries?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do you avoid context leaks?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: Why should context be the first parameter?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 7. Goroutines versus channels versus mutexes?
 
@@ -139,10 +373,49 @@ Fast answer:
 
 Follow-ups:
 
-- When is a channel better than a mutex?
-- How do channels leak goroutines?
-- Buffered versus unbuffered channels?
-- What does closing a channel mean?
+#### Follow-up: When is a channel better than a mutex?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do channels leak goroutines?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: Buffered versus unbuffered channels?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: What does closing a channel mean?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 8. What should you know about Go memory and GC?
 
@@ -156,10 +429,49 @@ Fast answer:
 
 Follow-ups:
 
-- What is escape analysis?
-- Stack versus heap allocation?
-- How do pointers affect GC scan work?
-- How do you investigate memory growth?
+#### Follow-up: What is escape analysis?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: Stack versus heap allocation?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do pointers affect GC scan work?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do you investigate memory growth?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 9. How do you write tests in Go?
 
@@ -174,10 +486,49 @@ Fast answer:
 
 Follow-ups:
 
-- Table tests versus separate tests?
-- Mock versus fake?
-- How do you test HTTP middleware?
-- How do you test races?
+#### Follow-up: Table tests versus separate tests?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: Mock versus fake?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do you test HTTP middleware?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do you test races?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 10. How do generics fit into Go?
 
@@ -191,10 +542,49 @@ Fast answer:
 
 Follow-ups:
 
-- Generics versus interfaces?
-- When would generics be overkill?
-- What constraints would you define?
-- How do generics affect readability?
+#### Follow-up: Generics versus interfaces?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: When would generics be overkill?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: What constraints would you define?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do generics affect readability?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 11. How do you structure a Go service?
 
@@ -209,10 +599,49 @@ Fast answer:
 
 Follow-ups:
 
-- What belongs in `internal`?
-- What belongs in `cmd`?
-- How do you avoid circular dependencies?
-- How do you share code between services?
+#### Follow-up: What belongs in `internal`?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: What belongs in `cmd`?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do you avoid circular dependencies?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: How do you share code between services?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ### 12. What makes a Go API production-grade?
 
@@ -227,10 +656,49 @@ Fast answer:
 
 Follow-ups:
 
-- What server timeouts do you set?
-- What do you include in logs?
-- What should health checks cover?
-- What failure path is easiest to miss?
+#### Follow-up: What server timeouts do you set?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: What do you include in logs?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: What should health checks cover?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
+
+#### Follow-up: What failure path is easiest to miss?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/pkg/apperror` - custom error types, wrapping, `errors.As`, structured HTTP
 
 ## Scenario Drills
 
@@ -261,78 +729,6 @@ Answer outline:
 > `ctx.Done()`, and all retries should fit within the original deadline. The
 > repo's resilience and client patterns are good anchors for bounded external
 > calls.
-
-## Coding Exercises
-
-### Exercise 1: Slice retention fix
-
-Prompt:
-
-> Given a function that reads a 10 MB buffer and returns `buf[:100]`, change it
-> so retaining the result does not retain the full buffer.
-
-Fast coding plan:
-
-- Allocate `out := make([]byte, 100)`.
-- Copy the needed bytes.
-- Return `out`.
-- Explain backing array retention.
-
-### Exercise 2: Typed error mapping
-
-Prompt:
-
-> Write a function that maps repository errors to not-found, conflict, or
-> internal application errors.
-
-Fast coding plan:
-
-- Use sentinel errors or wrapped errors.
-- Use `errors.Is` or `errors.As`.
-- Return stable codes at the handler boundary.
-- Log internal causes separately from client messages.
-
-### Exercise 3: Context-aware retry helper
-
-Prompt:
-
-> Implement a retry helper that retries a function up to N times with backoff,
-> stops on non-retryable errors, and returns immediately when context is done.
-
-Fast coding plan:
-
-- Accept `context.Context`, attempts, delay, and `isRetryable`.
-- Call the function with context.
-- Use `time.NewTimer` plus `select` on `ctx.Done()`.
-- Return the last error with context.
-
-### Exercise 4: Interface-backed service test
-
-Prompt:
-
-> Define a small repository interface for a service method and test the service
-> with a fake repository.
-
-Fast coding plan:
-
-- Put the interface at the consumer.
-- Fake only the methods the service needs.
-- Test success and repository error.
-- Keep the fake deterministic.
-
-### Exercise 5: JSON HTTP handler
-
-Prompt:
-
-> Write a handler that decodes JSON, validates required fields, calls a service,
-> and returns structured errors.
-
-Fast coding plan:
-
-- Limit request body size.
-- Decode and validate explicitly.
-- Pass request context to the service.
-- Return stable error codes.
 
 ## Quick Flashcards
 

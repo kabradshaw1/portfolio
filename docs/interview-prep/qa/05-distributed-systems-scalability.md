@@ -42,10 +42,49 @@ Fast answer:
 
 Follow-ups:
 
-- Why not two-phase commit?
-- What is a compensating transaction?
-- Where do you store saga state?
-- How do you recover incomplete sagas?
+#### Follow-up: Why not two-phase commit?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What is a compensating transaction?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: Where do you store saga state?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you recover incomplete sagas?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 2. What is eventual consistency, and when is it acceptable?
 
@@ -60,10 +99,49 @@ Fast answer:
 
 Follow-ups:
 
-- How do you explain pending states to users?
-- How do you detect stuck workflows?
-- What if events arrive out of order?
-- What if convergence never happens?
+#### Follow-up: How do you explain pending states to users?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you detect stuck workflows?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What if events arrive out of order?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What if convergence never happens?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 3. How do you make message consumers reliable?
 
@@ -77,10 +155,49 @@ Fast answer:
 
 Follow-ups:
 
-- When do you ack a message?
-- How do you handle poison messages?
-- How do you avoid duplicate side effects?
-- How do you scale consumers horizontally?
+#### Follow-up: When do you ack a message?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you handle poison messages?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you avoid duplicate side effects?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you scale consumers horizontally?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 4. What is the outbox pattern?
 
@@ -95,10 +212,49 @@ Fast answer:
 
 Follow-ups:
 
-- Does outbox guarantee exactly-once delivery?
-- How do you prevent duplicate publishes?
-- How do you order outbox messages?
-- What metrics should the poller expose?
+#### Follow-up: Does outbox guarantee exactly-once delivery?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you prevent duplicate publishes?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you order outbox messages?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What metrics should the poller expose?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 5. How do retries and idempotency work together?
 
@@ -113,10 +269,49 @@ Fast answer:
 
 Follow-ups:
 
-- What should be retried?
-- What should never be retried?
-- How do you choose retry limits?
-- How do you avoid retry storms?
+#### Follow-up: What should be retried?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What should never be retried?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you choose retry limits?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you avoid retry storms?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 6. How do circuit breakers help distributed systems?
 
@@ -130,10 +325,49 @@ Fast answer:
 
 Follow-ups:
 
-- What causes the breaker to open?
-- What is half-open state?
-- Where should you put a breaker?
-- What do users see while the breaker is open?
+#### Follow-up: What causes the breaker to open?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What is half-open state?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: Where should you put a breaker?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What do users see while the breaker is open?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 7. How do you design for backpressure?
 
@@ -147,10 +381,49 @@ Fast answer:
 
 Follow-ups:
 
-- What happens if producers are faster than consumers?
-- How do you size a worker pool?
-- What do you do when Kafka lag grows?
-- Do you drop, delay, or reject work?
+#### Follow-up: What happens if producers are faster than consumers?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you size a worker pool?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What do you do when Kafka lag grows?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: Do you drop, delay, or reject work?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 8. How do you scale a Go service horizontally?
 
@@ -165,10 +438,49 @@ Fast answer:
 
 Follow-ups:
 
-- What state cannot live in memory?
-- How do you handle deployments without dropping traffic?
-- How does readiness differ from liveness?
-- What metrics would drive autoscaling?
+#### Follow-up: What state cannot live in memory?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you handle deployments without dropping traffic?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How does readiness differ from liveness?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What metrics would drive autoscaling?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 9. How do you debug high latency in a distributed system?
 
@@ -182,10 +494,49 @@ Fast answer:
 
 Follow-ups:
 
-- What if traces are missing?
-- How do you debug queue latency?
-- How do retries hide the root cause?
-- What is p99 telling you that average latency hides?
+#### Follow-up: What if traces are missing?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you debug queue latency?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do retries hide the root cause?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What is p99 telling you that average latency hides?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 10. How do you preserve trace context across async boundaries?
 
@@ -199,10 +550,49 @@ Fast answer:
 
 Follow-ups:
 
-- Why is async tracing harder than HTTP tracing?
-- What headers do you propagate?
-- How do you handle missing trace context?
-- What should logs include?
+#### Follow-up: Why is async tracing harder than HTTP tracing?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What headers do you propagate?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you handle missing trace context?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What should logs include?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 11. How do you handle late or out-of-order events?
 
@@ -217,10 +607,49 @@ Fast answer:
 
 Follow-ups:
 
-- Event time versus processing time?
-- What is a watermark?
-- How do you avoid double counting?
-- When do you drop late events?
+#### Follow-up: Event time versus processing time?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What is a watermark?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you avoid double counting?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: When do you drop late events?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ### 12. How do you design graceful shutdown?
 
@@ -234,10 +663,49 @@ Fast answer:
 
 Follow-ups:
 
-- What happens to in-flight requests?
-- How do you stop message consumers?
-- What if shutdown times out?
-- Why does Kubernetes readiness matter before termination?
+#### Follow-up: What happens to in-flight requests?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: How do you stop message consumers?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: What if shutdown times out?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
+
+#### Follow-up: Why does Kubernetes readiness matter before termination?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/order-service/internal/saga` - checkout saga orchestration, RabbitMQ
 
 ## Scenario Drills
 
@@ -328,99 +796,3 @@ Repo tie-in:
 
 - Go services configure HTTP timeouts, health endpoints, shutdown hooks, PDBs,
   and Kubernetes deployments.
-
-## Coding Exercises
-
-### Exercise 1: In-Memory Saga State Machine
-
-Time target: 45 minutes.
-
-Build:
-
-- States: `created`, `items_reserved`, `payment_confirmed`, `completed`,
-  `failed`, `compensating`, `compensated`.
-- Events: `ItemsReserved`, `PaymentConfirmed`, `PaymentFailed`,
-  `ItemsReleased`.
-- Invalid transitions return errors.
-- Duplicate terminal events are no-ops.
-
-Expected discussion:
-
-- State transition table.
-- Idempotent event handling.
-- Compensation.
-- Persisting state in a database.
-
-### Exercise 2: Outbox Poller
-
-Time target: 45 minutes.
-
-Build:
-
-- Fetch unpublished messages.
-- Publish each message through an interface.
-- Mark published only after publish succeeds.
-- Continue processing other messages after one failure.
-- Stop on context cancellation.
-
-Expected discussion:
-
-- At-least-once delivery.
-- Duplicate publishes.
-- Backoff on database or broker failure.
-- Metrics for unpublished age and publish errors.
-
-### Exercise 3: Consumer With DLQ
-
-Time target: 45 minutes.
-
-Build:
-
-- Consume jobs from a channel.
-- Retry retryable errors up to N attempts.
-- Send poison messages to a DLQ channel.
-- Track success/error/DLQ counts.
-
-Expected discussion:
-
-- Ack/nack timing.
-- Retry count storage.
-- Poison messages.
-- Replaying DLQ safely.
-
-### Exercise 4: Windowed Aggregator
-
-Time target: 45 minutes.
-
-Build:
-
-- Accept events with `eventTime`.
-- Aggregate counts into one-minute tumbling windows.
-- Allow a 30-second grace period.
-- Drop events that are too late.
-- Flush expired windows.
-
-Expected discussion:
-
-- Event time versus processing time.
-- Grace periods.
-- Late data policy.
-- Memory eviction.
-
-### Exercise 5: Trace Context Carrier
-
-Time target: 30 minutes.
-
-Build:
-
-- A simple message struct with headers.
-- `InjectTrace(ctx, msg)` and `ExtractTrace(ctx, msg)`.
-- Tests that a trace ID survives publish/consume boundaries.
-
-Expected discussion:
-
-- Why async trace propagation matters.
-- Header formats.
-- Missing context fallback.
-- Logs with trace IDs.
-

@@ -17,6 +17,7 @@ type fakeStore struct {
 	submitted       store.SubmitAnswerInput
 	feedback        store.FeedbackInput
 	next            store.Question
+	followUp        store.Question
 	nextFilter      store.QuestionFilter
 	attempt         store.AnswerAttempt
 }
@@ -38,6 +39,13 @@ func (f *fakeStore) ListTopics(context.Context) ([]store.Topic, error) {
 func (f *fakeStore) NextQuestion(_ context.Context, filter store.QuestionFilter) (store.Question, error) {
 	f.nextFilter = filter
 	return f.next, nil
+}
+
+func (f *fakeStore) NextFollowUp(context.Context, int64) (store.Question, error) {
+	if f.followUp.ID == 0 {
+		return store.Question{}, store.ErrNotFound
+	}
+	return f.followUp, nil
 }
 
 func (f *fakeStore) SubmitAnswer(_ context.Context, in store.SubmitAnswerInput) (store.AnswerAttempt, error) {
@@ -128,6 +136,69 @@ func TestGetNextQuestionPassesTierFilter(t *testing.T) {
 	}
 	if fake.nextFilter.Tier != 1 {
 		t.Fatalf("expected tier filter to be passed, got %#v", fake.nextFilter)
+	}
+}
+
+func TestPrepareNextReturnsFollowUpForStrongTierTwoAnswer(t *testing.T) {
+	parentID := int64(7)
+	fake := &fakeStore{
+		sessionID: 42,
+		attempt: store.AnswerAttempt{
+			ID:                     11,
+			QuestionID:             parentID,
+			Answer:                 "good",
+			ExpectedAnswerSnapshot: "expected",
+		},
+		followUp: store.Question{
+			ID:               8,
+			Prompt:           "When is sync.Map appropriate?",
+			IsFollowUp:       true,
+			ParentQuestionID: &parentID,
+			ParentPrompt:     "How do maps work?",
+		},
+	}
+	svc := New(fake, "unused")
+
+	turn, err := svc.SubmitAnswerAndPrepareNext(context.Background(), SubmitAndNextInput{
+		QuestionID:   parentID,
+		Answer:       "good",
+		Tier:         2,
+		Category:     "golang",
+		CurrentScore: 3,
+	})
+	if err != nil {
+		t.Fatalf("SubmitAnswerAndPrepareNext returned error: %v", err)
+	}
+	if !turn.NextQuestion.IsFollowUp || turn.NextQuestion.ID != 8 {
+		t.Fatalf("expected contextual follow-up, got %#v", turn.NextQuestion)
+	}
+}
+
+func TestPrepareNextSkipsFollowUpForWeakTierTwoAnswer(t *testing.T) {
+	fake := &fakeStore{
+		sessionID: 42,
+		attempt: store.AnswerAttempt{
+			ID:                     11,
+			QuestionID:             7,
+			Answer:                 "weak",
+			ExpectedAnswerSnapshot: "expected",
+		},
+		next: store.Question{ID: 9, Prompt: "How should errors be handled in Go?", Tier: 2},
+	}
+	svc := New(fake, "unused")
+
+	turn, err := svc.SubmitAnswerAndPrepareNext(context.Background(), SubmitAndNextInput{
+		QuestionID:   7,
+		Answer:       "weak",
+		Tier:         2,
+		Category:     "golang",
+		CurrentScore: 1,
+	})
+	if err != nil {
+		t.Fatalf("SubmitAnswerAndPrepareNext returned error: %v", err)
+	}
+	if turn.NextQuestion.IsFollowUp || turn.NextQuestion.ID != 9 {
+		t.Fatalf("expected next base question, got %#v", turn.NextQuestion)
 	}
 }
 

@@ -35,10 +35,49 @@ Fast answer:
 
 Follow-ups:
 
-- How do you choose status codes?
-- When do you use POST versus PUT?
-- How do you version an API?
-- How do you avoid breaking clients?
+#### Follow-up: How do you choose status codes?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: When do you use POST versus PUT?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you version an API?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you avoid breaking clients?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 2. What belongs in API gateway middleware?
 
@@ -54,10 +93,49 @@ Fast answer:
 
 Follow-ups:
 
-- What should not be in middleware?
-- How do you order middleware?
-- What happens if auth middleware writes a response early?
-- How do you test middleware?
+#### Follow-up: What should not be in middleware?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you order middleware?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: What happens if auth middleware writes a response early?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you test middleware?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 3. How do you make POST requests safe under retries?
 
@@ -72,10 +150,49 @@ Fast answer:
 
 Follow-ups:
 
-- What do you store for an idempotency key?
-- How long should the key live?
-- What if the first request succeeds but the response is lost?
-- What if the same key is reused with a different body?
+#### Follow-up: What do you store for an idempotency key?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How long should the key live?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: What if the first request succeeds but the response is lost?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: What if the same key is reused with a different body?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 4. How do you design rate limiting?
 
@@ -90,10 +207,49 @@ Fast answer:
 
 Follow-ups:
 
-- Token bucket versus fixed window?
-- Per-user versus global limits?
-- How do you avoid unbounded memory growth?
-- What do you return to clients?
+#### Follow-up: Token bucket versus fixed window?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: Per-user versus global limits?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you avoid unbounded memory growth?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: What do you return to clients?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 5. How should API errors be shaped?
 
@@ -107,10 +263,49 @@ Fast answer:
 
 Follow-ups:
 
-- 400 versus 422?
-- How much internal detail do you expose?
-- How do clients handle validation errors?
-- How do you preserve request IDs?
+#### Follow-up: 400 versus 422?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How much internal detail do you expose?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do clients handle validation errors?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you preserve request IDs?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 6. How do you design pagination for large collections?
 
@@ -125,10 +320,49 @@ Fast answer:
 
 Follow-ups:
 
-- Offset versus cursor pagination?
-- How do you sort consistently?
-- What goes in the response metadata?
-- How do you paginate by created time safely?
+#### Follow-up: Offset versus cursor pagination?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you sort consistently?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: What goes in the response metadata?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you paginate by created time safely?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 7. How do you handle API versioning?
 
@@ -142,10 +376,49 @@ Fast answer:
 
 Follow-ups:
 
-- URI versioning versus headers?
-- How do you retire old versions?
-- How do you version event schemas?
-- How do you test backward compatibility?
+#### Follow-up: URI versioning versus headers?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you retire old versions?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you version event schemas?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you test backward compatibility?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 8. What is the role of an API gateway in microservices?
 
@@ -160,10 +433,49 @@ Fast answer:
 
 Follow-ups:
 
-- Gateway versus backend-for-frontend?
-- What are gateway failure modes?
-- How do you avoid a gateway bottleneck?
-- Where do you enforce authorization?
+#### Follow-up: Gateway versus backend-for-frontend?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: What are gateway failure modes?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you avoid a gateway bottleneck?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: Where do you enforce authorization?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 9. How do you stream responses from an API?
 
@@ -178,10 +490,49 @@ Fast answer:
 
 Follow-ups:
 
-- SSE versus WebSocket?
-- How do you handle errors after headers are sent?
-- How do you detect client disconnects?
-- What server timeouts need to change?
+#### Follow-up: SSE versus WebSocket?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you handle errors after headers are sent?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you detect client disconnects?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: What server timeouts need to change?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 10. How do you secure a REST API?
 
@@ -196,10 +547,49 @@ Fast answer:
 
 Follow-ups:
 
-- Authentication versus authorization?
-- JWT versus session?
-- How do you prevent cross-tenant access?
-- What should never appear in logs?
+#### Follow-up: Authentication versus authorization?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: JWT versus session?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you prevent cross-tenant access?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: What should never appear in logs?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 11. How do you integrate a third-party API behind REST endpoints?
 
@@ -214,10 +604,49 @@ Fast answer:
 
 Follow-ups:
 
-- Which errors are retryable?
-- How do you handle rate limits?
-- How do you test without the real API?
-- What do you cache?
+#### Follow-up: Which errors are retryable?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you handle rate limits?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you test without the real API?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: What do you cache?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ### 12. How do you test REST handlers and middleware?
 
@@ -231,10 +660,49 @@ Fast answer:
 
 Follow-ups:
 
-- Unit test versus integration test?
-- How do you test idempotency?
-- How do you test auth?
-- How do you test streaming responses?
+#### Follow-up: Unit test versus integration test?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you test idempotency?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you test auth?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
+
+#### Follow-up: How do you test streaming responses?
+
+Fast answer:
+
+> A strong answer should extend the parent answer with the concrete
+> tradeoff, failure mode, or implementation detail, and explain how it
+> applies in this repo rather than answering generically.
+
+Repo anchors:
+- `go/cart-service/cmd/server/routes.go` - route composition with recovery,
 
 ## Scenario Drills
 
@@ -307,64 +775,3 @@ Repo tie-in:
 
 - The repo has OpenTelemetry middleware, tracing helpers, Prometheus metrics,
   and resilience wrappers that make this kind of debugging explainable.
-
-## Coding Exercises
-
-### Exercise 1: Idempotent Create Endpoint
-
-Time target: 40 minutes.
-
-Build:
-
-- `POST /orders`
-- Requires `Idempotency-Key`.
-- First request stores `processing`, then stores completed JSON response.
-- Duplicate completed request returns the original response.
-- Duplicate in-flight request returns `409 Conflict`.
-
-Expected discussion:
-
-- Redis versus database storage.
-- TTL policy.
-- Same key with different body.
-- What happens if the service crashes after the side effect but before storing
-  the completed response?
-
-### Exercise 2: Middleware Chain
-
-Time target: 35 minutes.
-
-Build middleware for:
-
-- request ID
-- logging
-- panic recovery
-- auth stub
-- rate limit stub
-- JSON error envelope
-
-Expected discussion:
-
-- Middleware order.
-- `http.Handler` wrapping.
-- When to stop the chain.
-- Unit tests with `httptest`.
-
-### Exercise 3: Cursor-Paginated List
-
-Time target: 35 minutes.
-
-Build:
-
-- `GET /items?limit=20&cursor=...`
-- Stable sort by `created_at` and `id`.
-- Return `items` and `nextCursor`.
-- Validate max limit.
-
-Expected discussion:
-
-- Why offset pagination breaks at scale.
-- Cursor encoding.
-- Stable ordering.
-- Backward compatibility of cursor shape.
-
