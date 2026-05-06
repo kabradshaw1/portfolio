@@ -3,7 +3,7 @@ module github.com/kabradshaw1/portfolio/go/pkg
 go 1.26.1
 
 require (
-	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/moby/moby/api v1.54.1
