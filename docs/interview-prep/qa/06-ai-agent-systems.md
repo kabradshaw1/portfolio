@@ -44,9 +44,12 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Model state is the conversation we send back to the LLM: user messages,
+> assistant tool calls, and tool-result messages. Backend state is authoritative
+> state like the user ID, registry, carts, orders, caches, and deadlines. In this
+> repo the agent copies and truncates message history, but tool calls execute
+> against backend clients with `turn.UserID`, so the model can request work
+> without owning the source of truth.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -55,9 +58,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Schemas are the contract between probabilistic model output and deterministic
+> backend code. They give the model names, descriptions, and JSON parameters,
+> and they give the backend something to validate and route. In this repo the
+> registry exposes schemas on every LLM call, so adding a tool means defining a
+> stable name, compact description, and parameter shape instead of adding custom
+> logic to the agent loop.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -66,9 +72,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I treat them as one assistant step with several ordered backend operations.
+> The agent appends the assistant tool-call message, executes each requested
+> tool, appends each tool-result message, and then calls the model again. That
+> keeps the transcript coherent and makes partial failure explicit: one tool can
+> return a `tool_error` while the next tool still runs.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -77,9 +85,12 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The client gets stream events meant for UI progress: tool call names and args,
+> display payloads, tool errors, final text, or terminal errors. The model gets
+> the message history it needs to continue reasoning: assistant tool calls and
+> compact JSON tool-result messages. In this repo `Result.Display` can be richer
+> for the frontend, while `Result.Content` is the compact, serializable payload
+> fed back to the LLM.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -100,9 +111,11 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The agent emits an `error` stream event, records the turn outcome as
+> `max_steps`, logs the turn with the configured step count, and returns
+> `ErrMaxSteps`. That is intentionally a hard failure, not a best-effort final
+> answer, because a loop that cannot converge needs a visible signal for evals,
+> alerts, and schema fixes.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -111,9 +124,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I choose it from the expected workflow depth, then validate it with evals and
+> traces. A simple ecommerce answer should need one or two tool rounds; multi-tool
+> flows may need a few more. I would keep the default small enough to bound cost
+> and latency, then raise it only when real traces show legitimate conversations
+> hitting the cap.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -122,9 +137,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The request context has to flow all the way through the LLM call and tool
+> clients. In this repo the HTTP handler passes `c.Request.Context()` into
+> `runner.Run`, the agent wraps it with a turn timeout, and tools receive that
+> context. If the browser disconnects, downstream work should cancel instead of
+> continuing to burn model or RAG capacity.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -133,9 +150,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> An LLM failure means the next reasoning step could not be produced, so the turn
+> returns an error. A tool failure is usually domain-level or upstream-specific,
+> so the agent emits `tool_error`, appends an error-shaped tool result, and lets
+> the model recover. That distinction is visible in this repo through separate
+> turn outcomes and per-tool metrics.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -157,9 +176,11 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I prefer additive versioning first: add optional fields, keep names stable, and
+> preserve result shapes the model already learned. If behavior or required
+> inputs change materially, introduce a new tool name such as a v2 contract and
+> retire the old one after evals pass. The registry makes that explicit because
+> the tool name is the runtime routing key.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -168,9 +189,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I test the tool in isolation for schema, argument parsing, auth/user handling,
+> success results, and upstream errors. Then I add an agent-loop or eval test
+> proving the model-facing contract works: schema is advertised, the tool is
+> resolved from the registry, the result becomes a valid tool message, and errors
+> are recoverable.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -179,9 +202,10 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The backend must not execute it. In this repo an unknown tool emits a
+> `tool_error`, records a tool metric with outcome `unknown`, logs the requested
+> name, and appends a tool-result message containing the error. That lets the
+> model correct itself while preserving the allowlist boundary.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -190,9 +214,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Split model content from display content. The model should see the fields
+> needed for reasoning, like IDs, statuses, source snippets, and short summaries;
+> the UI can receive richer cards through `Display`. That avoids wasting prompt
+> tokens on frontend details and lowers the chance that a large payload causes
+> truncation or bad follow-up tool choices.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -214,9 +240,11 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The model context should include the user question, the compact retrieved
+> evidence, source identifiers, and any constraints like collection or limit. It
+> should not include whole documents or raw vector-store metadata. In this repo
+> the RAG tools return search results and ask answers with filenames, pages,
+> scores, and concise text so the agent can reason without bloating the turn.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -225,9 +253,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Citations should come from backend retrieval metadata, not from the model's
+> memory. The tool should return source file and page fields alongside the
+> answer or snippets, and the final response should cite only those sources. The
+> repo's RAG client models `SearchResult` and `AskSource`, which gives the agent
+> concrete filename and page values to carry through.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -236,9 +266,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Classify retryability before the retry loop. Validation errors, bad
+> collections, malformed requests, and other 4xx responses should fail fast
+> because repeating them only adds latency. The RAG client does that by using a
+> retry policy that skips errors containing 4xx status text while still allowing
+> transient network or server failures to be retried behind the breaker.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -247,9 +279,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Retrieval downtime should degrade the turn, not hide as a hallucinated answer.
+> The RAG tool returns an error, the agent streams `tool_error`, and the model can
+> explain that document lookup is unavailable or answer from non-RAG context if
+> that is acceptable. The circuit breaker prevents repeated failing calls from
+> dominating p99 latency while the dependency is unhealthy.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -271,9 +305,11 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I use SSE when the browser only needs server-to-client progress for one chat
+> turn. It is simpler operationally: plain HTTP, easy flushing, and natural
+> compatibility with proxies. I use WebSocket when the client needs bidirectional
+> low-latency interaction, cancellation messages, or multiplexed sessions beyond
+> a single request stream.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -282,9 +318,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Once streaming headers are sent, the server cannot switch to a normal JSON
+> error response. The right behavior is to emit a `tool_error` or `error` event
+> and flush it. This repo does that: after the handler writes the SSE headers,
+> agent failures are reported through emitted events, and tool failures remain
+> part of the model transcript.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -293,9 +331,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The primary signal is the request context being canceled when the client goes
+> away. The handler passes that context into the agent, and the agent passes it
+> into LLM and tool calls. I would also treat failed writes or flushes as a
+> signal to stop emitting, but the important contract is context propagation to
+> avoid orphaned work.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -304,9 +344,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> It should be longer than a normal JSON request timeout but still bounded by the
+> product's latency budget and proxy limits. For this repo I would align the
+> stream write timeout with the agent turn timeout plus a small flush margin, and
+> keep individual dependency timeouts shorter so a slow RAG or LLM call cannot
+> hold the connection indefinitely.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -328,9 +370,11 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Stop the turn for infrastructure failures that make continued reasoning
+> unreliable: canceled context, LLM provider failure, timeout, or max-step
+> exhaustion. Tool errors, unknown tools, and unserializable tool results can be
+> converted into tool-result messages because the model may still produce a
+> useful fallback. This is exactly the split in `agent.Run`.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -339,9 +383,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The model should see enough structured detail to recover, not raw internals.
+> Good detail is a stable error category, the tool name, and a short reason like
+> "order service unavailable" or "invalid collection." Stack traces, hostnames,
+> headers, SQL, tokens, and full upstream bodies belong in protected logs or
+> traces, not in tool-result content.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -350,9 +396,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Redact before errors cross trust boundaries. Tool implementations should wrap
+> upstream failures with safe messages, logging should avoid full prompts and
+> credentials, and streamed errors should be short. In this repo I would keep
+> `args_preview` bounded, avoid logging Authorization values, and ensure tool
+> errors never include raw headers, connection strings, or secret-backed config.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -361,9 +409,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I would register a fake tool whose `Call` panics, run the agent with a scripted
+> LLM response that invokes it, and assert the process survives. The expected
+> stream is a `tool_call`, then `tool_error`, then either a recovery final answer
+> or another scripted step. I would also assert the returned error is not a panic
+> and the tool metric records an error outcome.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -385,9 +435,11 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Before the LLM call, enforce auth parsing, request size limits, message
+> validation, rate limits, history truncation, allowed tool schemas, and context
+> deadlines. In this repo those controls show up in the chat handler,
+> guardrails middleware, `TruncateHistory`, and the registry-provided schema list
+> passed to `llm.Chat`.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -396,9 +448,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> After the LLM response, enforce that tool names are allowlisted, arguments are
+> parsed by the tool, tool results are JSON-serializable, final answers can be
+> classified for refusal, and all outcomes are recorded. In this repo unknown
+> tools do not execute, bad results become `tool_error`, and refusal text changes
+> the recorded turn outcome.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -407,9 +461,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Anonymous users can use low-risk read-only paths, but privileged tools must
+> require identity. The handler leaves `userID` empty when no bearer token or
+> access cookie is present, and tools receive that value. Tool code should treat
+> an empty user ID as either anonymous context or a hard authorization failure,
+> depending on the operation.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -418,9 +474,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I log operational metadata: turn ID, user ID or anonymous marker, message
+> count, model, step, tool name, duration, token counts, outcome, and bounded
+> argument previews. I avoid storing full prompts, full tool results, raw
+> Authorization headers, cookies, and secrets. If deeper debugging needs prompt
+> capture, it should be explicit, sampled, redacted, and access-controlled.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -441,9 +499,11 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Unit tests verify deterministic contracts: registry lookup, schema emission,
+> result serialization, panic recovery, and handler streaming. Offline evals
+> verify behavior across a turn: whether the agent chooses the right tool,
+> recovers from tool errors, and stops at max steps. This repo's build-tagged
+> eval package uses `ScriptedLLM` so those cases do not depend on a live model.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -452,9 +512,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I track task success, final answer correctness, groundedness for RAG, tool
+> choice accuracy, recovery rate after tool errors, refusal accuracy, step count,
+> latency, token usage, and user-visible error rate. The repo already has useful
+> primitives: turn outcomes, steps per turn, tool latency/error metrics, and LLM
+> token and request-duration metrics.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -463,9 +525,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Keep a stable suite of scripted scenarios and assert the event sequence and
+> tool names. If a prompt, schema description, or provider changes, those evals
+> should catch "search products" suddenly calling a cart tool or a RAG question
+> skipping retrieval. In this repo the eval harness can compare tool calls and
+> max-step behavior without requiring Ollama.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -474,9 +538,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Swap the provider with a fake or scripted implementation of `llm.Client`.
+> Because the agent depends only on `Chat(ctx, messages, tools)`, tests can
+> return canned final answers, tool calls, or errors. That is how the agent unit
+> tests and build-tagged evals exercise the loop without starting Ollama or
+> making network calls.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -497,9 +563,10 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> I would alert on elevated turn error rate, max-step rate, refusal spikes when
+> unexpected, p99 turn duration, LLM provider error or latency spikes, tool error
+> rate by name, and circuit breaker open rates for dependencies like RAG. Those
+> alerts map directly to the repo's turn, tool, and Ollama metrics.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -508,9 +575,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Break the trace into agent turn, LLM calls, and tool calls first. Then compare
+> step count, model request duration, token counts, RAG or ecommerce tool spans,
+> retry behavior, and breaker state. In this repo the spans and metrics let me
+> tell whether p99 is from more loop iterations, a slow provider, a slow tool, or
+> streaming clients staying open.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -519,9 +588,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Look at tool metrics by name: error rate, latency distribution, and outcome
+> mix over time. A flaky tool shows intermittent errors or timeout spikes while
+> the rest of the agent remains healthy. The agent also logs turn ID, step, tool
+> name, duration, and success, so individual bad calls can be tied back to traces
+> and upstream dependency logs.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -530,9 +601,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Give the frontend a correlation ID from the request or response stream and put
+> the same ID into backend logs and trace attributes. This repo already creates
+> an agent turn ID inside the trace and logs it around LLM and tool work; the
+> next production hardening step would be returning that ID in the stream or a
+> header so support can jump from a user report to the exact trace.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -552,9 +625,11 @@ Follow-ups:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The provider interface should contain the stable capability the agent needs:
+> send messages plus tool schemas, receive final text or tool calls, and return
+> normalized usage and timing metadata. It should not expose provider-specific
+> request bodies to the agent. In this repo that boundary is `llm.Client.Chat`
+> returning `llm.ChatResponse`.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -563,9 +638,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Normalize them at the provider boundary, then record them through common
+> metric fields. Ollama calls them prompt and eval counts, OpenAI and Anthropic
+> expose different names, but the agent should only see prompt tokens,
+> completion tokens, request duration, and optional eval duration. This repo's
+> `ChatResponse` carries those normalized counts.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -574,9 +651,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> The loop should not change, but the adapter, model name, token accounting,
+> tool-call JSON mapping, timeout budget, and eval baselines probably will. I
+> would run the scripted tests first for contract safety, then run offline evals
+> against real prompts to check tool choice, latency, refusal behavior, and RAG
+> groundedness before switching production traffic.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
@@ -585,9 +664,11 @@ Repo anchors:
 
 Fast answer:
 
-> A strong answer should extend the parent answer with the concrete
-> tradeoff, failure mode, or implementation detail, and explain how it
-> applies in this repo rather than answering generically.
+> Use a fake `llm.Client` or tool that blocks until the context is canceled, run
+> the agent with a very short timeout, and assert the turn returns an error
+> promptly. I would also test that downstream tools receive the context and stop
+> work. That proves the timeout is enforced by the agent loop, not just by one
+> provider implementation.
 
 Repo anchors:
 - `go/ai-service/internal/agent/agent.go` - bounded ReAct-style loop over LLM
