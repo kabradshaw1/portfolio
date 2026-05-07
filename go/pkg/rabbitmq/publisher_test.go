@@ -174,7 +174,7 @@ func TestPublisherReturnsPublishError(t *testing.T) {
 	}
 }
 
-func TestPublisherDoesNotAdvanceSequenceAfterPublishError(t *testing.T) {
+func TestPublisherAdvancesSequenceAfterPublishError(t *testing.T) {
 	want := errors.New("publish failed before broker send")
 	fake := newFakeChannel()
 	fake.publishErr = want
@@ -191,7 +191,7 @@ func TestPublisherDoesNotAdvanceSequenceAfterPublishError(t *testing.T) {
 	fake.publishErr = nil
 	fake.onPublish = func(f *fakeChannel) {
 		if f.publishCount == 2 {
-			f.confirmCh <- amqp.Confirmation{DeliveryTag: 1, Ack: true}
+			f.confirmCh <- amqp.Confirmation{DeliveryTag: 2, Ack: true}
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -201,6 +201,58 @@ func TestPublisherDoesNotAdvanceSequenceAfterPublishError(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf("second Publish returned error: %v", err)
+	}
+}
+
+func TestPublisherIgnoresReturnAfterPublishError(t *testing.T) {
+	want := errors.New("publish returned an ambiguous error")
+	fake := newFakeChannel()
+	fake.publishErr = want
+	publisher, err := rabbitmq.NewPublisher(fake)
+	if err != nil {
+		t.Fatalf("NewPublisher returned error: %v", err)
+	}
+
+	err = publisher.Publish(context.Background(), "exchange", "routing.key", amqp.Publishing{})
+
+	if !errors.Is(err, want) {
+		t.Fatalf("first Publish error = %v, want wrapped %v", err, want)
+	}
+	firstHeaders := fake.publishing.Headers
+
+	secondPublished := make(chan struct{})
+	fake.publishErr = nil
+	fake.onPublish = func(f *fakeChannel) {
+		if f.publishCount == 2 {
+			close(secondPublished)
+		}
+	}
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- publisher.Publish(context.Background(), "exchange", "routing.key", amqp.Publishing{})
+	}()
+
+	select {
+	case <-secondPublished:
+	case <-time.After(time.Second):
+		t.Fatal("second publish did not call PublishWithContext")
+	}
+
+	fake.returnCh <- amqp.Return{ReplyText: "NO_ROUTE", Headers: firstHeaders}
+	select {
+	case err := <-secondDone:
+		t.Fatalf("second Publish returned from stale return with error %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	fake.confirmCh <- amqp.Confirmation{DeliveryTag: 2, Ack: true}
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatalf("second Publish returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second Publish did not return after current confirm")
 	}
 }
 

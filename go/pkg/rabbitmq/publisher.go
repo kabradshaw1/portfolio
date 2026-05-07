@@ -31,6 +31,7 @@ type Publisher struct {
 	publishMux      sync.Mutex
 	stateMux        sync.Mutex
 	nextDeliveryTag uint64
+	nextReturnID    uint64
 	confirmsClosed  bool
 	currentWaiter   *publishWaiter
 	waiters         map[uint64]*publishWaiter
@@ -65,7 +66,7 @@ func (p *Publisher) Publish(ctx context.Context, exchange, routingKey string, ms
 	}
 
 	expectedDeliveryTag := p.reserveDeliveryTag()
-	returnID := fmt.Sprintf("publisher-%d", expectedDeliveryTag)
+	returnID := p.reserveReturnID()
 	waiter, ok := p.registerWaiter(expectedDeliveryTag, returnID)
 	if !ok {
 		return fmt.Errorf("rabbitmq confirm channel closed")
@@ -74,9 +75,6 @@ func (p *Publisher) Publish(ctx context.Context, exchange, routingKey string, ms
 
 	msg = publishingWithCorrelation(msg, returnID)
 	if err := p.ch.PublishWithContext(ctx, exchange, routingKey, true, false, msg); err != nil {
-		// PublishWithContext returned synchronously, so this wrapper considers the
-		// message not published and keeps its local sequence aligned with RabbitMQ.
-		p.rollbackDeliveryTag(expectedDeliveryTag)
 		return fmt.Errorf("publish rabbitmq message: %w", err)
 	}
 
@@ -109,13 +107,12 @@ func (p *Publisher) reserveDeliveryTag() uint64 {
 	return p.nextDeliveryTag
 }
 
-func (p *Publisher) rollbackDeliveryTag(deliveryTag uint64) {
+func (p *Publisher) reserveReturnID() string {
 	p.stateMux.Lock()
 	defer p.stateMux.Unlock()
 
-	if p.nextDeliveryTag == deliveryTag {
-		p.nextDeliveryTag--
-	}
+	p.nextReturnID++
+	return fmt.Sprintf("publisher-%d", p.nextReturnID)
 }
 
 func (p *Publisher) registerWaiter(deliveryTag uint64, returnID string) (*publishWaiter, bool) {
