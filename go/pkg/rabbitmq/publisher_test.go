@@ -156,6 +156,34 @@ func TestPublisherReturnsContextErrorWhenConfirmDoesNotArrive(t *testing.T) {
 	}
 }
 
+func TestPublisherReturnsErrorWhenConfirmChannelCloses(t *testing.T) {
+	fake := newFakeChannel()
+	publisher, err := rabbitmq.NewPublisher(fake)
+	if err != nil {
+		t.Fatalf("NewPublisher returned error: %v", err)
+	}
+	fake.onPublish = func(f *fakeChannel) {
+		close(f.confirmCh)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+
+	go func() {
+		done <- publisher.Publish(ctx, "exchange", "routing.key", amqp.Publishing{})
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil || !(strings.Contains(err.Error(), "confirm") || strings.Contains(err.Error(), "closed")) {
+			t.Fatalf("Publish error = %v, want confirm closed error", err)
+		}
+	case <-time.After(50 * time.Millisecond):
+		cancel()
+		t.Fatal("Publish did not return promptly after confirm channel closed")
+	}
+}
+
 func TestPublisherReturnsErrorWhenReservedHeaderProvided(t *testing.T) {
 	fake := newFakeChannel()
 	publisher, err := rabbitmq.NewPublisher(fake)

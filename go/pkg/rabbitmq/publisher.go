@@ -31,6 +31,7 @@ type Publisher struct {
 	publishMux      sync.Mutex
 	stateMux        sync.Mutex
 	nextDeliveryTag uint64
+	confirmsClosed  bool
 	waiters         map[uint64]*publishWaiter
 }
 
@@ -65,7 +66,10 @@ func (p *Publisher) Publish(ctx context.Context, exchange, routingKey string, ms
 	}
 
 	expectedDeliveryTag := p.reserveDeliveryTag()
-	waiter := p.registerWaiter(expectedDeliveryTag)
+	waiter, ok := p.registerWaiter(expectedDeliveryTag)
+	if !ok {
+		return fmt.Errorf("rabbitmq confirm channel closed")
+	}
 	defer p.unregisterWaiter(expectedDeliveryTag)
 
 	msg = publishingWithSequence(msg, expectedDeliveryTag)
@@ -102,15 +106,19 @@ func (p *Publisher) reserveDeliveryTag() uint64 {
 	return p.nextDeliveryTag
 }
 
-func (p *Publisher) registerWaiter(deliveryTag uint64) *publishWaiter {
+func (p *Publisher) registerWaiter(deliveryTag uint64) (*publishWaiter, bool) {
 	waiter := &publishWaiter{
 		confirmCh: make(chan amqp.Confirmation, 1),
 		returnCh:  make(chan amqp.Return, 1),
 	}
 	p.stateMux.Lock()
+	if p.confirmsClosed {
+		p.stateMux.Unlock()
+		return nil, false
+	}
 	p.waiters[deliveryTag] = waiter
 	p.stateMux.Unlock()
-	return waiter
+	return waiter, true
 }
 
 func (p *Publisher) unregisterWaiter(deliveryTag uint64) {
@@ -133,15 +141,23 @@ func (p *Publisher) drainEvents() {
 		case confirmation, ok := <-confirms:
 			if !ok {
 				confirms = nil
+				p.closeConfirmWaiters()
 				continue
 			}
 			p.drainReadyReturns()
 			p.dispatchConfirm(confirmation)
 		}
 	}
+}
 
+func (p *Publisher) closeConfirmWaiters() {
 	p.stateMux.Lock()
 	defer p.stateMux.Unlock()
+
+	if p.confirmsClosed {
+		return
+	}
+	p.confirmsClosed = true
 	for _, waiter := range p.waiters {
 		close(waiter.confirmCh)
 	}
