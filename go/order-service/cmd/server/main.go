@@ -26,6 +26,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/service"
 	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
 	"github.com/kabradshaw1/portfolio/go/pkg/grpcmetrics"
+	rabbitmq "github.com/kabradshaw1/portfolio/go/pkg/rabbitmq"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tlsconfig"
@@ -135,12 +136,17 @@ func main() {
 	// Create DLQ client for admin endpoints.
 	dlqClient := saga.NewDLQClient(ch)
 
+	rabbitPublisher, err := rabbitmq.NewPublisher(ch)
+	if err != nil {
+		log.Fatalf("rabbitmq publisher confirms: %v", err)
+	}
+
 	// Create saga orchestrator with stock checker adapter.
-	sagaPub := saga.NewPublisher(ch)
+	sagaPub := saga.NewPublisherWithConfirmPublisher(rabbitPublisher)
 	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, payClient, kafkaPub, cfg.FrontendURL)
 
 	// Start saga event consumer.
-	consumer := saga.NewConsumer(orch)
+	consumer := saga.NewConsumerWithPublisher(orch, rabbitPublisher)
 	go func() {
 		if err := consumer.Start(ctx, ch); err != nil {
 			slog.Error("saga consumer failed", "error", err)

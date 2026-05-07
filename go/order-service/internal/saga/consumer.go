@@ -31,13 +31,18 @@ type FailureDecision struct {
 
 // Consumer listens on the saga.order.events queue and dispatches to the orchestrator.
 type Consumer struct {
-	orch       *Orchestrator
-	processing atomic.Bool
+	orch           *Orchestrator
+	retryPublisher ConfirmPublisher
+	processing     atomic.Bool
 }
 
 // NewConsumer creates a saga event consumer.
 func NewConsumer(orch *Orchestrator) *Consumer {
 	return &Consumer{orch: orch}
+}
+
+func NewConsumerWithPublisher(orch *Orchestrator, retryPublisher ConfirmPublisher) *Consumer {
+	return &Consumer{orch: orch, retryPublisher: retryPublisher}
 }
 
 // IsIdle returns true when the consumer is not processing a message.
@@ -50,9 +55,12 @@ func (c *Consumer) Start(ctx context.Context, ch *amqp.Channel) error {
 	if err := ch.Qos(consumerPrefetch, 0, false); err != nil {
 		return fmt.Errorf("set saga consumer qos: %w", err)
 	}
-	retryPublisher, err := rabbitmq.NewPublisher(ch)
-	if err != nil {
-		return fmt.Errorf("create saga retry publisher: %w", err)
+	if c.retryPublisher == nil {
+		retryPublisher, err := rabbitmq.NewPublisher(ch)
+		if err != nil {
+			return fmt.Errorf("create saga retry publisher: %w", err)
+		}
+		c.retryPublisher = retryPublisher
 	}
 	msgs, err := ch.Consume(OrderEvents, "", false, false, false, false, nil)
 	if err != nil {
@@ -84,7 +92,7 @@ func (c *Consumer) Start(ctx context.Context, ch *amqp.Channel) error {
 				)
 				switch decision.Action {
 				case FailureRetryRepublish:
-					if err := retryPublisher.Publish(ctx, SagaExchange, msg.RoutingKey, retryPublishing(msg, decision.Headers)); err != nil {
+					if err := c.retryPublisher.Publish(ctx, SagaExchange, msg.RoutingKey, retryPublishing(msg, decision.Headers)); err != nil {
 						SagaConsumerMessages.WithLabelValues("retry_publish_failed", decision.ErrorClass).Inc()
 						_ = msg.Nack(false, true)
 						break
