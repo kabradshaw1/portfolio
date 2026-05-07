@@ -156,6 +156,30 @@ func TestPublisherReturnsContextErrorWhenConfirmDoesNotArrive(t *testing.T) {
 	}
 }
 
+func TestPublisherReturnsErrorWhenReservedHeaderProvided(t *testing.T) {
+	fake := newFakeChannel()
+	publisher, err := rabbitmq.NewPublisher(fake)
+	if err != nil {
+		t.Fatalf("NewPublisher returned error: %v", err)
+	}
+	msg := amqp.Publishing{
+		Headers: amqp.Table{
+			rabbitmq.PublisherSequenceHeader: int64(99),
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	err = publisher.Publish(ctx, "exchange", "routing.key", msg)
+
+	if err == nil || !strings.Contains(err.Error(), rabbitmq.PublisherSequenceHeader) {
+		t.Fatalf("Publish error = %v, want reserved header error", err)
+	}
+	if fake.publishCount != 0 {
+		t.Fatalf("PublishWithContext called %d times, want 0", fake.publishCount)
+	}
+}
+
 func TestPublisherIgnoresStaleConfirmAfterTimedOutPublish(t *testing.T) {
 	fake := newFakeChannel()
 	publisher, err := rabbitmq.NewPublisher(fake)
@@ -203,5 +227,64 @@ func TestPublisherIgnoresStaleConfirmAfterTimedOutPublish(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("second Publish did not return after current confirm")
+	}
+}
+
+func TestPublisherContinuouslyDrainsStaleConfirmsAfterTimeouts(t *testing.T) {
+	fake := newFakeChannel()
+	fake.confirmCh = make(chan amqp.Confirmation, 1)
+	publisher, err := rabbitmq.NewPublisher(fake)
+	if err != nil {
+		t.Fatalf("NewPublisher returned error: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		err = publisher.Publish(ctx, "exchange", "routing.key", amqp.Publishing{})
+		cancel()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Publish %d error = %v, want context deadline exceeded", i+1, err)
+		}
+	}
+
+	for tag := uint64(1); tag <= 3; tag++ {
+		select {
+		case fake.confirmCh <- amqp.Confirmation{DeliveryTag: tag, Ack: true}:
+		case <-time.After(time.Second):
+			t.Fatalf("stale confirm for tag %d was not drained", tag)
+		}
+	}
+
+	fourthPublished := make(chan struct{})
+	fake.onPublish = func(f *fakeChannel) {
+		if f.publishCount == 4 {
+			close(fourthPublished)
+		}
+	}
+	fourthDone := make(chan error, 1)
+	go func() {
+		fourthDone <- publisher.Publish(context.Background(), "exchange", "routing.key", amqp.Publishing{})
+	}()
+
+	select {
+	case <-fourthPublished:
+	case <-time.After(time.Second):
+		t.Fatal("fourth publish did not call PublishWithContext")
+	}
+
+	select {
+	case err := <-fourthDone:
+		t.Fatalf("fourth Publish returned before current confirm with error %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	fake.confirmCh <- amqp.Confirmation{DeliveryTag: 4, Ack: true}
+	select {
+	case err := <-fourthDone:
+		if err != nil {
+			t.Fatalf("fourth Publish returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("fourth Publish did not return after current confirm")
 	}
 }

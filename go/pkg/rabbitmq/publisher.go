@@ -8,7 +8,9 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-const publisherSequenceHeader = "x-publisher-confirm-sequence"
+// PublisherSequenceHeader is reserved for Publisher's internal publish correlation.
+// Callers must not set this header on messages passed to Publish.
+const PublisherSequenceHeader = "x-publisher-confirm-sequence"
 
 type ConfirmChannel interface {
 	Confirm(noWait bool) error
@@ -27,60 +29,62 @@ type Publisher struct {
 	confirms        <-chan amqp.Confirmation
 	returns         <-chan amqp.Return
 	publishMux      sync.Mutex
+	stateMux        sync.Mutex
 	nextDeliveryTag uint64
+	waiters         map[uint64]*publishWaiter
+}
+
+type publishWaiter struct {
+	confirmCh chan amqp.Confirmation
+	returnCh  chan amqp.Return
 }
 
 func NewPublisher(ch ConfirmChannel) (*Publisher, error) {
 	if err := ch.Confirm(false); err != nil {
 		return nil, err
 	}
-	return &Publisher{
+	p := &Publisher{
 		ch:       ch,
 		confirms: ch.NotifyPublish(make(chan amqp.Confirmation, 1)),
 		returns:  ch.NotifyReturn(make(chan amqp.Return, 1)),
-	}, nil
+		waiters:  make(map[uint64]*publishWaiter),
+	}
+	go p.drainEvents()
+	return p, nil
 }
 
 func (p *Publisher) Publish(ctx context.Context, exchange, routingKey string, msg amqp.Publishing) error {
 	p.publishMux.Lock()
 	defer p.publishMux.Unlock()
 
-	p.drainReturns()
-	expectedDeliveryTag := p.nextDeliveryTag + 1
-
+	if _, exists := msg.Headers[PublisherSequenceHeader]; exists {
+		return fmt.Errorf("rabbitmq publish header %q is reserved", PublisherSequenceHeader)
+	}
 	if msg.DeliveryMode == 0 {
 		msg.DeliveryMode = amqp.Persistent
 	}
+
+	expectedDeliveryTag := p.reserveDeliveryTag()
+	waiter := p.registerWaiter(expectedDeliveryTag)
+	defer p.unregisterWaiter(expectedDeliveryTag)
+
 	msg = publishingWithSequence(msg, expectedDeliveryTag)
 	if err := p.ch.PublishWithContext(ctx, exchange, routingKey, true, false, msg); err != nil {
 		return fmt.Errorf("publish rabbitmq message: %w", err)
 	}
-	p.nextDeliveryTag = expectedDeliveryTag
 
-	returns := p.returns
 	for {
 		select {
-		case ret, ok := <-returns:
-			if ok && returnMatchesSequence(ret, expectedDeliveryTag) {
-				return fmt.Errorf("rabbitmq message returned: %s", ret.ReplyText)
-			}
-			if !ok {
-				returns = nil
-			}
-		case confirmation, ok := <-p.confirms:
+		case ret := <-waiter.returnCh:
+			return fmt.Errorf("rabbitmq message returned: %s", ret.ReplyText)
+		case confirmation, ok := <-waiter.confirmCh:
 			if !ok {
 				return fmt.Errorf("rabbitmq confirm channel closed")
-			}
-			if confirmation.DeliveryTag < expectedDeliveryTag {
-				continue
-			}
-			if confirmation.DeliveryTag > expectedDeliveryTag {
-				return fmt.Errorf("rabbitmq unexpected confirm delivery tag %d, want %d", confirmation.DeliveryTag, expectedDeliveryTag)
 			}
 			if !confirmation.Ack {
 				return fmt.Errorf("rabbitmq publish nack")
 			}
-			if ret, ok := currentReturn(returns, expectedDeliveryTag); ok {
+			if ret, ok := currentReturn(waiter); ok {
 				return fmt.Errorf("rabbitmq message returned: %s", ret.ReplyText)
 			}
 			return nil
@@ -90,60 +94,139 @@ func (p *Publisher) Publish(ctx context.Context, exchange, routingKey string, ms
 	}
 }
 
+func (p *Publisher) reserveDeliveryTag() uint64 {
+	p.stateMux.Lock()
+	defer p.stateMux.Unlock()
+
+	p.nextDeliveryTag++
+	return p.nextDeliveryTag
+}
+
+func (p *Publisher) registerWaiter(deliveryTag uint64) *publishWaiter {
+	waiter := &publishWaiter{
+		confirmCh: make(chan amqp.Confirmation, 1),
+		returnCh:  make(chan amqp.Return, 1),
+	}
+	p.stateMux.Lock()
+	p.waiters[deliveryTag] = waiter
+	p.stateMux.Unlock()
+	return waiter
+}
+
+func (p *Publisher) unregisterWaiter(deliveryTag uint64) {
+	p.stateMux.Lock()
+	delete(p.waiters, deliveryTag)
+	p.stateMux.Unlock()
+}
+
+func (p *Publisher) drainEvents() {
+	confirms := p.confirms
+	returns := p.returns
+	for confirms != nil || returns != nil {
+		select {
+		case ret, ok := <-returns:
+			if !ok {
+				returns = nil
+				continue
+			}
+			p.dispatchReturn(ret)
+		case confirmation, ok := <-confirms:
+			if !ok {
+				confirms = nil
+				continue
+			}
+			p.drainReadyReturns()
+			p.dispatchConfirm(confirmation)
+		}
+	}
+
+	p.stateMux.Lock()
+	defer p.stateMux.Unlock()
+	for _, waiter := range p.waiters {
+		close(waiter.confirmCh)
+	}
+}
+
+func (p *Publisher) drainReadyReturns() {
+	for {
+		select {
+		case ret, ok := <-p.returns:
+			if !ok {
+				return
+			}
+			p.dispatchReturn(ret)
+		default:
+			return
+		}
+	}
+}
+
+func (p *Publisher) dispatchConfirm(confirmation amqp.Confirmation) {
+	waiter := p.waiter(confirmation.DeliveryTag)
+	if waiter == nil {
+		return
+	}
+	select {
+	case waiter.confirmCh <- confirmation:
+	default:
+	}
+}
+
+func (p *Publisher) dispatchReturn(ret amqp.Return) {
+	seq, ok := returnSequence(ret)
+	if !ok {
+		return
+	}
+	waiter := p.waiter(seq)
+	if waiter == nil {
+		return
+	}
+	select {
+	case waiter.returnCh <- ret:
+	default:
+	}
+}
+
+func (p *Publisher) waiter(deliveryTag uint64) *publishWaiter {
+	p.stateMux.Lock()
+	defer p.stateMux.Unlock()
+	return p.waiters[deliveryTag]
+}
+
 func publishingWithSequence(msg amqp.Publishing, seq uint64) amqp.Publishing {
 	headers := amqp.Table{}
 	for key, value := range msg.Headers {
 		headers[key] = value
 	}
-	headers[publisherSequenceHeader] = int64(seq)
+	headers[PublisherSequenceHeader] = int64(seq)
 	msg.Headers = headers
 	return msg
 }
 
-func currentReturn(returns <-chan amqp.Return, expectedDeliveryTag uint64) (amqp.Return, bool) {
-	for {
-		select {
-		case ret, ok := <-returns:
-			if !ok {
-				return amqp.Return{}, false
-			}
-			if returnMatchesSequence(ret, expectedDeliveryTag) {
-				return ret, true
-			}
-		default:
-			return amqp.Return{}, false
-		}
+func currentReturn(waiter *publishWaiter) (amqp.Return, bool) {
+	select {
+	case ret := <-waiter.returnCh:
+		return ret, true
+	default:
+		return amqp.Return{}, false
 	}
 }
 
-func returnMatchesSequence(ret amqp.Return, expectedDeliveryTag uint64) bool {
-	seq, ok := ret.Headers[publisherSequenceHeader]
+func returnSequence(ret amqp.Return) (uint64, bool) {
+	seq, ok := ret.Headers[PublisherSequenceHeader]
 	if !ok {
-		return false
+		return 0, false
 	}
 	switch v := seq.(type) {
 	case int:
-		return uint64(v) == expectedDeliveryTag
+		return uint64(v), true
 	case int32:
-		return uint64(v) == expectedDeliveryTag
+		return uint64(v), true
 	case int64:
-		return uint64(v) == expectedDeliveryTag
+		return uint64(v), true
 	case uint64:
-		return v == expectedDeliveryTag
+		return v, true
 	default:
-		return false
-	}
-}
-
-func (p *Publisher) drainReturns() {
-	for {
-		select {
-		case _, ok := <-p.returns:
-			if !ok {
-				return
-			}
-		default:
-			return
-		}
+		return 0, false
 	}
 }
