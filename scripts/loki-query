@@ -40,11 +40,14 @@ if [[ -z "$NS" ]]; then
   exit 1
 fi
 
-# Build Loki URL locally in Python — avoids bash quoting issues with LogQL
+# Build Loki URL locally in Python — avoids bash quoting issues with LogQL.
 URL=$(python3 -c "
 import urllib.parse, time, sys
 
 ns, app, filt, limit, hours = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
+if hours > 24:
+    print('Error: --hours cannot exceed 24 because Loki query_range is capped at 1d', file=sys.stderr)
+    sys.exit(2)
 
 q = '{namespace=\"' + ns + '\"'
 if app:
@@ -54,15 +57,26 @@ if filt:
     q += ' |= \"' + filt + '\"'
 q += ' | json'
 
-start = int((time.time() - hours * 3600) * 1e9)
-end   = int(time.time() * 1e9)
+end_seconds = time.time()
+# Loki rejects query_range windows that evaluate even slightly over 1d. Keep
+# the documented --hours 24 path just inside that boundary.
+window_seconds = hours * 3600
+if hours == 24:
+    window_seconds -= 60
+start = int((end_seconds - window_seconds) * 1e9)
+end   = int(end_seconds * 1e9)
 print(f'http://localhost:3100/loki/api/v1/query_range?query={urllib.parse.quote(q)}&limit={limit}&start={start}&end={end}')
 " "$NS" "$APP" "$FILTER" "$LIMIT" "$HOURS")
 
 # Query Loki, parse CRI-wrapped JSON, apply client-side level filter.
 # Level filtering is done client-side because CRI wraps app JSON with escaped
 # quotes, making server-side LogQL level matching unreliable.
-ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- '${URL}'" | python3 -c "
+RESPONSE=$(ssh debian "kubectl exec -n monitoring loki-0 -- wget -qO- '${URL}'") || {
+  echo "Error: Loki query failed" >&2
+  exit 1
+}
+
+printf '%s' "$RESPONSE" | python3 -c "
 import json, sys
 
 level_filter = sys.argv[1].upper() if len(sys.argv) > 1 else ''
@@ -83,19 +97,20 @@ for stream in results:
             p = json.loads(inner.strip()) if isinstance(inner, str) else outer
         except Exception:
             p = {}
-        msg = p.get('msg', p.get('message', line[:200] if not p else ''))
+        msg = p.get('msg') or p.get('message') or p.get('event') or (line[:200] if not p else '')
         if not msg:
             continue
         level = p.get('level', '')
         if level_filter and level.upper() != level_filter:
             continue
         err = p.get('error', '')
-        tid = p.get('traceID', '')
+        tid = p.get('traceID') or p.get('trace_id', '')
         extras = ' '.join(
             f'{k}={p[k]}' for k in [
                 'orderID', 'target', 'method', 'status', 'duration',
                 'currentStep', 'event', 'operation', 'gitSHA',
                 'breaker', 'from', 'to', 'topic', 'partition',
+                'path', 'status_code', 'duration_ms',
             ] if p.get(k)
         )
         print(f'[{app}] [{level}] {msg}' + (f' {extras}' if extras else ''))
