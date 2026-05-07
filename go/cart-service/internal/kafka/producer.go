@@ -9,8 +9,13 @@ import (
 	kafkago "github.com/segmentio/kafka-go"
 
 	"github.com/google/uuid"
+	"github.com/kabradshaw1/portfolio/go/pkg/kafkametrics"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
+
+const serviceName = "cart-service"
+
+var metricsRecorder kafkametrics.Recorder = kafkametrics.PrometheusRecorder{}
 
 type Event struct {
 	ID        string    `json:"id"`
@@ -35,7 +40,9 @@ const (
 	batchTimeout = 1 * time.Second
 )
 
-func NewProducer(brokers []string) Producer {
+// NewBestEffortProducer creates an async analytics producer. Publish failures
+// are observable but must not fail the primary cart operation.
+func NewBestEffortProducer(brokers []string) Producer {
 	w := &kafkago.Writer{
 		Addr:         kafkago.TCP(brokers...),
 		Balancer:     &kafkago.LeastBytes{},
@@ -44,7 +51,13 @@ func NewProducer(brokers []string) Producer {
 		BatchTimeout: batchTimeout,
 		RequiredAcks: kafkago.RequireOne,
 	}
+	metricsRecorder.SetAsyncMode(serviceName, true)
 	return &writerProducer{writer: w}
+}
+
+// NewProducer preserves the historical constructor name for existing callers.
+func NewProducer(brokers []string) Producer {
+	return NewBestEffortProducer(brokers)
 }
 
 func (p *writerProducer) Publish(ctx context.Context, topic string, key string, event Event) error {
@@ -78,7 +91,12 @@ func (NopProducer) Publish(context.Context, string, string, Event) error { retur
 func (NopProducer) Close() error                                         { return nil }
 
 func SafePublish(ctx context.Context, p Producer, topic, key string, event Event) {
+	start := time.Now()
+	outcome := "success"
 	if err := p.Publish(ctx, topic, key, event); err != nil {
+		outcome = "error"
 		slog.Warn("kafka publish failed", "topic", topic, "error", err)
 	}
+	metricsRecorder.ObserveMessage(serviceName, topic, outcome)
+	metricsRecorder.ObserveWriteDuration(serviceName, topic, time.Since(start))
 }

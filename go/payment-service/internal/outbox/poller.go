@@ -19,6 +19,7 @@ import (
 // OutboxFetcher reads unpublished outbox messages and marks them published.
 type OutboxFetcher interface {
 	FetchUnpublished(ctx context.Context, limit int) ([]model.OutboxMessage, error)
+	CountUnpublished(ctx context.Context) (int64, error)
 	MarkPublished(ctx context.Context, id uuid.UUID) error
 	Ping(ctx context.Context) error
 }
@@ -121,6 +122,11 @@ func (p *Poller) poll(ctx context.Context) {
 	if err != nil {
 		slog.ErrorContext(ctx, "outbox poller: failed to fetch unpublished messages", "error", err)
 		return
+	}
+	if count, countErr := p.fetcher.CountUnpublished(ctx); countErr != nil {
+		slog.WarnContext(ctx, "outbox poller: failed to count unpublished messages", "error", countErr)
+	} else {
+		metrics.OutboxUnpublished.Set(float64(count))
 	}
 
 	for _, msg := range messages {

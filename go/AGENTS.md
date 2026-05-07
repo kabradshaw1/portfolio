@@ -14,6 +14,9 @@ service-to-service calls.
 - `analytics-service` - Kafka consumer and streaming analytics, REST `:8094`
 
 Use the `scaffold-go-service` skill when creating or extracting a Go service.
+For conditional interfaces, use `go-grpc-service-reliability` for gRPC,
+`go-kafka-consumer-reliability` for Kafka consumers, and
+`go-rabbitmq-reliability` for Go RabbitMQ publishers or consumers.
 
 ## Shared Package (`go/pkg/`)
 
