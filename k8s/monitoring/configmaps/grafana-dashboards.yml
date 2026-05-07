@@ -1337,6 +1337,49 @@ data:
           }
         },
         {
+          "title": "Saga DLQ Depth",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 0,
+            "y": 28
+          },
+          "id": 18,
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          },
+          "targets": [
+            {
+              "expr": "max by (vhost, queue) (rabbitmq_detailed_queue_messages{queue=\"ecommerce.saga.dlq\"})",
+              "legendFormat": "{{vhost}} {{queue}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "tooltip": {
+              "mode": "multi"
+            },
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          }
+        },
+        {
           "title": "AI Service Agent",
           "type": "row",
           "collapsed": false,
@@ -1344,9 +1387,9 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 28
+            "y": 34
           },
-          "id": 18,
+          "id": 19,
           "panels": []
         },
         {
@@ -1356,9 +1399,9 @@ data:
             "h": 6,
             "w": 8,
             "x": 0,
-            "y": 29
+            "y": 35
           },
-          "id": 19,
+          "id": 20,
           "datasource": {
             "type": "prometheus",
             "uid": ""
@@ -1399,9 +1442,9 @@ data:
             "h": 6,
             "w": 8,
             "x": 8,
-            "y": 29
+            "y": 35
           },
-          "id": 20,
+          "id": 21,
           "datasource": {
             "type": "prometheus",
             "uid": ""
@@ -1447,9 +1490,9 @@ data:
             "h": 6,
             "w": 8,
             "x": 16,
-            "y": 29
+            "y": 35
           },
-          "id": 21,
+          "id": 22,
           "datasource": {
             "type": "prometheus",
             "uid": ""
@@ -1494,9 +1537,9 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 35
+            "y": 41
           },
-          "id": 22,
+          "id": 23,
           "title": "Streaming Analytics",
           "type": "row"
         },
@@ -1518,9 +1561,9 @@ data:
             "h": 6,
             "w": 8,
             "x": 0,
-            "y": 36
+            "y": 42
           },
-          "id": 23,
+          "id": 24,
           "title": "Kafka Consumer Lag",
           "type": "timeseries",
           "targets": [
@@ -1549,9 +1592,9 @@ data:
             "h": 6,
             "w": 8,
             "x": 8,
-            "y": 36
+            "y": 42
           },
-          "id": 24,
+          "id": 25,
           "title": "Events Consumed Rate",
           "type": "timeseries",
           "targets": [
@@ -1580,9 +1623,9 @@ data:
             "h": 6,
             "w": 8,
             "x": 16,
-            "y": 36
+            "y": 42
           },
-          "id": 25,
+          "id": 26,
           "title": "Consumer Errors",
           "type": "stat",
           "targets": [
@@ -1593,21 +1636,502 @@ data:
             }
           ]
         },
-        {"collapsed":false,"gridPos":{"h":1,"w":24,"x":0,"y":42},"id":26,"title":"Decomposed Services","type":"row"},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"reqps","color":{"mode":"palette-classic"}},"overrides":[]},"gridPos":{"h":6,"w":8,"x":0,"y":43},"id":27,"title":"Request Rate by Service","type":"timeseries","targets":[{"expr":"sum by (service) (rate(http_requests_total{service=~\"go-(order|cart|payment|product)-service\"}[5m]))","legendFormat":"{{service}}","refId":"A"}]},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"percent","color":{"mode":"palette-classic"},"thresholds":{"steps":[{"color":"green","value":null},{"color":"red","value":2}]}},"overrides":[]},"gridPos":{"h":6,"w":8,"x":8,"y":43},"id":28,"title":"Error Rate by Service","type":"timeseries","targets":[{"expr":"sum by (service) (rate(http_requests_total{service=~\"go-(order|cart|payment|product)-service\",status=~\"5..\"}[5m])) / sum by (service) (rate(http_requests_total{service=~\"go-(order|cart|payment|product)-service\"}[5m])) * 100","legendFormat":"{{service}}","refId":"A"}]},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"s","color":{"mode":"palette-classic"},"thresholds":{"steps":[{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":2}]}},"overrides":[]},"gridPos":{"h":6,"w":8,"x":16,"y":43},"id":29,"title":"p95 Latency by Service","type":"timeseries","targets":[{"expr":"histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket{service=~\"go-(order|cart|payment|product)-service\"}[5m])))","legendFormat":"{{service}}","refId":"A"}]},
-        {"collapsed":false,"gridPos":{"h":1,"w":24,"x":0,"y":49},"id":30,"title":"Saga & Payment Health","type":"row"},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"short","color":{"mode":"palette-classic"}},"overrides":[]},"gridPos":{"h":6,"w":6,"x":0,"y":50},"id":31,"title":"Orders by Status","type":"timeseries","targets":[{"expr":"sum by (status) (rate(ecommerce_orders_placed_total[5m]))","legendFormat":"{{status}}","refId":"A"}]},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"short","color":{"mode":"palette-classic"},"mappings":[{"options":{"0":{"text":"CLOSED"},"1":{"text":"HALF-OPEN"},"2":{"text":"OPEN"}},"type":"value"}]},"overrides":[]},"gridPos":{"h":6,"w":6,"x":6,"y":50},"id":32,"title":"Circuit Breaker State","type":"stat","targets":[{"expr":"circuit_breaker_state","legendFormat":"{{name}}","refId":"A"}]},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"ops","color":{"mode":"palette-classic"}},"overrides":[]},"gridPos":{"h":6,"w":6,"x":12,"y":50},"id":33,"title":"Payment Webhooks","type":"timeseries","targets":[{"expr":"sum by (event_type, outcome) (rate(payment_webhook_events_total[5m]))","legendFormat":"{{event_type}} {{outcome}}","refId":"A"}]},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"ops","color":{"mode":"palette-classic"}},"overrides":[]},"gridPos":{"h":6,"w":6,"x":18,"y":50},"id":34,"title":"Outbox Publish","type":"timeseries","targets":[{"expr":"sum by (outcome) (rate(payment_outbox_publish_total[5m]))","legendFormat":"{{outcome}}","refId":"A"}]},
-        {"collapsed":false,"gridPos":{"h":1,"w":24,"x":0,"y":56},"id":35,"title":"gRPC Client Health","type":"row"},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"reqps","color":{"mode":"palette-classic"}},"overrides":[]},"gridPos":{"h":6,"w":8,"x":0,"y":57},"id":36,"title":"gRPC Request Rate by Target","type":"timeseries","targets":[{"expr":"sum by (target) (rate(grpc_client_requests_total[5m]))","legendFormat":"{{target}}","refId":"A"}]},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"percent","color":{"mode":"palette-classic"},"thresholds":{"steps":[{"color":"green","value":null},{"color":"red","value":5}]}},"overrides":[]},"gridPos":{"h":6,"w":8,"x":8,"y":57},"id":37,"title":"gRPC Error Rate by Target","type":"timeseries","targets":[{"expr":"sum by (target) (rate(grpc_client_requests_total{status!=\"OK\"}[5m])) / sum by (target) (rate(grpc_client_requests_total[5m])) * 100","legendFormat":"{{target}}","refId":"A"}]},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"s","color":{"mode":"palette-classic"},"thresholds":{"steps":[{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":5}]}},"overrides":[]},"gridPos":{"h":6,"w":8,"x":16,"y":57},"id":38,"title":"gRPC p95 Latency by Target","type":"timeseries","targets":[{"expr":"histogram_quantile(0.95, sum by (target, le) (rate(grpc_client_request_duration_seconds_bucket[5m])))","legendFormat":"{{target}}","refId":"A"}]},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"s","color":{"mode":"palette-classic"}},"overrides":[]},"gridPos":{"h":6,"w":12,"x":0,"y":63},"id":39,"title":"Saga Step Duration (p95)","type":"timeseries","targets":[{"expr":"histogram_quantile(0.95, sum by (step, le) (rate(saga_step_duration_seconds_bucket[5m])))","legendFormat":"{{step}}","refId":"A"}]},
-        {"datasource":{"type":"prometheus","uid":"PBFA97CFB590B2093"},"fieldConfig":{"defaults":{"unit":"d","color":{"mode":"thresholds"},"thresholds":{"steps":[{"color":"red","value":null},{"color":"yellow","value":1},{"color":"green","value":7}]}},"overrides":[]},"gridPos":{"h":6,"w":12,"x":12,"y":63},"id":40,"title":"Certificate Expiry","type":"stat","targets":[{"expr":"(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400","legendFormat":"{{name}}","refId":"A"}]}
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 48
+          },
+          "id": 27,
+          "title": "Decomposed Services",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 0,
+            "y": 49
+          },
+          "id": 28,
+          "title": "Request Rate by Service",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum by (service) (rate(http_requests_total{service=~\"go-(order|cart|payment|product)-service\"}[5m]))",
+              "legendFormat": "{{service}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 8,
+            "y": 49
+          },
+          "id": 29,
+          "title": "Error Rate by Service",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum by (service) (rate(http_requests_total{service=~\"go-(order|cart|payment|product)-service\",status=~\"5..\"}[5m])) / sum by (service) (rate(http_requests_total{service=~\"go-(order|cart|payment|product)-service\"}[5m])) * 100",
+              "legendFormat": "{{service}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 16,
+            "y": 49
+          },
+          "id": 30,
+          "title": "p95 Latency by Service",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket{service=~\"go-(order|cart|payment|product)-service\"}[5m])))",
+              "legendFormat": "{{service}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 55
+          },
+          "id": 31,
+          "title": "Saga & Payment Health",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 0,
+            "y": 56
+          },
+          "id": 32,
+          "title": "Orders by Status",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum by (status) (rate(ecommerce_orders_placed_total[5m]))",
+              "legendFormat": "{{status}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "text": "CLOSED"
+                    },
+                    "1": {
+                      "text": "HALF-OPEN"
+                    },
+                    "2": {
+                      "text": "OPEN"
+                    }
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 6,
+            "y": 56
+          },
+          "id": 33,
+          "title": "Circuit Breaker State",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "circuit_breaker_state",
+              "legendFormat": "{{name}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 12,
+            "y": 56
+          },
+          "id": 34,
+          "title": "Payment Webhooks",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum by (event_type, outcome) (rate(payment_webhook_events_total[5m]))",
+              "legendFormat": "{{event_type}} {{outcome}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 18,
+            "y": 56
+          },
+          "id": 35,
+          "title": "Outbox Publish",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum by (outcome) (rate(payment_outbox_publish_total[5m]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 62
+          },
+          "id": 36,
+          "title": "gRPC Client Health",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 0,
+            "y": 63
+          },
+          "id": 37,
+          "title": "gRPC Request Rate by Target",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum by (target) (rate(grpc_client_requests_total[5m]))",
+              "legendFormat": "{{target}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 8,
+            "y": 63
+          },
+          "id": 38,
+          "title": "gRPC Error Rate by Target",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum by (target) (rate(grpc_client_requests_total{status!=\"OK\"}[5m])) / sum by (target) (rate(grpc_client_requests_total[5m])) * 100",
+              "legendFormat": "{{target}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 16,
+            "y": 63
+          },
+          "id": 39,
+          "title": "gRPC p95 Latency by Target",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (target, le) (rate(grpc_client_request_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{target}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 0,
+            "y": 69
+          },
+          "id": 40,
+          "title": "Saga Step Duration (p95)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (step, le) (rate(saga_step_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{step}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "d",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "green",
+                    "value": 7
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 12,
+            "y": 69
+          },
+          "id": 41,
+          "title": "Certificate Expiry",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400",
+              "legendFormat": "{{name}}",
+              "refId": "A"
+            }
+          ]
+        }
       ],
       "schemaVersion": 39,
       "tags": [
@@ -3034,995 +3558,4 @@ data:
       "title": "System Overview",
       "uid": "system-overview",
       "version": 1
-    }
-  observability-overview.json: |
-    {
-      "annotations": {
-        "list": []
-      },
-      "editable": true,
-      "fiscalYearStartMonth": 0,
-      "graphTooltip": 1,
-      "id": null,
-      "links": [],
-      "panels": [
-        {
-          "title": "Service Health",
-          "type": "row",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 0
-          },
-          "id": 1,
-          "panels": []
-        },
-        {
-          "title": "Error Rate by Service",
-          "type": "timeseries",
-          "gridPos": {
-            "h": 6,
-            "w": 12,
-            "x": 0,
-            "y": 1
-          },
-          "id": 2,
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "targets": [
-            {
-              "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m])) * 100",
-              "legendFormat": "error %",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percent",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 1,
-                "fillOpacity": 10,
-                "showPoints": "never"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "tooltip": {
-              "mode": "multi"
-            },
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            }
-          }
-        },
-        {
-          "title": "P95 Latency",
-          "type": "timeseries",
-          "gridPos": {
-            "h": 6,
-            "w": 12,
-            "x": 12,
-            "y": 1
-          },
-          "id": 3,
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "targets": [
-            {
-              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service))",
-              "legendFormat": "{{service}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 1,
-                "fillOpacity": 10,
-                "showPoints": "never"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "tooltip": {
-              "mode": "multi"
-            },
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            }
-          }
-        },
-        {
-          "title": "Application Logs",
-          "type": "row",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 7
-          },
-          "id": 4,
-          "panels": []
-        },
-        {
-          "title": "Logs",
-          "type": "logs",
-          "gridPos": {
-            "h": 10,
-            "w": 24,
-            "x": 0,
-            "y": 8
-          },
-          "id": 5,
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "targets": [
-            {
-              "expr": "{namespace=\"$namespace\"} | json | level=~\"error|warn\"",
-              "refId": "A"
-            }
-          ],
-          "options": {
-            "showTime": true,
-            "showLabels": true,
-            "showCommonLabels": false,
-            "wrapLogMessage": true,
-            "prettifyLogMessage": false,
-            "enableLogDetails": true,
-            "sortOrder": "Descending",
-            "dedupStrategy": "none"
-          }
-        },
-        {
-          "title": "Traces",
-          "type": "row",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 18
-          },
-          "id": 6,
-          "panels": []
-        },
-        {
-          "title": "Recent Error Traces",
-          "type": "table",
-          "gridPos": {
-            "h": 8,
-            "w": 24,
-            "x": 0,
-            "y": 19
-          },
-          "id": 7,
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "targets": [
-            {
-              "expr": "{namespace=\"$namespace\"} | json | level=\"error\" | line_format \"{{.traceID}}\"",
-              "refId": "A"
-            }
-          ],
-          "options": {
-            "showHeader": true,
-            "sortBy": []
-          },
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          }
-        }
-      ],
-      "schemaVersion": 39,
-      "tags": [
-        "observability",
-        "overview"
-      ],
-      "templating": {
-        "list": [
-          {
-            "current": {
-              "selected": true,
-              "text": "go-ecommerce",
-              "value": "go-ecommerce"
-            },
-            "name": "namespace",
-            "options": [
-              {
-                "selected": true,
-                "text": "go-ecommerce",
-                "value": "go-ecommerce"
-              },
-              {
-                "selected": false,
-                "text": "java-tasks",
-                "value": "java-tasks"
-              },
-              {
-                "selected": false,
-                "text": "ai-services",
-                "value": "ai-services"
-              }
-            ],
-            "query": "go-ecommerce,java-tasks,ai-services",
-            "type": "custom"
-          }
-        ]
-      },
-      "time": {
-        "from": "now-1h",
-        "to": "now"
-      },
-      "timepicker": {},
-      "timezone": "",
-      "title": "Observability Overview",
-      "uid": "observability-overview",
-      "version": 1
-    }
-  postgresql.json: |
-    {
-      "annotations": { "list": [] },
-      "editable": true,
-      "fiscalYearStartMonth": 0,
-      "graphTooltip": 1,
-      "id": null,
-      "links": [],
-      "panels": [
-        {
-          "title": "Connection Utilization",
-          "type": "gauge",
-          "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
-          "id": 1,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "sum(pg_stat_activity_count) / pg_settings_max_connections * 100",
-              "legendFormat": "utilization %",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percent",
-              "min": 0,
-              "max": 100,
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 60 },
-                  { "color": "red", "value": 80 }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "title": "Cache Hit Ratio",
-          "type": "stat",
-          "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
-          "id": 2,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "sum(pg_stat_database_blks_hit) / (sum(pg_stat_database_blks_hit) + sum(pg_stat_database_blks_read)) * 100",
-              "legendFormat": "hit ratio %",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percent",
-              "decimals": 2,
-              "thresholds": {
-                "steps": [
-                  { "color": "red", "value": null },
-                  { "color": "yellow", "value": 90 },
-                  { "color": "green", "value": 99 }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "title": "Last Successful Backup",
-          "type": "stat",
-          "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
-          "id": 3,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "time() - max(kube_job_status_completion_time{job_name=~\"postgres-backup.*\", namespace=\"java-tasks\"})",
-              "legendFormat": "age",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 86400 },
-                  { "color": "red", "value": 93600 }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "title": "Database Sizes",
-          "type": "bargauge",
-          "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
-          "id": 4,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "pg_database_size_bytes{datname!~\"template.*|postgres\"}",
-              "legendFormat": "{{datname}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "bytes",
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 500000000 },
-                  { "color": "red", "value": 1500000000 }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "orientation": "horizontal",
-            "displayMode": "gradient"
-          }
-        },
-        {
-          "title": "Transaction Rate",
-          "type": "timeseries",
-          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-          "id": 5,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "sum by (datname) (rate(pg_stat_database_xact_commit{datname!~\"template.*|postgres\"}[5m]))",
-              "legendFormat": "{{datname}} commits",
-              "refId": "A"
-            },
-            {
-              "expr": "sum by (datname) (rate(pg_stat_database_xact_rollback{datname!~\"template.*|postgres\"}[5m]))",
-              "legendFormat": "{{datname}} rollbacks",
-              "refId": "B"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "ops",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 1,
-                "fillOpacity": 10,
-                "showPoints": "never"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "tooltip": { "mode": "multi" },
-            "legend": { "displayMode": "list", "placement": "bottom" }
-          }
-        },
-        {
-          "title": "Deadlocks",
-          "type": "timeseries",
-          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-          "id": 6,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "sum by (datname) (rate(pg_stat_database_deadlocks{datname!~\"template.*|postgres\"}[5m]))",
-              "legendFormat": "{{datname}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "ops",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 1,
-                "fillOpacity": 10,
-                "showPoints": "never"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "tooltip": { "mode": "multi" },
-            "legend": { "displayMode": "list", "placement": "bottom" }
-          }
-        },
-        {
-          "title": "Connections by Service",
-          "type": "bargauge",
-          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
-          "id": 7,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "pg_stat_activity_count{datname!~\"template.*|postgres\"}",
-              "legendFormat": "{{application_name}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 10 },
-                  { "color": "red", "value": 20 }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "orientation": "horizontal",
-            "displayMode": "gradient"
-          }
-        },
-        {
-          "title": "Time Since Last WAL Archive",
-          "type": "stat",
-          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 24 },
-          "id": 8,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "time() - pg_stat_archiver_last_archived_time",
-              "legendFormat": "age",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 300 },
-                  { "color": "red", "value": 600 }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "title": "WAL Archive Failures (5m rate)",
-          "type": "timeseries",
-          "gridPos": { "h": 6, "w": 8, "x": 8, "y": 24 },
-          "id": 9,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "rate(pg_stat_archiver_failed_count[5m])",
-              "legendFormat": "failures/sec",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "ops",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 1,
-                "fillOpacity": 10,
-                "showPoints": "never"
-              },
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "red", "value": 0.0001 }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "tooltip": { "mode": "multi" },
-            "legend": { "displayMode": "list", "placement": "bottom" }
-          }
-        },
-        {
-          "title": "Time Since Last Base Backup",
-          "type": "stat",
-          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 24 },
-          "id": 10,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "time() - max(kube_cronjob_status_last_successful_time{cronjob=\"postgres-basebackup\", namespace=\"java-tasks\"})",
-              "legendFormat": "age",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 604800 },
-                  { "color": "red", "value": 691200 }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "title": "Backup Verification — Time Since Last Success",
-          "type": "stat",
-          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 30 },
-          "id": 11,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "time() - backup_verification_last_success_timestamp",
-              "legendFormat": "{{instance}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 604800 },
-                  { "color": "red", "value": 691200 }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-            "textMode": "value_and_name",
-            "colorMode": "value",
-            "orientation": "horizontal"
-          }
-        },
-        {
-          "title": "Backup Verification Failures (last 30d)",
-          "type": "timeseries",
-          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 30 },
-          "id": 12,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "increase(backup_verification_last_failure_timestamp[30d])",
-              "legendFormat": "{{instance}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 1,
-                "fillOpacity": 10,
-                "showPoints": "never"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "tooltip": { "mode": "multi" },
-            "legend": { "displayMode": "list", "placement": "bottom" }
-          }
-        },
-        {
-          "title": "Backup Verification — Restored Row Counts",
-          "type": "bargauge",
-          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 30 },
-          "id": 13,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "backup_verification_restored_rows",
-              "legendFormat": "{{instance}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "thresholds": {
-                "steps": [
-                  { "color": "red", "value": null },
-                  { "color": "yellow", "value": 1 },
-                  { "color": "green", "value": 100 }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "orientation": "horizontal",
-            "displayMode": "gradient"
-          }
-        },
-        {
-          "title": "Replica Replay Lag",
-          "type": "timeseries",
-          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
-          "id": 14,
-          "description": "Seconds the replica is behind the primary. Sourced from pg_stat_replication on the primary; the alert fires at 30s.",
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "max(pg_stat_replication_replay_lag_seconds)",
-              "legendFormat": "replay lag",
-              "refId": "A"
-            },
-            {
-              "expr": "max(pg_stat_replication_write_lag_seconds)",
-              "legendFormat": "write lag",
-              "refId": "B"
-            },
-            {
-              "expr": "max(pg_stat_replication_flush_lag_seconds)",
-              "legendFormat": "flush lag",
-              "refId": "C"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 1,
-                "fillOpacity": 10,
-                "showPoints": "never"
-              },
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 10 },
-                  { "color": "red", "value": 30 }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "tooltip": { "mode": "multi" },
-            "legend": { "displayMode": "list", "placement": "bottom" }
-          }
-        },
-        {
-          "title": "Replication Slot WAL Retention",
-          "type": "timeseries",
-          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
-          "id": 15,
-          "description": "How much WAL the replication slot is forcing the primary to retain. max_slot_wal_keep_size is set to 4GB; once the slot crosses that, Postgres will invalidate it rather than fill the data volume.",
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "max(pg_replication_slots_safe_wal_size_bytes{slot_name=\"replica_1\"})",
-              "legendFormat": "safe wal headroom",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "bytes",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 1,
-                "fillOpacity": 10,
-                "showPoints": "never"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "tooltip": { "mode": "multi" },
-            "legend": { "displayMode": "list", "placement": "bottom" }
-          }
-        },
-        {
-          "title": "Replica Replay LSN vs Primary LSN",
-          "type": "stat",
-          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 46 },
-          "id": 16,
-          "description": "Visual confidence the WAL stream is live. The replica's last replayed transaction timestamp; if this stops moving, replication has stalled even if `up` still reports healthy.",
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            {
-              "expr": "time() - max(pg_last_xact_replay_timestamp)",
-              "legendFormat": "age of last replayed xact",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 30 },
-                  { "color": "red", "value": 120 }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-            "colorMode": "value",
-            "orientation": "horizontal"
-          }
-        }
-      ],
-      "schemaVersion": 39,
-      "tags": ["postgresql", "database"],
-      "templating": { "list": [] },
-      "time": { "from": "now-1h", "to": "now" },
-      "timepicker": {},
-      "timezone": "",
-      "title": "PostgreSQL",
-      "uid": "postgresql",
-      "version": 2
-    }
-  pg-query-performance.json: |
-    {
-      "annotations": { "list": [] },
-      "editable": true,
-      "graphTooltip": 1,
-      "title": "PostgreSQL Query Performance",
-      "uid": "pg-query-performance",
-      "schemaVersion": 39,
-      "tags": ["postgres", "queries"],
-      "time": { "from": "now-6h", "to": "now" },
-      "timepicker": {},
-      "templating": {
-        "list": [
-          {
-            "name": "database",
-            "type": "datasource",
-            "query": "postgres",
-            "current": { "text": "postgres-productdb", "value": "postgres-productdb" },
-            "regex": "/^postgres-/",
-            "label": "Database"
-          },
-          {
-            "name": "queryid",
-            "type": "query",
-            "datasource": { "type": "postgres", "uid": "${database}" },
-            "query": "SELECT queryid::text FROM pg_stat_statements WHERE calls > 10 ORDER BY mean_exec_time DESC LIMIT 25",
-            "multi": true,
-            "includeAll": true
-          }
-        ]
-      },
-      "panels": [
-        {
-          "type": "table",
-          "title": "Top 10 slowest queries (mean exec time)",
-          "datasource": { "type": "postgres", "uid": "${database}" },
-          "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
-          "targets": [{
-            "rawSql": "SELECT LEFT(query, 200) AS query, calls, ROUND(mean_exec_time::numeric, 2) AS mean_ms, ROUND(stddev_exec_time::numeric, 2) AS stddev_ms, rows FROM pg_stat_statements WHERE calls > 10 ORDER BY mean_exec_time DESC LIMIT 10",
-            "format": "table",
-            "refId": "A"
-          }]
-        },
-        {
-          "type": "table",
-          "title": "Top 10 by total exec time",
-          "datasource": { "type": "postgres", "uid": "${database}" },
-          "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
-          "targets": [{
-            "rawSql": "SELECT LEFT(query, 200) AS query, calls, ROUND(total_exec_time::numeric / 1000, 2) AS total_seconds, ROUND(mean_exec_time::numeric, 2) AS mean_ms FROM pg_stat_statements WHERE calls > 10 ORDER BY total_exec_time DESC LIMIT 10",
-            "format": "table",
-            "refId": "A"
-          }]
-        },
-        {
-          "type": "timeseries",
-          "title": "Mean exec time per queryid (top 5)",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
-          "targets": [{
-            "expr": "topk(5, pg_stat_statements_mean_exec_time)",
-            "legendFormat": "{{queryid}} {{query_text}}",
-            "refId": "A"
-          }]
-        },
-        {
-          "type": "timeseries",
-          "title": "Slow-query call rate (mean > 500ms)",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
-          "targets": [{
-            "expr": "sum by (queryid) (rate(pg_stat_statements_calls_total{queryid=~\".+\"}[5m]) and on(queryid) pg_stat_statements_mean_exec_time > 500)",
-            "legendFormat": "{{queryid}}",
-            "refId": "A"
-          }]
-        },
-        {
-          "type": "table",
-          "title": "Cache hit ratio per top query",
-          "datasource": { "type": "postgres", "uid": "${database}" },
-          "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
-          "targets": [{
-            "rawSql": "SELECT LEFT(query, 200) AS query, shared_blks_hit, shared_blks_read, CASE WHEN (shared_blks_hit + shared_blks_read) > 0 THEN ROUND((shared_blks_hit::numeric / (shared_blks_hit + shared_blks_read)) * 100, 2) ELSE NULL END AS hit_pct FROM pg_stat_statements WHERE calls > 10 ORDER BY shared_blks_read DESC LIMIT 10",
-            "format": "table",
-            "refId": "A"
-          }]
-        },
-        {
-          "type": "logs",
-          "title": "Recent slow plans (auto_explain, last 1h)",
-          "datasource": { "type": "loki", "uid": "loki" },
-          "gridPos": { "x": 0, "y": 32, "w": 24, "h": 10 },
-          "targets": [{
-            "expr": "{namespace=\"java-tasks\", app=\"postgres\"} |= \"auto_explain\" |= \"plan:\"",
-            "refId": "A"
-          }]
-        },
-        {
-          "type": "logs",
-          "title": "Plan viewer (filter by queryid)",
-          "datasource": { "type": "loki", "uid": "loki" },
-          "gridPos": { "x": 0, "y": 42, "w": 24, "h": 10 },
-          "targets": [{
-            "expr": "{namespace=\"java-tasks\", app=\"postgres\"} |= \"auto_explain\" | json | query_id=~\"$queryid\"",
-            "refId": "A"
-          }]
-        }
-      ]
-    }
-  pgbouncer.json: |
-    {
-      "annotations": { "list": [] },
-      "editable": true,
-      "fiscalYearStartMonth": 0,
-      "graphTooltip": 1,
-      "id": null,
-      "links": [],
-      "uid": "pgbouncer-overview",
-      "title": "PgBouncer Overview",
-      "tags": ["pgbouncer", "postgres", "infrastructure"],
-      "timezone": "browser",
-      "schemaVersion": 39,
-      "version": 1,
-      "refresh": "30s",
-      "time": { "from": "now-1h", "to": "now" },
-      "panels": [
-        {
-          "title": "Total Postgres backends (headline)",
-          "type": "stat",
-          "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
-          "id": 1,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            { "expr": "sum(pg_stat_database_numbackends)", "legendFormat": "backends", "refId": "A" }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 60 },
-                  { "color": "red", "value": 80 }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "title": "Top pools by waiting clients",
-          "type": "bargauge",
-          "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
-          "id": 2,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            { "expr": "topk(5, pgbouncer_pools_client_waiting_connections)", "legendFormat": "{{database}}", "refId": "A" }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "thresholds": {
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 1 },
-                  { "color": "red", "value": 5 }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "title": "Avg wait time per pool (ms)",
-          "type": "timeseries",
-          "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
-          "id": 3,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            { "expr": "pgbouncer_stats_avg_wait_time_seconds * 1000", "legendFormat": "{{database}}", "refId": "A" }
-          ],
-          "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
-        },
-        {
-          "title": "Avg query time per pool (ms)",
-          "type": "timeseries",
-          "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
-          "id": 4,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            { "expr": "pgbouncer_stats_avg_query_time_seconds * 1000", "legendFormat": "{{database}}", "refId": "A" }
-          ],
-          "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
-        },
-        {
-          "title": "Client connections (active vs waiting)",
-          "type": "timeseries",
-          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
-          "id": 5,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            { "expr": "sum by (database) (pgbouncer_pools_client_active_connections)", "legendFormat": "active — {{database}}", "refId": "A" },
-            { "expr": "sum by (database) (pgbouncer_pools_client_waiting_connections)", "legendFormat": "waiting — {{database}}", "refId": "B" }
-          ],
-          "fieldConfig": { "defaults": { "unit": "short", "custom": { "stacking": { "mode": "normal" } } }, "overrides": [] }
-        },
-        {
-          "title": "Server connection usage",
-          "type": "timeseries",
-          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
-          "id": 6,
-          "datasource": { "type": "prometheus", "uid": "" },
-          "targets": [
-            { "expr": "sum by (database) (pgbouncer_pools_server_active_connections)", "legendFormat": "active — {{database}}", "refId": "A" },
-            { "expr": "sum by (database) (pgbouncer_pools_server_idle_connections)", "legendFormat": "idle — {{database}}", "refId": "B" },
-            { "expr": "sum by (database) (pgbouncer_pools_server_used_connections)", "legendFormat": "used — {{database}}", "refId": "C" }
-          ],
-          "fieldConfig": { "defaults": { "unit": "short", "custom": { "stacking": { "mode": "normal" } } }, "overrides": [] }
-        }
-      ]
     }

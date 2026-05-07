@@ -635,6 +635,49 @@
       }
     },
     {
+      "title": "Saga DLQ Depth",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 28
+      },
+      "id": 18,
+      "datasource": {
+        "type": "prometheus",
+        "uid": ""
+      },
+      "targets": [
+        {
+          "expr": "max by (vhost, queue) (rabbitmq_detailed_queue_messages{queue=\"ecommerce.saga.dlq\"})",
+          "legendFormat": "{{vhost}} {{queue}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
       "title": "AI Service Agent",
       "type": "row",
       "collapsed": false,
@@ -642,9 +685,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 34
       },
-      "id": 18,
+      "id": 19,
       "panels": []
     },
     {
@@ -654,9 +697,9 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 29
+        "y": 35
       },
-      "id": 19,
+      "id": 20,
       "datasource": {
         "type": "prometheus",
         "uid": ""
@@ -697,9 +740,9 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 29
+        "y": 35
       },
-      "id": 20,
+      "id": 21,
       "datasource": {
         "type": "prometheus",
         "uid": ""
@@ -745,9 +788,9 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 29
+        "y": 35
       },
-      "id": 21,
+      "id": 22,
       "datasource": {
         "type": "prometheus",
         "uid": ""
@@ -785,6 +828,607 @@
           "placement": "bottom"
         }
       }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "id": 23,
+      "title": "Streaming Analytics",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 42
+      },
+      "id": 24,
+      "title": "Kafka Consumer Lag",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "kafka_consumer_lag",
+          "legendFormat": "lag",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 42
+      },
+      "id": 25,
+      "title": "Events Consumed Rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(analytics_events_consumed_total[5m])) by (topic)",
+          "legendFormat": "{{ topic }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 42
+      },
+      "id": 26,
+      "title": "Consumer Errors",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "increase(kafka_consumer_errors_total[1h])",
+          "legendFormat": "errors",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "id": 27,
+      "title": "Decomposed Services",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 49
+      },
+      "id": 28,
+      "title": "Request Rate by Service",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (service) (rate(http_requests_total{service=~\"go-(order|cart|payment|product)-service\"}[5m]))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 49
+      },
+      "id": 29,
+      "title": "Error Rate by Service",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (service) (rate(http_requests_total{service=~\"go-(order|cart|payment|product)-service\",status=~\"5..\"}[5m])) / sum by (service) (rate(http_requests_total{service=~\"go-(order|cart|payment|product)-service\"}[5m])) * 100",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 49
+      },
+      "id": 30,
+      "title": "p95 Latency by Service",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket{service=~\"go-(order|cart|payment|product)-service\"}[5m])))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 55
+      },
+      "id": 31,
+      "title": "Saga & Payment Health",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 56
+      },
+      "id": 32,
+      "title": "Orders by Status",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(ecommerce_orders_placed_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "CLOSED"
+                },
+                "1": {
+                  "text": "HALF-OPEN"
+                },
+                "2": {
+                  "text": "OPEN"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 56
+      },
+      "id": 33,
+      "title": "Circuit Breaker State",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "circuit_breaker_state",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 56
+      },
+      "id": 34,
+      "title": "Payment Webhooks",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (event_type, outcome) (rate(payment_webhook_events_total[5m]))",
+          "legendFormat": "{{event_type}} {{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 56
+      },
+      "id": 35,
+      "title": "Outbox Publish",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(payment_outbox_publish_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      },
+      "id": 36,
+      "title": "gRPC Client Health",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 63
+      },
+      "id": 37,
+      "title": "gRPC Request Rate by Target",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (target) (rate(grpc_client_requests_total[5m]))",
+          "legendFormat": "{{target}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 63
+      },
+      "id": 38,
+      "title": "gRPC Error Rate by Target",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (target) (rate(grpc_client_requests_total{status!=\"OK\"}[5m])) / sum by (target) (rate(grpc_client_requests_total[5m])) * 100",
+          "legendFormat": "{{target}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 63
+      },
+      "id": 39,
+      "title": "gRPC p95 Latency by Target",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (target, le) (rate(grpc_client_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{target}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 69
+      },
+      "id": 40,
+      "title": "Saga Step Duration (p95)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (step, le) (rate(saga_step_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{step}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 7
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 69
+      },
+      "id": 41,
+      "title": "Certificate Expiry",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,
