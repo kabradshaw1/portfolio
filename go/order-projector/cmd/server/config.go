@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"strconv"
+	"time"
 )
 
 // Config holds all configuration for the order-projector service.
@@ -12,8 +14,15 @@ type Config struct {
 	Port           string
 	DatabaseURL    string
 	KafkaBrokers   string
+	KafkaGroupID   string
+	KafkaDLQTopic  string
 	AllowedOrigins string
 	OTELEndpoint   string
+
+	KafkaRetryAttempts  int
+	KafkaRetryBaseDelay time.Duration
+	KafkaRetryMaxDelay  time.Duration
+	KafkaFetchBackoff   time.Duration
 }
 
 // loadConfig reads configuration from environment variables. It fatals if
@@ -36,8 +45,15 @@ func loadConfig() Config {
 		Port:           getenv("PORT", "8097"),
 		DatabaseURL:    databaseURL,
 		KafkaBrokers:   kafkaBrokers,
+		KafkaGroupID:   getenv("KAFKA_GROUP_ID", "order-projector-group"),
+		KafkaDLQTopic:  getenv("KAFKA_DLQ_TOPIC", "ecommerce.order-events.dlq"),
 		AllowedOrigins: getenv("ALLOWED_ORIGINS", "http://localhost:3000"),
 		OTELEndpoint:   os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+
+		KafkaRetryAttempts:  getenvInt("KAFKA_RETRY_ATTEMPTS", 3),
+		KafkaRetryBaseDelay: getenvDuration("KAFKA_RETRY_BASE_DELAY", 100*time.Millisecond),
+		KafkaRetryMaxDelay:  getenvDuration("KAFKA_RETRY_MAX_DELAY", 2*time.Second),
+		KafkaFetchBackoff:   getenvDuration("KAFKA_FETCH_BACKOFF", 250*time.Millisecond),
 	}
 }
 
@@ -76,4 +92,28 @@ func getenv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func getenvInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		log.Fatalf("%s must be an integer: %v", key, err)
+	}
+	return n
+}
+
+func getenvDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		log.Fatalf("%s must be a duration: %v", key, err)
+	}
+	return d
 }

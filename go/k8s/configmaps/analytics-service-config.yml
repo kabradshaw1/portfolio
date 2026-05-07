@@ -5,6 +5,12 @@ metadata:
   namespace: go-ecommerce
 data:
   KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
+  KAFKA_GROUP_ID: "analytics-group"
+  KAFKA_DLQ_TOPIC: "ecommerce.analytics.dlq"
+  KAFKA_RETRY_ATTEMPTS: "3"
+  KAFKA_RETRY_BASE_DELAY: "100ms"
+  KAFKA_RETRY_MAX_DELAY: "2s"
+  KAFKA_FETCH_BACKOFF: "250ms"
   PORT: "8094"
   ALLOWED_ORIGINS: "http://localhost:3000,https://kylebradshaw.dev"
   OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"
