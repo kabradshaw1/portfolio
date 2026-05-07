@@ -8,6 +8,10 @@ Spring Boot microservices live under `java/`:
 - `gateway-service` - GraphQL gateway
 - `k8s/` - Java-specific Kubernetes manifests
 
+Use `java-rabbitmq-reliability` when creating, modifying, reviewing, or
+debugging Spring AMQP publishers, consumers, DLQs, bounded retry, publisher
+confirms/returns, listener metrics, or event deduplication.
+
 ## Schema Ownership
 
 Java services own schema through Spring/JPA at startup. Do not add a separate
