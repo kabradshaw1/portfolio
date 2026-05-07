@@ -85,6 +85,20 @@ func (r *OutboxRepository) FetchUnpublished(ctx context.Context, limit int) ([]m
 	})
 }
 
+// CountUnpublished returns the current unpublished outbox backlog.
+func (r *OutboxRepository) CountUnpublished(ctx context.Context) (int64, error) {
+	if r.pool == nil {
+		return 0, fmt.Errorf("database pool is nil")
+	}
+	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) (int64, error) {
+		var count int64
+		if err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM outbox WHERE published = false`).Scan(&count); err != nil {
+			return 0, fmt.Errorf("count unpublished outbox: %w", err)
+		}
+		return count, nil
+	})
+}
+
 // Ping checks whether the database connection is alive.
 func (r *OutboxRepository) Ping(ctx context.Context) error {
 	return r.pool.Ping(ctx)

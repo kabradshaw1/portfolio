@@ -58,7 +58,7 @@ func connectKafka(brokers string) appkafka.Producer {
 	if brokers == "" {
 		return appkafka.NopProducer{}
 	}
-	p := appkafka.NewProducer(strings.Split(brokers, ","))
+	p := appkafka.NewBestEffortProducer(strings.Split(brokers, ","))
 	slog.Info("kafka producer enabled", "brokers", brokers)
 	return p
 }

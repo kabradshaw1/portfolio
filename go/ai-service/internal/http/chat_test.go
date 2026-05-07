@@ -14,6 +14,7 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/agent"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
+	"github.com/kabradshaw1/portfolio/go/pkg/admission"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 )
 
@@ -85,6 +86,94 @@ func TestChatHandler_BadBody(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestChatHandler_OverloadReturnsJSONBeforeSSE(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	chatLimiter, err := admission.NewLimiter(1)
+	if err != nil {
+		t.Fatalf("NewLimiter: %v", err)
+	}
+	permit, ok := chatLimiter.TryAcquire(context.Background())
+	if !ok {
+		t.Fatal("failed to saturate limiter")
+	}
+	defer permit.Release()
+
+	r := chatTestRouter()
+	RegisterChatRoutes(r, &fakeRunner{}, "", nil, ChatAdmission{
+		Limiter:    chatLimiter,
+		RetryAfter: 5 * time.Second,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/chat",
+		strings.NewReader(`{"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Retry-After"); got != "5" {
+		t.Fatalf("Retry-After = %q, want 5", got)
+	}
+	if ct := w.Header().Get("Content-Type"); strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("Content-Type = %q, should not start SSE stream", ct)
+	}
+	if !strings.Contains(w.Body.String(), `"code":"CHAT_OVERLOADED"`) {
+		t.Fatalf("body missing overload error: %s", w.Body.String())
+	}
+}
+
+func TestChatHandler_ReleasesPermitAfterRunnerCompletion(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	chatLimiter, err := admission.NewLimiter(1)
+	if err != nil {
+		t.Fatalf("NewLimiter: %v", err)
+	}
+	runner := &fakeRunner{events: []agent.Event{{Final: &agent.FinalEvent{Text: "ok"}}}}
+
+	r := chatTestRouter()
+	RegisterChatRoutes(r, runner, "", nil, ChatAdmission{Limiter: chatLimiter})
+	req := httptest.NewRequest(http.MethodPost, "/chat",
+		strings.NewReader(`{"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if got := chatLimiter.InFlight(); got != 0 {
+		t.Fatalf("in-flight = %d, want 0", got)
+	}
+}
+
+func TestChatHandler_ReleasesPermitAfterRunnerError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	chatLimiter, err := admission.NewLimiter(1)
+	if err != nil {
+		t.Fatalf("NewLimiter: %v", err)
+	}
+	runner := &fakeRunner{err: context.Canceled}
+
+	r := chatTestRouter()
+	RegisterChatRoutes(r, runner, "", nil, ChatAdmission{Limiter: chatLimiter})
+	req := httptest.NewRequest(http.MethodPost, "/chat",
+		strings.NewReader(`{"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if got := chatLimiter.InFlight(); got != 0 {
+		t.Fatalf("in-flight = %d, want 0", got)
+	}
+	if !strings.Contains(w.Body.String(), "event: error") {
+		t.Fatalf("expected SSE error event, got %s", w.Body.String())
 	}
 }
 

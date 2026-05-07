@@ -9,8 +9,13 @@ import (
 	kafkago "github.com/segmentio/kafka-go"
 
 	"github.com/google/uuid"
+	"github.com/kabradshaw1/portfolio/go/pkg/kafkametrics"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
+
+const serviceName = "order-service"
+
+var metricsRecorder kafkametrics.Recorder = kafkametrics.PrometheusRecorder{}
 
 // Event is the envelope for all Kafka analytics events.
 type Event struct {
@@ -29,7 +34,7 @@ type Producer interface {
 	Close() error
 }
 
-// writerProducer implements Producer using kafka-go Writer.
+// writerProducer implements Producer using a best-effort kafka-go async Writer.
 type writerProducer struct {
 	writer *kafkago.Writer
 }
@@ -39,8 +44,9 @@ const (
 	batchTimeout = 1 * time.Second
 )
 
-// NewProducer creates a Kafka producer for the given broker addresses.
-func NewProducer(brokers []string) Producer {
+// NewBestEffortProducer creates an async analytics producer. Publish failures
+// are observable but must not fail the primary order operation.
+func NewBestEffortProducer(brokers []string) Producer {
 	w := &kafkago.Writer{
 		Addr:         kafkago.TCP(brokers...),
 		Balancer:     &kafkago.LeastBytes{},
@@ -49,7 +55,13 @@ func NewProducer(brokers []string) Producer {
 		BatchTimeout: batchTimeout,
 		RequiredAcks: kafkago.RequireOne,
 	}
+	metricsRecorder.SetAsyncMode(serviceName, true)
 	return &writerProducer{writer: w}
+}
+
+// NewProducer preserves the historical constructor name for existing callers.
+func NewProducer(brokers []string) Producer {
+	return NewBestEffortProducer(brokers)
 }
 
 func (p *writerProducer) Publish(ctx context.Context, topic string, key string, event Event) error {
@@ -81,12 +93,17 @@ func (p *writerProducer) Close() error {
 type NopProducer struct{}
 
 func (NopProducer) Publish(context.Context, string, string, Event) error { return nil }
-func (NopProducer) Close() error                                        { return nil }
+func (NopProducer) Close() error                                         { return nil }
 
 // SafePublish publishes an event, logging and swallowing errors.
 // Use this for fire-and-forget analytics events that must not affect the primary flow.
 func SafePublish(ctx context.Context, p Producer, topic, key string, event Event) {
+	start := time.Now()
+	outcome := "success"
 	if err := p.Publish(ctx, topic, key, event); err != nil {
+		outcome = "error"
 		slog.Warn("kafka publish failed", "topic", topic, "error", err)
 	}
+	metricsRecorder.ObserveMessage(serviceName, topic, outcome)
+	metricsRecorder.ObserveWriteDuration(serviceName, topic, time.Since(start))
 }

@@ -3,28 +3,37 @@ package main
 import (
 	"log"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/sony/gobreaker/v2"
 )
 
+const (
+	defaultChatMaxInFlight        = 4
+	defaultChatOverloadRetryAfter = 5 * time.Second
+)
+
 // Config holds all environment-based configuration for the ai-service.
 type Config struct {
-	Port            string
-	OllamaURL       string
-	OllamaModel     string
-	OrderURL        string
-	RAGChatURL      string
-	RAGIngestionURL string
-	RedisURL        string
-	JWTSecret       string
-	LLMProvider     string
-	LLMAPIKey       string
-	LLMBaseURL      string
-	AllowedOrigins  string
-	KafkaBrokers    string
-	MCPServersJSON  string
-	OTELEndpoint    string
+	Port                   string
+	OllamaURL              string
+	OllamaModel            string
+	OrderURL               string
+	RAGChatURL             string
+	RAGIngestionURL        string
+	RedisURL               string
+	JWTSecret              string
+	LLMProvider            string
+	LLMAPIKey              string
+	LLMBaseURL             string
+	AllowedOrigins         string
+	KafkaBrokers           string
+	MCPServersJSON         string
+	OTELEndpoint           string
+	ChatMaxInFlight        int
+	ChatOverloadRetryAfter time.Duration
 
 	// Database URLs for the composite investigate_my_order tool.
 	// Each ecommerce service owns its own database, so we need three separate
@@ -64,21 +73,23 @@ func loadConfig() Config {
 	}
 
 	return Config{
-		Port:            getenv("PORT", "8093"),
-		OllamaURL:       ollamaURL,
-		OllamaModel:     getenv("OLLAMA_MODEL", "qwen2.5:14b"),
-		OrderURL:        getenv("ORDER_URL", "http://order-service:8092"),
-		RAGChatURL:      getenv("RAG_CHAT_URL", "http://chat-service:8001"),
-		RAGIngestionURL: getenv("RAG_INGESTION_URL", "http://ingestion-service:8002"),
-		RedisURL:        getenv("REDIS_URL", ""),
-		JWTSecret:       jwtSecret,
-		LLMProvider:     llmProvider,
-		LLMAPIKey:       os.Getenv("LLM_API_KEY"),
-		LLMBaseURL:      llmBaseURL,
-		AllowedOrigins:  getenv("ALLOWED_ORIGINS", "http://localhost:3000"),
-		KafkaBrokers:    os.Getenv("KAFKA_BROKERS"),
-		MCPServersJSON:  os.Getenv("MCP_SERVERS"),
-		OTELEndpoint:    os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		Port:                   getenv("PORT", "8093"),
+		OllamaURL:              ollamaURL,
+		OllamaModel:            getenv("OLLAMA_MODEL", "qwen2.5:14b"),
+		OrderURL:               getenv("ORDER_URL", "http://order-service:8092"),
+		RAGChatURL:             getenv("RAG_CHAT_URL", "http://chat-service:8001"),
+		RAGIngestionURL:        getenv("RAG_INGESTION_URL", "http://ingestion-service:8002"),
+		RedisURL:               getenv("REDIS_URL", ""),
+		JWTSecret:              jwtSecret,
+		LLMProvider:            llmProvider,
+		LLMAPIKey:              os.Getenv("LLM_API_KEY"),
+		LLMBaseURL:             llmBaseURL,
+		AllowedOrigins:         getenv("ALLOWED_ORIGINS", "http://localhost:3000"),
+		KafkaBrokers:           os.Getenv("KAFKA_BROKERS"),
+		MCPServersJSON:         os.Getenv("MCP_SERVERS"),
+		OTELEndpoint:           os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		ChatMaxInFlight:        getenvPositiveInt("CHAT_MAX_IN_FLIGHT", defaultChatMaxInFlight),
+		ChatOverloadRetryAfter: getenvDuration("CHAT_OVERLOAD_RETRY_AFTER", defaultChatOverloadRetryAfter),
 
 		// Database URLs for the composite investigate_my_order tool.
 		// No default — credentials must be supplied via the ORDER_DB_URL,
@@ -108,6 +119,30 @@ func getenv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func getenvPositiveInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		log.Fatalf("invalid positive integer for %s: %q", key, v)
+	}
+	return n
+}
+
+func getenvDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		log.Fatalf("invalid duration for %s: %q", key, v)
+	}
+	return d
 }
 
 func newCircuitBreaker(name string) *gobreaker.CircuitBreaker[any] {

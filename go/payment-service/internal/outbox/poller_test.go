@@ -21,6 +21,10 @@ func (m *mockFetcher) FetchUnpublished(_ context.Context, _ int) ([]model.Outbox
 	return nil, nil
 }
 
+func (m *mockFetcher) CountUnpublished(_ context.Context) (int64, error) {
+	return 0, nil
+}
+
 func (m *mockFetcher) MarkPublished(_ context.Context, _ uuid.UUID) error {
 	return nil
 }
