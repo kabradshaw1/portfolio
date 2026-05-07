@@ -56,9 +56,7 @@ func main() {
 	// Infrastructure connections.
 	pool := connectPostgres(ctx, cfg.DatabaseURL)
 
-	conn, ch := connectRabbitMQ(cfg.RabbitmqURL)
-	defer conn.Close()
-	defer ch.Close()
+	rabbitPublisher := connectRabbitMQPublisher(cfg.RabbitmqURL)
 
 	kafkaWriter := connectKafka(cfg.KafkaBrokers)
 
@@ -82,7 +80,7 @@ func main() {
 	webhookSvc := service.NewWebhookService(paymentRepo, processedEventRepo, outboxRepo, pool)
 
 	// Start outbox poller goroutine.
-	poller := outbox.NewPoller(outboxRepo, ch, outboxPollInterval, outboxBatchSize)
+	poller := outbox.NewPollerWithPublisher(outboxRepo, rabbitPublisher, nil, outboxPollInterval, outboxBatchSize)
 	go poller.Run(ctx)
 
 	// Handlers.
@@ -154,8 +152,7 @@ func main() {
 		return nil
 	})
 	sm.Register("rabbitmq", 20, func(_ context.Context) error {
-		_ = ch.Close()
-		return conn.Close()
+		return rabbitPublisher.Close()
 	})
 
 	if kafkaWriter != nil {

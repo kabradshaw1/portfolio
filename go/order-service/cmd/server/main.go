@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -58,10 +60,6 @@ func main() {
 	)
 
 	redisClient := connectRedis(ctx, cfg.RedisURL)
-
-	conn, ch := connectRabbitMQ(cfg.RabbitmqURL)
-	defer conn.Close()
-	defer ch.Close()
 
 	kafkaPub := connectKafka(cfg.KafkaBrokers)
 	defer kafkaPub.Close()
@@ -128,30 +126,17 @@ func main() {
 		slog.Info("connected to payment-service gRPC", "addr", cfg.PaymentGRPCAddr)
 	}
 
-	// Declare saga RabbitMQ topology.
-	if err := saga.DeclareTopology(ch); err != nil {
-		log.Fatalf("saga topology: %v", err)
-	}
-
 	// Create DLQ client for admin endpoints.
-	dlqClient := saga.NewDLQClient(ch)
-
-	rabbitPublisher, err := rabbitmq.NewPublisher(ch)
-	if err != nil {
-		log.Fatalf("rabbitmq publisher confirms: %v", err)
-	}
+	dlqClient := &reconnectingDLQClient{url: cfg.RabbitmqURL}
+	rabbitPublisher := rabbitmq.NewReconnectingPublisher()
 
 	// Create saga orchestrator with stock checker adapter.
 	sagaPub := saga.NewPublisherWithConfirmPublisher(rabbitPublisher)
 	orch := saga.NewOrchestrator(orderRepo, sagaPub, prodClient, payClient, kafkaPub, cfg.FrontendURL)
 
 	// Start saga event consumer.
-	consumer := saga.NewConsumerWithPublisher(orch, rabbitPublisher)
-	go func() {
-		if err := consumer.Start(ctx, ch); err != nil {
-			slog.Error("saga consumer failed", "error", err)
-		}
-	}()
+	sagaSupervisor := newOrderSagaSupervisor(cfg.RabbitmqURL, orch, rabbitPublisher)
+	go sagaSupervisor.Run(ctx)
 
 	// Recover incomplete sagas from previous crashes.
 	saga.RecoverIncomplete(ctx, orderRepo, orch)
@@ -222,17 +207,142 @@ func main() {
 		return nil
 	})
 	sm.Register("drain-http", 0, shutdown.DrainHTTP("order-http", srv))
-	sm.Register("wait-saga", 10, shutdown.WaitForInflight("order-saga", consumer.IsIdle, 100*time.Millisecond))
+	sm.Register("wait-saga", 10, shutdown.WaitForInflight("order-saga", sagaSupervisor.IsIdle, 100*time.Millisecond))
 	sm.Register("postgres", 20, func(_ context.Context) error {
 		pools.Close()
 		return nil
-	})
-	sm.Register("rabbitmq", 20, func(_ context.Context) error {
-		_ = ch.Close()
-		return conn.Close()
 	})
 	sm.Register("otel", 30, func(ctx context.Context) error {
 		return shutdownTracer(ctx)
 	})
 	sm.Wait()
+}
+
+type orderSagaSupervisor struct {
+	url       string
+	orch      *saga.Orchestrator
+	publisher *rabbitmq.ReconnectingPublisher
+	mu        sync.RWMutex
+	consumer  *saga.Consumer
+}
+
+func newOrderSagaSupervisor(url string, orch *saga.Orchestrator, publisher *rabbitmq.ReconnectingPublisher) *orderSagaSupervisor {
+	return &orderSagaSupervisor{url: url, orch: orch, publisher: publisher}
+}
+
+func (s *orderSagaSupervisor) Run(ctx context.Context) {
+	attempt := 0
+	for ctx.Err() == nil {
+		err := s.runOnce(ctx)
+		s.setConsumer(nil)
+		s.publisher.SetUnavailable(err)
+		if ctx.Err() != nil {
+			return
+		}
+		slog.WarnContext(ctx, "saga rabbitmq connection lost, reconnecting", "error", err)
+		if !waitForRabbitMQReconnect(ctx, attempt) {
+			return
+		}
+		attempt++
+	}
+}
+
+func (s *orderSagaSupervisor) runOnce(ctx context.Context) error {
+	conn, ch, err := connectRabbitMQ(s.url)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = ch.Close()
+		_ = conn.Close()
+	}()
+
+	if err := saga.DeclareTopology(ch); err != nil {
+		return err
+	}
+	confirmedPublisher, err := rabbitmq.NewPublisher(ch)
+	if err != nil {
+		return err
+	}
+	s.publisher.SetPublisher(confirmedPublisher)
+
+	consumer := saga.NewConsumerWithPublisher(s.orch, s.publisher)
+	s.setConsumer(consumer)
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	consumerDone := make(chan error, 1)
+	go func() {
+		consumerDone <- consumer.Start(runCtx, ch)
+	}()
+
+	connClosed := conn.NotifyClose(make(chan *amqp.Error, 1))
+	chClosed := ch.NotifyClose(make(chan *amqp.Error, 1))
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-consumerDone:
+		return err
+	case err := <-connClosed:
+		cancel()
+		return rabbitCloseError(err)
+	case err := <-chClosed:
+		cancel()
+		return rabbitCloseError(err)
+	}
+}
+
+func (s *orderSagaSupervisor) IsIdle() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.consumer == nil || s.consumer.IsIdle()
+}
+
+func (s *orderSagaSupervisor) setConsumer(consumer *saga.Consumer) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.consumer = consumer
+}
+
+type reconnectingDLQClient struct {
+	url string
+}
+
+func (c *reconnectingDLQClient) List(limit int) ([]saga.DLQMessage, error) {
+	conn, ch, err := connectRabbitMQ(c.url)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = ch.Close()
+		_ = conn.Close()
+	}()
+	if err := saga.DeclareTopology(ch); err != nil {
+		return nil, err
+	}
+	return saga.NewDLQClient(ch).List(limit)
+}
+
+func (c *reconnectingDLQClient) Replay(index int) (*saga.DLQMessage, error) {
+	conn, ch, err := connectRabbitMQ(c.url)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = ch.Close()
+		_ = conn.Close()
+	}()
+	if err := saga.DeclareTopology(ch); err != nil {
+		return nil, err
+	}
+	return saga.NewDLQClient(ch).Replay(index)
+}
+
+func rabbitCloseError(err *amqp.Error) error {
+	if err == nil {
+		return context.Canceled
+	}
+	return err
 }

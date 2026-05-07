@@ -17,6 +17,8 @@ import (
 
 const (
 	sagaExchange     = "ecommerce.saga"
+	sagaDLX          = "ecommerce.saga.dlx"
+	sagaDLQ          = "ecommerce.saga.dlq"
 	cartCommandsQ    = "saga.cart.commands"
 	orderEventsKey   = "saga.order.events"
 	consumerPrefetch = 1
@@ -47,9 +49,7 @@ type event struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-type confirmPublisher interface {
-	Publish(ctx context.Context, exchange, routingKey string, msg amqp.Publishing) error
-}
+type confirmPublisher = rabbitmq.PublishingClient
 
 // SagaHandler consumes saga commands from RabbitMQ and publishes reply events.
 type SagaHandler struct {
@@ -64,8 +64,44 @@ func NewSagaHandler(svc CartServiceForSaga, ch *amqp.Channel) *SagaHandler {
 	return &SagaHandler{svc: svc, ch: ch}
 }
 
+func NewSagaHandlerWithPublisher(svc CartServiceForSaga, ch *amqp.Channel, publisher rabbitmq.PublishingClient) *SagaHandler {
+	return &SagaHandler{svc: svc, ch: ch, publisher: publisher}
+}
+
 func newSagaHandlerWithPublisher(svc CartServiceForSaga, publisher confirmPublisher) *SagaHandler {
-	return &SagaHandler{svc: svc, publisher: publisher}
+	return NewSagaHandlerWithPublisher(svc, nil, publisher)
+}
+
+func DeclareSagaTopology(ch *amqp.Channel) error {
+	if err := ch.ExchangeDeclare(sagaExchange, "topic", true, false, false, false, nil); err != nil {
+		return fmt.Errorf("declare saga exchange: %w", err)
+	}
+	if err := ch.ExchangeDeclare(sagaDLX, "fanout", true, false, false, false, nil); err != nil {
+		return fmt.Errorf("declare saga dlx: %w", err)
+	}
+	if _, err := ch.QueueDeclare(sagaDLQ, true, false, false, false, nil); err != nil {
+		return fmt.Errorf("declare saga dlq: %w", err)
+	}
+	if err := ch.QueueBind(sagaDLQ, "", sagaDLX, false, nil); err != nil {
+		return fmt.Errorf("bind saga dlq: %w", err)
+	}
+	if _, err := ch.QueueDeclare(cartCommandsQ, true, false, false, false, amqp.Table{
+		"x-dead-letter-exchange": sagaDLX,
+	}); err != nil {
+		return fmt.Errorf("declare cart commands queue: %w", err)
+	}
+	if err := ch.QueueBind(cartCommandsQ, cartCommandsQ, sagaExchange, false, nil); err != nil {
+		return fmt.Errorf("bind cart commands queue: %w", err)
+	}
+	if _, err := ch.QueueDeclare(orderEventsKey, true, false, false, false, amqp.Table{
+		"x-dead-letter-exchange": sagaDLX,
+	}); err != nil {
+		return fmt.Errorf("declare order events queue: %w", err)
+	}
+	if err := ch.QueueBind(orderEventsKey, orderEventsKey, sagaExchange, false, nil); err != nil {
+		return fmt.Errorf("bind order events queue: %w", err)
+	}
+	return nil
 }
 
 // IsIdle returns true when the handler is not processing a message.
