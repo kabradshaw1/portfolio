@@ -18,6 +18,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/auth"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/cache"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/guardrails"
+	apphttp "github.com/kabradshaw1/portfolio/go/ai-service/internal/http"
 	appkafka "github.com/kabradshaw1/portfolio/go/ai-service/internal/kafka"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
 	mcpadapter "github.com/kabradshaw1/portfolio/go/ai-service/internal/mcp"
@@ -27,6 +28,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/clients"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/tools/composite"
+	"github.com/kabradshaw1/portfolio/go/pkg/admission"
 	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
@@ -102,7 +104,7 @@ func runServe() {
 	// Kafka producer (optional)
 	var kafkaPub appkafka.Producer
 	if cfg.KafkaBrokers != "" {
-		kafkaPub = appkafka.NewProducer(strings.Split(cfg.KafkaBrokers, ","))
+		kafkaPub = appkafka.NewBestEffortProducer(strings.Split(cfg.KafkaBrokers, ","))
 		defer kafkaPub.Close()
 		slog.Info("kafka producer enabled", "brokers", cfg.KafkaBrokers)
 	}
@@ -208,9 +210,16 @@ func runServe() {
 
 	// Agent
 	a := agent.New(llmc, registry, metrics.PromRecorder{}, 8, 90*time.Second).WithModel(cfg.OllamaModel)
+	chatLimiter, err := admission.NewLimiter(cfg.ChatMaxInFlight, admission.WithObserver(metrics.ChatAdmissionObserver{}))
+	if err != nil {
+		log.Fatalf("chat admission limiter: %v", err)
+	}
 
 	// HTTP server
-	router := setupRouter(cfg, a, limiter, authedMCPHandler, llmc)
+	router := setupRouter(cfg, a, limiter, apphttp.ChatAdmission{
+		Limiter:    chatLimiter,
+		RetryAfter: cfg.ChatOverloadRetryAfter,
+	}, authedMCPHandler, llmc)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

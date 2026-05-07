@@ -49,8 +49,12 @@ Load the narrowest relevant instruction file before touching that area:
 - `.github/AGENTS.md` - CI/CD, failed-run triage, deploy trigger behavior
 - `docs/AGENTS.md` - ADR/runbook/spec loading policy and doc placement
 
-Use installed project skills when their trigger conditions match:
-`debug-observability`, `ops-as-code`, and `scaffold-go-service`.
+Project skills live under `.codex/skills/`. Use them when their trigger
+conditions match, especially `scaffold-go-service`,
+`go-grpc-service-reliability`, `go-kafka-consumer-reliability`,
+`go-rabbitmq-reliability`, and `java-rabbitmq-reliability`. Installed local
+skills such as `debug-observability` and `ops-as-code` still apply when their
+trigger conditions match.
 
 ## Safety Gates
 

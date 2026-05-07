@@ -265,3 +265,22 @@ func TestRepositoryQueriesUseMigrationColumnNames(t *testing.T) {
 		}
 	}
 }
+
+func TestRepositoryQueriesIncludeProcessedProjectionGuard(t *testing.T) {
+	t.Parallel()
+
+	if !strings.Contains(upsertOrderStatsOnceSQL, "processed_projection_events") {
+		t.Fatal("stats upsert guard SQL does not reference processed_projection_events")
+	}
+	if !strings.Contains(upsertOrderStatsOnceSQL, "WITH inserted AS") {
+		t.Fatal("stats upsert guard SQL must atomically guard and update")
+	}
+}
+
+func TestOrderSummaryUpsertRejectsOlderUpdates(t *testing.T) {
+	t.Parallel()
+
+	if !strings.Contains(upsertOrderSummarySQL, "WHERE order_summary.updated_at <= EXCLUDED.updated_at") {
+		t.Fatal("summary upsert must not overwrite newer rows with stale events")
+	}
+}

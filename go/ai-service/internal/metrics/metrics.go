@@ -73,7 +73,38 @@ var (
 		Help:    "Duration of composite MCP tool calls.",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"tool"})
+
+	ChatInFlight = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "ai_chat_in_flight",
+		Help: "Current admitted in-flight chat requests.",
+	})
+
+	ChatAdmissionRejections = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ai_chat_admission_rejections_total",
+		Help: "Chat requests rejected because the pod admission limit was saturated.",
+	})
+
+	ChatDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "ai_chat_duration_seconds",
+		Help:    "Duration of admitted chat requests.",
+		Buckets: prometheus.ExponentialBuckets(0.1, 2, 12),
+	})
 )
+
+// ChatAdmissionObserver adapts the shared admission limiter to AI chat metrics.
+type ChatAdmissionObserver struct{}
+
+func (ChatAdmissionObserver) ObserveInFlight(n int) {
+	ChatInFlight.Set(float64(n))
+}
+
+func (ChatAdmissionObserver) ObserveAdmitted() {}
+
+func (ChatAdmissionObserver) ObserveRejected() {
+	ChatAdmissionRejections.Inc()
+}
+
+func (ChatAdmissionObserver) ObserveReleased() {}
 
 // Recorder is the interface the agent loop uses to emit metrics. It keeps the
 // agent package from importing Prometheus directly and makes tests trivial.

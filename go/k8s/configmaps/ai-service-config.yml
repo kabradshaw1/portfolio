@@ -12,6 +12,8 @@ data:
   RAG_INGESTION_URL: "http://ingestion-service.ai-services.svc.cluster.local:8002"
   REDIS_URL: "redis://redis.java-tasks.svc.cluster.local:6379"
   KAFKA_BROKERS: "kafka.go-ecommerce.svc.cluster.local:9092"
+  CHAT_MAX_IN_FLIGHT: "4"
+  CHAT_OVERLOAD_RETRY_AFTER: "5s"
   OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger.monitoring.svc.cluster.local:4317"
   ALLOWED_ORIGINS: "http://localhost:3000,https://kylebradshaw.dev"
   JAEGER_QUERY_URL: "http://jaeger.monitoring.svc.cluster.local:16686"
