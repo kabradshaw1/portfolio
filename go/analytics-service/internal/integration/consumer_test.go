@@ -149,7 +149,7 @@ func setupConsumer(t *testing.T, brokers []string) (*store.MockStore, func()) {
 	trending := aggregator.NewTrendingAggregator(testWindowSize, testSlideInterval, 0, clock, mockStore)
 	abandonment := aggregator.NewAbandonmentAggregator(testWindowSize, 0, clock, mockStore)
 
-	cons := consumer.New(brokers, revenue, trending, abandonment, testFlushInterval)
+	cons := consumer.New(brokers, revenue, trending, abandonment, testFlushInterval, consumer.Config{}, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = cons.Run(ctx) }()

@@ -12,6 +12,7 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/payment-service/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/payment-service/internal/model"
+	rabbitmq "github.com/kabradshaw1/portfolio/go/pkg/rabbitmq"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -23,22 +24,39 @@ type OutboxFetcher interface {
 	Ping(ctx context.Context) error
 }
 
+type ConfirmPublisher interface {
+	Publish(ctx context.Context, exchange, routingKey string, msg amqp.Publishing) error
+}
+
 // Poller periodically fetches unpublished outbox messages and publishes them to RabbitMQ.
 type Poller struct {
-	fetcher  OutboxFetcher
-	ch       *amqp.Channel
-	interval time.Duration
-	batch    int
-	idle     atomic.Bool
+	fetcher   OutboxFetcher
+	publisher ConfirmPublisher
+	initErr   error
+	interval  time.Duration
+	batch     int
+	idle      atomic.Bool
 }
 
 // NewPoller creates a Poller with the given fetcher, AMQP channel, polling interval, and batch size.
 func NewPoller(fetcher OutboxFetcher, ch *amqp.Channel, interval time.Duration, batch int) *Poller {
+	var (
+		publisher ConfirmPublisher
+		initErr   error
+	)
+	if ch != nil {
+		publisher, initErr = rabbitmq.NewPublisher(ch)
+	}
+	return NewPollerWithPublisher(fetcher, publisher, initErr, interval, batch)
+}
+
+func NewPollerWithPublisher(fetcher OutboxFetcher, publisher ConfirmPublisher, initErr error, interval time.Duration, batch int) *Poller {
 	p := &Poller{
-		fetcher:  fetcher,
-		ch:       ch,
-		interval: interval,
-		batch:    batch,
+		fetcher:   fetcher,
+		publisher: publisher,
+		initErr:   initErr,
+		interval:  interval,
+		batch:     batch,
 	}
 	p.idle.Store(true)
 	return p
@@ -112,15 +130,27 @@ func (p *Poller) poll(ctx context.Context) {
 	}
 
 	for _, msg := range messages {
+		if p.initErr != nil {
+			slog.ErrorContext(ctx, "outbox poller: publisher unavailable",
+				"messageID", msg.ID,
+				"error", p.initErr,
+			)
+			metrics.OutboxPublish.WithLabelValues("error").Inc()
+			continue
+		}
+		if p.publisher == nil {
+			slog.ErrorContext(ctx, "outbox poller: publisher not configured", "messageID", msg.ID)
+			metrics.OutboxPublish.WithLabelValues("error").Inc()
+			continue
+		}
+
 		headers := make(amqp.Table)
 		tracing.InjectAMQP(ctx, headers)
 
-		err := p.ch.PublishWithContext(
+		err := p.publisher.Publish(
 			ctx,
 			msg.Exchange,
 			msg.RoutingKey,
-			false, // mandatory
-			false, // immediate
 			amqp.Publishing{
 				ContentType:  "application/json",
 				DeliveryMode: amqp.Persistent,

@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -10,6 +11,8 @@ import (
 type Config struct {
 	Port           string
 	KafkaBrokers   string
+	KafkaGroupID   string
+	KafkaDLQTopic  string
 	AllowedOrigins string
 	OTELEndpoint   string
 
@@ -23,6 +26,11 @@ type Config struct {
 	TrendingSlideInterval time.Duration
 	AbandonmentWindowSize time.Duration
 	LateEventGrace        time.Duration
+
+	KafkaRetryAttempts  int
+	KafkaRetryBaseDelay time.Duration
+	KafkaRetryMaxDelay  time.Duration
+	KafkaFetchBackoff   time.Duration
 }
 
 // loadConfig reads configuration from environment variables.
@@ -36,6 +44,8 @@ func loadConfig() Config {
 	return Config{
 		Port:           getenv("PORT", "8094"),
 		KafkaBrokers:   kafkaBrokers,
+		KafkaGroupID:   getenv("KAFKA_GROUP_ID", "analytics-group"),
+		KafkaDLQTopic:  getenv("KAFKA_DLQ_TOPIC", "ecommerce.analytics.dlq"),
 		AllowedOrigins: getenv("ALLOWED_ORIGINS", "http://localhost:3000"),
 		OTELEndpoint:   os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 
@@ -47,6 +57,11 @@ func loadConfig() Config {
 		TrendingSlideInterval: getenvDuration("TRENDING_SLIDE_INTERVAL", 1*time.Minute),
 		AbandonmentWindowSize: getenvDuration("ABANDONMENT_WINDOW_SIZE", 30*time.Minute),
 		LateEventGrace:        getenvDuration("LATE_EVENT_GRACE", 5*time.Minute),
+
+		KafkaRetryAttempts:  getenvInt("KAFKA_RETRY_ATTEMPTS", 3),
+		KafkaRetryBaseDelay: getenvDuration("KAFKA_RETRY_BASE_DELAY", 100*time.Millisecond),
+		KafkaRetryMaxDelay:  getenvDuration("KAFKA_RETRY_MAX_DELAY", 2*time.Second),
+		KafkaFetchBackoff:   getenvDuration("KAFKA_FETCH_BACKOFF", 250*time.Millisecond),
 	}
 }
 
@@ -67,4 +82,16 @@ func getenvDuration(key string, def time.Duration) time.Duration {
 		log.Fatalf("invalid duration for %s: %q: %v", key, v, err)
 	}
 	return d
+}
+
+func getenvInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		log.Fatalf("invalid integer for %s: %q: %v", key, v, err)
+	}
+	return n
 }

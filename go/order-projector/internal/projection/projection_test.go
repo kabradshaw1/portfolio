@@ -30,3 +30,17 @@ func TestStatusFromEventType(t *testing.T) {
 		})
 	}
 }
+
+func TestProjectionNamesAreStable(t *testing.T) {
+	t.Parallel()
+
+	if ProjectionTimeline != "timeline" {
+		t.Fatalf("ProjectionTimeline = %q", ProjectionTimeline)
+	}
+	if ProjectionSummary != "summary" {
+		t.Fatalf("ProjectionSummary = %q", ProjectionSummary)
+	}
+	if ProjectionStats != "stats" {
+		t.Fatalf("ProjectionStats = %q", ProjectionStats)
+	}
+}

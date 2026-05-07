@@ -28,6 +28,11 @@ var (
 		Help: "Messages sent to the saga dead letter queue.",
 	})
 
+	SagaConsumerMessages = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "saga_consumer_messages_total",
+		Help: "Saga consumer message outcomes.",
+	}, []string{"outcome", "error_class"})
+
 	SagaDLQReplayed = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "saga_dlq_replayed_total",
 		Help: "Messages replayed from the saga dead letter queue.",

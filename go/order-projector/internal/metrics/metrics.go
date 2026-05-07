@@ -35,4 +35,35 @@ var (
 		Name: "projector_projection_errors_total",
 		Help: "Errors applying projections",
 	}, []string{"projection", "event_type"})
+
+	FetchErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "projector_consumer_fetch_errors_total",
+		Help: "Kafka fetch errors by group and topic",
+	}, []string{"group", "topic"})
+
+	CommitErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "projector_consumer_commit_errors_total",
+		Help: "Kafka commit errors by group and topic",
+	}, []string{"group", "topic"})
+
+	DLQPublished = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "projector_consumer_dlq_published_total",
+		Help: "Kafka records published to DLQ by group and source topic",
+	}, []string{"group", "topic"})
+
+	DLQPublishErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "projector_consumer_dlq_publish_errors_total",
+		Help: "Kafka DLQ publish errors by group and source topic",
+	}, []string{"group", "topic"})
+
+	DuplicateEvents = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "projector_duplicate_events_total",
+		Help: "Duplicate projector events skipped by projection",
+	}, []string{"projection"})
+
+	ProjectionDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "projector_projection_duration_seconds",
+		Help:    "Projection processing duration by projection and event type",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"projection", "event_type"})
 )

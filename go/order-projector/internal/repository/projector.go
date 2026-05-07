@@ -28,7 +28,21 @@ const (
 			   items_json     = COALESCE(EXCLUDED.items_json, order_summary.items_json),
 			   updated_at     = EXCLUDED.updated_at,
 			   completed_at   = COALESCE(EXCLUDED.completed_at, order_summary.completed_at),
-			   failure_reason = COALESCE(EXCLUDED.failure_reason, order_summary.failure_reason)`
+			   failure_reason = COALESCE(EXCLUDED.failure_reason, order_summary.failure_reason)
+			 WHERE order_summary.updated_at <= EXCLUDED.updated_at`
+	upsertOrderStatsOnceSQL = `WITH inserted AS (
+			   INSERT INTO processed_projection_events (projection_name, event_id)
+			   VALUES ('stats', $1)
+			   ON CONFLICT (projection_name, event_id) DO NOTHING
+			   RETURNING 1
+			 )
+			 INSERT INTO order_stats (hour_bucket, orders_created, orders_completed, orders_failed, total_revenue_cents)
+			 SELECT $2, $3, $4, $5, $6 FROM inserted
+			 ON CONFLICT (hour_bucket) DO UPDATE SET
+			   orders_created      = order_stats.orders_created + EXCLUDED.orders_created,
+			   orders_completed    = order_stats.orders_completed + EXCLUDED.orders_completed,
+			   orders_failed       = order_stats.orders_failed + EXCLUDED.orders_failed,
+			   total_revenue_cents = order_stats.total_revenue_cents + EXCLUDED.total_revenue_cents`
 	selectTimelineSQL = `SELECT event_id, order_id, event_type, event_version, data_json, timestamp
 			 FROM order_timeline
 			 WHERE order_id = $1
@@ -154,6 +168,17 @@ func (r *Repository) UpsertOrderStats(ctx context.Context, bucket time.Time, cre
 			return fmt.Errorf("upsert order stats: %w", err)
 		}
 		return nil
+	})
+}
+
+// UpsertOrderStatsOnce increments hourly counters once per event ID.
+func (r *Repository) UpsertOrderStatsOnce(ctx context.Context, eventID string, bucket time.Time, created, completed, failed int, revenueCents int64) (bool, error) {
+	return resilience.Call(ctx, r.breaker, r.retryCfg, func(ctx context.Context) (bool, error) {
+		tag, err := r.pool.Exec(ctx, upsertOrderStatsOnceSQL, eventID, bucket, created, completed, failed, revenueCents)
+		if err != nil {
+			return false, fmt.Errorf("upsert order stats once: %w", err)
+		}
+		return tag.RowsAffected() == 1, nil
 	})
 }
 

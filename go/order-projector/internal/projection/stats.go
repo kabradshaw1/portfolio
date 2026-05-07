@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/order-projector/internal/event"
+	"github.com/kabradshaw1/portfolio/go/order-projector/internal/metrics"
 	"github.com/kabradshaw1/portfolio/go/order-projector/internal/repository"
 )
 
@@ -31,16 +32,28 @@ func (s *Stats) Apply(ctx context.Context, evt *event.OrderEvent) error {
 
 	switch evt.Type {
 	case "order.created":
-		return s.repo.UpsertOrderStats(ctx, bucket, 1, 0, 0, 0)
+		inserted, err := s.repo.UpsertOrderStatsOnce(ctx, evt.ID, bucket, 1, 0, 0, 0)
+		if err == nil && !inserted {
+			metrics.DuplicateEvents.WithLabelValues(ProjectionStats).Inc()
+		}
+		return err
 
 	case "order.completed":
 		var d completedData
 		// Best-effort extraction of revenue; ignore errors and default to 0.
 		_ = json.Unmarshal(evt.Data, &d)
-		return s.repo.UpsertOrderStats(ctx, bucket, 0, 1, 0, d.TotalCents)
+		inserted, err := s.repo.UpsertOrderStatsOnce(ctx, evt.ID, bucket, 0, 1, 0, d.TotalCents)
+		if err == nil && !inserted {
+			metrics.DuplicateEvents.WithLabelValues(ProjectionStats).Inc()
+		}
+		return err
 
 	case "order.failed":
-		return s.repo.UpsertOrderStats(ctx, bucket, 0, 0, 1, 0)
+		inserted, err := s.repo.UpsertOrderStatsOnce(ctx, evt.ID, bucket, 0, 0, 1, 0)
+		if err == nil && !inserted {
+			metrics.DuplicateEvents.WithLabelValues(ProjectionStats).Inc()
+		}
+		return err
 
 	default:
 		// Other event types do not affect stats.

@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/segmentio/kafka-go"
 
 	"github.com/kabradshaw1/portfolio/go/order-projector/internal/consumer"
 	"github.com/kabradshaw1/portfolio/go/order-projector/internal/handler"
 	"github.com/kabradshaw1/portfolio/go/order-projector/internal/replay"
 	"github.com/kabradshaw1/portfolio/go/order-projector/internal/repository"
 	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
+	"github.com/kabradshaw1/portfolio/go/pkg/kafkaconsumer"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
@@ -65,7 +67,26 @@ func main() {
 
 	// Kafka consumer with all three projections.
 	brokers := strings.Split(cfg.KafkaBrokers, ",")
-	cons := consumer.New(brokers, repo)
+	dlqWriter := &kafka.Writer{
+		Addr:     kafka.TCP(brokers...),
+		Topic:    cfg.KafkaDLQTopic,
+		Balancer: &kafka.LeastBytes{},
+	}
+	defer func() {
+		if err := dlqWriter.Close(); err != nil {
+			slog.Error("close kafka dlq writer", "error", err)
+		}
+	}()
+	dlqPublisher := kafkaconsumer.NewDLQPublisher(dlqWriter, cfg.KafkaDLQTopic, cfg.KafkaGroupID)
+	cons := consumer.New(brokers, repo, consumer.Config{
+		GroupID: cfg.KafkaGroupID,
+		RetryConfig: kafkaconsumer.RetryConfig{
+			MaxAttempts: cfg.KafkaRetryAttempts,
+			BaseDelay:   cfg.KafkaRetryBaseDelay,
+			MaxDelay:    cfg.KafkaRetryMaxDelay,
+		},
+		FetchBackoff: cfg.KafkaFetchBackoff,
+	}, dlqPublisher)
 	go func() {
 		if err := cons.Run(ctx); err != nil {
 			slog.Error("kafka consumer failed", "error", err)

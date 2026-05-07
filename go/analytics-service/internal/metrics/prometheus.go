@@ -55,4 +55,29 @@ var (
 		Name: "analytics_active_windows",
 		Help: "Number of currently open windows.",
 	}, []string{"aggregator"})
+
+	CommitErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "analytics_kafka_commit_errors_total",
+		Help: "Kafka commit errors by group and topic.",
+	}, []string{"group", "topic"})
+
+	InvalidEvents = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "analytics_invalid_events_total",
+		Help: "Invalid Kafka events by source topic.",
+	}, []string{"topic"})
+
+	DLQPublished = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "analytics_kafka_dlq_published_total",
+		Help: "Kafka records published to DLQ by group and source topic.",
+	}, []string{"group", "topic"})
+
+	DLQPublishErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "analytics_kafka_dlq_publish_errors_total",
+		Help: "Kafka DLQ publish errors by group and source topic.",
+	}, []string{"group", "topic"})
+
+	LastSuccessfulFlushTimestamp = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "analytics_last_successful_flush_timestamp",
+		Help: "Unix timestamp of the last successful window flush by aggregator.",
+	}, []string{"aggregator"})
 )
