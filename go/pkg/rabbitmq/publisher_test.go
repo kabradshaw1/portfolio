@@ -12,11 +12,12 @@ import (
 )
 
 type fakeChannel struct {
-	confirmErr error
-	publishErr error
-	confirmCh  chan amqp.Confirmation
-	returnCh   chan amqp.Return
-	onPublish  func(*fakeChannel)
+	confirmErr  error
+	confirmWait bool
+	publishErr  error
+	confirmCh   chan amqp.Confirmation
+	returnCh    chan amqp.Return
+	onPublish   func(*fakeChannel)
 
 	publishCount int
 	publishing   amqp.Publishing
@@ -32,7 +33,8 @@ func newFakeChannel() *fakeChannel {
 	}
 }
 
-func (f *fakeChannel) Confirm(bool) error {
+func (f *fakeChannel) Confirm(noWait bool) error {
+	f.confirmWait = noWait
 	return f.confirmErr
 }
 
@@ -79,6 +81,19 @@ func TestNewPublisherReturnsConfirmError(t *testing.T) {
 	}
 }
 
+func TestNewPublisherEnablesConfirmModeSynchronously(t *testing.T) {
+	fake := newFakeChannel()
+
+	_, err := rabbitmq.NewPublisher(fake)
+
+	if err != nil {
+		t.Fatalf("NewPublisher returned error: %v", err)
+	}
+	if fake.confirmWait {
+		t.Fatal("Confirm called with noWait = true, want false")
+	}
+}
+
 func TestPublisherUsesMandatoryPersistentPublish(t *testing.T) {
 	fake := newFakeChannel()
 	fake.onPublish = func(f *fakeChannel) {
@@ -105,6 +120,25 @@ func TestPublisherUsesMandatoryPersistentPublish(t *testing.T) {
 	}
 }
 
+func TestPublisherReturnsPublishError(t *testing.T) {
+	want := errors.New("broker publish failed")
+	fake := newFakeChannel()
+	fake.publishErr = want
+	publisher, err := rabbitmq.NewPublisher(fake)
+	if err != nil {
+		t.Fatalf("NewPublisher returned error: %v", err)
+	}
+
+	err = publisher.Publish(context.Background(), "exchange", "routing.key", amqp.Publishing{})
+
+	if !errors.Is(err, want) {
+		t.Fatalf("Publish error = %v, want wrapped %v", err, want)
+	}
+	if err == nil || !strings.Contains(err.Error(), "publish rabbitmq message") {
+		t.Fatalf("Publish error = %v, want publish context", err)
+	}
+}
+
 func TestPublisherReturnsErrorOnReturnedMessage(t *testing.T) {
 	fake := newFakeChannel()
 	fake.onPublish = func(f *fakeChannel) {
@@ -120,6 +154,57 @@ func TestPublisherReturnsErrorOnReturnedMessage(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "returned") {
 		t.Fatalf("Publish error = %v, want returned message error", err)
+	}
+}
+
+func TestPublisherIgnoresStaleReturnAfterTimedOutPublish(t *testing.T) {
+	fake := newFakeChannel()
+	publisher, err := rabbitmq.NewPublisher(fake)
+	if err != nil {
+		t.Fatalf("NewPublisher returned error: %v", err)
+	}
+	firstCtx, firstCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer firstCancel()
+
+	err = publisher.Publish(firstCtx, "exchange", "routing.key", amqp.Publishing{})
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("first Publish error = %v, want context deadline exceeded", err)
+	}
+	firstHeaders := fake.publishing.Headers
+
+	secondPublished := make(chan struct{})
+	fake.onPublish = func(f *fakeChannel) {
+		if f.publishCount == 2 {
+			close(secondPublished)
+		}
+	}
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- publisher.Publish(context.Background(), "exchange", "routing.key", amqp.Publishing{})
+	}()
+
+	select {
+	case <-secondPublished:
+	case <-time.After(time.Second):
+		t.Fatal("second publish did not call PublishWithContext")
+	}
+
+	fake.returnCh <- amqp.Return{ReplyText: "NO_ROUTE", Headers: firstHeaders}
+	select {
+	case err := <-secondDone:
+		t.Fatalf("second Publish returned from stale return with error %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	fake.confirmCh <- amqp.Confirmation{DeliveryTag: 2, Ack: true}
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatalf("second Publish returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second Publish did not return after current confirm")
 	}
 }
 
