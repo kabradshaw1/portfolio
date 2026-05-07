@@ -67,6 +67,62 @@ func consumeOne(t *testing.T, ch *amqp.Channel, queue string, timeout time.Durat
 	}
 }
 
+func publishSagaEvent(t *testing.T, conn *amqp.Connection, evt saga.Event) {
+	t.Helper()
+
+	ch, err := conn.Channel()
+	if err != nil {
+		t.Fatalf("open publish channel: %v", err)
+	}
+	defer ch.Close()
+
+	body, err := json.Marshal(evt)
+	if err != nil {
+		t.Fatalf("marshal saga event: %v", err)
+	}
+	if err := ch.Publish(saga.SagaExchange, saga.OrderEvents, false, false, amqp.Publishing{
+		ContentType:  "application/json",
+		DeliveryMode: amqp.Persistent,
+		Body:         body,
+	}); err != nil {
+		t.Fatalf("publish %s: %v", evt.Event, err)
+	}
+}
+
+func publishRaw(t *testing.T, conn *amqp.Connection, exchange, routingKey string, msg amqp.Publishing) {
+	t.Helper()
+
+	ch, err := conn.Channel()
+	if err != nil {
+		t.Fatalf("open publish channel: %v", err)
+	}
+	defer ch.Close()
+
+	if err := ch.Publish(exchange, routingKey, false, false, msg); err != nil {
+		t.Fatalf("publish to %s/%s: %v", exchange, routingKey, err)
+	}
+}
+
+func waitForQueueCount(t *testing.T, ch *amqp.Channel, queue string, want int, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.After(timeout)
+	for {
+		state, err := ch.QueueInspect(queue)
+		if err != nil {
+			t.Fatalf("inspect queue %s: %v", queue, err)
+		}
+		if state.Messages == want {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timeout waiting for %s message count %d, current: %d", queue, want, state.Messages)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
 // pollUntilSagaStep polls the DB until the order's saga step matches the expected value.
 func pollUntilSagaStep(t *testing.T, ctx context.Context, repo *repository.OrderRepository, orderID uuid.UUID, expected string, timeout time.Duration) {
 	t.Helper()
@@ -84,6 +140,112 @@ func pollUntilSagaStep(t *testing.T, ctx context.Context, repo *repository.Order
 			t.Fatalf("timeout waiting for saga step %s, current: %s", expected, order.SagaStep)
 		case <-time.After(200 * time.Millisecond):
 		}
+	}
+}
+
+func TestSaga_MalformedOrderEventDLQ(t *testing.T) {
+	infra := getInfra(t)
+	ctx := context.Background()
+
+	if err := saga.DeclareTopology(infra.RabbitCh); err != nil {
+		t.Fatalf("declare topology: %v", err)
+	}
+	_, _ = infra.RabbitCh.QueuePurge(saga.OrderEvents, false)
+	_, _ = infra.RabbitCh.QueuePurge(saga.SagaDLQ, false)
+
+	publishRaw(t, infra.RabbitConn, saga.SagaExchange, saga.OrderEvents, amqp.Publishing{
+		ContentType:  "application/json",
+		DeliveryMode: amqp.Persistent,
+		Headers:      amqp.Table{"x-retry-count": int32(0)},
+		Body:         []byte("{"),
+	})
+
+	consumerCtx, consumerCancel := context.WithCancel(ctx)
+	defer consumerCancel()
+
+	consumerCh, err := infra.RabbitConn.Channel()
+	if err != nil {
+		t.Fatalf("open consumer channel: %v", err)
+	}
+	defer consumerCh.Close()
+
+	consumer := saga.NewConsumer(nil)
+	go func() {
+		_ = consumer.Start(consumerCtx, consumerCh)
+	}()
+
+	dlqMsg := consumeOne(t, infra.RabbitCh, saga.SagaDLQ, 5*time.Second)
+	defer dlqMsg.Ack(false)
+
+	if string(dlqMsg.Body) != "{" {
+		t.Fatalf("DLQ body = %q, want malformed payload", string(dlqMsg.Body))
+	}
+	waitForQueueCount(t, infra.RabbitCh, saga.OrderEvents, 0, 5*time.Second)
+}
+
+func TestSaga_DuplicateTerminalEventRemainsTerminal(t *testing.T) {
+	infra := getInfra(t)
+	ctx := context.Background()
+	testutil.TruncateAll(ctx, t, infra.Pool)
+
+	if err := saga.DeclareTopology(infra.RabbitCh); err != nil {
+		t.Fatalf("declare topology: %v", err)
+	}
+	_, _ = infra.RabbitCh.QueuePurge(saga.OrderEvents, false)
+	_, _ = infra.RabbitCh.QueuePurge(saga.SagaDLQ, false)
+
+	ids := testutil.SeedProducts(ctx, t, infra.Pool, 1)
+	productID, _ := uuid.Parse(ids[0])
+	breaker := newBreaker()
+	orderRepo := repository.NewOrderRepository(infra.Pool, breaker)
+
+	userID := uuid.New()
+	order, err := orderRepo.Create(ctx, userID, 1000, []model.OrderItem{
+		{ProductID: productID, Quantity: 1, PriceAtPurchase: 1000},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if err := orderRepo.UpdateSagaStep(ctx, order.ID, saga.StepPaymentConfirmed); err != nil {
+		t.Fatalf("set payment confirmed: %v", err)
+	}
+
+	sagaPub := saga.NewPublisher(infra.RabbitCh)
+	orch := saga.NewOrchestrator(orderRepo, sagaPub, &alwaysAvailableStock{}, nil, kafka.NopProducer{}, "http://localhost:3000")
+
+	clearedEvt := saga.Event{
+		Event:     saga.EvtCartCleared,
+		OrderID:   order.ID.String(),
+		UserID:    userID.String(),
+		Success:   true,
+		Timestamp: time.Now().UTC(),
+	}
+	publishSagaEvent(t, infra.RabbitConn, clearedEvt)
+	publishSagaEvent(t, infra.RabbitConn, clearedEvt)
+
+	consumerCtx, consumerCancel := context.WithCancel(ctx)
+	defer consumerCancel()
+
+	consumerCh, err := infra.RabbitConn.Channel()
+	if err != nil {
+		t.Fatalf("open consumer channel: %v", err)
+	}
+	defer consumerCh.Close()
+
+	consumer := saga.NewConsumer(orch)
+	go func() {
+		_ = consumer.Start(consumerCtx, consumerCh)
+	}()
+
+	pollUntilSagaStep(t, ctx, orderRepo, order.ID, saga.StepCompleted, 10*time.Second)
+	waitForQueueCount(t, infra.RabbitCh, saga.OrderEvents, 0, 5*time.Second)
+
+	got, err := orderRepo.FindByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("find order: %v", err)
+	}
+	if got.SagaStep != saga.StepCompleted {
+		t.Fatalf("saga step after duplicate = %s, want %s", got.SagaStep, saga.StepCompleted)
 	}
 }
 
@@ -145,14 +307,7 @@ func TestSaga_HappyPath(t *testing.T) {
 		Success:   true,
 		Timestamp: time.Now().UTC(),
 	}
-	replyBody, _ := json.Marshal(replyEvt)
-	err = infra.RabbitCh.Publish(saga.SagaExchange, "saga.order.events", false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        replyBody,
-	})
-	if err != nil {
-		t.Fatalf("publish items.reserved: %v", err)
-	}
+	publishSagaEvent(t, infra.RabbitConn, replyEvt)
 
 	// Start saga consumer.
 	consumerCtx, consumerCancel := context.WithCancel(ctx)
@@ -188,14 +343,7 @@ func TestSaga_HappyPath(t *testing.T) {
 		Success:   true,
 		Timestamp: time.Now().UTC(),
 	}
-	clearedBody, _ := json.Marshal(clearedEvt)
-	err = infra.RabbitCh.Publish(saga.SagaExchange, "saga.order.events", false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        clearedBody,
-	})
-	if err != nil {
-		t.Fatalf("publish cart.cleared: %v", err)
-	}
+	publishSagaEvent(t, infra.RabbitConn, clearedEvt)
 
 	pollUntilSagaStep(t, ctx, orderRepo, order.ID, saga.StepCompleted, 10*time.Second)
 	consumerCancel()
@@ -327,14 +475,7 @@ func TestSaga_Compensation(t *testing.T) {
 		Success:   true,
 		Timestamp: time.Now().UTC(),
 	}
-	replyBody, _ := json.Marshal(replyEvt)
-	err = infra.RabbitCh.Publish(saga.SagaExchange, "saga.order.events", false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        replyBody,
-	})
-	if err != nil {
-		t.Fatalf("publish items.reserved: %v", err)
-	}
+	publishSagaEvent(t, infra.RabbitConn, replyEvt)
 
 	consumerCtx, consumerCancel := context.WithCancel(ctx)
 	defer consumerCancel()
@@ -367,14 +508,7 @@ func TestSaga_Compensation(t *testing.T) {
 		Success:   true,
 		Timestamp: time.Now().UTC(),
 	}
-	releasedBody, _ := json.Marshal(releasedEvt)
-	err = infra.RabbitCh.Publish(saga.SagaExchange, "saga.order.events", false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        releasedBody,
-	})
-	if err != nil {
-		t.Fatalf("publish items.released: %v", err)
-	}
+	publishSagaEvent(t, infra.RabbitConn, releasedEvt)
 
 	pollUntilSagaStep(t, ctx, orderRepo, order.ID, saga.StepCompensationComplete, 10*time.Second)
 	consumerCancel()

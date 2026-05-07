@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/auth"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/guardrails"
 	"github.com/kabradshaw1/portfolio/go/ai-service/internal/llm"
+	"github.com/kabradshaw1/portfolio/go/ai-service/internal/metrics"
+	"github.com/kabradshaw1/portfolio/go/pkg/admission"
 	"github.com/kabradshaw1/portfolio/go/pkg/apperror"
 )
 
@@ -30,8 +33,19 @@ type chatRequest struct {
 
 const maxUserMessageBytes = 4000
 
+// ChatAdmission configures per-pod admission control for the expensive chat path.
+type ChatAdmission struct {
+	Limiter    *admission.Limiter
+	RetryAfter time.Duration
+}
+
 // RegisterChatRoutes wires POST /chat onto r.
-func RegisterChatRoutes(r *gin.Engine, runner Runner, jwtSecret string, limiter *guardrails.Limiter) {
+func RegisterChatRoutes(r *gin.Engine, runner Runner, jwtSecret string, limiter *guardrails.Limiter, admissions ...ChatAdmission) {
+	var chatAdmission ChatAdmission
+	if len(admissions) > 0 {
+		chatAdmission = admissions[0]
+	}
+
 	r.POST("/chat", guardrails.Middleware(limiter), func(c *gin.Context) {
 		var req chatRequest
 		body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxUserMessageBytes*4))
@@ -86,6 +100,24 @@ func RegisterChatRoutes(r *gin.Engine, runner Runner, jwtSecret string, limiter 
 		)
 		requestStart := time.Now()
 		eventsEmitted := 0
+		if chatAdmission.Limiter != nil {
+			permit, ok := chatAdmission.Limiter.TryAcquire(c.Request.Context())
+			if !ok {
+				if chatAdmission.RetryAfter > 0 {
+					retryAfterSeconds := int(chatAdmission.RetryAfter.Seconds())
+					if retryAfterSeconds < 1 {
+						retryAfterSeconds = 1
+					}
+					c.Header("Retry-After", strconv.Itoa(retryAfterSeconds))
+				}
+				_ = c.Error(apperror.Wrap(nil, "CHAT_OVERLOADED", "chat service is temporarily overloaded", http.StatusServiceUnavailable))
+				return
+			}
+			defer permit.Release()
+		}
+		defer func() {
+			metrics.ChatDuration.Observe(time.Since(requestStart).Seconds())
+		}()
 
 		// Beyond this point we stream SSE — errors go via emit, not c.Error().
 		c.Writer.Header().Set("Content-Type", "text/event-stream")

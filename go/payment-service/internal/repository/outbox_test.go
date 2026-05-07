@@ -16,3 +16,12 @@ func TestOutboxRepository_NilPool_Insert(t *testing.T) {
 		t.Error("expected error for nil pool, got nil")
 	}
 }
+
+func TestOutboxRepository_NilPool_CountUnpublished(t *testing.T) {
+	breaker := resilience.NewBreaker(resilience.BreakerConfig{Name: "test-outbox-count"})
+	repo := NewOutboxRepository(nil, breaker)
+	_, err := repo.CountUnpublished(context.Background())
+	if err == nil {
+		t.Error("expected error for nil pool, got nil")
+	}
+}

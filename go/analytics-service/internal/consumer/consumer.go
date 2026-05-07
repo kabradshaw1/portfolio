@@ -11,6 +11,7 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/aggregator"
 	"github.com/kabradshaw1/portfolio/go/analytics-service/internal/metrics"
+	"github.com/kabradshaw1/portfolio/go/pkg/kafkaconsumer"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
 )
 
@@ -22,12 +23,24 @@ const (
 	TopicPayments = "ecommerce.payments"
 )
 
+type DLQPublisher interface {
+	Publish(ctx context.Context, msg kafka.Message, errorClass string, cause error) error
+}
+
+type Config struct {
+	GroupID      string
+	RetryConfig  kafkaconsumer.RetryConfig
+	FetchBackoff time.Duration
+}
+
 // Consumer reads messages from Kafka topics and routes them to windowed aggregators.
 type Consumer struct {
 	reader        *kafka.Reader
 	revenue       *aggregator.RevenueAggregator
 	trending      *aggregator.TrendingAggregator
 	abandonment   *aggregator.AbandonmentAggregator
+	dlq           DLQPublisher
+	cfg           Config
 	connected     atomic.Bool
 	processing    atomic.Bool
 	flushInterval time.Duration
@@ -40,10 +53,21 @@ func New(
 	trending *aggregator.TrendingAggregator,
 	abandonment *aggregator.AbandonmentAggregator,
 	flushInterval time.Duration,
+	cfg Config,
+	dlq DLQPublisher,
 ) *Consumer {
+	if cfg.GroupID == "" {
+		cfg.GroupID = "analytics-group"
+	}
+	if cfg.RetryConfig.MaxAttempts == 0 {
+		cfg.RetryConfig = kafkaconsumer.DefaultRetryConfig()
+	}
+	if cfg.FetchBackoff == 0 {
+		cfg.FetchBackoff = 250 * time.Millisecond
+	}
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     brokers,
-		GroupID:     "analytics-group",
+		GroupID:     cfg.GroupID,
 		Topic:       "", // set below via GroupTopics
 		MinBytes:    1,
 		MaxBytes:    10e6, // 10MB
@@ -55,6 +79,8 @@ func New(
 		revenue:       revenue,
 		trending:      trending,
 		abandonment:   abandonment,
+		dlq:           dlq,
+		cfg:           cfg,
 		flushInterval: flushInterval,
 	}
 }
@@ -89,6 +115,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 			}
 			slog.Error("kafka fetch error", "error", err)
 			metrics.ConsumerErrors.Inc()
+			_ = kafkaconsumer.SleepWithContext(ctx, c.cfg.FetchBackoff)
 			continue
 		}
 
@@ -100,14 +127,21 @@ func (c *Consumer) Run(ctx context.Context) error {
 
 		// Extract trace context from Kafka headers.
 		msgCtx := tracing.ExtractKafka(ctx, msg.Headers)
-		_ = msgCtx // available for span creation if tracing is enabled
 
 		c.processing.Store(true)
-		c.route(msg)
+		shouldCommit := c.route(msgCtx, msg)
 		c.processing.Store(false)
 
+		if shouldCommit {
+			if err := c.reader.CommitMessages(ctx, msg); err != nil {
+				slog.Error("kafka commit error", "error", err)
+				metrics.CommitErrors.WithLabelValues(c.cfg.GroupID, msg.Topic).Inc()
+			}
+			continue
+		}
 		if err := c.reader.CommitMessages(ctx, msg); err != nil {
 			slog.Error("kafka commit error", "error", err)
+			metrics.CommitErrors.WithLabelValues(c.cfg.GroupID, msg.Topic).Inc()
 		}
 	}
 }
@@ -131,12 +165,18 @@ func (c *Consumer) flushLoop(ctx context.Context) {
 func (c *Consumer) flushAll(ctx context.Context) {
 	if err := c.revenue.Flush(ctx); err != nil {
 		slog.Error("revenue flush error", "error", err)
+	} else {
+		metrics.LastSuccessfulFlushTimestamp.WithLabelValues("revenue").Set(float64(time.Now().Unix()))
 	}
 	if err := c.trending.Flush(ctx); err != nil {
 		slog.Error("trending flush error", "error", err)
+	} else {
+		metrics.LastSuccessfulFlushTimestamp.WithLabelValues("trending").Set(float64(time.Now().Unix()))
 	}
 	if err := c.abandonment.Flush(ctx); err != nil {
 		slog.Error("abandonment flush error", "error", err)
+	} else {
+		metrics.LastSuccessfulFlushTimestamp.WithLabelValues("abandonment").Set(float64(time.Now().Unix()))
 	}
 }
 
@@ -160,11 +200,19 @@ type event struct {
 	Data      json.RawMessage `json:"data"`
 }
 
-func (c *Consumer) route(msg kafka.Message) {
+func (c *Consumer) route(ctx context.Context, msg kafka.Message) bool {
 	var env event
 	if err := json.Unmarshal(msg.Value, &env); err != nil {
 		slog.Error("unmarshal event", "topic", msg.Topic, "error", err)
-		return
+		metrics.InvalidEvents.WithLabelValues(msg.Topic).Inc()
+		if c.dlq != nil {
+			if dlqErr := c.dlq.Publish(ctx, msg, "decode", err); dlqErr != nil {
+				metrics.DLQPublishErrors.WithLabelValues(c.cfg.GroupID, msg.Topic).Inc()
+				return false
+			}
+			metrics.DLQPublished.WithLabelValues(c.cfg.GroupID, msg.Topic).Inc()
+		}
+		return false
 	}
 
 	eventTime := env.Timestamp
@@ -185,11 +233,12 @@ func (c *Consumer) route(msg kafka.Message) {
 		c.handlePayment(env)
 	default:
 		slog.Warn("unknown topic", "topic", msg.Topic)
-		return
+		return false
 	}
 
 	metrics.EventsConsumed.WithLabelValues(msg.Topic).Inc()
 	metrics.AggregationLatency.WithLabelValues(msg.Topic).Observe(time.Since(start).Seconds())
+	return true
 }
 
 type orderData struct {

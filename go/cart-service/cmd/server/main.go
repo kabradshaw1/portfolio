@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -31,6 +32,7 @@ import (
 	pb "github.com/kabradshaw1/portfolio/go/cart-service/pb/cart/v1"
 	"github.com/kabradshaw1/portfolio/go/pkg/buildinfo"
 	"github.com/kabradshaw1/portfolio/go/pkg/grpcmetrics"
+	rabbitmq "github.com/kabradshaw1/portfolio/go/pkg/rabbitmq"
 	"github.com/kabradshaw1/portfolio/go/pkg/resilience"
 	"github.com/kabradshaw1/portfolio/go/pkg/shutdown"
 	"github.com/kabradshaw1/portfolio/go/pkg/tlsconfig"
@@ -89,26 +91,10 @@ func main() {
 	cartSvc := service.NewCartService(cartRepo, kafkaPub, prodClient)
 
 	// RabbitMQ saga handler (optional)
-	var rmqConn *amqp.Connection
-	var rmqCh *amqp.Channel
-	var sagaHandler *worker.SagaHandler
+	var sagaSupervisor *cartSagaSupervisor
 	if cfg.RabbitmqURL != "" {
-		rmqConn, err = amqp.Dial(cfg.RabbitmqURL)
-		if err != nil {
-			log.Fatalf("rabbitmq connect: %v", err)
-		}
-
-		rmqCh, err = rmqConn.Channel()
-		if err != nil {
-			log.Fatalf("rabbitmq channel: %v", err)
-		}
-
-		sagaHandler = worker.NewSagaHandler(cartSvc, rmqCh)
-		go func() {
-			if err := sagaHandler.Start(ctx); err != nil {
-				slog.Error("saga handler failed", "error", err)
-			}
-		}()
+		sagaSupervisor = newCartSagaSupervisor(cfg.RabbitmqURL, cartSvc)
+		go sagaSupervisor.Run(ctx)
 		slog.Info("saga command handler enabled", "url", cfg.RabbitmqURL)
 	}
 
@@ -207,21 +193,106 @@ func main() {
 	})
 	sm.Register("drain-http", 0, shutdown.DrainHTTP("cart-http", httpSrv))
 	sm.Register("drain-grpc", 0, shutdown.DrainGRPC("cart-grpc", grpcServer))
-	if sagaHandler != nil {
-		sm.Register("wait-saga", 10, shutdown.WaitForInflight("cart-saga", sagaHandler.IsIdle, 100*time.Millisecond))
+	if sagaSupervisor != nil {
+		sm.Register("wait-saga", 10, shutdown.WaitForInflight("cart-saga", sagaSupervisor.IsIdle, 100*time.Millisecond))
 	}
 	sm.Register("postgres", 20, func(_ context.Context) error {
 		pool.Close()
 		return nil
 	})
-	if rmqCh != nil {
-		sm.Register("rabbitmq", 20, func(_ context.Context) error {
-			_ = rmqCh.Close()
-			return rmqConn.Close()
-		})
-	}
 	sm.Register("otel", 30, func(ctx context.Context) error {
 		return shutdownTracer(ctx)
 	})
 	sm.Wait()
+}
+
+type cartSagaSupervisor struct {
+	url string
+	svc worker.CartServiceForSaga
+	mu  sync.RWMutex
+	cur *worker.SagaHandler
+}
+
+func newCartSagaSupervisor(url string, svc worker.CartServiceForSaga) *cartSagaSupervisor {
+	return &cartSagaSupervisor{url: url, svc: svc}
+}
+
+func (s *cartSagaSupervisor) Run(ctx context.Context) {
+	attempt := 0
+	for ctx.Err() == nil {
+		err := s.runOnce(ctx)
+		s.setHandler(nil)
+		if ctx.Err() != nil {
+			return
+		}
+		slog.WarnContext(ctx, "saga rabbitmq connection lost, reconnecting", "error", err)
+		if !waitForRabbitMQReconnect(ctx, attempt) {
+			return
+		}
+		attempt++
+	}
+}
+
+func (s *cartSagaSupervisor) runOnce(ctx context.Context) error {
+	conn, ch, err := connectRabbitMQ(s.url)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = ch.Close()
+		_ = conn.Close()
+	}()
+
+	if err := worker.DeclareSagaTopology(ch); err != nil {
+		return err
+	}
+	publisher, err := rabbitmq.NewPublisher(ch)
+	if err != nil {
+		return err
+	}
+	handler := worker.NewSagaHandlerWithPublisher(s.svc, ch, publisher)
+	s.setHandler(handler)
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	handlerDone := make(chan error, 1)
+	go func() {
+		handlerDone <- handler.Start(runCtx)
+	}()
+
+	connClosed := conn.NotifyClose(make(chan *amqp.Error, 1))
+	chClosed := ch.NotifyClose(make(chan *amqp.Error, 1))
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-handlerDone:
+		return err
+	case err := <-connClosed:
+		cancel()
+		return rabbitCloseError(err)
+	case err := <-chClosed:
+		cancel()
+		return rabbitCloseError(err)
+	}
+}
+
+func (s *cartSagaSupervisor) IsIdle() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cur == nil || s.cur.IsIdle()
+}
+
+func (s *cartSagaSupervisor) setHandler(handler *worker.SagaHandler) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cur = handler
+}
+
+func rabbitCloseError(err *amqp.Error) error {
+	if err == nil {
+		return context.Canceled
+	}
+	return err
 }

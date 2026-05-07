@@ -26,4 +26,9 @@ var (
 		Help:    "Time from outbox insert to publish.",
 		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30},
 	})
+
+	OutboxUnpublished = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "payment_outbox_unpublished",
+		Help: "Current count of unpublished payment outbox rows.",
+	})
 )

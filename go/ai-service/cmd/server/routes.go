@@ -33,6 +33,7 @@ func setupRouter(
 	cfg Config,
 	a *agent.Agent,
 	limiter *guardrails.Limiter,
+	chatAdmission apphttp.ChatAdmission,
 	authedMCPHandler http.Handler,
 	llmc llm.Client,
 ) *gin.Engine {
@@ -70,7 +71,7 @@ func setupRouter(
 			return nil
 		},
 	})
-	apphttp.RegisterChatRoutes(router, a, cfg.JWTSecret, limiter)
+	apphttp.RegisterChatRoutes(router, a, cfg.JWTSecret, limiter, chatAdmission)
 	apphttp.RegisterMetricsRoute(router)
 	router.Any("/mcp", gin.WrapH(authedMCPHandler))
 

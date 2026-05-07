@@ -136,7 +136,7 @@ func TestRoute_OrderCompleted_RoutesToRevenueAndAbandonment(t *testing.T) {
 		OrderID: "ord-1", UserID: "user-1", TotalCents: 5000,
 	}, now)
 
-	c.route(msg)
+	c.route(context.Background(), msg)
 
 	// Advance clock past window + grace so Flush produces results.
 	clock.Advance(testWindowSize + testGrace + time.Second)
@@ -178,7 +178,7 @@ func TestRoute_CartItemAdded_RoutesToTrendingAndAbandonment(t *testing.T) {
 		ProductID: "prod-1", UserID: "user-1",
 	}, now)
 
-	c.route(msg)
+	c.route(context.Background(), msg)
 
 	// Advance past window + grace.
 	clock.Advance(testWindowSize + testGrace + time.Second)
@@ -221,7 +221,7 @@ func TestRoute_CartItemAdded_NoUserID_SkipsAbandonment(t *testing.T) {
 		ProductID: "prod-1", UserID: "",
 	}, now)
 
-	c.route(msg)
+	c.route(context.Background(), msg)
 
 	clock.Advance(testWindowSize + testGrace + time.Second)
 
@@ -249,7 +249,7 @@ func TestRoute_ProductView_RoutesToTrending(t *testing.T) {
 		ProductID: "prod-1", ProductName: "Widget",
 	}, now)
 
-	c.route(msg)
+	c.route(context.Background(), msg)
 
 	clock.Advance(testWindowSize + testGrace + time.Second)
 
@@ -276,7 +276,7 @@ func TestRoute_Payment_DoesNotPanic(t *testing.T) {
 		"paymentID": "pay-1",
 	}, time.Now())
 
-	c.route(msg)
+	c.route(context.Background(), msg)
 }
 
 func TestRoute_UnknownTopic_DoesNotPanic(t *testing.T) {
@@ -287,13 +287,13 @@ func TestRoute_UnknownTopic_DoesNotPanic(t *testing.T) {
 		Value: []byte(`{"type":"foo","data":{}}`),
 	}
 
-	c.route(msg)
+	c.route(context.Background(), msg)
 }
 
 func TestRoute_MalformedJSON_DoesNotPanic(t *testing.T) {
 	c, _, _ := testConsumer(t)
 
-	c.route(kafka.Message{Topic: TopicOrders, Value: []byte("not json")})
+	c.route(context.Background(), kafka.Message{Topic: TopicOrders, Value: []byte("not json")})
 }
 
 func TestRoute_MalformedInnerData_DoesNotPanic(t *testing.T) {
@@ -303,7 +303,7 @@ func TestRoute_MalformedInnerData_DoesNotPanic(t *testing.T) {
 		Type: "order.completed",
 		Data: json.RawMessage(`not valid json`),
 	})
-	c.route(kafka.Message{Topic: TopicOrders, Value: body})
+	c.route(context.Background(), kafka.Message{Topic: TopicOrders, Value: body})
 }
 
 func TestRoute_ZeroTimestamp_FallsBackToNow(t *testing.T) {
@@ -333,7 +333,7 @@ func TestRoute_ZeroTimestamp_FallsBackToNow(t *testing.T) {
 	body, _ := json.Marshal(env)
 	msg := kafka.Message{Topic: TopicOrders, Value: body}
 
-	c.route(msg)
+	c.route(context.Background(), msg)
 
 	// Advance well past any window that time.Now() would land in.
 	clock.Advance(3*testWindowSize + testGrace)
@@ -360,7 +360,7 @@ func TestFlushLoop_CallsFlushPeriodically(t *testing.T) {
 	msg := makeMessage(TopicOrders, "order.completed", orderData{
 		OrderID: "ord-1", UserID: "user-1", TotalCents: 3000,
 	}, now)
-	c.route(msg)
+	c.route(context.Background(), msg)
 
 	// Advance past window + grace so the window is expired.
 	clock.Advance(testWindowSize + testGrace + time.Second)
@@ -383,5 +383,32 @@ func TestFlushLoop_CallsFlushPeriodically(t *testing.T) {
 	}
 	if rec.revenueCalls[0].TotalCents != 3000 {
 		t.Errorf("expected 3000 cents, got %d", rec.revenueCalls[0].TotalCents)
+	}
+}
+
+type testDLQPublisher struct {
+	published bool
+	err       error
+}
+
+func (p *testDLQPublisher) Publish(_ context.Context, _ kafka.Message, _ string, _ error) error {
+	if p.err != nil {
+		return p.err
+	}
+	p.published = true
+	return nil
+}
+
+func TestRouteInvalidEnvelopePublishesDLQ(t *testing.T) {
+	c, _, _ := testConsumer(t)
+	dlq := &testDLQPublisher{}
+	c.dlq = dlq
+
+	ok := c.route(context.Background(), kafka.Message{Topic: TopicOrders, Value: []byte(`{bad json`)})
+	if ok {
+		t.Fatal("invalid envelope should not be treated as processed analytics event")
+	}
+	if !dlq.published {
+		t.Fatal("invalid envelope was not published to DLQ")
 	}
 }
