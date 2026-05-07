@@ -121,6 +121,38 @@ func TestPublisherUsesMandatoryPersistentPublish(t *testing.T) {
 	if _, exists := fake.publishing.Headers["x-publisher-confirm-sequence"]; exists {
 		t.Fatal("PublishWithContext message contains internal publisher sequence header")
 	}
+	if got := fake.publishing.Headers[rabbitmq.PublisherCorrelationHeader]; got == "" || got == nil {
+		t.Fatal("PublishWithContext message missing publisher correlation header")
+	}
+}
+
+func TestPublisherOverwritesCallerCorrelationHeader(t *testing.T) {
+	fake := newFakeChannel()
+	fake.onPublish = func(f *fakeChannel) {
+		f.confirmCh <- amqp.Confirmation{DeliveryTag: 1, Ack: true}
+	}
+	publisher, err := rabbitmq.NewPublisher(fake)
+	if err != nil {
+		t.Fatalf("NewPublisher returned error: %v", err)
+	}
+	msg := amqp.Publishing{
+		Headers: amqp.Table{
+			rabbitmq.PublisherCorrelationHeader: "stale-correlation",
+		},
+	}
+
+	err = publisher.Publish(context.Background(), "exchange", "routing.key", msg)
+
+	if err != nil {
+		t.Fatalf("Publish returned error: %v", err)
+	}
+	got, ok := fake.publishing.Headers[rabbitmq.PublisherCorrelationHeader].(string)
+	if !ok || got == "" {
+		t.Fatalf("correlation header = %#v, want non-empty string", fake.publishing.Headers[rabbitmq.PublisherCorrelationHeader])
+	}
+	if got == "stale-correlation" {
+		t.Fatal("PublishWithContext kept caller-provided publisher correlation header")
+	}
 }
 
 func TestPublisherReturnsPublishError(t *testing.T) {
@@ -175,7 +207,7 @@ func TestPublisherDoesNotAdvanceSequenceAfterPublishError(t *testing.T) {
 func TestPublisherReturnsErrorOnReturnedMessage(t *testing.T) {
 	fake := newFakeChannel()
 	fake.onPublish = func(f *fakeChannel) {
-		f.returnCh <- amqp.Return{ReplyText: "NO_ROUTE"}
+		f.returnCh <- amqp.Return{ReplyText: "NO_ROUTE", Headers: f.publishing.Headers}
 		f.confirmCh <- amqp.Confirmation{DeliveryTag: 1, Ack: true}
 	}
 	publisher, err := rabbitmq.NewPublisher(fake)
@@ -234,6 +266,57 @@ func TestPublisherIgnoresStaleReturnAfterTimedOutPublish(t *testing.T) {
 		t.Fatal("second publish did not call PublishWithContext")
 	}
 
+	select {
+	case err := <-secondDone:
+		t.Fatalf("second Publish returned from stale return with error %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	fake.confirmCh <- amqp.Confirmation{DeliveryTag: 2, Ack: true}
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatalf("second Publish returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second Publish did not return after current confirm")
+	}
+}
+
+func TestPublisherIgnoresStaleReturnAfterNextPublishRegisters(t *testing.T) {
+	fake := newFakeChannel()
+	publisher, err := rabbitmq.NewPublisher(fake)
+	if err != nil {
+		t.Fatalf("NewPublisher returned error: %v", err)
+	}
+	firstCtx, firstCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer firstCancel()
+
+	err = publisher.Publish(firstCtx, "exchange", "routing.key", amqp.Publishing{})
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("first Publish error = %v, want context deadline exceeded", err)
+	}
+	firstHeaders := fake.publishing.Headers
+
+	secondPublished := make(chan struct{})
+	fake.onPublish = func(f *fakeChannel) {
+		if f.publishCount == 2 {
+			close(secondPublished)
+		}
+	}
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- publisher.Publish(context.Background(), "exchange", "routing.key", amqp.Publishing{})
+	}()
+
+	select {
+	case <-secondPublished:
+	case <-time.After(time.Second):
+		t.Fatal("second publish did not call PublishWithContext")
+	}
+
+	fake.returnCh <- amqp.Return{ReplyText: "NO_ROUTE", Headers: firstHeaders}
 	select {
 	case err := <-secondDone:
 		t.Fatalf("second Publish returned from stale return with error %v", err)

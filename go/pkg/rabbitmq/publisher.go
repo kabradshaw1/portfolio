@@ -8,6 +8,10 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// PublisherCorrelationHeader is reserved for Publisher return correlation.
+// Publish overwrites this header on every outbound message.
+const PublisherCorrelationHeader = "x-publisher-correlation-id"
+
 type ConfirmChannel interface {
 	Confirm(noWait bool) error
 	NotifyPublish(confirm chan amqp.Confirmation) chan amqp.Confirmation
@@ -35,6 +39,7 @@ type Publisher struct {
 type publishWaiter struct {
 	confirmCh chan amqp.Confirmation
 	returnCh  chan amqp.Return
+	returnID  string
 }
 
 func NewPublisher(ch ConfirmChannel) (*Publisher, error) {
@@ -60,12 +65,14 @@ func (p *Publisher) Publish(ctx context.Context, exchange, routingKey string, ms
 	}
 
 	expectedDeliveryTag := p.reserveDeliveryTag()
-	waiter, ok := p.registerWaiter(expectedDeliveryTag)
+	returnID := fmt.Sprintf("publisher-%d", expectedDeliveryTag)
+	waiter, ok := p.registerWaiter(expectedDeliveryTag, returnID)
 	if !ok {
 		return fmt.Errorf("rabbitmq confirm channel closed")
 	}
 	defer p.unregisterWaiter(expectedDeliveryTag)
 
+	msg = publishingWithCorrelation(msg, returnID)
 	if err := p.ch.PublishWithContext(ctx, exchange, routingKey, true, false, msg); err != nil {
 		// PublishWithContext returned synchronously, so this wrapper considers the
 		// message not published and keeps its local sequence aligned with RabbitMQ.
@@ -111,10 +118,11 @@ func (p *Publisher) rollbackDeliveryTag(deliveryTag uint64) {
 	}
 }
 
-func (p *Publisher) registerWaiter(deliveryTag uint64) (*publishWaiter, bool) {
+func (p *Publisher) registerWaiter(deliveryTag uint64, returnID string) (*publishWaiter, bool) {
 	waiter := &publishWaiter{
 		confirmCh: make(chan amqp.Confirmation, 1),
 		returnCh:  make(chan amqp.Return, 1),
+		returnID:  returnID,
 	}
 	p.stateMux.Lock()
 	if p.confirmsClosed {
@@ -202,6 +210,9 @@ func (p *Publisher) dispatchReturn(ret amqp.Return) {
 	if waiter == nil {
 		return
 	}
+	if ret.Headers[PublisherCorrelationHeader] != waiter.returnID {
+		return
+	}
 	select {
 	case waiter.returnCh <- ret:
 	default:
@@ -218,6 +229,16 @@ func (p *Publisher) waiter(deliveryTag uint64) *publishWaiter {
 	p.stateMux.Lock()
 	defer p.stateMux.Unlock()
 	return p.waiters[deliveryTag]
+}
+
+func publishingWithCorrelation(msg amqp.Publishing, returnID string) amqp.Publishing {
+	headers := amqp.Table{}
+	for key, value := range msg.Headers {
+		headers[key] = value
+	}
+	headers[PublisherCorrelationHeader] = returnID
+	msg.Headers = headers
+	return msg
 }
 
 func currentReturn(waiter *publishWaiter) (amqp.Return, bool) {
