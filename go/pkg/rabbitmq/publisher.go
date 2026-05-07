@@ -8,10 +8,6 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// PublisherSequenceHeader is reserved for Publisher's internal publish correlation.
-// Callers must not set this header on messages passed to Publish.
-const PublisherSequenceHeader = "x-publisher-confirm-sequence"
-
 type ConfirmChannel interface {
 	Confirm(noWait bool) error
 	NotifyPublish(confirm chan amqp.Confirmation) chan amqp.Confirmation
@@ -32,6 +28,7 @@ type Publisher struct {
 	stateMux        sync.Mutex
 	nextDeliveryTag uint64
 	confirmsClosed  bool
+	currentWaiter   *publishWaiter
 	waiters         map[uint64]*publishWaiter
 }
 
@@ -58,9 +55,6 @@ func (p *Publisher) Publish(ctx context.Context, exchange, routingKey string, ms
 	p.publishMux.Lock()
 	defer p.publishMux.Unlock()
 
-	if _, exists := msg.Headers[PublisherSequenceHeader]; exists {
-		return fmt.Errorf("rabbitmq publish header %q is reserved", PublisherSequenceHeader)
-	}
 	if msg.DeliveryMode == 0 {
 		msg.DeliveryMode = amqp.Persistent
 	}
@@ -72,8 +66,10 @@ func (p *Publisher) Publish(ctx context.Context, exchange, routingKey string, ms
 	}
 	defer p.unregisterWaiter(expectedDeliveryTag)
 
-	msg = publishingWithSequence(msg, expectedDeliveryTag)
 	if err := p.ch.PublishWithContext(ctx, exchange, routingKey, true, false, msg); err != nil {
+		// PublishWithContext returned synchronously, so this wrapper considers the
+		// message not published and keeps its local sequence aligned with RabbitMQ.
+		p.rollbackDeliveryTag(expectedDeliveryTag)
 		return fmt.Errorf("publish rabbitmq message: %w", err)
 	}
 
@@ -106,6 +102,15 @@ func (p *Publisher) reserveDeliveryTag() uint64 {
 	return p.nextDeliveryTag
 }
 
+func (p *Publisher) rollbackDeliveryTag(deliveryTag uint64) {
+	p.stateMux.Lock()
+	defer p.stateMux.Unlock()
+
+	if p.nextDeliveryTag == deliveryTag {
+		p.nextDeliveryTag--
+	}
+}
+
 func (p *Publisher) registerWaiter(deliveryTag uint64) (*publishWaiter, bool) {
 	waiter := &publishWaiter{
 		confirmCh: make(chan amqp.Confirmation, 1),
@@ -117,12 +122,16 @@ func (p *Publisher) registerWaiter(deliveryTag uint64) (*publishWaiter, bool) {
 		return nil, false
 	}
 	p.waiters[deliveryTag] = waiter
+	p.currentWaiter = waiter
 	p.stateMux.Unlock()
 	return waiter, true
 }
 
 func (p *Publisher) unregisterWaiter(deliveryTag uint64) {
 	p.stateMux.Lock()
+	if p.currentWaiter == p.waiters[deliveryTag] {
+		p.currentWaiter = nil
+	}
 	delete(p.waiters, deliveryTag)
 	p.stateMux.Unlock()
 }
@@ -189,11 +198,7 @@ func (p *Publisher) dispatchConfirm(confirmation amqp.Confirmation) {
 }
 
 func (p *Publisher) dispatchReturn(ret amqp.Return) {
-	seq, ok := returnSequence(ret)
-	if !ok {
-		return
-	}
-	waiter := p.waiter(seq)
+	waiter := p.currentReturnWaiter()
 	if waiter == nil {
 		return
 	}
@@ -203,20 +208,16 @@ func (p *Publisher) dispatchReturn(ret amqp.Return) {
 	}
 }
 
+func (p *Publisher) currentReturnWaiter() *publishWaiter {
+	p.stateMux.Lock()
+	defer p.stateMux.Unlock()
+	return p.currentWaiter
+}
+
 func (p *Publisher) waiter(deliveryTag uint64) *publishWaiter {
 	p.stateMux.Lock()
 	defer p.stateMux.Unlock()
 	return p.waiters[deliveryTag]
-}
-
-func publishingWithSequence(msg amqp.Publishing, seq uint64) amqp.Publishing {
-	headers := amqp.Table{}
-	for key, value := range msg.Headers {
-		headers[key] = value
-	}
-	headers[PublisherSequenceHeader] = int64(seq)
-	msg.Headers = headers
-	return msg
 }
 
 func currentReturn(waiter *publishWaiter) (amqp.Return, bool) {
@@ -225,24 +226,5 @@ func currentReturn(waiter *publishWaiter) (amqp.Return, bool) {
 		return ret, true
 	default:
 		return amqp.Return{}, false
-	}
-}
-
-func returnSequence(ret amqp.Return) (uint64, bool) {
-	seq, ok := ret.Headers[PublisherSequenceHeader]
-	if !ok {
-		return 0, false
-	}
-	switch v := seq.(type) {
-	case int:
-		return uint64(v), true
-	case int32:
-		return uint64(v), true
-	case int64:
-		return uint64(v), true
-	case uint64:
-		return v, true
-	default:
-		return 0, false
 	}
 }

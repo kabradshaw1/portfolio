@@ -118,6 +118,9 @@ func TestPublisherUsesMandatoryPersistentPublish(t *testing.T) {
 	if fake.deliveryMode != amqp.Persistent {
 		t.Fatalf("delivery mode = %d, want %d", fake.deliveryMode, amqp.Persistent)
 	}
+	if _, exists := fake.publishing.Headers["x-publisher-confirm-sequence"]; exists {
+		t.Fatal("PublishWithContext message contains internal publisher sequence header")
+	}
 }
 
 func TestPublisherReturnsPublishError(t *testing.T) {
@@ -139,10 +142,40 @@ func TestPublisherReturnsPublishError(t *testing.T) {
 	}
 }
 
+func TestPublisherDoesNotAdvanceSequenceAfterPublishError(t *testing.T) {
+	want := errors.New("publish failed before broker send")
+	fake := newFakeChannel()
+	fake.publishErr = want
+	publisher, err := rabbitmq.NewPublisher(fake)
+	if err != nil {
+		t.Fatalf("NewPublisher returned error: %v", err)
+	}
+
+	err = publisher.Publish(context.Background(), "exchange", "routing.key", amqp.Publishing{})
+
+	if !errors.Is(err, want) {
+		t.Fatalf("first Publish error = %v, want wrapped %v", err, want)
+	}
+	fake.publishErr = nil
+	fake.onPublish = func(f *fakeChannel) {
+		if f.publishCount == 2 {
+			f.confirmCh <- amqp.Confirmation{DeliveryTag: 1, Ack: true}
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err = publisher.Publish(ctx, "exchange", "routing.key", amqp.Publishing{})
+
+	if err != nil {
+		t.Fatalf("second Publish returned error: %v", err)
+	}
+}
+
 func TestPublisherReturnsErrorOnReturnedMessage(t *testing.T) {
 	fake := newFakeChannel()
 	fake.onPublish = func(f *fakeChannel) {
-		f.returnCh <- amqp.Return{ReplyText: "NO_ROUTE", Headers: f.publishing.Headers}
+		f.returnCh <- amqp.Return{ReplyText: "NO_ROUTE"}
 		f.confirmCh <- amqp.Confirmation{DeliveryTag: 1, Ack: true}
 	}
 	publisher, err := rabbitmq.NewPublisher(fake)
@@ -159,6 +192,7 @@ func TestPublisherReturnsErrorOnReturnedMessage(t *testing.T) {
 
 func TestPublisherIgnoresStaleReturnAfterTimedOutPublish(t *testing.T) {
 	fake := newFakeChannel()
+	fake.returnCh = make(chan amqp.Return)
 	publisher, err := rabbitmq.NewPublisher(fake)
 	if err != nil {
 		t.Fatalf("NewPublisher returned error: %v", err)
@@ -171,7 +205,17 @@ func TestPublisherIgnoresStaleReturnAfterTimedOutPublish(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("first Publish error = %v, want context deadline exceeded", err)
 	}
-	firstHeaders := fake.publishing.Headers
+
+	staleSent := make(chan struct{})
+	go func() {
+		fake.returnCh <- amqp.Return{ReplyText: "NO_ROUTE"}
+		close(staleSent)
+	}()
+	select {
+	case <-staleSent:
+	case <-time.After(time.Second):
+		t.Fatal("stale return was not drained after timed-out publish")
+	}
 
 	secondPublished := make(chan struct{})
 	fake.onPublish = func(f *fakeChannel) {
@@ -190,7 +234,6 @@ func TestPublisherIgnoresStaleReturnAfterTimedOutPublish(t *testing.T) {
 		t.Fatal("second publish did not call PublishWithContext")
 	}
 
-	fake.returnCh <- amqp.Return{ReplyText: "NO_ROUTE", Headers: firstHeaders}
 	select {
 	case err := <-secondDone:
 		t.Fatalf("second Publish returned from stale return with error %v", err)
@@ -266,30 +309,6 @@ func TestPublisherReturnsErrorWhenConfirmChannelCloses(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 		cancel()
 		t.Fatal("Publish did not return promptly after confirm channel closed")
-	}
-}
-
-func TestPublisherReturnsErrorWhenReservedHeaderProvided(t *testing.T) {
-	fake := newFakeChannel()
-	publisher, err := rabbitmq.NewPublisher(fake)
-	if err != nil {
-		t.Fatalf("NewPublisher returned error: %v", err)
-	}
-	msg := amqp.Publishing{
-		Headers: amqp.Table{
-			rabbitmq.PublisherSequenceHeader: int64(99),
-		},
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-
-	err = publisher.Publish(ctx, "exchange", "routing.key", msg)
-
-	if err == nil || !strings.Contains(err.Error(), rabbitmq.PublisherSequenceHeader) {
-		t.Fatalf("Publish error = %v, want reserved header error", err)
-	}
-	if fake.publishCount != 0 {
-		t.Fatalf("PublishWithContext called %d times, want 0", fake.publishCount)
 	}
 }
 
