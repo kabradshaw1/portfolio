@@ -7,22 +7,40 @@ import (
 	"log/slog"
 	"time"
 
-	amqp "github.com/rabbitmq/amqp091-go"
+	rabbitmq "github.com/kabradshaw1/portfolio/go/pkg/rabbitmq"
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
+
+type ConfirmPublisher interface {
+	Publish(ctx context.Context, exchange, routingKey string, msg amqp.Publishing) error
+}
 
 // Publisher wraps RabbitMQ publishing for saga commands.
 type Publisher struct {
-	ch *amqp.Channel
+	pub     ConfirmPublisher
+	initErr error
 }
 
 // NewPublisher creates a saga command publisher.
 func NewPublisher(ch *amqp.Channel) *Publisher {
-	return &Publisher{ch: ch}
+	pub, err := rabbitmq.NewPublisher(ch)
+	return &Publisher{pub: pub, initErr: err}
+}
+
+func NewPublisherWithConfirmPublisher(pub ConfirmPublisher) *Publisher {
+	return &Publisher{pub: pub}
 }
 
 // PublishCommand sends a saga command to the cart-service via RabbitMQ.
 func (p *Publisher) PublishCommand(ctx context.Context, cmd Command) error {
+	if p.initErr != nil {
+		return fmt.Errorf("init saga publisher: %w", p.initErr)
+	}
+	if p.pub == nil {
+		return fmt.Errorf("saga publisher not configured")
+	}
+
 	cmd.Timestamp = time.Now().UTC()
 
 	body, err := json.Marshal(cmd)
@@ -40,9 +58,10 @@ func (p *Publisher) PublishCommand(ctx context.Context, cmd Command) error {
 		"routingKey", CartCommandsKey,
 	)
 
-	return p.ch.PublishWithContext(ctx, SagaExchange, CartCommandsKey, false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Headers:     headers,
-		Body:        body,
+	return p.pub.Publish(ctx, SagaExchange, CartCommandsKey, amqp.Publishing{
+		ContentType:  "application/json",
+		Headers:      headers,
+		DeliveryMode: amqp.Persistent,
+		Body:         body,
 	})
 }

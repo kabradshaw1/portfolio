@@ -25,4 +25,9 @@ var (
 		Name: "cart_idempotency_operations_total",
 		Help: "Idempotency key operations.",
 	}, []string{"result"}) // hit, miss, conflict, error
+
+	SagaMessages = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cart_saga_messages_total",
+		Help: "Cart saga command handler message outcomes.",
+	}, []string{"outcome", "error_class"})
 )
