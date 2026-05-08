@@ -45,15 +45,17 @@ func (p *fakeProcessor) ProcessOrderEvent(_ context.Context, msg *OrderEventMess
 }
 
 type fakeDLQ struct {
-	err       error
-	published bool
+	err        error
+	published  bool
+	errorClass string
 }
 
-func (d *fakeDLQ) Publish(context.Context, kafka.Message, string, error) error {
+func (d *fakeDLQ) Publish(_ context.Context, _ kafka.Message, errorClass string, _ error) error {
 	if d.err != nil {
 		return d.err
 	}
 	d.published = true
+	d.errorClass = errorClass
 	return nil
 }
 
@@ -115,6 +117,56 @@ func TestProcessOneUsesKafkaKeyWhenEventOrderIDMissing(t *testing.T) {
 	}
 	if processor.lastEvent == nil || processor.lastEvent.Event.OrderID != "00000000-0000-0000-0000-000000000099" {
 		t.Fatalf("processor saw orderID %q", processor.lastEvent.Event.OrderID)
+	}
+}
+
+func TestProcessOneDLQsMissingOrderIdentityWithoutRetry(t *testing.T) {
+	reader := &fakeReader{msg: kafka.Message{
+		Topic: "ecommerce.order-events",
+		Value: validOrderEventWithoutOrderIDJSON(t),
+	}}
+	processor := &fakeProcessor{}
+	dlq := &fakeDLQ{}
+	cons := NewWithDependencies(reader, processor, dlq, Config{
+		GroupID:     "order-projector-group",
+		RetryConfig: RetryConfig{MaxAttempts: 1, BaseDelay: time.Nanosecond, MaxDelay: time.Nanosecond},
+	})
+
+	err := cons.processOne(context.Background())
+	if err != nil {
+		t.Fatalf("processOne returned error: %v", err)
+	}
+	if processor.received {
+		t.Fatal("processor received invalid event")
+	}
+	if !dlq.published {
+		t.Fatal("missing identity event was not published to DLQ")
+	}
+	if dlq.errorClass != "validate" {
+		t.Fatalf("DLQ error class = %q, want validate", dlq.errorClass)
+	}
+	if !reader.committed {
+		t.Fatal("source offset was not committed after validation DLQ publish")
+	}
+}
+
+func TestProcessOneDoesNotCommitMissingOrderIdentityWhenDLQFails(t *testing.T) {
+	reader := &fakeReader{msg: kafka.Message{
+		Topic: "ecommerce.order-events",
+		Value: validOrderEventWithoutOrderIDJSON(t),
+	}}
+	dlq := &fakeDLQ{err: errors.New("dlq unavailable")}
+	cons := NewWithDependencies(reader, &fakeProcessor{}, dlq, Config{
+		GroupID:     "order-projector-group",
+		RetryConfig: RetryConfig{MaxAttempts: 1, BaseDelay: time.Nanosecond, MaxDelay: time.Nanosecond},
+	})
+
+	err := cons.processOne(context.Background())
+	if err == nil {
+		t.Fatal("expected DLQ publish error")
+	}
+	if reader.committed {
+		t.Fatal("source offset was committed after DLQ publish failure")
 	}
 }
 

@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/kabradshaw1/portfolio/go/order-service/internal/kafka"
@@ -62,6 +63,34 @@ func TestPublish_SetsEventTypeAndVersion(t *testing.T) {
 	}
 	if evt.Version != CurrentVersion {
 		t.Errorf("version = %d, want %d", evt.Version, CurrentVersion)
+	}
+}
+
+func TestPublish_UsesKafkaKeyAsOrderIdentity(t *testing.T) {
+	mock := &mockProducer{}
+	pub := NewPublisher(mock)
+
+	pub.Publish(context.Background(), "order-456", OrderCompleted, OrderCompletedData{
+		CompletedAt: "2026-04-23T00:00:00Z",
+	})
+
+	if len(mock.calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(mock.calls))
+	}
+	if mock.calls[0].key != "order-456" {
+		t.Fatalf("key = %q, want %q", mock.calls[0].key, "order-456")
+	}
+
+	body, err := json.Marshal(mock.calls[0].event)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatalf("unmarshal event: %v", err)
+	}
+	if _, ok := envelope["order_id"]; ok {
+		t.Fatal("event envelope includes order_id; projector contract expects order identity in Kafka key")
 	}
 }
 

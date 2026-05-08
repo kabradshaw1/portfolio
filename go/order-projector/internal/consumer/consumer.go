@@ -2,6 +2,8 @@ package consumer
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -46,6 +48,8 @@ type OrderEventMessage struct {
 	Event   *event.OrderEvent
 	Message kafka.Message
 }
+
+var errMissingOrderIdentity = errors.New("order event missing order identity")
 
 // Consumer reads from the order-events topic, deserializes events,
 // and applies all three projections (timeline, summary, stats).
@@ -184,18 +188,16 @@ func (c *Consumer) processOne(ctx context.Context) error {
 	if err != nil {
 		slog.Error("deserialize error", "error", err, "offset", msg.Offset, "partition", msg.Partition)
 		metrics.ConsumerErrors.Inc()
-		if c.dlq == nil {
-			return err
-		}
-		if dlqErr := c.dlq.Publish(ctx, msg, "decode", err); dlqErr != nil {
-			metrics.DLQPublishErrors.WithLabelValues(c.cfg.GroupID, msg.Topic).Inc()
-			return dlqErr
-		}
-		metrics.DLQPublished.WithLabelValues(c.cfg.GroupID, msg.Topic).Inc()
-		return c.commit(ctx, msg)
+		return c.publishDLQAndCommit(ctx, msg, "decode", err)
 	}
 	if evt.OrderID == "" && len(msg.Key) > 0 {
 		evt.OrderID = string(msg.Key)
+	}
+	if evt.OrderID == "" {
+		err := fmt.Errorf("%w: event_id=%s type=%s", errMissingOrderIdentity, evt.ID, evt.Type)
+		slog.Error("event validation error", "error", err, "offset", msg.Offset, "partition", msg.Partition)
+		metrics.ConsumerErrors.Inc()
+		return c.publishDLQAndCommit(ctx, msg, "validate", err)
 	}
 
 	err = kafkaconsumer.Retry(msgCtx, c.cfg.RetryConfig, func(ctx context.Context) error {
@@ -217,6 +219,18 @@ func (c *Consumer) commit(ctx context.Context, msg kafka.Message) error {
 		return err
 	}
 	return nil
+}
+
+func (c *Consumer) publishDLQAndCommit(ctx context.Context, msg kafka.Message, errorClass string, cause error) error {
+	if c.dlq == nil {
+		return cause
+	}
+	if dlqErr := c.dlq.Publish(ctx, msg, errorClass, cause); dlqErr != nil {
+		metrics.DLQPublishErrors.WithLabelValues(c.cfg.GroupID, msg.Topic).Inc()
+		return dlqErr
+	}
+	metrics.DLQPublished.WithLabelValues(c.cfg.GroupID, msg.Topic).Inc()
+	return c.commit(ctx, msg)
 }
 
 // Run reads messages in a loop until ctx is cancelled.
