@@ -129,14 +129,43 @@ status=0
 
 echo "Grafana alert delivery check (${LOOKBACK_HOURS}h lookback)"
 
-CANARY_PRESENT=$(query_prom_scalar "alert delivery canary series" 'count(GRAFANA_ALERTS{alertname="Alert Delivery Canary"})')
-echo "canary_series=${CANARY_PRESENT}"
-if [[ "${CANARY_PRESENT%.*}" -lt 1 ]]; then
-  echo "ERROR: no GRAFANA_ALERTS series found for Alert Delivery Canary" >&2
+CANARY_ALERTING_SAMPLES=$(query_prom_scalar "alert delivery canary alerting samples" "sum(count_over_time(GRAFANA_ALERTS{alertname=\"Alert Delivery Canary\", grafana_alertstate=\"alerting\"}[${LOOKBACK_HOURS}h]))")
+echo "canary_alerting_samples=${CANARY_ALERTING_SAMPLES}"
+if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) > 0 else 1)' "$CANARY_ALERTING_SAMPLES"; then
+  :
+else
+  echo "ERROR: no alerting GRAFANA_ALERTS samples found for Alert Delivery Canary inside lookback" >&2
   status=1
 fi
 
-NOTIFICATION_FAILURES=$(query_prom_scalar "notification failures" "sum(increase(grafana_alerting_notifications_failed_total[${LOOKBACK_HOURS}h])) or vector(0)")
+GRAFANA_UP=$(query_prom_scalar "Grafana scrape health" 'min(up{job="grafana"})')
+echo "grafana_up=${GRAFANA_UP}"
+if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) == 1 else 1)' "$GRAFANA_UP"; then
+  :
+else
+  echo "ERROR: Grafana scrape is missing or unhealthy" >&2
+  status=1
+fi
+
+NOTIFICATION_FAILURE_SERIES=$(query_prom_scalar "notification failure metric existence" 'count(grafana_alerting_notifications_failed_total)')
+echo "notification_failure_metric_series=${NOTIFICATION_FAILURE_SERIES}"
+if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) > 0 else 1)' "$NOTIFICATION_FAILURE_SERIES"; then
+  :
+else
+  echo "ERROR: grafana_alerting_notifications_failed_total metric is missing" >&2
+  status=1
+fi
+
+EVALUATION_FAILURE_SERIES=$(query_prom_scalar "evaluation failure metric existence" 'count(grafana_alerting_rule_evaluation_failures_total)')
+echo "evaluation_failure_metric_series=${EVALUATION_FAILURE_SERIES}"
+if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) > 0 else 1)' "$EVALUATION_FAILURE_SERIES"; then
+  :
+else
+  echo "ERROR: grafana_alerting_rule_evaluation_failures_total metric is missing" >&2
+  status=1
+fi
+
+NOTIFICATION_FAILURES=$(query_prom_scalar "notification failures" "sum(increase(grafana_alerting_notifications_failed_total[${LOOKBACK_HOURS}h]))")
 echo "notification_failures=${NOTIFICATION_FAILURES}"
 if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) == 0 else 1)' "$NOTIFICATION_FAILURES"; then
   :
@@ -145,7 +174,7 @@ else
   status=1
 fi
 
-EVALUATION_FAILURES=$(query_prom_scalar "evaluation failures" "sum(increase(grafana_alerting_rule_evaluation_failures_total[${LOOKBACK_HOURS}h])) or vector(0)")
+EVALUATION_FAILURES=$(query_prom_scalar "evaluation failures" "sum(increase(grafana_alerting_rule_evaluation_failures_total[${LOOKBACK_HOURS}h]))")
 echo "evaluation_failures=${EVALUATION_FAILURES}"
 if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) == 0 else 1)' "$EVALUATION_FAILURES"; then
   :
