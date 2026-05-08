@@ -35,15 +35,15 @@ func (m *MockStore) FlushRevenue(_ context.Context, windowKey string, totalCents
 
 	w, ok := m.revenue[windowKey]
 	if !ok {
-		t, _ := time.Parse(windowKeyLayout, windowKey)
+		t, _ := parseWindowKey(windowKey)
 		w = &RevenueWindow{
 			WindowStart: t,
 			WindowEnd:   t.Add(time.Hour),
 		}
 		m.revenue[windowKey] = w
 	}
-	w.TotalCents += totalCents
-	w.OrderCount += orderCount
+	w.TotalCents = totalCents
+	w.OrderCount = orderCount
 	if w.OrderCount > 0 {
 		w.AvgCents = w.TotalCents / w.OrderCount
 	}
@@ -100,7 +100,7 @@ func (m *MockStore) GetTrending(_ context.Context, limit int) (*TrendingResult, 
 	var latestKey string
 	var latestTime time.Time
 	for k := range m.trending {
-		t, err := time.Parse(windowKeyLayout, k)
+		t, err := parseWindowKey(k)
 		if err != nil {
 			continue
 		}
@@ -147,10 +147,10 @@ func (m *MockStore) FlushAbandonment(_ context.Context, windowKey string, starte
 		rate = float64(abandoned) / float64(started)
 	}
 
-	t, _ := time.Parse(windowKeyLayout, windowKey)
+	t, _ := parseWindowKey(windowKey)
 	m.abandonment[windowKey] = &AbandonmentWindow{
 		WindowStart:     t,
-		WindowEnd:       t.Add(time.Hour),
+		WindowEnd:       t.Add(30 * time.Minute),
 		CartsStarted:    started,
 		CartsConverted:  converted,
 		CartsAbandoned:  abandoned,
@@ -298,4 +298,3 @@ func (m *MockStore) TrendingNames() map[string]string {
 
 // compile-time interface check
 var _ Store = (*MockStore)(nil)
-

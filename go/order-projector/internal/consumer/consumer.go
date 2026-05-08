@@ -64,7 +64,7 @@ func New(brokers []string, repo *repository.Repository, cfg Config, dlq DLQPubli
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:  brokers,
 		GroupID:  cfg.GroupID,
-		Topic:   "ecommerce.order-events",
+		Topic:    "ecommerce.order-events",
 		MinBytes: 1,
 		MaxBytes: 10e6, // 10 MB
 	})
@@ -86,7 +86,7 @@ func NewWithDependencies(reader Reader, processor EventProcessor, dlq DLQPublish
 }
 
 type RepositoryProcessor struct {
-	repo      *repository.Repository
+	repo     *repository.Repository
 	timeline *projection.Timeline
 	summary  *projection.Summary
 	stats    *projection.Stats
@@ -94,7 +94,7 @@ type RepositoryProcessor struct {
 
 func NewRepositoryProcessor(repo *repository.Repository) *RepositoryProcessor {
 	return &RepositoryProcessor{
-		repo:      repo,
+		repo:     repo,
 		timeline: projection.NewTimeline(repo),
 		summary:  projection.NewSummary(repo),
 		stats:    projection.NewStats(repo),
@@ -193,6 +193,9 @@ func (c *Consumer) processOne(ctx context.Context) error {
 		}
 		metrics.DLQPublished.WithLabelValues(c.cfg.GroupID, msg.Topic).Inc()
 		return c.commit(ctx, msg)
+	}
+	if evt.OrderID == "" && len(msg.Key) > 0 {
+		evt.OrderID = string(msg.Key)
 	}
 
 	err = kafkaconsumer.Retry(msgCtx, c.cfg.RetryConfig, func(ctx context.Context) error {

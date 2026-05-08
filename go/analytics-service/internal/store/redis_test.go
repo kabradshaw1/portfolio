@@ -37,7 +37,7 @@ func TestFlushAndGetRevenueRoundTrip(t *testing.T) {
 	}
 }
 
-func TestFlushRevenueAccumulates(t *testing.T) {
+func TestFlushRevenueReplacesWindowSnapshot(t *testing.T) {
 	t.Parallel()
 	s := NewMockStore()
 	ctx := context.Background()
@@ -51,14 +51,14 @@ func TestFlushRevenueAccumulates(t *testing.T) {
 	if len(windows) != 1 {
 		t.Fatalf("expected 1 window, got %d", len(windows))
 	}
-	if windows[0].TotalCents != 4000 {
-		t.Errorf("TotalCents = %d, want 4000", windows[0].TotalCents)
+	if windows[0].TotalCents != 3000 {
+		t.Errorf("TotalCents = %d, want 3000", windows[0].TotalCents)
 	}
-	if windows[0].OrderCount != 3 {
-		t.Errorf("OrderCount = %d, want 3", windows[0].OrderCount)
+	if windows[0].OrderCount != 2 {
+		t.Errorf("OrderCount = %d, want 2", windows[0].OrderCount)
 	}
-	if windows[0].AvgCents != 1333 {
-		t.Errorf("AvgCents = %d, want 1333", windows[0].AvgCents)
+	if windows[0].AvgCents != 1500 {
+		t.Errorf("AvgCents = %d, want 1500", windows[0].AvgCents)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/pkg/tracing"
@@ -22,8 +23,8 @@ const (
 	abandonmentPrefix = "analytics:abandonment:"
 	abandonUserPrefix = "analytics:abandonment:users:"
 
-	// windowKeyLayout is the time layout used for window keys (hourly granularity).
-	windowKeyLayout = "2006-01-02T15"
+	// windowKeyLayout is the canonical time layout used for flushed window keys.
+	windowKeyLayout = time.RFC3339
 )
 
 // RedisStore implements Store backed by Redis.
@@ -40,7 +41,7 @@ func NewRedisStore(client *redis.Client, breaker *gobreaker.CircuitBreaker[any])
 	}
 }
 
-// FlushRevenue atomically increments revenue counters for the given window.
+// FlushRevenue writes revenue counters for the given window.
 func (s *RedisStore) FlushRevenue(ctx context.Context, windowKey string, totalCents, orderCount int64) error {
 	key := revenuePrefix + windowKey
 
@@ -49,26 +50,21 @@ func (s *RedisStore) FlushRevenue(ctx context.Context, windowKey string, totalCe
 		defer span.End()
 
 		pipe := s.client.Pipeline()
-		pipe.HIncrBy(ctx2, key, "total_cents", totalCents)
-		pipe.HIncrBy(ctx2, key, "order_count", orderCount)
+		avg := int64(0)
+		if orderCount > 0 {
+			avg = totalCents / orderCount
+		}
+		pipe.HSet(ctx2, key,
+			"total_cents", totalCents,
+			"order_count", orderCount,
+			"avg_cents", avg,
+		)
 		pipe.Expire(ctx2, key, revenueTTL)
 		_, err := pipe.Exec(ctx2)
 		if err != nil {
 			return nil, fmt.Errorf("flush revenue pipeline: %w", err)
 		}
-
-		// Recompute average after increment.
-		vals, err := s.client.HMGet(ctx2, key, "total_cents", "order_count").Result()
-		if err != nil {
-			return nil, fmt.Errorf("flush revenue hmget: %w", err)
-		}
-		tc, _ := strconv.ParseInt(fmt.Sprint(vals[0]), 10, 64)
-		oc, _ := strconv.ParseInt(fmt.Sprint(vals[1]), 10, 64)
-		var avg int64
-		if oc > 0 {
-			avg = tc / oc
-		}
-		return nil, s.client.HSet(ctx2, key, "avg_cents", avg).Err()
+		return nil, nil
 	})
 	return err
 }
@@ -79,13 +75,17 @@ func (s *RedisStore) GetRevenue(ctx context.Context, hours int) ([]RevenueWindow
 		ctx2, span := tracing.RedisSpan(ctx, "GetRevenue", revenuePrefix+"*")
 		defer span.End()
 
-		now := time.Now().UTC()
+		cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
 		var windows []RevenueWindow
 
-		for i := 0; i < hours; i++ {
-			t := now.Add(-time.Duration(i) * time.Hour)
-			windowKey := t.Format(windowKeyLayout)
-			key := revenuePrefix + windowKey
+		iter := s.client.Scan(ctx2, 0, revenuePrefix+"*", 0).Iterator()
+		for iter.Next(ctx2) {
+			key := iter.Val()
+			windowKey := strings.TrimPrefix(key, revenuePrefix)
+			ws, err := parseWindowKey(windowKey)
+			if err != nil || ws.Before(cutoff) {
+				continue
+			}
 
 			vals, err := s.client.HGetAll(ctx2, key).Result()
 			if err != nil {
@@ -99,7 +99,6 @@ func (s *RedisStore) GetRevenue(ctx context.Context, hours int) ([]RevenueWindow
 			oc, _ := strconv.ParseInt(vals["order_count"], 10, 64)
 			ac, _ := strconv.ParseInt(vals["avg_cents"], 10, 64)
 
-			ws := t.Truncate(time.Hour)
 			windows = append(windows, RevenueWindow{
 				WindowStart: ws,
 				WindowEnd:   ws.Add(time.Hour),
@@ -107,6 +106,9 @@ func (s *RedisStore) GetRevenue(ctx context.Context, hours int) ([]RevenueWindow
 				OrderCount:  oc,
 				AvgCents:    ac,
 			})
+		}
+		if err := iter.Err(); err != nil {
+			return nil, fmt.Errorf("scan revenue keys: %w", err)
 		}
 
 		sort.Slice(windows, func(i, j int) bool {
@@ -166,25 +168,27 @@ func (s *RedisStore) GetTrending(ctx context.Context, limit int) (*TrendingResul
 		ctx2, span := tracing.RedisSpan(ctx, "GetTrending", trendingPrefix+"*")
 		defer span.End()
 
-		// Check the last 2 hours for the most recent trending window.
-		now := time.Now().UTC()
 		var latestKey string
 		var latestTime time.Time
 
-		for i := 0; i < 2; i++ {
-			t := now.Add(-time.Duration(i) * time.Hour)
-			windowKey := t.Format(windowKeyLayout)
-			key := trendingPrefix + windowKey
-
-			exists, err := s.client.Exists(ctx2, key).Result()
+		iter := s.client.Scan(ctx2, 0, trendingPrefix+"*", 0).Iterator()
+		for iter.Next(ctx2) {
+			key := iter.Val()
+			windowKey := strings.TrimPrefix(key, trendingPrefix)
+			if strings.HasPrefix(windowKey, "names:") {
+				continue
+			}
+			t, err := parseWindowKey(windowKey)
 			if err != nil {
-				return nil, fmt.Errorf("get trending exists %s: %w", key, err)
+				continue
 			}
-			if exists > 0 {
+			if latestKey == "" || t.After(latestTime) {
 				latestKey = key
-				latestTime = t.Truncate(time.Hour)
-				break
+				latestTime = t
 			}
+		}
+		if err := iter.Err(); err != nil {
+			return nil, fmt.Errorf("scan trending keys: %w", err)
 		}
 
 		if latestKey == "" {
@@ -268,13 +272,20 @@ func (s *RedisStore) GetAbandonment(ctx context.Context, hours int) ([]Abandonme
 		ctx2, span := tracing.RedisSpan(ctx, "GetAbandonment", abandonmentPrefix+"*")
 		defer span.End()
 
-		now := time.Now().UTC()
+		cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
 		var windows []AbandonmentWindow
 
-		for i := 0; i < hours; i++ {
-			t := now.Add(-time.Duration(i) * time.Hour)
-			windowKey := t.Format(windowKeyLayout)
-			key := abandonmentPrefix + windowKey
+		iter := s.client.Scan(ctx2, 0, abandonmentPrefix+"*", 0).Iterator()
+		for iter.Next(ctx2) {
+			key := iter.Val()
+			windowKey := strings.TrimPrefix(key, abandonmentPrefix)
+			if strings.HasPrefix(windowKey, "users:") {
+				continue
+			}
+			ws, err := parseWindowKey(windowKey)
+			if err != nil || ws.Before(cutoff) {
+				continue
+			}
 
 			vals, err := s.client.HGetAll(ctx2, key).Result()
 			if err != nil {
@@ -289,15 +300,17 @@ func (s *RedisStore) GetAbandonment(ctx context.Context, hours int) ([]Abandonme
 			abandoned, _ := strconv.ParseInt(vals["abandoned"], 10, 64)
 			rate, _ := strconv.ParseFloat(vals["rate"], 64)
 
-			ws := t.Truncate(time.Hour)
 			windows = append(windows, AbandonmentWindow{
 				WindowStart:     ws,
-				WindowEnd:       ws.Add(time.Hour),
+				WindowEnd:       ws.Add(30 * time.Minute),
 				CartsStarted:    started,
 				CartsConverted:  converted,
 				CartsAbandoned:  abandoned,
 				AbandonmentRate: rate,
 			})
+		}
+		if err := iter.Err(); err != nil {
+			return nil, fmt.Errorf("scan abandonment keys: %w", err)
 		}
 
 		sort.Slice(windows, func(i, j int) bool {

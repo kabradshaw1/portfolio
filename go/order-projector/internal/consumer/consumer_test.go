@@ -10,10 +10,10 @@ import (
 )
 
 type fakeReader struct {
-	msg        kafka.Message
-	fetchErr   error
-	committed  bool
-	commitErr  error
+	msg         kafka.Message
+	fetchErr    error
+	committed   bool
+	commitErr   error
 	fetchCalled bool
 }
 
@@ -33,12 +33,14 @@ func (r *fakeReader) CommitMessages(context.Context, ...kafka.Message) error {
 func (r *fakeReader) Close() error { return nil }
 
 type fakeProcessor struct {
-	err      error
-	received bool
+	err       error
+	received  bool
+	lastEvent *OrderEventMessage
 }
 
-func (p *fakeProcessor) ProcessOrderEvent(context.Context, *OrderEventMessage) error {
+func (p *fakeProcessor) ProcessOrderEvent(_ context.Context, msg *OrderEventMessage) error {
 	p.received = true
+	p.lastEvent = msg
 	return p.err
 }
 
@@ -92,6 +94,30 @@ func TestProcessOneCommitsAfterPoisonRecordDLQ(t *testing.T) {
 	}
 }
 
+func TestProcessOneUsesKafkaKeyWhenEventOrderIDMissing(t *testing.T) {
+	reader := &fakeReader{msg: kafka.Message{
+		Topic: "ecommerce.order-events",
+		Key:   []byte("00000000-0000-0000-0000-000000000099"),
+		Value: validOrderEventWithoutOrderIDJSON(t),
+	}}
+	processor := &fakeProcessor{}
+	cons := NewWithDependencies(reader, processor, nil, Config{
+		GroupID:     "order-projector-group",
+		RetryConfig: RetryConfig{MaxAttempts: 1, BaseDelay: time.Nanosecond, MaxDelay: time.Nanosecond},
+	})
+
+	err := cons.processOne(context.Background())
+	if err != nil {
+		t.Fatalf("processOne returned error: %v", err)
+	}
+	if !reader.committed {
+		t.Fatal("source offset was not committed")
+	}
+	if processor.lastEvent == nil || processor.lastEvent.Event.OrderID != "00000000-0000-0000-0000-000000000099" {
+		t.Fatalf("processor saw orderID %q", processor.lastEvent.Event.OrderID)
+	}
+}
+
 func validOrderEventJSON(t *testing.T) []byte {
 	t.Helper()
 	return []byte(`{
@@ -100,6 +126,19 @@ func validOrderEventJSON(t *testing.T) []byte {
 		"version":2,
 		"source":"order-service",
 		"order_id":"00000000-0000-0000-0000-000000000002",
+		"timestamp":"2026-05-07T12:00:00Z",
+		"traceID":"trace-1",
+		"data":{"userID":"00000000-0000-0000-0000-000000000003","totalCents":1200,"currency":"USD","items":[]}
+	}`)
+}
+
+func validOrderEventWithoutOrderIDJSON(t *testing.T) []byte {
+	t.Helper()
+	return []byte(`{
+		"id":"00000000-0000-0000-0000-000000000001",
+		"type":"order.created",
+		"version":2,
+		"source":"order-service",
 		"timestamp":"2026-05-07T12:00:00Z",
 		"traceID":"trace-1",
 		"data":{"userID":"00000000-0000-0000-0000-000000000003","totalCents":1200,"currency":"USD","items":[]}
