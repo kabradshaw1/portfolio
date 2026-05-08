@@ -62,6 +62,12 @@ func (tw *TumblingWindow[T]) Add(eventTime time.Time, fn func(*T)) (key string, 
 // Tick returns all windows whose end time + grace period has passed.
 // It does NOT evict them — the caller should call Evict after successful flush.
 func (tw *TumblingWindow[T]) Tick() []FlushResult[T] {
+	return tw.Snapshot(false)
+}
+
+// Snapshot returns active window data. When includeOpen is false, only expired
+// windows are returned. It does NOT evict them.
+func (tw *TumblingWindow[T]) Snapshot(includeOpen bool) []FlushResult[T] {
 	tw.mu.Lock()
 	defer tw.mu.Unlock()
 
@@ -69,12 +75,14 @@ func (tw *TumblingWindow[T]) Tick() []FlushResult[T] {
 	var results []FlushResult[T]
 
 	for key, b := range tw.buckets {
-		if now.After(b.end.Add(tw.grace)) {
+		expired := now.After(b.end.Add(tw.grace))
+		if includeOpen || expired {
 			results = append(results, FlushResult[T]{
-				Key:   key,
-				Start: b.start,
-				End:   b.end,
-				Data:  b.data,
+				Key:     key,
+				Start:   b.start,
+				End:     b.end,
+				Expired: expired,
+				Data:    b.data,
 			})
 		}
 	}

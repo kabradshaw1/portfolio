@@ -1139,6 +1139,53 @@ data:
             annotations:
               summary: "Saga DLQ is accumulating messages — check order-service saga consumer for failures"
 
+          - uid: saga-dlq-depth-nonempty
+            title: Saga DLQ Depth Nonempty
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: >-
+                    max by (vhost, queue) (
+                      rabbitmq_detailed_queue_messages{queue="ecommerce.saga.dlq"}
+                    )
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 0
+                  refId: C
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Saga DLQ {{ $labels.queue }} in RabbitMQ vhost {{ $labels.vhost }} has messages waiting"
+
           - uid: saga-step-error-rate
             title: Saga Step Error Rate High
             noDataState: OK

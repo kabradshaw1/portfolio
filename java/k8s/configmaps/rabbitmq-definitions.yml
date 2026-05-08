@@ -20,3 +20,5 @@ data:
     }
   rabbitmq.conf: |
     management.load_definitions = /etc/rabbitmq/definitions.json
+  enabled_plugins: |
+    [rabbitmq_management,rabbitmq_prometheus].

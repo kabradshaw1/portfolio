@@ -101,10 +101,11 @@ func (sw *SlidingWindow[T]) Tick() []FlushResult[T] {
 
 		key := slideStart.UTC().Format(time.RFC3339)
 		results = append(results, FlushResult[T]{
-			Key:   key,
-			Start: slideStart,
-			End:   slideEnd,
-			Data:  merged,
+			Key:     key,
+			Start:   slideStart,
+			End:     slideEnd,
+			Expired: true,
+			Data:    merged,
 		})
 
 		sw.lastSlideEnd = sw.lastSlideEnd.Add(sw.slideInterval)

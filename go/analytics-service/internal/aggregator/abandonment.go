@@ -51,7 +51,7 @@ func (a *AbandonmentAggregator) HandleOrderCompleted(eventTime time.Time, userID
 // Flush writes all expired windows to the store and evicts them from memory.
 // Returns the first error encountered but continues evicting successfully flushed windows.
 func (a *AbandonmentAggregator) Flush(ctx context.Context) error {
-	results := a.window.Tick()
+	results := a.window.Snapshot(true)
 
 	var firstErr error
 	for _, r := range results {
@@ -64,7 +64,9 @@ func (a *AbandonmentAggregator) Flush(ctx context.Context) error {
 			}
 			continue
 		}
-		a.window.Evict(r.Key)
+		if r.Expired {
+			a.window.Evict(r.Key)
+		}
 	}
 	return firstErr
 }
