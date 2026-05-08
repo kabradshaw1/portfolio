@@ -1346,6 +1346,52 @@ data:
         folder: Infrastructure Alerts
         interval: 1m
         rules:
+          - uid: alert-delivery-canary
+            title: Alert Delivery Canary
+            noDataState: OK
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: '((hour(vector(time())) == 15) and (minute(vector(time())) < 5))'
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params:
+                          - 0
+                  refId: C
+            for: 0s
+            labels:
+              severity: info
+              purpose: alert-delivery-canary
+            annotations:
+              summary: "Daily alert delivery canary. No operator action required."
+              description: "Fires daily from 15:00-15:05 UTC to verify Grafana alert delivery to Telegram."
+
           - uid: circuit-breaker-open
             title: Circuit Breaker Open
             noDataState: OK
@@ -1744,13 +1790,13 @@ data:
             condition: C
             data:
               - refId: A
-                relativeTimeRange: { from: 86400, to: 0 }
+                relativeTimeRange: { from: 82800, to: 0 }
                 datasourceUid: loki
                 model:
-                  expr: 'sum(count_over_time({namespace="java-tasks", app="postgres"} |= "auto_explain" [24h]))'
+                  expr: 'sum(count_over_time({namespace="java-tasks", app="postgres"} |= "auto_explain" [23h]))'
                   refId: A
               - refId: B
-                relativeTimeRange: { from: 86400, to: 0 }
+                relativeTimeRange: { from: 82800, to: 0 }
                 datasourceUid: __expr__
                 model:
                   type: reduce
@@ -1758,7 +1804,7 @@ data:
                   reducer: last
                   refId: B
               - refId: C
-                relativeTimeRange: { from: 86400, to: 0 }
+                relativeTimeRange: { from: 82800, to: 0 }
                 datasourceUid: __expr__
                 model:
                   type: threshold
@@ -1770,7 +1816,7 @@ data:
             labels:
               severity: warning
             annotations:
-              summary: "No auto_explain log lines in 24h — query observability is silently broken"
+              summary: "No auto_explain log lines in 23h — query observability is silently broken"
 
           - uid: pg-backup-verification-failed
             title: Postgres Backup Verification Failed
