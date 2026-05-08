@@ -36,6 +36,12 @@ var (
 		Buckets: prometheus.DefBuckets,
 	}, []string{"name"})
 
+	ToolSubLLMDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "ai_tool_sub_llm_duration_seconds",
+		Help:    "Nested LLM call latency within AI tools.",
+		Buckets: prometheus.ExponentialBuckets(0.1, 2, 12),
+	}, []string{"tool"})
+
 	CacheEvents = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "ai_cache_events_total",
 		Help: "Cache events by cache and event type.",
@@ -111,6 +117,7 @@ func (ChatAdmissionObserver) ObserveReleased() {}
 type Recorder interface {
 	RecordTurn(outcome string, steps int, dur time.Duration)
 	RecordTool(name, outcome string, dur time.Duration)
+	RecordToolSubLLM(tool string, dur time.Duration)
 	RecordOllamaCall(model, operation string, dur time.Duration, promptTokens, completionTokens int, evalDurNs int)
 }
 
@@ -126,6 +133,10 @@ func (PromRecorder) RecordTurn(outcome string, steps int, dur time.Duration) {
 func (PromRecorder) RecordTool(name, outcome string, dur time.Duration) {
 	ToolCallsTotal.WithLabelValues(name, outcome).Inc()
 	ToolDuration.WithLabelValues(name).Observe(dur.Seconds())
+}
+
+func (PromRecorder) RecordToolSubLLM(tool string, dur time.Duration) {
+	ToolSubLLMDuration.WithLabelValues(tool).Observe(dur.Seconds())
 }
 
 func (PromRecorder) RecordOllamaCall(model, operation string, dur time.Duration, promptTokens, completionTokens int, evalDurNs int) {
@@ -147,4 +158,5 @@ type NopRecorder struct{}
 
 func (NopRecorder) RecordTurn(string, int, time.Duration)                         {}
 func (NopRecorder) RecordTool(string, string, time.Duration)                      {}
+func (NopRecorder) RecordToolSubLLM(string, time.Duration)                        {}
 func (NopRecorder) RecordOllamaCall(string, string, time.Duration, int, int, int) {}

@@ -20,6 +20,10 @@ test.describe("/async page", () => {
   test("links to the related demos", async ({ page }) => {
     await page.goto("/async");
 
+    const relatedDemos = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Related Demos" }) });
+
     await expect(page.getByRole("link", { name: "Go ecommerce" })).toHaveAttribute(
       "href",
       "/go/ecommerce",
@@ -36,7 +40,7 @@ test.describe("/async page", () => {
       "href",
       "/go/admin",
     );
-    await expect(page.getByRole("link", { name: "Grafana" })).toHaveAttribute(
+    await expect(relatedDemos.getByRole("link", { name: "Grafana" })).toHaveAttribute(
       "href",
       /grafana\.kylebradshaw\.dev/,
     );
