@@ -37,6 +37,8 @@ data:
           - template:
               source: traceID
               template: '{{ if .trace_id }}{{ .trace_id }}{{ else }}{{ .traceID }}{{ end }}'
+          - structured_metadata:
+              traceID:
           - labels:
               level:
           - output:

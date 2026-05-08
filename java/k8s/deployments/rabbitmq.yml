@@ -22,8 +22,12 @@ spec:
             - name: RABBITMQ_DEFAULT_PASS
               value: "guest"
           ports:
-            - containerPort: 5672
-            - containerPort: 15672
+            - name: amqp
+              containerPort: 5672
+            - name: management
+              containerPort: 15672
+            - name: prometheus
+              containerPort: 15692
           volumeMounts:
             - name: definitions
               mountPath: /etc/rabbitmq/definitions.json
@@ -31,6 +35,9 @@ spec:
             - name: definitions
               mountPath: /etc/rabbitmq/conf.d/20-definitions.conf
               subPath: rabbitmq.conf
+            - name: definitions
+              mountPath: /etc/rabbitmq/enabled_plugins
+              subPath: enabled_plugins
           resources:
             requests:
               memory: "128Mi"
