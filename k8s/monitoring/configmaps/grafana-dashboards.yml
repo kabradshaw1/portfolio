@@ -3718,6 +3718,7 @@ data:
           "targets": [
             {
               "expr": "max(GRAFANA_ALERTS{alertname=\"Alert Delivery Canary\"}) or vector(0)",
+              "instant": true,
               "legendFormat": "active",
               "refId": "A"
             }
