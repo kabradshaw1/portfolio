@@ -33,6 +33,12 @@ spec:
               value: /var/lib/grafana/dashboards/system-overview.json
             - name: GF_UNIFIED_ALERTING_ENABLED
               value: "true"
+            - name: GF_UNIFIED_ALERTING_STATE_HISTORY_ENABLED
+              value: "true"
+            - name: GF_UNIFIED_ALERTING_STATE_HISTORY_BACKEND
+              value: prometheus
+            - name: GF_UNIFIED_ALERTING_STATE_HISTORY_PROMETHEUS_TARGET_DATASOURCE_UID
+              value: PBFA97CFB590B2093
             - name: GF_SECURITY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
