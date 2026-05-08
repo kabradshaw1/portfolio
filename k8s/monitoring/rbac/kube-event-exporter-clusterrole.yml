@@ -6,4 +6,18 @@ rules:
   - apiGroups: [""]
     resources:
       - events
+      - pods
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
     verbs: ["get", "watch", "list"]

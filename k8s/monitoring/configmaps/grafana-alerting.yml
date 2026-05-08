@@ -1790,13 +1790,14 @@ data:
             condition: C
             data:
               - refId: A
-                relativeTimeRange: { from: 82800, to: 0 }
+                relativeTimeRange: { from: 300, to: 0 }
                 datasourceUid: loki
                 model:
-                  expr: 'sum(count_over_time({namespace="java-tasks", app="postgres"} |= "auto_explain" [23h]))'
+                  expr: 'sum(count_over_time({namespace="java-tasks", app="postgres"} |= "duration:" |= "plan:" [12h]))'
+                  instant: true
                   refId: A
               - refId: B
-                relativeTimeRange: { from: 82800, to: 0 }
+                relativeTimeRange: { from: 300, to: 0 }
                 datasourceUid: __expr__
                 model:
                   type: reduce
@@ -1804,7 +1805,7 @@ data:
                   reducer: last
                   refId: B
               - refId: C
-                relativeTimeRange: { from: 82800, to: 0 }
+                relativeTimeRange: { from: 300, to: 0 }
                 datasourceUid: __expr__
                 model:
                   type: threshold
@@ -1816,7 +1817,7 @@ data:
             labels:
               severity: warning
             annotations:
-              summary: "No auto_explain log lines in 23h — query observability is silently broken"
+              summary: "No Postgres auto_explain plan log lines in 12h — query observability is silently broken"
 
           - uid: pg-backup-verification-failed
             title: Postgres Backup Verification Failed
