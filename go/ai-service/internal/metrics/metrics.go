@@ -39,7 +39,7 @@ var (
 	ToolSubLLMDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "ai_tool_sub_llm_duration_seconds",
 		Help:    "Nested LLM call latency within AI tools.",
-		Buckets: prometheus.DefBuckets,
+		Buckets: prometheus.ExponentialBuckets(0.1, 2, 12),
 	}, []string{"tool"})
 
 	CacheEvents = promauto.NewCounterVec(prometheus.CounterOpts{

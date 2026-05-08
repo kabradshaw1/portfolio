@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -42,5 +43,8 @@ func TestPromRecorder_RecordToolSubLLM(t *testing.T) {
 	}
 	if got := dtoMetric.GetHistogram().GetSampleCount(); got != 1 {
 		t.Errorf("sub-LLM histogram count = %d", got)
+	}
+	if got := dtoMetric.GetHistogram().GetSampleSum(); math.Abs(got-0.25) > 0.000001 {
+		t.Errorf("sub-LLM histogram sum = %f", got)
 	}
 }
