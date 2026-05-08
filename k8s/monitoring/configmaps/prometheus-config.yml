@@ -14,6 +14,11 @@ data:
         static_configs:
           - targets: ["localhost:9090"]
 
+      - job_name: "grafana"
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["grafana.monitoring.svc.cluster.local:3000"]
+
       - job_name: "windows"
         static_configs:
           - targets: ["host.minikube.internal:9182"]
