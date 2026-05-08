@@ -37,6 +37,11 @@ if ! [[ "$LOOKBACK_HOURS" =~ ^[0-9]+$ ]] || [[ "$LOOKBACK_HOURS" -lt 1 ]]; then
   exit 2
 fi
 
+if [[ "$LOOKBACK_HOURS" -gt 24 ]]; then
+  echo "Error: --hours cannot exceed 24" >&2
+  exit 2
+fi
+
 PROM_URL="http://prometheus.monitoring.svc.cluster.local:9090"
 LOKI_URL="http://loki.monitoring.svc.cluster.local:3100"
 
@@ -59,7 +64,17 @@ loki_query() {
 extract_scalar() {
   python3 -c '
 import json, sys
-payload = json.load(sys.stdin)
+try:
+    payload = json.load(sys.stdin)
+except json.JSONDecodeError as exc:
+    print(f"ERROR: invalid API response JSON: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+status = payload.get("status")
+if status != "success":
+    error_type = payload.get("errorType", "unknown")
+    error = payload.get("error", "missing error message")
+    print(f"ERROR: API query failed: status={status!r} errorType={error_type!r} error={error!r}", file=sys.stderr)
+    raise SystemExit(1)
 results = payload.get("data", {}).get("result", [])
 if not results:
     print("0")
@@ -72,24 +87,56 @@ print(value)
 extract_loki_count() {
   python3 -c '
 import json, sys
-payload = json.load(sys.stdin)
+try:
+    payload = json.load(sys.stdin)
+except json.JSONDecodeError as exc:
+    print(f"ERROR: invalid API response JSON: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+status = payload.get("status")
+if status != "success":
+    error_type = payload.get("errorType", "unknown")
+    error = payload.get("error", "missing error message")
+    print(f"ERROR: API query failed: status={status!r} errorType={error_type!r} error={error!r}", file=sys.stderr)
+    raise SystemExit(1)
 results = payload.get("data", {}).get("result", [])
 print(sum(len(stream.get("values", [])) for stream in results))
 '
+}
+
+query_prom_scalar() {
+  local label="$1"
+  local query="$2"
+  local output
+  if ! output=$(prom_query "$query" | extract_scalar); then
+    echo "ERROR: Prometheus query failed for ${label}" >&2
+    return 1
+  fi
+  printf '%s\n' "$output"
+}
+
+query_loki_count() {
+  local label="$1"
+  local query="$2"
+  local output
+  if ! output=$(loki_query "$query" | extract_loki_count); then
+    echo "ERROR: Loki query failed for ${label}" >&2
+    return 1
+  fi
+  printf '%s\n' "$output"
 }
 
 status=0
 
 echo "Grafana alert delivery check (${LOOKBACK_HOURS}h lookback)"
 
-CANARY_PRESENT=$(prom_query 'count(GRAFANA_ALERTS{alertname="Alert Delivery Canary"})' | extract_scalar)
+CANARY_PRESENT=$(query_prom_scalar "alert delivery canary series" 'count(GRAFANA_ALERTS{alertname="Alert Delivery Canary"})')
 echo "canary_series=${CANARY_PRESENT}"
 if [[ "${CANARY_PRESENT%.*}" -lt 1 ]]; then
   echo "ERROR: no GRAFANA_ALERTS series found for Alert Delivery Canary" >&2
   status=1
 fi
 
-NOTIFICATION_FAILURES=$(prom_query "sum(increase(grafana_alerting_notifications_failed_total[${LOOKBACK_HOURS}h])) or vector(0)" | extract_scalar)
+NOTIFICATION_FAILURES=$(query_prom_scalar "notification failures" "sum(increase(grafana_alerting_notifications_failed_total[${LOOKBACK_HOURS}h])) or vector(0)")
 echo "notification_failures=${NOTIFICATION_FAILURES}"
 if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) == 0 else 1)' "$NOTIFICATION_FAILURES"; then
   :
@@ -98,7 +145,7 @@ else
   status=1
 fi
 
-EVALUATION_FAILURES=$(prom_query "sum(increase(grafana_alerting_rule_evaluation_failures_total[${LOOKBACK_HOURS}h])) or vector(0)" | extract_scalar)
+EVALUATION_FAILURES=$(query_prom_scalar "evaluation failures" "sum(increase(grafana_alerting_rule_evaluation_failures_total[${LOOKBACK_HOURS}h])) or vector(0)")
 echo "evaluation_failures=${EVALUATION_FAILURES}"
 if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) == 0 else 1)' "$EVALUATION_FAILURES"; then
   :
@@ -107,7 +154,7 @@ else
   status=1
 fi
 
-LOG_ERRORS=$(loki_query '{namespace="monitoring", app="grafana"} |= "alert" |= "error"' | extract_loki_count)
+LOG_ERRORS=$(query_loki_count "filtered Grafana alert error logs" '{namespace="monitoring", app="grafana"} |= "alert" |= "error"')
 echo "filtered_grafana_alert_error_logs=${LOG_ERRORS}"
 if [[ "$LOG_ERRORS" -gt 0 ]]; then
   echo "ERROR: filtered Grafana alerting error logs found" >&2
