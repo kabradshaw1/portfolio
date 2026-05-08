@@ -36,7 +36,7 @@ test.describe("/async page", () => {
       "href",
       "/go/admin",
     );
-    await expect(page.getByRole("link", { name: "Grafana" })).toHaveAttribute(
+    await expect(page.getByRole("link", { name: "Grafana" }).last()).toHaveAttribute(
       "href",
       /grafana\.kylebradshaw\.dev/,
     );
