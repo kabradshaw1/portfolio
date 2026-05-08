@@ -29,6 +29,9 @@ export function SiteHeader() {
             <Link href="/database" className={navLinkClass("/database")}>
               Database
             </Link>
+            <Link href="/async" className={navLinkClass("/async")}>
+              Async
+            </Link>
             <Link href="/ai" className={navLinkClass("/ai")}>
               AI
             </Link>

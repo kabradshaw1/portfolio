@@ -75,6 +75,25 @@ export default function Home() {
               </CardContent>
             </Card>
           </Link>
+          <Link href="/async" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>Asynchronous Systems Engineering</CardTitle>
+                <CardDescription>
+                  Go ecommerce messaging with Kafka event streams, RabbitMQ
+                  sagas, DLQs, replay, and production observability
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Checkout saga command/reply queues, bounded retries, publisher
+                  confirms, reconnect-aware RabbitMQ publishing, Kafka-backed
+                  order events, CQRS projection, streaming analytics, DLQ
+                  envelopes, and traceable recovery paths.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
           <Link href="/ai" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
