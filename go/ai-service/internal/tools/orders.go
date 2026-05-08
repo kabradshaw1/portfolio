@@ -141,13 +141,22 @@ func (t *getOrderTool) Call(ctx context.Context, args json.RawMessage, userID st
 type summarizeOrdersTool struct {
 	api ordersAPI
 	llm llm.Client
+	rec toolSubLLMRecorder
+}
+
+type toolSubLLMRecorder interface {
+	RecordToolSubLLM(tool string, dur time.Duration)
 }
 
 // NewSummarizeOrdersTool builds a tool that lists the user's recent orders and
 // asks a small sub-LLM call to summarize them. It reuses the parent turn's
 // context so the agent's wall-clock timeout still covers the sub-call.
 func NewSummarizeOrdersTool(api ordersAPI, llmc llm.Client) Tool {
-	return &summarizeOrdersTool{api: api, llm: llmc}
+	return NewSummarizeOrdersToolWithRecorder(api, llmc, nil)
+}
+
+func NewSummarizeOrdersToolWithRecorder(api ordersAPI, llmc llm.Client, rec toolSubLLMRecorder) Tool {
+	return &summarizeOrdersTool{api: api, llm: llmc, rec: rec}
 }
 
 func (t *summarizeOrdersTool) Name() string { return "summarize_orders" }
@@ -195,14 +204,19 @@ func (t *summarizeOrdersTool) Call(ctx context.Context, args json.RawMessage, us
 		len(orders), a.Period, string(orderJSON),
 	)
 
+	subLLMStart := time.Now()
 	resp, err := t.llm.Chat(ctx, []llm.Message{
 		{Role: llm.RoleUser, Content: prompt},
 	}, nil)
+	subLLMDuration := time.Since(subLLMStart)
+	if t.rec != nil {
+		t.rec.RecordToolSubLLM("summarize_orders", subLLMDuration)
+	}
 	if err != nil {
-		slog.WarnContext(ctx, "tool error", "tool", "summarize_orders", "error", err.Error())
+		slog.WarnContext(ctx, "tool error", "tool", "summarize_orders", "error", err.Error(), "sub_llm_duration_ms", subLLMDuration.Milliseconds())
 		return Result{}, fmt.Errorf("summarize_orders: sub-llm: %w", err)
 	}
-	slog.InfoContext(ctx, "tool result", "tool", "summarize_orders", "order_count", len(orders), "duration_ms", time.Since(start).Milliseconds())
+	slog.InfoContext(ctx, "tool result", "tool", "summarize_orders", "order_count", len(orders), "duration_ms", time.Since(start).Milliseconds(), "sub_llm_duration_ms", subLLMDuration.Milliseconds())
 	out := map[string]any{"summary": resp.Content, "order_count": len(orders)}
 	return Result{Content: out, Display: out}, nil
 }

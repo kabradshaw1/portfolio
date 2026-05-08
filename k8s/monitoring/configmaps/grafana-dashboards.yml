@@ -629,13 +629,61 @@ data:
           }
         },
         {
-          "title": "Agent Steps/Turn",
+          "title": "summarize_orders Sub-LLM Latency",
           "type": "timeseries",
           "gridPos": {
             "h": 6,
             "w": 8,
             "x": 16,
             "y": 28
+          },
+          "id": 18,
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.5, sum by (le) (rate(ai_tool_sub_llm_duration_seconds_bucket{tool=\"summarize_orders\"}[5m])))",
+              "legendFormat": "sub-LLM p50",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(ai_tool_sub_llm_duration_seconds_bucket{tool=\"summarize_orders\"}[5m])))",
+              "legendFormat": "sub-LLM p95",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "tooltip": {
+              "mode": "multi"
+            },
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          }
+        },
+        {
+          "title": "Agent Steps/Turn",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 0,
+            "y": 34
           },
           "id": 17,
           "datasource": {

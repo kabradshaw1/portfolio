@@ -121,7 +121,7 @@ func runServe() {
 	registry.Register(tools.Cached(tools.NewCheckInventoryTool(ecomClient), toolCache, 10*time.Second))
 	registry.Register(tools.Cached(tools.NewListOrdersTool(ecomClient), toolCache, 10*time.Second))
 	registry.Register(tools.Cached(tools.NewGetOrderTool(ecomClient), toolCache, 10*time.Second))
-	registry.Register(tools.NewSummarizeOrdersTool(ecomClient, llmc))
+	registry.Register(tools.NewSummarizeOrdersToolWithRecorder(ecomClient, llmc, metrics.PromRecorder{}))
 	registry.Register(tools.NewViewCartTool(ecomClient))
 	registry.Register(tools.NewAddToCartTool(ecomClient))
 	registry.Register(tools.NewInitiateReturnTool(ecomClient))
