@@ -26,6 +26,12 @@ class Settings(BaseSettings):
 
     # Retrieval tuning — number of chunks pulled from Qdrant per query.
     top_k: int = 5
+    retrieval_mode: str = "hybrid"
+    dense_vector_name: str = "dense"
+    sparse_vector_name: str = "sparse"
+    sparse_model: str = "Qdrant/bm25"
+    sparse_batch_size: int = 256
+    hybrid_prefetch_limit: int = 20
 
     # Prompt versioning — selects which template in app.prompt.PROMPTS is active.
     # Validated in self.validate() to fail fast on typos.
@@ -56,6 +62,10 @@ class Settings(BaseSettings):
                 f"embedding_api_key is required when embedding_provider is "
                 f"'{self.embedding_provider}'"
             )
+        if self.retrieval_mode not in {"semantic", "hybrid"}:
+            raise ValueError("retrieval_mode must be 'semantic' or 'hybrid'")
+        if self.hybrid_prefetch_limit < self.top_k:
+            raise ValueError("hybrid_prefetch_limit must be >= top_k")
         # Lazy import: app.prompt imports settings, so a top-level import here
         # would create a cycle.
         from app.prompt import PROMPTS
