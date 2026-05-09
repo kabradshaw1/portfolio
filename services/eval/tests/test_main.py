@@ -72,14 +72,40 @@ def test_create_dataset_duplicate_name(mock_get_db):
 def test_list_datasets(mock_get_db):
     mock_db = AsyncMock()
     mock_db.list_datasets.return_value = [
-        {"id": "ds-1", "name": "ds1", "created_at": "2026-04-16T00:00:00Z"},
-        {"id": "ds-2", "name": "ds2", "created_at": "2026-04-16T01:00:00Z"},
+        {
+            "id": "ds-1",
+            "name": "ds1",
+            "created_at": "2026-04-16T00:00:00Z",
+            "item_count": 1,
+        },
+        {
+            "id": "ds-2",
+            "name": "ds2",
+            "created_at": "2026-04-16T01:00:00Z",
+            "item_count": 2,
+        },
     ]
     mock_get_db.return_value = mock_db
 
     response = client.get("/datasets")
+
     assert response.status_code == 200
-    assert len(response.json()["datasets"]) == 2
+    assert response.json() == {
+        "datasets": [
+            {
+                "id": "ds-1",
+                "name": "ds1",
+                "created_at": "2026-04-16T00:00:00Z",
+                "item_count": 1,
+            },
+            {
+                "id": "ds-2",
+                "name": "ds2",
+                "created_at": "2026-04-16T01:00:00Z",
+                "item_count": 2,
+            },
+        ]
+    }
 
 
 # --- Evaluation endpoints ---

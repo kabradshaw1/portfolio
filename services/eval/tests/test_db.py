@@ -48,12 +48,20 @@ async def test_create_dataset_duplicate_name(db):
 @pytest.mark.asyncio
 async def test_list_datasets(db):
     await db.create_dataset(name="ds1", items=SIMPLE_ITEM)
-    await db.create_dataset(name="ds2", items=SIMPLE_ITEM)
+    await db.create_dataset(
+        name="ds2",
+        items=[
+            {"query": "q1", "expected_answer": "a1", "expected_sources": []},
+            {"query": "q2", "expected_answer": "a2", "expected_sources": []},
+        ],
+    )
 
     datasets = await db.list_datasets()
     assert len(datasets) == 2
-    names = {d["name"] for d in datasets}
-    assert names == {"ds1", "ds2"}
+    by_name = {d["name"]: d for d in datasets}
+    assert set(by_name) == {"ds1", "ds2"}
+    assert by_name["ds1"]["item_count"] == 1
+    assert by_name["ds2"]["item_count"] == 2
 
 
 @pytest.mark.asyncio
