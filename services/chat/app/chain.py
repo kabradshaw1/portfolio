@@ -31,6 +31,28 @@ def get_sparse_encoder() -> SparseVectorEncoder:
     return _sparse_encoder
 
 
+def _search_legacy_semantic_fallback(
+    retriever: QdrantRetriever,
+    query_vector: list[float],
+    top_k: int,
+    collection_name: str,
+    error: Exception,
+) -> RetrievalResult:
+    logger.warning(
+        "semantic_legacy_fallback",
+        error=str(error),
+        error_type=error.__class__.__name__,
+        collection=collection_name,
+        exc_info=True,
+    )
+    return retriever.search_semantic(
+        query_vector=query_vector,
+        top_k=top_k,
+        legacy_vector=True,
+        fallback=True,
+    )
+
+
 async def embed_texts(
     texts: list[str],
     provider: EmbeddingProvider,
@@ -121,14 +143,31 @@ async def retrieve_chunks(
                 collection=collection_name,
                 exc_info=True,
             )
-            result = retriever.search_semantic(
+            try:
+                result = retriever.search_semantic(
+                    query_vector=query_vector,
+                    top_k=top_k,
+                    fallback=True,
+                )
+            except Exception as semantic_error:
+                result = _search_legacy_semantic_fallback(
+                    retriever=retriever,
+                    query_vector=query_vector,
+                    top_k=top_k,
+                    collection_name=collection_name,
+                    error=semantic_error,
+                )
+    else:
+        try:
+            result = retriever.search_semantic(query_vector=query_vector, top_k=top_k)
+        except Exception as semantic_error:
+            result = _search_legacy_semantic_fallback(
+                retriever=retriever,
                 query_vector=query_vector,
                 top_k=top_k,
-                legacy_vector=True,
-                fallback=True,
+                collection_name=collection_name,
+                error=semantic_error,
             )
-    else:
-        result = retriever.search_semantic(query_vector=query_vector, top_k=top_k)
 
     RAG_PIPELINE_DURATION.labels(stage="retrieve").observe(
         time.perf_counter() - retrieve_start

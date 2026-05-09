@@ -110,7 +110,6 @@ async def test_retrieve_chunks_falls_back_when_sparse_generation_fails(
     retriever.search_semantic.assert_called_once_with(
         query_vector=[0.1] * 768,
         top_k=5,
-        legacy_vector=True,
         fallback=True,
     )
     mock_logger.warning.assert_called_once_with(
@@ -165,12 +164,148 @@ async def test_retrieve_chunks_falls_back_when_hybrid_search_fails(
     retriever.search_semantic.assert_called_once_with(
         query_vector=[0.1] * 768,
         top_k=5,
-        legacy_vector=True,
         fallback=True,
     )
     mock_logger.warning.assert_called_once_with(
         "hybrid_retrieval_fallback",
         error="hybrid unavailable",
+        error_type="RuntimeError",
+        collection="documents",
+        exc_info=True,
+    )
+
+
+@patch("app.chain.logger", create=True)
+@patch("app.chain.get_sparse_encoder", create=True)
+@patch("app.chain.QdrantRetriever")
+@pytest.mark.asyncio
+async def test_retrieve_chunks_falls_back_to_legacy_when_named_semantic_fallback_fails(
+    mock_retriever_cls,
+    mock_sparse_encoder,
+    mock_logger,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.chain.settings.retrieval_mode", "hybrid")
+    embedding_provider = AsyncMock()
+    embedding_provider.embed.return_value = [[0.1] * 768]
+    sparse_vector = MagicMock()
+    mock_sparse_encoder.return_value.embed.return_value = [sparse_vector]
+
+    retriever = MagicMock()
+    retriever.search_hybrid.side_effect = RuntimeError("hybrid unavailable")
+    retriever.search_semantic.side_effect = [
+        RuntimeError("named vector missing"),
+        semantic_fallback_result(
+            [
+                {
+                    "text": "legacy chunk",
+                    "page_number": 2,
+                    "filename": "legacy.pdf",
+                    "document_id": "legacy-doc",
+                    "score": 0.8,
+                }
+            ]
+        ),
+    ]
+    mock_retriever_cls.return_value = retriever
+
+    result = await retrieve_chunks(
+        question="What is RFC 7231?",
+        embedding_provider=embedding_provider,
+        embedding_model="nomic-embed-text",
+        qdrant_host="localhost",
+        qdrant_port=6333,
+        collection_name="documents",
+        top_k=5,
+    )
+
+    assert result.metadata["retrieval_mode"] == "semantic"
+    assert result.metadata["retrieval_fallback"] is True
+    assert result.chunks[0]["text"] == "legacy chunk"
+    retriever.search_hybrid.assert_called_once_with(
+        query_vector=[0.1] * 768,
+        sparse_vector=sparse_vector,
+        top_k=5,
+        prefetch_limit=20,
+    )
+    assert retriever.search_semantic.call_args_list == [
+        ((), {"query_vector": [0.1] * 768, "top_k": 5, "fallback": True}),
+        (
+            (),
+            {
+                "query_vector": [0.1] * 768,
+                "top_k": 5,
+                "legacy_vector": True,
+                "fallback": True,
+            },
+        ),
+    ]
+    assert mock_logger.warning.call_args_list[0] == (
+        ("hybrid_retrieval_fallback",),
+        {
+            "error": "hybrid unavailable",
+            "error_type": "RuntimeError",
+            "collection": "documents",
+            "exc_info": True,
+        },
+    )
+    assert mock_logger.warning.call_args_list[1] == (
+        ("semantic_legacy_fallback",),
+        {
+            "error": "named vector missing",
+            "error_type": "RuntimeError",
+            "collection": "documents",
+            "exc_info": True,
+        },
+    )
+
+
+@patch("app.chain.logger", create=True)
+@patch("app.chain.QdrantRetriever")
+@pytest.mark.asyncio
+async def test_retrieve_chunks_semantic_mode_falls_back_to_legacy_vector(
+    mock_retriever_cls,
+    mock_logger,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.chain.settings.retrieval_mode", "semantic")
+    embedding_provider = AsyncMock()
+    embedding_provider.embed.return_value = [[0.1] * 768]
+
+    retriever = MagicMock()
+    retriever.search_semantic.side_effect = [
+        RuntimeError("named vector missing"),
+        semantic_fallback_result(),
+    ]
+    mock_retriever_cls.return_value = retriever
+
+    result = await retrieve_chunks(
+        question="What is RFC 7231?",
+        embedding_provider=embedding_provider,
+        embedding_model="nomic-embed-text",
+        qdrant_host="localhost",
+        qdrant_port=6333,
+        collection_name="documents",
+        top_k=5,
+    )
+
+    assert result.metadata["retrieval_mode"] == "semantic"
+    assert result.metadata["retrieval_fallback"] is True
+    assert retriever.search_semantic.call_args_list == [
+        ((), {"query_vector": [0.1] * 768, "top_k": 5}),
+        (
+            (),
+            {
+                "query_vector": [0.1] * 768,
+                "top_k": 5,
+                "legacy_vector": True,
+                "fallback": True,
+            },
+        ),
+    ]
+    mock_logger.warning.assert_called_once_with(
+        "semantic_legacy_fallback",
+        error="named vector missing",
         error_type="RuntimeError",
         collection="documents",
         exc_info=True,
