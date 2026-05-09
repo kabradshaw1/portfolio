@@ -135,9 +135,11 @@ export function DatasetTab() {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="font-medium">{ds.name}</span>
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {ds.item_count} item{ds.item_count !== 1 ? "s" : ""}
-                    </span>
+                    {typeof ds.item_count === "number" && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {ds.item_count} item{ds.item_count !== 1 ? "s" : ""}
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-muted-foreground">
                     {new Date(ds.created_at).toLocaleDateString()}

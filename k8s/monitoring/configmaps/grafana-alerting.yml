@@ -1793,7 +1793,7 @@ data:
                 relativeTimeRange: { from: 300, to: 0 }
                 datasourceUid: loki
                 model:
-                  expr: 'sum(count_over_time({namespace="java-tasks", app="postgres"} |= "duration:" |= "plan:" [12h]))'
+                  expr: 'sum(count_over_time({namespace="java-tasks", app="postgres"} |= "duration:" |= "plan:" [1h]))'
                   instant: true
                   refId: A
               - refId: B
@@ -1817,7 +1817,7 @@ data:
             labels:
               severity: warning
             annotations:
-              summary: "No Postgres auto_explain plan log lines in 12h — query observability is silently broken"
+              summary: "No Postgres auto_explain plan log lines in 1h — query observability is silently broken"
 
           - uid: pg-backup-verification-failed
             title: Postgres Backup Verification Failed
