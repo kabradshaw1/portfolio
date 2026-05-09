@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-auto-explain-canary
+  namespace: java-tasks
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: psql
+              image: postgres:17-alpine
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: java-secrets
+                      key: postgres-password
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  psql \
+                    -h postgres.java-tasks.svc.cluster.local \
+                    -U taskuser \
+                    -d postgres \
+                    -v ON_ERROR_STOP=1 \
+                    -c "SELECT pg_sleep(0.6);"
+              resources:
+                requests: { cpu: "10m", memory: "32Mi" }
+                limits: { cpu: "100m", memory: "64Mi" }
