@@ -177,8 +177,8 @@ export function DashboardTab({ onSelectEvaluation }: DashboardTabProps) {
           RAG Improvement Dashboard
         </h2>
         <p className="mt-1 text-sm text-gray-600">
-          Track RAGAS scores over time, compare runs, and connect changes to
-          measured quality impact.
+          Track RAG quality scores over time, compare runs, and connect changes
+          to measured quality impact.
         </p>
       </div>
 

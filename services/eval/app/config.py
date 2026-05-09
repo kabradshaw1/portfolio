@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # Ingestion service URL (for snapshotting per-collection chunk params at run start)
     ingestion_service_url: str = "http://ingestion:8000"
 
-    # LLM config for RAGAS judge calls
+    # LLM config for first-party evaluation judge calls
     llm_provider: str = "ollama"
     llm_base_url: str = "http://host.docker.internal:11434"
     llm_api_key: str = ""

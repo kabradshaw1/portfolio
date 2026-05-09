@@ -412,11 +412,12 @@ ssh PC@100.79.113.84 \\
           <h2 className="text-xl font-semibold">Pipeline Optimization</h2>
           <p className="mt-2 text-muted-foreground leading-relaxed">
             Adding a RAG evaluation service exposed several performance
-            bottlenecks. The eval service depends on RAGAS, which pulls in 200+
-            transitive packages including LangChain. That single addition pushed
-            the pipeline from a manageable ~10 minutes to 30+ minutes per run,
-            with most of the time spent on redundant work. Here&apos;s how each
-            bottleneck was diagnosed and fixed.
+            bottlenecks. The original eval service depended on a third-party
+            evaluation framework, which pulled in 200+ transitive packages
+            including LangChain. That single addition pushed the pipeline from a
+            manageable ~10 minutes to 30+ minutes per run, with most of the time
+            spent on redundant work. Here&apos;s how each bottleneck was
+            diagnosed and fixed.
           </p>
           <div className="mt-4">
             <MermaidDiagram chart={optimizationDiagram} />
@@ -438,9 +439,8 @@ ssh PC@100.79.113.84 \\
             <p>
               <strong className="text-foreground">Investigation:</strong> The
               GitHub Actions runner starts fresh each time, so there was no pip
-              cache to reuse. The eval service&apos;s dependency tree (RAGAS →
-              LangChain → dozens of ML packages) made cold installs
-              exceptionally slow.
+              cache to reuse. The eval service&apos;s former third-party
+              evaluation dependency tree made cold installs exceptionally slow.
             </p>
             <p>
               <strong className="text-foreground">Fix:</strong> Cache the
