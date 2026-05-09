@@ -13,7 +13,7 @@ spec:
       labels:
         app: grafana
       annotations:
-        monitoring.kylebradshaw.dev/alerting-config-revision: "2026-05-08-pg-auto-explain-stalled-12h"
+        monitoring.kylebradshaw.dev/alerting-config-revision: "2026-05-09-pg-auto-explain-canary-1h"
     spec:
       containers:
         - name: grafana
