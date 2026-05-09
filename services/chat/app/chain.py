@@ -1,8 +1,12 @@
+import asyncio
 import time
 from collections.abc import AsyncGenerator
 
+import structlog
 from llm.base import EmbeddingProvider, LLMProvider
+from rag.sparse import SparseVectorEncoder
 
+from app.config import settings
 from app.metrics import (
     EMBEDDING_DURATION,
     OLLAMA_EVAL_DURATION,
@@ -11,7 +15,20 @@ from app.metrics import (
     RAG_PIPELINE_DURATION,
 )
 from app.prompt import SYSTEM_PROMPT, build_rag_prompt
-from app.retriever import QdrantRetriever
+from app.retriever import QdrantRetriever, RetrievalResult
+
+logger = structlog.get_logger()
+_sparse_encoder: SparseVectorEncoder | None = None
+
+
+def get_sparse_encoder() -> SparseVectorEncoder:
+    global _sparse_encoder
+    if _sparse_encoder is None:
+        _sparse_encoder = SparseVectorEncoder(
+            model_name=settings.sparse_model,
+            batch_size=settings.sparse_batch_size,
+        )
+    return _sparse_encoder
 
 
 async def embed_texts(
@@ -71,7 +88,7 @@ async def retrieve_chunks(
     qdrant_port: int,
     collection_name: str,
     top_k: int = 5,
-) -> list[dict]:
+) -> RetrievalResult:
     """Embed question and retrieve ranked chunks from Qdrant."""
     retrieve_start = time.perf_counter()
     vectors = await embed_texts(
@@ -84,11 +101,39 @@ async def retrieve_chunks(
     retriever = QdrantRetriever(
         host=qdrant_host, port=qdrant_port, collection_name=collection_name
     )
-    chunks = retriever.search(query_vector=query_vector, top_k=top_k)
+    if settings.retrieval_mode == "hybrid":
+        try:
+            sparse_vectors = await asyncio.to_thread(
+                get_sparse_encoder().embed, [question]
+            )
+            sparse_vector = sparse_vectors[0]
+            result = retriever.search_hybrid(
+                query_vector=query_vector,
+                sparse_vector=sparse_vector,
+                top_k=top_k,
+                prefetch_limit=settings.hybrid_prefetch_limit,
+            )
+        except Exception as e:
+            logger.warning(
+                "hybrid_retrieval_fallback",
+                error=str(e),
+                error_type=e.__class__.__name__,
+                collection=collection_name,
+                exc_info=True,
+            )
+            result = retriever.search_semantic(
+                query_vector=query_vector,
+                top_k=top_k,
+                legacy_vector=True,
+                fallback=True,
+            )
+    else:
+        result = retriever.search_semantic(query_vector=query_vector, top_k=top_k)
+
     RAG_PIPELINE_DURATION.labels(stage="retrieve").observe(
         time.perf_counter() - retrieve_start
     )
-    return chunks
+    return result
 
 
 async def rag_query(
@@ -103,7 +148,7 @@ async def rag_query(
     top_k: int = 5,
 ) -> AsyncGenerator[dict, None]:
     # Retrieve relevant chunks
-    chunks = await retrieve_chunks(
+    retrieval = await retrieve_chunks(
         question=question,
         embedding_provider=embedding_provider,
         embedding_model=embedding_model,
@@ -112,6 +157,7 @@ async def rag_query(
         collection_name=collection_name,
         top_k=top_k,
     )
+    chunks = retrieval.chunks
 
     # Build prompt
     build_start = time.perf_counter()
@@ -139,4 +185,4 @@ async def rag_query(
         time.perf_counter() - generate_start
     )
 
-    yield {"done": True, "sources": sources}
+    yield {"done": True, "sources": sources, "retrieval": retrieval.metadata}
