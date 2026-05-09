@@ -44,7 +44,7 @@ export type GoldenItem = {
 export type DatasetSummary = {
   id: string;
   name: string;
-  item_count: number;
+  item_count?: number;
   created_at: string;
 };
 

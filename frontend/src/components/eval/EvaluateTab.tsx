@@ -168,7 +168,10 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
             )}
             {datasets.map((ds) => (
               <option key={ds.id} value={ds.id}>
-                {ds.name} ({ds.item_count} items)
+                {ds.name}
+                {typeof ds.item_count === "number"
+                  ? ` (${ds.item_count} items)`
+                  : ""}
               </option>
             ))}
           </select>
