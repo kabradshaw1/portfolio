@@ -1012,6 +1012,8 @@ jobs:
       # CVE-2025-6984 (langchain-community) — XXE in EverNoteLoader, never used
       # CVE-2025-65106, CVE-2025-68664, CVE-2026-26013, CVE-2026-40087, CVE-2026-34070 (langchain-core)
       #   — template/serialization/path traversal, no untrusted input
+      # CVE-2026-44843 (langchain-core) — broad LangChain deserialization allowlists in older runtime APIs;
+      #   eval validates fixed schemas and does not use RunnableWithMessageHistory, astream_log/events v1, or load/loads
       # GHSA-r7w7-9xr2-qq2r (langchain-openai) — DNS rebinding in image token counting, not used
       # CVE-2025-6985 (langchain-text-splitters) — XXE in HTMLSectionSplitter, not used
       # GHSA-rr7j-v2q5-chgv (langsmith) — streaming bypass of output redaction, not used
@@ -1039,7 +1041,8 @@ jobs:
             --ignore-vuln ECHO-ffe1-1d3c-d9bc \
             --ignore-vuln ECHO-7db2-03aa-5591 \
             --ignore-vuln CVE-2026-6587 \
-            --ignore-vuln CVE-2026-3219
+            --ignore-vuln CVE-2026-3219 \
+            --ignore-vuln CVE-2026-44843
 
   security-npm-audit:
     name: Security - npm audit

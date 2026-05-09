@@ -93,11 +93,16 @@ class EvalDB:
 
     async def list_datasets(self) -> list[dict]:
         cursor = await self._db.execute(
-            "SELECT id, name, created_at FROM datasets ORDER BY created_at DESC"
+            "SELECT id, name, items, created_at FROM datasets ORDER BY created_at DESC"
         )
         rows = await cursor.fetchall()
         return [
-            {"id": r["id"], "name": r["name"], "created_at": r["created_at"]}
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "created_at": r["created_at"],
+                "item_count": len(json.loads(r["items"])),
+            }
             for r in rows
         ]
 

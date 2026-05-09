@@ -18,6 +18,7 @@ class DatasetSummary(BaseModel):
     id: str
     name: str
     created_at: str
+    item_count: int
 
 
 class DatasetDetail(BaseModel):
