@@ -62,6 +62,8 @@ export type QueryResult = {
   scores: QueryScore;
 };
 
+export type EvalConfigSnapshot = Record<string, unknown>;
+
 export type EvaluationSummary = {
   id: string;
   dataset_id: string;
@@ -70,11 +72,23 @@ export type EvaluationSummary = {
   aggregate_scores: QueryScore | null;
   created_at: string;
   completed_at: string | null;
+  notes: string | null;
+  config: EvalConfigSnapshot | null;
+  baseline_eval_id: string | null;
 };
 
 export type EvaluationDetail = EvaluationSummary & {
   results: QueryResult[] | null;
   error: string | null;
+};
+
+export type RunComparison = {
+  runs: EvaluationDetail[];
+  deltas: Record<keyof QueryScore, number[]>;
+};
+
+export type RunHistory = {
+  runs: EvaluationDetail[];
 };
 
 // --- API functions ---
@@ -119,10 +133,18 @@ export async function listDatasets(): Promise<DatasetSummary[]> {
 export async function startEvaluation(
   datasetId: string,
   collection?: string,
+  notes?: string,
+  baselineEvalId?: string,
 ): Promise<{ id: string; status: string }> {
   const body: Record<string, string> = { dataset_id: datasetId };
   if (collection !== undefined) {
     body.collection = collection;
+  }
+  if (notes !== undefined && notes.trim() !== "") {
+    body.notes = notes.trim();
+  }
+  if (baselineEvalId !== undefined && baselineEvalId !== "") {
+    body.baseline_eval_id = baselineEvalId;
   }
   const res = await evalFetch("/evaluations", {
     method: "POST",
@@ -155,4 +177,32 @@ export async function listEvaluations(): Promise<EvaluationSummary[]> {
   }
   const data = await res.json();
   return data.evaluations ?? data;
+}
+
+export async function getHistory(
+  datasetId: string,
+  collection: string,
+): Promise<RunHistory> {
+  const params = new URLSearchParams({
+    dataset_id: datasetId,
+    collection,
+  });
+  const res = await evalFetch(`/evaluations/history?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(
+      `Failed to load evaluation history: ${res.status} ${res.statusText}`,
+    );
+  }
+  return res.json();
+}
+
+export async function compareRuns(ids: string[]): Promise<RunComparison> {
+  const params = new URLSearchParams({ ids: ids.join(",") });
+  const res = await evalFetch(`/evaluations/compare?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(
+      `Failed to compare evaluations: ${res.status} ${res.statusText}`,
+    );
+  }
+  return res.json();
 }
