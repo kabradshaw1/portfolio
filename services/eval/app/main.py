@@ -19,7 +19,11 @@ from app.config import settings
 from app.config_capture import capture_run_config
 from app.db import EvalDB
 from app.evaluator import run_evaluation
-from app.metrics import eval_queries_total, eval_ragas_score, eval_run_duration_seconds
+from app.metrics import (
+    eval_quality_score,
+    eval_queries_total,
+    eval_run_duration_seconds,
+)
 from app.models import CreateDatasetRequest, StartEvaluationRequest
 from app.rag_client import RAGClient
 
@@ -116,7 +120,7 @@ async def list_datasets(request: Request, user_id: str = Depends(require_auth)):
 
 
 async def _run_evaluation_task(eval_id: str, items: list[dict], collection: str | None):
-    """Background task that runs the RAGAS evaluation."""
+    """Background task that runs the RAG quality evaluation."""
     db = await get_db()
     rag_client = RAGClient(base_url=settings.chat_service_url)
     start = time.perf_counter()
@@ -151,7 +155,7 @@ async def _run_evaluation_task(eval_id: str, items: list[dict], collection: str 
         eval_queries_total.inc(len(items))
         for metric_name, score in aggregate.items():
             if score is not None:
-                eval_ragas_score.labels(metric=metric_name).set(score)
+                eval_quality_score.labels(metric=metric_name).set(score)
 
         logger.info("Evaluation %s completed: %s", eval_id, aggregate)
     except Exception as e:
@@ -201,7 +205,7 @@ async def list_evaluations(
     return {"evaluations": evaluations}
 
 
-_RAGAS_METRICS = (
+_EVAL_METRICS = (
     "faithfulness",
     "answer_relevancy",
     "context_precision",
@@ -247,7 +251,7 @@ async def compare_evaluations(
         )
 
     deltas: dict[str, list[float]] = {}
-    for metric in _RAGAS_METRICS:
+    for metric in _EVAL_METRICS:
         baseline = (runs[0].get("aggregate_scores") or {}).get(metric)
         deltas[metric] = []
         for r in runs:
