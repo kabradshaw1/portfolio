@@ -211,6 +211,19 @@ preflight-security:
 		echo "ERROR: Wildcard CORS found"; exit 1; \
 	fi
 	@echo "CORS check passed"
+	@echo "\n=== Security: pip-audit ==="
+	@command -v python3.11 >/dev/null 2>&1 || { echo "python3.11 is required for pip-audit preflight"; exit 1; }
+	@for service in ingestion chat debug eval; do \
+		echo "  Auditing Python service: $$service"; \
+		tmpdir=$$(mktemp -d /tmp/preflight-pip-audit-$$service.XXXXXX); \
+		python3.11 -m venv "$$tmpdir/venv"; \
+		"$$tmpdir/venv/bin/pip" install --upgrade pip setuptools >/dev/null; \
+		"$$tmpdir/venv/bin/pip" install services/shared/ >/dev/null; \
+		"$$tmpdir/venv/bin/pip" install -r "services/$$service/requirements.txt" >/dev/null; \
+		"$$tmpdir/venv/bin/pip" install pip-audit >/dev/null; \
+		PIPAPI_PYTHON_LOCATION="$$tmpdir/venv/bin/python" "$$tmpdir/venv/bin/pip-audit"; \
+		rm -rf "$$tmpdir"; \
+	done
 
 # --- Worktree cleanup ---
 worktree-cleanup:
