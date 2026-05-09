@@ -4,8 +4,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 from app.main import app
 from fastapi.testclient import TestClient
+from qdrant_client.models import SparseVector
 
 client = TestClient(app)
+
+
+def _mock_sparse_encoder(count: int = 2) -> MagicMock:
+    sparse_encoder = MagicMock()
+    sparse_encoder.embed.return_value = [
+        SparseVector(indices=[index], values=[0.1]) for index in range(count)
+    ]
+    return sparse_encoder
 
 
 @patch("app.main._embedding_provider")
@@ -42,16 +51,22 @@ def test_health_qdrant_down(mock_qdrant_cls, mock_provider):
     assert data["llm"] == "connected"
 
 
+@patch("app.main.get_meta_db")
+@patch("app.main.get_sparse_encoder")
 @patch("app.main.get_store")
 @patch("app.main.embed_texts", new_callable=AsyncMock)
 @patch("app.main.extract_pages")
-def test_ingest_pdf_success(mock_extract, mock_embed, mock_get_store):
+def test_ingest_pdf_success(
+    mock_extract, mock_embed, mock_get_store, mock_get_sparse_encoder, mock_get_meta_db
+):
     mock_extract.return_value = [
         {"page_number": 1, "text": "Hello world. " * 100},
     ]
     mock_embed.return_value = [[0.1] * 768] * 2
     mock_store = MagicMock()
     mock_get_store.return_value = mock_store
+    mock_get_sparse_encoder.return_value = _mock_sparse_encoder()
+    mock_get_meta_db.return_value = AsyncMock()
 
     pdf_content = b"%PDF-1.4 fake content"
     response = client.post(
@@ -98,6 +113,52 @@ def test_ingest_returns_503_when_ollama_unreachable(
     assert response.status_code == 503
     assert "Connection refused" not in response.json()["detail"]
     assert response.json()["detail"] == "Embedding service unavailable"
+
+
+@patch("app.main.get_meta_db")
+@patch("app.main.get_sparse_encoder")
+@patch("app.main.QdrantStore")
+@patch("app.main.embed_texts", new_callable=AsyncMock)
+@patch("app.main.extract_pages")
+def test_ingest_generates_sparse_vectors_and_records_hybrid_metadata(
+    mock_extract,
+    mock_embed,
+    mock_qdrant_store_cls,
+    mock_get_sparse_encoder,
+    mock_get_meta_db,
+):
+    mock_extract.return_value = [{"page_number": 1, "text": "RFC 7231 section 4.2"}]
+    mock_embed.return_value = [[0.1] * 768]
+
+    mock_sparse_encoder = MagicMock()
+    sparse_vectors = [SparseVector(indices=[1, 2], values=[0.7, 0.4])]
+    mock_sparse_encoder.embed.return_value = sparse_vectors
+    mock_get_sparse_encoder.return_value = mock_sparse_encoder
+
+    mock_store = MagicMock()
+    mock_qdrant_store_cls.return_value = mock_store
+    mock_db = AsyncMock()
+    mock_get_meta_db.return_value = mock_db
+
+    response = client.post(
+        "/ingest",
+        files={"file": ("http.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    mock_sparse_encoder.embed.assert_called_once_with(["RFC 7231 section 4.2"])
+    mock_store.upsert.assert_called_once()
+    assert mock_store.upsert.call_args.kwargs["sparse_vectors"] == sparse_vectors
+    from app.config import settings
+
+    mock_db.upsert.assert_awaited_once_with(
+        collection=settings.collection_name,
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+        embedding_model=settings.embedding_model,
+        sparse_model=settings.sparse_model,
+        hybrid_enabled=settings.hybrid_enabled,
+    )
 
 
 @patch("app.main.get_store")
@@ -177,16 +238,26 @@ def test_cors_rejects_unknown_origin():
     )
 
 
+@patch("app.main.get_meta_db")
+@patch("app.main.get_sparse_encoder")
 @patch("app.main.QdrantStore")
 @patch("app.main.embed_texts", new_callable=AsyncMock)
 @patch("app.main.extract_pages")
-def test_ingest_with_custom_collection(mock_extract, mock_embed, mock_qdrant_store_cls):
+def test_ingest_with_custom_collection(
+    mock_extract,
+    mock_embed,
+    mock_qdrant_store_cls,
+    mock_get_sparse_encoder,
+    mock_get_meta_db,
+):
     mock_extract.return_value = [
         {"page_number": 1, "text": "Hello world. " * 100},
     ]
     mock_embed.return_value = [[0.1] * 768] * 2
     mock_store = MagicMock()
     mock_qdrant_store_cls.return_value = mock_store
+    mock_get_sparse_encoder.return_value = _mock_sparse_encoder()
+    mock_get_meta_db.return_value = AsyncMock()
 
     pdf_content = b"%PDF-1.4 fake content"
     response = client.post(
@@ -284,16 +355,18 @@ def test_get_collection_config_404_when_unknown(mock_get_meta_db):
 
 
 @patch("app.main.get_meta_db")
+@patch("app.main.get_sparse_encoder")
 @patch("app.main.get_store")
 @patch("app.main.embed_texts", new_callable=AsyncMock)
 @patch("app.main.extract_pages")
 def test_ingest_persists_collection_metadata(
-    mock_extract, mock_embed, mock_get_store, mock_get_meta_db
+    mock_extract, mock_embed, mock_get_store, mock_get_sparse_encoder, mock_get_meta_db
 ):
     mock_extract.return_value = [{"page_number": 1, "text": "Hello world. " * 100}]
     mock_embed.return_value = [[0.1] * 768] * 2
     mock_store = MagicMock()
     mock_get_store.return_value = mock_store
+    mock_get_sparse_encoder.return_value = _mock_sparse_encoder()
     mock_db = AsyncMock()
     mock_get_meta_db.return_value = mock_db
 
@@ -311,4 +384,6 @@ def test_ingest_persists_collection_metadata(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
         embedding_model=settings.embedding_model,
+        sparse_model=settings.sparse_model,
+        hybrid_enabled=settings.hybrid_enabled,
     )
