@@ -59,7 +59,7 @@ function EvalPageInner() {
       <div className="mx-auto max-w-5xl px-4 py-10">
         <h1 className="text-2xl font-bold mb-1">RAG Evaluation</h1>
         <p className="text-muted-foreground mb-6">
-          Measure RAG pipeline quality with golden datasets and RAGAS metrics.
+          Measure RAG pipeline quality with golden datasets and first-party metrics.
         </p>
 
         {/* Tab bar */}

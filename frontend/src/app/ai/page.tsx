@@ -78,15 +78,15 @@ export default function AISection() {
           <h2 className="text-2xl font-semibold">RAG Evaluation</h2>
           <p className="mt-4 text-muted-foreground leading-relaxed">
             A measurement tool for systematically tracking RAG pipeline quality.
-            Create golden datasets with expected answers, run RAGAS evaluations
-            against the live pipeline, and view scorecards with per-query
-            breakdowns — faithfulness, answer relevancy, context precision, and
-            context recall.
+            Create golden datasets with expected answers, run first-party RAG
+            quality evaluations against the live pipeline, and view scorecards
+            with per-query breakdowns — faithfulness, answer relevancy, context
+            precision, and context recall.
           </p>
 
           <h3 className="mt-6 text-lg font-medium">What It Demonstrates</h3>
           <ul className="mt-2 list-disc pl-6 text-muted-foreground space-y-1">
-            <li>RAGAS evaluation framework for RAG quality measurement</li>
+            <li>First-party RAG quality evaluator with LLM-judged metrics</li>
             <li>Cross-service JWT authentication (Go auth → Python eval)</li>
             <li>Async evaluation with polling for long-running LLM judge calls</li>
             <li>Golden dataset management for repeatable quality tracking</li>
