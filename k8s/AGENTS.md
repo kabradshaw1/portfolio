@@ -86,3 +86,16 @@ hoc log inspection.
 
 Pods down or CrashLoopBackOff are the exception: start with `kubectl get pods`
 and `kubectl logs`, then use observability after the target is running.
+
+When creating or editing Grafana alerting or dashboard provisioning under
+`k8s/monitoring/configmaps/` and `k8s/monitoring/deployments/grafana.yml`, load
+the `debug-observability` skill first. If the change needs to touch the shared
+cluster, load `ops-as-code` and use a committed script or manifest before
+running any mutation.
+
+Grafana provisioning files are mounted with `subPath`, so ConfigMap updates do
+not refresh inside an already-running Grafana pod. Alerting ConfigMap changes
+must include a rollout trigger in the Grafana Deployment annotation and must be
+verified against Grafana's live provisioning API after rollout. For the current
+alerting reload procedure, use
+`scripts/ops/2026-05-09-reload-grafana-alerting.sh`.
