@@ -81,10 +81,25 @@ Determine the current branch with `git branch --show-current`.
 
 - Feature branches: after spec approval, plan and execute autonomously, commit,
   push, create a PR to `qa`, and do not watch CI.
-- `qa`: commit and push autonomously. Do not watch CI. For reported CI fixes,
-  fix lint, formatting, type, and config issues autonomously; ask before
-  behavior changes. Commit doc-only changes locally but do not push them until
-  a later code change or explicit request.
+- Default work location:
+  - Do not do feature, behavior, application-code, infrastructure-code, or
+    image-rebuild-triggering work directly on `qa` or `main` unless Kyle
+    explicitly instructs otherwise.
+  - If work would require rebuilding a Docker image, changing
+    application/runtime behavior, changing CI/CD behavior, or modifying
+    deployable manifests, create or use a feature worktree under
+    `.codex/worktrees/<branch-name>/` and target a PR to `qa`.
+  - `qa` and `main` may be used directly only for pressing hotfixes to issues
+    already live in QA/production, or for documentation-only changes.
+  - Shell scripts that are written for Kyle to inspect or run manually count as
+    documentation-only unless they are wired into CI/CD, image builds,
+    deployments, cron/systemd, Kubernetes Jobs, or another automated runtime
+    path.
+- `qa`: use directly only for pressing fixes to issues already live on QA,
+  CI/config fixes for reported failures, or documentation-only changes. For new
+  feature work or changes that trigger image rebuilds, create/use a feature
+  worktree and PR to `qa`. Commit doc-only changes locally but do not push them
+  until a later code change or explicit request.
 - `main`: never push autonomously. When Kyle explicitly says to ship to main,
   merge `qa` into `main`, push, clean up worktrees, and delete the feature
   branch local and remote.
