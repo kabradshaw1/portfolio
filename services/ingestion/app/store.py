@@ -8,10 +8,15 @@ from qdrant_client.models import (
     Filter,
     MatchValue,
     PointStruct,
+    SparseVector,
+    SparseVectorParams,
     VectorParams,
 )
 
 from app.metrics import QDRANT_OPERATION_DURATION
+
+DENSE_VECTOR_NAME = "dense"
+SPARSE_VECTOR_NAME = "sparse"
 
 
 class QdrantStore:
@@ -24,23 +29,37 @@ class QdrantStore:
         if not self.client.collection_exists(self.collection_name):
             self.client.create_collection(
                 collection_name=self.collection_name,
-                vectors_config=VectorParams(
-                    size=768,
-                    distance=Distance.COSINE,
-                ),
+                vectors_config={
+                    DENSE_VECTOR_NAME: VectorParams(
+                        size=768,
+                        distance=Distance.COSINE,
+                    )
+                },
+                sparse_vectors_config={
+                    SPARSE_VECTOR_NAME: SparseVectorParams(),
+                },
             )
 
     def upsert(
         self,
         chunks: list[dict],
         vectors: list[list[float]],
+        sparse_vectors: list[SparseVector],
         document_id: str,
         filename: str,
     ) -> None:
+        if not (len(chunks) == len(vectors) == len(sparse_vectors)):
+            raise ValueError(
+                "chunks, dense vectors, and sparse vectors must have matching lengths"
+            )
+
         points = [
             PointStruct(
                 id=str(uuid.uuid4()),
-                vector=vector,
+                vector={
+                    DENSE_VECTOR_NAME: vector,
+                    SPARSE_VECTOR_NAME: sparse_vector,
+                },
                 payload={
                     "text": chunk["text"],
                     "page_number": chunk["page_number"],
@@ -49,7 +68,7 @@ class QdrantStore:
                     "filename": filename,
                 },
             )
-            for chunk, vector in zip(chunks, vectors)
+            for chunk, vector, sparse_vector in zip(chunks, vectors, sparse_vectors)
         ]
         start = time.perf_counter()
         self.client.upsert(
