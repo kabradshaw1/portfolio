@@ -5,6 +5,7 @@ import {
   DatasetSummary,
   EvaluationDetail,
   getEvaluation,
+  getHistory,
   listDatasets,
   startEvaluation,
 } from "@/lib/eval-api";
@@ -17,6 +18,10 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
   const [collection, setCollection] = useState<string>("documents");
+  const [notes, setNotes] = useState<string>("");
+  const [baselineEvalId, setBaselineEvalId] = useState<string>("");
+  const [baselineRuns, setBaselineRuns] = useState<EvaluationDetail[]>([]);
+  const [baselineLoading, setBaselineLoading] = useState<boolean>(false);
   const [running, setRunning] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
@@ -41,6 +46,36 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
     };
   }, []);
 
+  useEffect(() => {
+    const trimmedCollection = collection.trim();
+    if (!selectedDatasetId || !trimmedCollection) {
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.resolve().then(async () => {
+      setBaselineLoading(true);
+      try {
+        const history = await getHistory(selectedDatasetId, trimmedCollection);
+        if (cancelled) return;
+        setBaselineRuns(history.runs);
+        setBaselineEvalId((current) =>
+          history.runs.some((run) => run.id === current) ? current : "",
+        );
+      } catch {
+        if (cancelled) return;
+        setBaselineRuns([]);
+        setBaselineEvalId("");
+      } finally {
+        if (!cancelled) setBaselineLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDatasetId, collection]);
+
   async function handleRun() {
     if (!selectedDatasetId || running) return;
 
@@ -53,6 +88,8 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
       const result = await startEvaluation(
         selectedDatasetId,
         collection.trim() || undefined,
+        notes,
+        collection.trim() ? baselineEvalId : "",
       );
       evalId = result.id;
     } catch (err) {
@@ -62,9 +99,7 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
       return;
     }
 
-    setStatusMessage("Evaluating... this may take a few minutes.");
-
-    pollIntervalRef.current = setInterval(async () => {
+    async function pollEvaluation(): Promise<boolean> {
       try {
         const detail = await getEvaluation(evalId);
         if (detail.status === "completed") {
@@ -75,6 +110,7 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
           setRunning(false);
           setStatusMessage("");
           onComplete(detail);
+          setNotes("");
         } else if (detail.status === "failed") {
           if (pollIntervalRef.current !== null) {
             clearInterval(pollIntervalRef.current);
@@ -84,11 +120,19 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
           setStatusMessage("");
           setError(detail.error ?? "Evaluation failed");
         }
-        // status === "running": keep polling
+        return detail.status !== "running";
       } catch {
         // transient error — keep polling
+        return false;
       }
-    }, 5000);
+    }
+
+    setStatusMessage("Evaluating... this may take a few minutes.");
+
+    const finished = await pollEvaluation();
+    if (!finished) {
+      pollIntervalRef.current = setInterval(pollEvaluation, 5000);
+    }
   }
 
   return (
@@ -124,7 +168,10 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
             )}
             {datasets.map((ds) => (
               <option key={ds.id} value={ds.id}>
-                {ds.name} ({ds.item_count} items)
+                {ds.name}
+                {typeof ds.item_count === "number"
+                  ? ` (${ds.item_count} items)`
+                  : ""}
               </option>
             ))}
           </select>
@@ -148,6 +195,59 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
             disabled={running}
             className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
           />
+        </div>
+
+        {/* Notes input */}
+        <div>
+          <label
+            htmlFor="eval-notes"
+            className="mb-1 block text-sm font-medium text-gray-700"
+          >
+            Notes <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <textarea
+            id="eval-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value.slice(0, 500))}
+            placeholder="What changed since the last run?"
+            rows={3}
+            disabled={running}
+            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+          />
+          <p className="mt-1 text-xs text-gray-500">{notes.length}/500</p>
+        </div>
+
+        {/* Baseline selector */}
+        <div>
+          <label
+            htmlFor="baseline-select"
+            className="mb-1 block text-sm font-medium text-gray-700"
+          >
+            Baseline run{" "}
+            <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <select
+            id="baseline-select"
+            value={baselineEvalId}
+            onChange={(e) => setBaselineEvalId(e.target.value)}
+            disabled={
+              running ||
+              baselineLoading ||
+              baselineRuns.length === 0 ||
+              !collection.trim()
+            }
+            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+          >
+            <option value="">
+              {baselineLoading ? "Loading baselines..." : "(none)"}
+            </option>
+            {baselineRuns.map((run) => (
+              <option key={run.id} value={run.id}>
+                {new Date(run.created_at).toLocaleString()} -{" "}
+                {run.id.slice(0, 8)}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Error */}

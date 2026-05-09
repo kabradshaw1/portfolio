@@ -4,17 +4,19 @@ import { useState } from "react";
 import Link from "next/link";
 import { HealthGate } from "@/components/HealthGate";
 import { GoAuthProvider, useGoAuth } from "@/components/go/GoAuthProvider";
+import { DashboardTab } from "@/components/eval/DashboardTab";
 import { DatasetTab } from "@/components/eval/DatasetTab";
 import EvaluateTab from "@/components/eval/EvaluateTab";
 import ResultsTab from "@/components/eval/ResultsTab";
 import { EvaluationDetail } from "@/lib/eval-api";
 
-type TabId = "datasets" | "evaluate" | "results";
+type TabId = "datasets" | "evaluate" | "results" | "dashboard";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "datasets", label: "Datasets" },
   { id: "evaluate", label: "Evaluate" },
   { id: "results", label: "Results" },
+  { id: "dashboard", label: "Dashboard" },
 ];
 
 function EvalPageInner() {
@@ -43,6 +45,11 @@ function EvalPageInner() {
   }
 
   function handleEvalComplete(evaluation: EvaluationDetail) {
+    setCompletedEval(evaluation);
+    setActiveTab("results");
+  }
+
+  function handleDashboardSelect(evaluation: EvaluationDetail) {
     setCompletedEval(evaluation);
     setActiveTab("results");
   }
@@ -79,6 +86,9 @@ function EvalPageInner() {
         )}
         {activeTab === "results" && (
           <ResultsTab selectedEvaluation={completedEval} />
+        )}
+        {activeTab === "dashboard" && (
+          <DashboardTab onSelectEvaluation={handleDashboardSelect} />
         )}
       </div>
     </div>
