@@ -87,6 +87,12 @@ async def get_config():
         "embedding_model": settings.embedding_model,
         "top_k": settings.top_k,
         "prompt_version": settings.prompt_version,
+        "retrieval_mode": settings.retrieval_mode,
+        "hybrid_prefetch_limit": settings.hybrid_prefetch_limit,
+        "dense_vector_name": settings.dense_vector_name,
+        "sparse_vector_name": settings.sparse_vector_name,
+        "sparse_model": settings.sparse_model,
+        "fusion": "rrf" if settings.retrieval_mode == "hybrid" else None,
     }
 
 
@@ -133,6 +139,7 @@ async def chat(
         try:
             tokens = []
             sources = []
+            retrieval = {}
             async for event in rag_query(
                 question=body.question,
                 llm_provider=_llm_provider,
@@ -148,7 +155,12 @@ async def chat(
                     tokens.append(event["token"])
                 if event.get("done"):
                     sources = event.get("sources", [])
-            return {"answer": "".join(tokens), "sources": sources}
+                    retrieval = event.get("retrieval", {})
+            return {
+                "answer": "".join(tokens),
+                "sources": sources,
+                "retrieval": retrieval,
+            }
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             logger.error("Backend service error: %s", e)
             raise HTTPException(status_code=503, detail="Service unavailable")
@@ -186,7 +198,7 @@ async def search(
     request: Request, body: SearchRequest, user_id: str = Depends(require_auth)
 ):
     try:
-        chunks = await retrieve_chunks(
+        retrieval = await retrieve_chunks(
             question=body.query,
             embedding_provider=_embedding_provider,
             embedding_model=settings.embedding_model,
@@ -207,6 +219,7 @@ async def search(
                 "page_number": c["page_number"],
                 "score": c["score"],
             }
-            for c in chunks
-        ]
+            for c in retrieval.chunks
+        ],
+        "retrieval": retrieval.metadata,
     }

@@ -25,10 +25,26 @@ class CollectionMetaDB:
                 collection TEXT PRIMARY KEY,
                 chunk_size INTEGER NOT NULL,
                 chunk_overlap INTEGER NOT NULL,
-                embedding_model TEXT NOT NULL
+                embedding_model TEXT NOT NULL,
+                hybrid_enabled INTEGER NOT NULL DEFAULT 1,
+                dense_vector_name TEXT NOT NULL DEFAULT 'dense',
+                sparse_vector_name TEXT NOT NULL DEFAULT 'sparse',
+                sparse_model TEXT
             )
             """
         )
+        existing_columns = await self._db.execute("PRAGMA table_info(collection_meta)")
+        column_names = {row["name"] for row in await existing_columns.fetchall()}
+        for column_name, definition in {
+            "hybrid_enabled": "INTEGER NOT NULL DEFAULT 1",
+            "dense_vector_name": "TEXT NOT NULL DEFAULT 'dense'",
+            "sparse_vector_name": "TEXT NOT NULL DEFAULT 'sparse'",
+            "sparse_model": "TEXT",
+        }.items():
+            if column_name not in column_names:
+                await self._db.execute(
+                    f"ALTER TABLE collection_meta ADD COLUMN {column_name} {definition}"
+                )
         await self._db.commit()
 
     async def close(self) -> None:
@@ -42,30 +58,57 @@ class CollectionMetaDB:
         chunk_size: int,
         chunk_overlap: int,
         embedding_model: str,
+        sparse_model: str | None = None,
+        hybrid_enabled: bool = True,
     ) -> None:
         await self._db.execute(
             "INSERT INTO collection_meta "
-            "(collection, chunk_size, chunk_overlap, embedding_model) "
-            "VALUES (?, ?, ?, ?) "
+            "(collection, chunk_size, chunk_overlap, embedding_model, "
+            "hybrid_enabled, dense_vector_name, sparse_vector_name, sparse_model) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(collection) DO UPDATE SET "
             "chunk_size=excluded.chunk_size, "
             "chunk_overlap=excluded.chunk_overlap, "
-            "embedding_model=excluded.embedding_model",
-            (collection, chunk_size, chunk_overlap, embedding_model),
+            "embedding_model=excluded.embedding_model, "
+            "hybrid_enabled=excluded.hybrid_enabled, "
+            "dense_vector_name=excluded.dense_vector_name, "
+            "sparse_vector_name=excluded.sparse_vector_name, "
+            "sparse_model=excluded.sparse_model",
+            (
+                collection,
+                chunk_size,
+                chunk_overlap,
+                embedding_model,
+                int(hybrid_enabled),
+                "dense",
+                "sparse",
+                sparse_model,
+            ),
         )
         await self._db.commit()
 
     async def get(self, collection: str) -> dict | None:
         cursor = await self._db.execute(
-            "SELECT chunk_size, chunk_overlap, embedding_model "
+            "SELECT chunk_size, chunk_overlap, embedding_model, hybrid_enabled, "
+            "dense_vector_name, sparse_vector_name, sparse_model "
             "FROM collection_meta WHERE collection = ?",
             (collection,),
         )
         row = await cursor.fetchone()
         if not row:
             return None
-        return {
+        config = {
             "chunk_size": row["chunk_size"],
             "chunk_overlap": row["chunk_overlap"],
             "embedding_model": row["embedding_model"],
         }
+        if row["sparse_model"] is not None:
+            config.update(
+                {
+                    "hybrid_enabled": bool(row["hybrid_enabled"]),
+                    "dense_vector_name": row["dense_vector_name"],
+                    "sparse_vector_name": row["sparse_vector_name"],
+                    "sparse_model": row["sparse_model"],
+                }
+            )
+        return config

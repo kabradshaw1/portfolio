@@ -3,9 +3,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 from app.main import app
+from app.retriever import RetrievalResult
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
+
+
+def retrieval_result(chunks: list[dict] | None = None) -> RetrievalResult:
+    return RetrievalResult(
+        chunks=chunks or [],
+        metadata={
+            "retrieval_mode": "hybrid",
+            "retrieval_fallback": False,
+            "fusion": "rrf",
+        },
+    )
 
 
 def test_config_endpoint_returns_active_settings():
@@ -18,6 +30,12 @@ def test_config_endpoint_returns_active_settings():
     assert body["embedding_model"] == settings.embedding_model
     assert body["top_k"] == settings.top_k
     assert body["prompt_version"] == settings.prompt_version
+    assert body["retrieval_mode"] == settings.retrieval_mode
+    assert body["hybrid_prefetch_limit"] == settings.hybrid_prefetch_limit
+    assert body["dense_vector_name"] == settings.dense_vector_name
+    assert body["sparse_vector_name"] == settings.sparse_vector_name
+    assert body["sparse_model"] == settings.sparse_model
+    assert body["fusion"] == ("rrf" if settings.retrieval_mode == "hybrid" else None)
 
 
 @patch("app.main.rag_query")
@@ -26,7 +44,7 @@ def test_chat_threads_settings_top_k_into_rag_query(mock_rag_query):
 
     async def fake(**kwargs):
         captured.update(kwargs)
-        yield {"done": True, "sources": []}
+        yield {"done": True, "sources": [], "retrieval": {}}
 
     mock_rag_query.side_effect = fake
 
@@ -95,7 +113,11 @@ def test_chat_streams_response(mock_rag_query):
     async def fake_rag_query(**kwargs):
         yield {"token": "Hello"}
         yield {"token": " world"}
-        yield {"done": True, "sources": [{"file": "test.pdf", "page": 1}]}
+        yield {
+            "done": True,
+            "sources": [{"file": "test.pdf", "page": 1}],
+            "retrieval": {"retrieval_mode": "hybrid"},
+        }
 
     mock_rag_query.return_value = fake_rag_query()
 
@@ -116,6 +138,7 @@ def test_chat_streams_response(mock_rag_query):
     done_events = [e for e in events if e.get("done")]
     assert len(done_events) == 1
     assert done_events[0]["sources"][0]["file"] == "test.pdf"
+    assert done_events[0]["retrieval"]["retrieval_mode"] == "hybrid"
 
 
 def test_chat_requires_question():
@@ -144,7 +167,7 @@ def test_chat_accepts_valid_collection_name(mock_rag_query):
     """Verify valid collection names pass Pydantic validation."""
 
     async def fake_rag_query(**kwargs):
-        yield {"done": True, "sources": []}
+        yield {"done": True, "sources": [], "retrieval": {}}
 
     mock_rag_query.return_value = fake_rag_query()
 
@@ -177,22 +200,24 @@ def test_chat_returns_error_when_backend_unreachable(mock_rag_query):
 
 @patch("app.main.retrieve_chunks", new_callable=AsyncMock)
 def test_search_returns_chunks(mock_retrieve):
-    mock_retrieve.return_value = [
-        {
-            "text": "Hello world",
-            "filename": "test.pdf",
-            "page_number": 1,
-            "document_id": "abc",
-            "score": 0.92,
-        },
-        {
-            "text": "Goodbye world",
-            "filename": "test.pdf",
-            "page_number": 2,
-            "document_id": "abc",
-            "score": 0.85,
-        },
-    ]
+    mock_retrieve.return_value = retrieval_result(
+        [
+            {
+                "text": "Hello world",
+                "filename": "test.pdf",
+                "page_number": 1,
+                "document_id": "abc",
+                "score": 0.92,
+            },
+            {
+                "text": "Goodbye world",
+                "filename": "test.pdf",
+                "page_number": 2,
+                "document_id": "abc",
+                "score": 0.85,
+            },
+        ]
+    )
 
     response = client.post("/search", json={"query": "hello", "limit": 5})
     assert response.status_code == 200
@@ -200,6 +225,7 @@ def test_search_returns_chunks(mock_retrieve):
     assert len(data["results"]) == 2
     assert data["results"][0]["text"] == "Hello world"
     assert data["results"][0]["score"] == 0.92
+    assert data["retrieval"]["retrieval_mode"] == "hybrid"
 
 
 def test_search_requires_query():
@@ -219,7 +245,11 @@ def test_chat_json_mode(mock_rag_query):
     async def fake_rag_query(**kwargs):
         yield {"token": "Hello"}
         yield {"token": " world"}
-        yield {"done": True, "sources": [{"file": "test.pdf", "page": 1}]}
+        yield {
+            "done": True,
+            "sources": [{"file": "test.pdf", "page": 1}],
+            "retrieval": {"retrieval_mode": "hybrid"},
+        }
 
     mock_rag_query.return_value = fake_rag_query()
 
@@ -233,6 +263,7 @@ def test_chat_json_mode(mock_rag_query):
     assert data["answer"] == "Hello world"
     assert len(data["sources"]) == 1
     assert data["sources"][0]["file"] == "test.pdf"
+    assert data["retrieval"]["retrieval_mode"] == "hybrid"
 
 
 def test_cors_rejects_unknown_origin():
