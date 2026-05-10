@@ -3,8 +3,10 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from sentence_transformers import CrossEncoder
+if TYPE_CHECKING:
+    from sentence_transformers import CrossEncoder
 
 from app.metrics import RERANK_CANDIDATES, RERANK_DURATION
 
@@ -19,6 +21,8 @@ _models: dict[tuple[str, str], CrossEncoder] = {}
 
 
 def get_cross_encoder(model_name: str, device: str) -> CrossEncoder:
+    from sentence_transformers import CrossEncoder
+
     key = (model_name, device)
     if key not in _models:
         _models[key] = CrossEncoder(model_name, device=device)

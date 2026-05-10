@@ -1,6 +1,7 @@
+import builtins
+import importlib
+import sys
 from unittest.mock import MagicMock
-
-from app.reranker import CrossEncoderReranker, rerank_chunks
 
 
 def _chunk(text: str, score: float = 0.1) -> dict:
@@ -13,7 +14,26 @@ def _chunk(text: str, score: float = 0.1) -> dict:
     }
 
 
+def test_reranker_module_does_not_import_sentence_transformers_on_import(monkeypatch):
+    sys.modules.pop("app.reranker", None)
+    sys.modules.pop("sentence_transformers", None)
+    original_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "sentence_transformers" or name.startswith("sentence_transformers."):
+            raise AssertionError("sentence_transformers imported during module import")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+    module = importlib.import_module("app.reranker")
+
+    assert hasattr(module, "rerank_chunks")
+
+
 def test_rerank_chunks_sorts_by_cross_encoder_score_descending():
+    from app.reranker import CrossEncoderReranker
+
     model = MagicMock()
     model.predict.return_value = [0.2, 0.9, 0.4]
     reranker = CrossEncoderReranker(model_loader=lambda: model)
@@ -38,6 +58,8 @@ def test_rerank_chunks_sorts_by_cross_encoder_score_descending():
 
 
 def test_rerank_chunks_preserves_original_order_for_equal_scores():
+    from app.reranker import CrossEncoderReranker
+
     model = MagicMock()
     model.predict.return_value = [0.5, 0.5, 0.5]
     reranker = CrossEncoderReranker(model_loader=lambda: model)
@@ -53,6 +75,8 @@ def test_rerank_chunks_preserves_original_order_for_equal_scores():
 
 
 def test_rerank_chunks_empty_input_does_not_load_model():
+    from app.reranker import CrossEncoderReranker
+
     model_loader = MagicMock()
     reranker = CrossEncoderReranker(model_loader=model_loader)
 
@@ -74,6 +98,8 @@ def test_rerank_chunks_empty_input_does_not_load_model():
 
 
 def test_rerank_chunks_uses_default_singleton_loader(monkeypatch):
+    from app.reranker import rerank_chunks
+
     model = MagicMock()
     model.predict.return_value = [0.8]
     loader = MagicMock(return_value=model)
