@@ -97,13 +97,18 @@ async def build_evaluation_dataset(
     items: list[dict],
     rag_client: RAGClient,
     collection: str | None,
+    rerank: bool = False,
 ) -> list[dict]:
     """Run each golden item through the RAG pipeline and build evaluation rows."""
     dataset = []
     for item in items:
         query = item["query"]
-        search_results = await rag_client.search(query, collection=collection, limit=5)
-        chat_response = await rag_client.ask(query, collection=collection)
+        search_results = await rag_client.search(
+            query, collection=collection, limit=5, rerank=rerank
+        )
+        chat_response = await rag_client.ask(
+            query, collection=collection, rerank=rerank
+        )
 
         dataset.append(
             {
@@ -227,10 +232,13 @@ async def run_evaluation(
     llm_base_url: str,
     llm_model: str,
     llm_api_key: str,
+    rerank: bool = False,
     judge: JudgeFn | None = None,
 ) -> tuple[dict, list[dict]]:
     """Run a full first-party RAG evaluation."""
-    raw_dataset = await build_evaluation_dataset(items, rag_client, collection)
+    raw_dataset = await build_evaluation_dataset(
+        items, rag_client, collection, rerank=rerank
+    )
     if not raw_dataset:
         return {name: None for name in METRIC_NAMES}, []
 

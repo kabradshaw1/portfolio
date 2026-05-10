@@ -106,6 +106,25 @@ async def test_build_evaluation_dataset_with_collection(
     )
 
 
+@pytest.mark.asyncio
+async def test_build_evaluation_dataset_passes_rerank(
+    golden_items, mock_search_results, mock_chat_answer
+):
+    rag_client = AsyncMock()
+    rag_client.search.return_value = mock_search_results
+    rag_client.ask.return_value = mock_chat_answer
+
+    await build_evaluation_dataset(
+        items=golden_items,
+        rag_client=rag_client,
+        collection="documents",
+        rerank=True,
+    )
+
+    assert rag_client.search.call_args_list[0].kwargs["rerank"] is True
+    assert rag_client.ask.call_args_list[0].kwargs["rerank"] is True
+
+
 def test_score_context_recall_counts_reference_terms_in_contexts():
     score = score_context_recall(
         reference="Splitting text into smaller pieces for embedding.",

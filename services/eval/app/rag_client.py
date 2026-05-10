@@ -17,22 +17,32 @@ class RAGClient:
         self._client = httpx.AsyncClient(**client_kwargs)
 
     async def search(
-        self, query: str, collection: str | None, limit: int
+        self,
+        query: str,
+        collection: str | None,
+        limit: int,
+        rerank: bool = False,
     ) -> list[dict]:
         """Call POST /search for retrieval-only results."""
         body: dict = {"query": query, "limit": limit}
         if collection:
             body["collection"] = collection
+        if rerank:
+            body["rerank"] = True
 
         resp = await self._client.post("/search", json=body)
         resp.raise_for_status()
         return resp.json()["results"]
 
-    async def ask(self, question: str, collection: str | None) -> dict:
+    async def ask(
+        self, question: str, collection: str | None, rerank: bool = False
+    ) -> dict:
         """Call POST /chat with Accept: application/json for a full RAG response."""
         body: dict = {"question": question}
         if collection:
             body["collection"] = collection
+        if rerank:
+            body["rerank"] = True
 
         resp = await self._client.post(
             "/chat", json=body, headers={"Accept": "application/json"}

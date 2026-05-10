@@ -66,3 +66,23 @@ RAG_PIPELINE_ERRORS = Counter(
     "RAG pipeline errors by stage",
     ["stage"],
 )
+
+RERANK_DURATION = Histogram(
+    "rag_rerank_duration_seconds",
+    "Time spent scoring retrieval candidates with the cross-encoder re-ranker",
+    ["model", "outcome"],
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+)
+
+RERANK_CANDIDATES = Histogram(
+    "rag_rerank_candidates",
+    "Number of retrieval candidates sent to the cross-encoder re-ranker",
+    ["model"],
+    buckets=(0, 1, 2, 3, 5, 10, 20, 50),
+)
+
+RERANK_FALLBACKS = Counter(
+    "rag_rerank_fallbacks_total",
+    "Re-ranker fallback count by reason",
+    ["reason"],
+)

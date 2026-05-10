@@ -27,6 +27,178 @@ def semantic_fallback_result(chunks: list[dict] | None = None) -> RetrievalResul
     )
 
 
+@patch("app.chain.rerank_chunks")
+@patch("app.chain.get_sparse_encoder", create=True)
+@patch("app.chain.QdrantRetriever")
+@pytest.mark.asyncio
+async def test_retrieve_chunks_rerank_true_uses_larger_candidate_pool(
+    mock_retriever_cls,
+    mock_sparse_encoder,
+    mock_rerank,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.chain.settings.retrieval_mode", "hybrid")
+    monkeypatch.setattr("app.chain.settings.rerank_enabled", True)
+    monkeypatch.setattr("app.chain.settings.rerank_candidate_limit", 20)
+    monkeypatch.setattr("app.chain.settings.rerank_max_candidates", 50)
+    monkeypatch.setattr(
+        "app.chain.settings.rerank_model", "cross-encoder/ms-marco-MiniLM-L6-v2"
+    )
+    monkeypatch.setattr("app.chain.settings.rerank_device", "cpu")
+
+    embedding_provider = AsyncMock()
+    embedding_provider.embed.return_value = [[0.1] * 768]
+    sparse_vector = MagicMock()
+    mock_sparse_encoder.return_value.embed.return_value = [sparse_vector]
+    candidates = [
+        {
+            "text": f"chunk {i}",
+            "page_number": i,
+            "filename": "doc.pdf",
+            "document_id": "doc",
+            "score": 1.0 - (i / 100),
+        }
+        for i in range(20)
+    ]
+    retriever = MagicMock()
+    retriever.search_hybrid.return_value = hybrid_result(candidates)
+    mock_retriever_cls.return_value = retriever
+    mock_rerank.return_value.chunks = [candidates[3], candidates[1], candidates[0]]
+    mock_rerank.return_value.metadata = {
+        "rerank_applied": True,
+        "rerank_model": "cross-encoder/ms-marco-MiniLM-L6-v2",
+        "rerank_candidate_count": 20,
+        "rerank_returned_count": 3,
+    }
+
+    result = await retrieve_chunks(
+        question="best chunk?",
+        embedding_provider=embedding_provider,
+        embedding_model="nomic-embed-text",
+        qdrant_host="localhost",
+        qdrant_port=6333,
+        collection_name="documents",
+        top_k=3,
+        rerank=True,
+    )
+
+    retriever.search_hybrid.assert_called_once_with(
+        query_vector=[0.1] * 768,
+        sparse_vector=sparse_vector,
+        top_k=20,
+        prefetch_limit=20,
+    )
+    mock_rerank.assert_called_once_with(
+        query="best chunk?",
+        chunks=candidates,
+        top_k=3,
+        model_name="cross-encoder/ms-marco-MiniLM-L6-v2",
+        device="cpu",
+    )
+    assert [c["text"] for c in result.chunks] == ["chunk 3", "chunk 1", "chunk 0"]
+    assert result.metadata["rerank_requested"] is True
+    assert result.metadata["rerank_applied"] is True
+    assert result.metadata["rerank_fallback"] is False
+
+
+@patch("app.chain.rerank_chunks")
+@patch("app.chain.get_sparse_encoder", create=True)
+@patch("app.chain.QdrantRetriever")
+@pytest.mark.asyncio
+async def test_retrieve_chunks_rerank_failure_falls_back_to_original_order(
+    mock_retriever_cls,
+    mock_sparse_encoder,
+    mock_rerank,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.chain.settings.retrieval_mode", "hybrid")
+    monkeypatch.setattr("app.chain.settings.rerank_enabled", True)
+    monkeypatch.setattr("app.chain.settings.rerank_candidate_limit", 20)
+    monkeypatch.setattr("app.chain.settings.rerank_max_candidates", 50)
+    monkeypatch.setattr(
+        "app.chain.settings.rerank_model", "cross-encoder/ms-marco-MiniLM-L6-v2"
+    )
+    monkeypatch.setattr("app.chain.settings.rerank_device", "cpu")
+
+    embedding_provider = AsyncMock()
+    embedding_provider.embed.return_value = [[0.1] * 768]
+    mock_sparse_encoder.return_value.embed.return_value = [MagicMock()]
+    candidates = [
+        {
+            "text": f"chunk {i}",
+            "page_number": i,
+            "filename": "doc.pdf",
+            "document_id": "doc",
+            "score": 1.0,
+        }
+        for i in range(5)
+    ]
+    retriever = MagicMock()
+    retriever.search_hybrid.return_value = hybrid_result(candidates)
+    mock_retriever_cls.return_value = retriever
+    mock_rerank.side_effect = RuntimeError("model unavailable")
+
+    result = await retrieve_chunks(
+        question="q",
+        embedding_provider=embedding_provider,
+        embedding_model="nomic-embed-text",
+        qdrant_host="localhost",
+        qdrant_port=6333,
+        collection_name="documents",
+        top_k=2,
+        rerank=True,
+    )
+
+    assert [c["text"] for c in result.chunks] == ["chunk 0", "chunk 1"]
+    assert result.metadata["rerank_requested"] is True
+    assert result.metadata["rerank_applied"] is False
+    assert result.metadata["rerank_fallback"] is True
+    assert result.metadata["rerank_error"] == "RuntimeError"
+
+
+@patch("app.chain.rerank_chunks")
+@patch("app.chain.QdrantRetriever")
+@pytest.mark.asyncio
+async def test_retrieve_chunks_rerank_disabled_does_not_call_reranker(
+    mock_retriever_cls,
+    mock_rerank,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.chain.settings.retrieval_mode", "semantic")
+    monkeypatch.setattr("app.chain.settings.rerank_enabled", False)
+    embedding_provider = AsyncMock()
+    embedding_provider.embed.return_value = [[0.1] * 768]
+    retriever = MagicMock()
+    retriever.search_semantic.return_value = semantic_fallback_result(
+        [
+            {
+                "text": "a",
+                "page_number": 1,
+                "filename": "doc.pdf",
+                "document_id": "d",
+                "score": 0.1,
+            }
+        ]
+    )
+    mock_retriever_cls.return_value = retriever
+
+    result = await retrieve_chunks(
+        question="q",
+        embedding_provider=embedding_provider,
+        embedding_model="nomic-embed-text",
+        qdrant_host="localhost",
+        qdrant_port=6333,
+        collection_name="documents",
+        top_k=1,
+        rerank=True,
+    )
+
+    mock_rerank.assert_not_called()
+    assert result.metadata["rerank_requested"] is True
+    assert result.metadata["rerank_applied"] is False
+    assert result.metadata["rerank_enabled"] is False
+
+
 @patch("app.chain.SparseVectorEncoder", create=True)
 @patch("app.chain.QdrantRetriever")
 @pytest.mark.asyncio
