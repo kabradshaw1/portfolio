@@ -292,6 +292,33 @@ def test_run_uses_default_collection_when_none_provided(
     assert mock_capture.await_args.kwargs["collection"] == "documents"
 
 
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_passes_rerank_to_background_run(
+    mock_get_db, mock_capture, mock_run_evaluation
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-rerank",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-rerank"
+    mock_get_db.return_value = mock_db
+    mock_capture.return_value = {"captured_at": "x"}
+    mock_run_evaluation.return_value = ({"faithfulness": 0.8}, [])
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-rerank", "rerank": True},
+    )
+
+    assert response.status_code == 202
+    assert mock_run_evaluation.await_args.kwargs["rerank"] is True
+
+
 @patch("app.main.get_db")
 def test_start_evaluation_omits_optional_fields(mock_get_db):
     mock_db = AsyncMock()

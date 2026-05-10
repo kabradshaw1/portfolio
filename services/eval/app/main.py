@@ -119,7 +119,9 @@ async def list_datasets(request: Request, user_id: str = Depends(require_auth)):
 # --- Evaluations ---
 
 
-async def _run_evaluation_task(eval_id: str, items: list[dict], collection: str | None):
+async def _run_evaluation_task(
+    eval_id: str, items: list[dict], collection: str | None, rerank: bool = False
+):
     """Background task that runs the RAG quality evaluation."""
     db = await get_db()
     rag_client = RAGClient(base_url=settings.chat_service_url)
@@ -145,6 +147,7 @@ async def _run_evaluation_task(eval_id: str, items: list[dict], collection: str 
             llm_base_url=settings.llm_base_url,
             llm_model=settings.llm_model,
             llm_api_key=settings.llm_api_key,
+            rerank=rerank,
         )
         await db.complete_evaluation(
             eval_id, aggregate_scores=aggregate, results=results
@@ -186,7 +189,7 @@ async def start_evaluation(
     )
 
     background_tasks.add_task(
-        _run_evaluation_task, eval_id, dataset["items"], body.collection
+        _run_evaluation_task, eval_id, dataset["items"], body.collection, body.rerank
     )
 
     return {"id": eval_id, "status": "running"}

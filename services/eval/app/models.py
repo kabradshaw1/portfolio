@@ -33,6 +33,7 @@ class StartEvaluationRequest(BaseModel):
     collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
     notes: str | None = Field(default=None, max_length=500)
     baseline_eval_id: str | None = None
+    rerank: bool = False
 
 
 class QueryScore(BaseModel):
