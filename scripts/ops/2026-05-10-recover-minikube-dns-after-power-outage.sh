@@ -8,21 +8,17 @@ set -euo pipefail
 ssh debian bash <<'REMOTE'
 set -euo pipefail
 
-MINIKUBE_RESOLV_CONF='nameserver 100.100.100.100
-nameserver 1.1.1.1
-nameserver 8.8.8.8
-options ndots:0
-'
-
 echo "Checking current Minikube DNS state..."
-minikube ssh -- 'cat /etc/resolv.conf'
+minikube ssh -- 'cat /etc/resolv.conf' </dev/null
 
 echo "Repairing Minikube node resolver configuration..."
-printf '%s' "${MINIKUBE_RESOLV_CONF}" | minikube ssh -- 'sudo tee /etc/resolv.conf >/dev/null'
+minikube ssh -- \
+  "printf '%s\n' 'nameserver 100.100.100.100' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' 'options ndots:0' | sudo tee /etc/resolv.conf >/dev/null" \
+  </dev/null
 
 echo "Verifying registry DNS from inside Minikube..."
-minikube ssh -- 'nslookup ghcr.io >/dev/null'
-minikube ssh -- 'nslookup registry-1.docker.io >/dev/null'
+minikube ssh -- 'nslookup ghcr.io >/dev/null' </dev/null
+minikube ssh -- 'nslookup registry-1.docker.io >/dev/null' </dev/null
 
 echo "Finding pods blocked on image pulls..."
 blocked_pods=$(
