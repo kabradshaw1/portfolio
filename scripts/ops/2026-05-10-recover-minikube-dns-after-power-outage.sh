@@ -35,7 +35,7 @@ for pod in payload.get("items", []):
         for status in statuses
     ):
         metadata = pod["metadata"]
-        print(f"{metadata['namespace']} {metadata['name']}")
+        print("{} {}".format(metadata["namespace"], metadata["name"]))
 '
 )
 
