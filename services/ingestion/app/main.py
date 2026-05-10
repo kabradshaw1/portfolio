@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider
 from qdrant_client import QdrantClient
+from rag.sparse import SparseVectorEncoder
 from shared.auth import create_auth_dependency
 from shared.logging import RequestLoggingMiddleware, configure_logging
 from shared.tracing import configure_tracing, instrument_app
@@ -63,9 +64,9 @@ _embedding_provider = get_embedding_provider(
     api_key=settings.embedding_api_key,
     model=settings.embedding_model,
 )
-
 _store: QdrantStore | None = None
 _meta_db: CollectionMetaDB | None = None
+_sparse_encoder: SparseVectorEncoder | None = None
 
 
 def get_store() -> QdrantStore:
@@ -77,6 +78,16 @@ def get_store() -> QdrantStore:
             collection_name=settings.collection_name,
         )
     return _store
+
+
+def get_sparse_encoder() -> SparseVectorEncoder:
+    global _sparse_encoder
+    if _sparse_encoder is None:
+        _sparse_encoder = SparseVectorEncoder(
+            model_name=settings.sparse_model,
+            batch_size=settings.sparse_batch_size,
+        )
+    return _sparse_encoder
 
 
 async def get_meta_db() -> CollectionMetaDB:
@@ -211,6 +222,12 @@ async def ingest(
         logger.error("embedding_service_error", error=str(e))
         raise HTTPException(status_code=503, detail="Embedding service unavailable")
 
+    try:
+        sparse_vectors = get_sparse_encoder().embed(texts)
+    except Exception as e:
+        logger.error("sparse_vector_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=503, detail="Sparse vector generation failed")
+
     document_id = str(uuid.uuid4())
     target_collection = collection or settings.collection_name
     try:
@@ -225,6 +242,7 @@ async def ingest(
         store.upsert(
             chunks=chunks,
             vectors=vectors,
+            sparse_vectors=sparse_vectors,
             document_id=document_id,
             filename=file.filename,
         )
@@ -243,6 +261,8 @@ async def ingest(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
             embedding_model=settings.embedding_model,
+            sparse_model=settings.sparse_model,
+            hybrid_enabled=settings.hybrid_enabled,
         )
     except Exception as e:
         # Metadata write failure must not poison a successful upload — log it

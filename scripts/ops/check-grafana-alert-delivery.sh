@@ -147,12 +147,12 @@ else
   status=1
 fi
 
-NOTIFICATION_FAILURE_SERIES=$(query_prom_scalar "notification failure metric existence" 'count(grafana_alerting_notifications_failed_total)')
-echo "notification_failure_metric_series=${NOTIFICATION_FAILURE_SERIES}"
-if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) > 0 else 1)' "$NOTIFICATION_FAILURE_SERIES"; then
+REMOTE_WRITER_SERIES=$(query_prom_scalar "Prometheus state history writer metric existence" 'count(grafana_alerting_remote_writer_writes_total{backend="prometheus"})')
+echo "remote_writer_metric_series=${REMOTE_WRITER_SERIES}"
+if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) > 0 else 1)' "$REMOTE_WRITER_SERIES"; then
   :
 else
-  echo "ERROR: grafana_alerting_notifications_failed_total metric is missing" >&2
+  echo "ERROR: grafana_alerting_remote_writer_writes_total metric is missing" >&2
   status=1
 fi
 
@@ -165,12 +165,12 @@ else
   status=1
 fi
 
-NOTIFICATION_FAILURES=$(query_prom_scalar "notification failures" "sum(increase(grafana_alerting_notifications_failed_total[${LOOKBACK_HOURS}h]))")
-echo "notification_failures=${NOTIFICATION_FAILURES}"
-if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) == 0 else 1)' "$NOTIFICATION_FAILURES"; then
+REMOTE_WRITER_FAILURES=$(query_prom_scalar "Prometheus state history write failures" "sum(increase(grafana_alerting_remote_writer_writes_total{backend=\"prometheus\",status_code!~\"2..\"}[${LOOKBACK_HOURS}h]))")
+echo "remote_writer_failures=${REMOTE_WRITER_FAILURES}"
+if python3 -c 'import sys; raise SystemExit(0 if float(sys.argv[1]) == 0 else 1)' "$REMOTE_WRITER_FAILURES"; then
   :
 else
-  echo "ERROR: Grafana notification failures detected" >&2
+  echo "ERROR: Grafana Prometheus state-history write failures detected" >&2
   status=1
 fi
 

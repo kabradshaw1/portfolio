@@ -16,6 +16,7 @@ type ConfirmChannel interface {
 	Confirm(noWait bool) error
 	NotifyPublish(confirm chan amqp.Confirmation) chan amqp.Confirmation
 	NotifyReturn(ret chan amqp.Return) chan amqp.Return
+	GetNextPublishSeqNo() uint64
 	PublishWithContext(
 		ctx context.Context,
 		exchange, key string,
@@ -25,16 +26,15 @@ type ConfirmChannel interface {
 }
 
 type Publisher struct {
-	ch              ConfirmChannel
-	confirms        <-chan amqp.Confirmation
-	returns         <-chan amqp.Return
-	publishMux      sync.Mutex
-	stateMux        sync.Mutex
-	nextDeliveryTag uint64
-	nextReturnID    uint64
-	confirmsClosed  bool
-	currentWaiter   *publishWaiter
-	waiters         map[uint64]*publishWaiter
+	ch             ConfirmChannel
+	confirms       <-chan amqp.Confirmation
+	returns        <-chan amqp.Return
+	publishMux     sync.Mutex
+	stateMux       sync.Mutex
+	nextReturnID   uint64
+	confirmsClosed bool
+	currentWaiter  *publishWaiter
+	waiters        map[uint64]*publishWaiter
 }
 
 type publishWaiter struct {
@@ -65,7 +65,7 @@ func (p *Publisher) Publish(ctx context.Context, exchange, routingKey string, ms
 		msg.DeliveryMode = amqp.Persistent
 	}
 
-	expectedDeliveryTag := p.reserveDeliveryTag()
+	expectedDeliveryTag := p.ch.GetNextPublishSeqNo()
 	returnID := p.reserveReturnID()
 	waiter, ok := p.registerWaiter(expectedDeliveryTag, returnID)
 	if !ok {
@@ -97,14 +97,6 @@ func (p *Publisher) Publish(ctx context.Context, exchange, routingKey string, ms
 			return ctx.Err()
 		}
 	}
-}
-
-func (p *Publisher) reserveDeliveryTag() uint64 {
-	p.stateMux.Lock()
-	defer p.stateMux.Unlock()
-
-	p.nextDeliveryTag++
-	return p.nextDeliveryTag
 }
 
 func (p *Publisher) reserveReturnID() string {

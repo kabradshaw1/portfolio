@@ -14,6 +14,11 @@ data:
         isDefault: true
         editable: false
         uid: PBFA97CFB590B2093
+        jsonData:
+          httpMethod: POST
+          prometheusType: Prometheus
+          prometheusVersion: 2.53.0
+          timeInterval: 15s
       - name: Loki
         type: loki
         access: proxy

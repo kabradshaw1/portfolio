@@ -29,6 +29,12 @@ def test_start_request_defaults_keep_optional_fields_none():
     assert req.baseline_eval_id is None
 
 
+def test_start_request_accepts_rerank_flag():
+    req = StartEvaluationRequest(dataset_id="ds-1", rerank=True)
+
+    assert req.rerank is True
+
+
 def test_evaluation_detail_includes_new_fields():
     detail = EvaluationDetail(
         id="e1",

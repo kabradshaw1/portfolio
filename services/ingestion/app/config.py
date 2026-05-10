@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     embedding_base_url: str = "http://host.docker.internal:11434"
     embedding_api_key: str = ""
     embedding_model: str = "nomic-embed-text"
+    sparse_model: str = "Qdrant/bm25"
+    sparse_batch_size: int = 256
+    hybrid_enabled: bool = True
 
     # Legacy — used as fallback for embedding_base_url when provider is ollama
     ollama_base_url: str = "http://host.docker.internal:11434"

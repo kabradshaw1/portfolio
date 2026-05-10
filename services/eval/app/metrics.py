@@ -6,9 +6,9 @@ eval_run_duration_seconds = Histogram(
     buckets=[10, 30, 60, 120, 300, 600, 1200],
 )
 
-eval_ragas_score = Gauge(
+eval_quality_score = Gauge(
     "eval_ragas_score",
-    "Latest RAGAS metric score",
+    "Latest RAG evaluation metric score",
     ["metric"],
 )
 

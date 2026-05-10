@@ -1,17 +1,74 @@
+import asyncio
 import time
 from collections.abc import AsyncGenerator
 
+import structlog
 from llm.base import EmbeddingProvider, LLMProvider
+from rag.sparse import SparseVectorEncoder
 
+from app.config import settings
 from app.metrics import (
     EMBEDDING_DURATION,
     OLLAMA_EVAL_DURATION,
     OLLAMA_REQUEST_DURATION,
     OLLAMA_TOKENS,
     RAG_PIPELINE_DURATION,
+    RERANK_FALLBACKS,
 )
 from app.prompt import SYSTEM_PROMPT, build_rag_prompt
-from app.retriever import QdrantRetriever
+from app.reranker import rerank_chunks
+from app.retriever import QdrantRetriever, RetrievalResult
+
+logger = structlog.get_logger()
+_sparse_encoder: SparseVectorEncoder | None = None
+
+
+def get_sparse_encoder() -> SparseVectorEncoder:
+    global _sparse_encoder
+    if _sparse_encoder is None:
+        _sparse_encoder = SparseVectorEncoder(
+            model_name=settings.sparse_model,
+            batch_size=settings.sparse_batch_size,
+        )
+    return _sparse_encoder
+
+
+def _search_legacy_semantic_fallback(
+    retriever: QdrantRetriever,
+    query_vector: list[float],
+    top_k: int,
+    collection_name: str,
+    error: Exception,
+) -> RetrievalResult:
+    logger.warning(
+        "semantic_legacy_fallback",
+        error=str(error),
+        error_type=error.__class__.__name__,
+        collection=collection_name,
+        exc_info=True,
+    )
+    return retriever.search_semantic(
+        query_vector=query_vector,
+        top_k=top_k,
+        legacy_vector=True,
+        fallback=True,
+    )
+
+
+def _rerank_candidate_limit(top_k: int) -> int:
+    return min(
+        max(top_k, settings.rerank_candidate_limit),
+        settings.rerank_max_candidates,
+    )
+
+
+def _with_rerank_metadata(
+    retrieval: RetrievalResult,
+    metadata: dict,
+) -> RetrievalResult:
+    merged = dict(retrieval.metadata)
+    merged.update(metadata)
+    return RetrievalResult(chunks=retrieval.chunks, metadata=merged)
 
 
 async def embed_texts(
@@ -71,7 +128,8 @@ async def retrieve_chunks(
     qdrant_port: int,
     collection_name: str,
     top_k: int = 5,
-) -> list[dict]:
+    rerank: bool = False,
+) -> RetrievalResult:
     """Embed question and retrieve ranked chunks from Qdrant."""
     retrieve_start = time.perf_counter()
     vectors = await embed_texts(
@@ -84,11 +142,130 @@ async def retrieve_chunks(
     retriever = QdrantRetriever(
         host=qdrant_host, port=qdrant_port, collection_name=collection_name
     )
-    chunks = retriever.search(query_vector=query_vector, top_k=top_k)
+    retrieval_top_k = _rerank_candidate_limit(top_k) if rerank else top_k
+    if settings.retrieval_mode == "hybrid":
+        try:
+            sparse_vectors = await asyncio.to_thread(
+                get_sparse_encoder().embed, [question]
+            )
+            sparse_vector = sparse_vectors[0]
+            result = retriever.search_hybrid(
+                query_vector=query_vector,
+                sparse_vector=sparse_vector,
+                top_k=retrieval_top_k,
+                prefetch_limit=max(settings.hybrid_prefetch_limit, retrieval_top_k),
+            )
+        except Exception as e:
+            logger.warning(
+                "hybrid_retrieval_fallback",
+                error=str(e),
+                error_type=e.__class__.__name__,
+                collection=collection_name,
+                exc_info=True,
+            )
+            try:
+                result = retriever.search_semantic(
+                    query_vector=query_vector,
+                    top_k=retrieval_top_k,
+                    fallback=True,
+                )
+            except Exception as semantic_error:
+                result = _search_legacy_semantic_fallback(
+                    retriever=retriever,
+                    query_vector=query_vector,
+                    top_k=retrieval_top_k,
+                    collection_name=collection_name,
+                    error=semantic_error,
+                )
+    else:
+        try:
+            result = retriever.search_semantic(
+                query_vector=query_vector, top_k=retrieval_top_k
+            )
+        except Exception as semantic_error:
+            result = _search_legacy_semantic_fallback(
+                retriever=retriever,
+                query_vector=query_vector,
+                top_k=retrieval_top_k,
+                collection_name=collection_name,
+                error=semantic_error,
+            )
+
+    if rerank and not settings.rerank_enabled:
+        result = _with_rerank_metadata(
+            result,
+            {
+                "rerank_requested": True,
+                "rerank_enabled": False,
+                "rerank_applied": False,
+                "rerank_model": settings.rerank_model,
+                "rerank_candidate_count": len(result.chunks),
+                "rerank_returned_count": min(len(result.chunks), top_k),
+                "rerank_fallback": False,
+            },
+        )
+        result = RetrievalResult(chunks=result.chunks[:top_k], metadata=result.metadata)
+    elif rerank:
+        try:
+            rerank_result = rerank_chunks(
+                query=question,
+                chunks=result.chunks,
+                top_k=top_k,
+                model_name=settings.rerank_model,
+                device=settings.rerank_device,
+            )
+            metadata = {
+                "rerank_requested": True,
+                "rerank_enabled": True,
+                "rerank_fallback": False,
+            }
+            metadata.update(rerank_result.metadata)
+            result = RetrievalResult(
+                chunks=rerank_result.chunks,
+                metadata={**result.metadata, **metadata},
+            )
+            RAG_PIPELINE_DURATION.labels(stage="rerank").observe(
+                time.perf_counter() - retrieve_start
+            )
+        except Exception as e:
+            logger.warning(
+                "rerank_fallback",
+                error=str(e),
+                error_type=e.__class__.__name__,
+                collection=collection_name,
+                candidate_count=len(result.chunks),
+                exc_info=True,
+            )
+            RERANK_FALLBACKS.labels(reason=e.__class__.__name__).inc()
+            result = RetrievalResult(
+                chunks=result.chunks[:top_k],
+                metadata={
+                    **result.metadata,
+                    "rerank_requested": True,
+                    "rerank_enabled": True,
+                    "rerank_applied": False,
+                    "rerank_model": settings.rerank_model,
+                    "rerank_candidate_count": len(result.chunks),
+                    "rerank_returned_count": min(len(result.chunks), top_k),
+                    "rerank_fallback": True,
+                    "rerank_error": e.__class__.__name__,
+                },
+            )
+    else:
+        result = _with_rerank_metadata(
+            result,
+            {
+                "rerank_requested": False,
+                "rerank_enabled": settings.rerank_enabled,
+                "rerank_applied": False,
+                "rerank_fallback": False,
+            },
+        )
+
     RAG_PIPELINE_DURATION.labels(stage="retrieve").observe(
         time.perf_counter() - retrieve_start
     )
-    return chunks
+    return result
 
 
 async def rag_query(
@@ -101,9 +278,10 @@ async def rag_query(
     qdrant_port: int,
     collection_name: str,
     top_k: int = 5,
+    rerank: bool = False,
 ) -> AsyncGenerator[dict, None]:
     # Retrieve relevant chunks
-    chunks = await retrieve_chunks(
+    retrieval = await retrieve_chunks(
         question=question,
         embedding_provider=embedding_provider,
         embedding_model=embedding_model,
@@ -111,7 +289,9 @@ async def rag_query(
         qdrant_port=qdrant_port,
         collection_name=collection_name,
         top_k=top_k,
+        rerank=rerank,
     )
+    chunks = retrieval.chunks
 
     # Build prompt
     build_start = time.perf_counter()
@@ -139,4 +319,4 @@ async def rag_query(
         time.perf_counter() - generate_start
     )
 
-    yield {"done": True, "sources": sources}
+    yield {"done": True, "sources": sources, "retrieval": retrieval.metadata}
