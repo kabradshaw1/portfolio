@@ -68,12 +68,14 @@ _embedding_provider = get_embedding_provider(
 class ChatRequest(BaseModel):
     question: str = Field(max_length=2000)
     collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
+    rerank: bool = False
 
 
 class SearchRequest(BaseModel):
     query: str = Field(max_length=2000)
     collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
     limit: int = Field(default=5, ge=1, le=20)
+    rerank: bool = False
 
 
 @app.get("/config")
@@ -93,6 +95,11 @@ async def get_config():
         "sparse_vector_name": settings.sparse_vector_name,
         "sparse_model": settings.sparse_model,
         "fusion": "rrf" if settings.retrieval_mode == "hybrid" else None,
+        "rerank_enabled": settings.rerank_enabled,
+        "rerank_model": settings.rerank_model,
+        "rerank_candidate_limit": settings.rerank_candidate_limit,
+        "rerank_max_candidates": settings.rerank_max_candidates,
+        "rerank_device": settings.rerank_device,
     }
 
 
@@ -150,6 +157,7 @@ async def chat(
                 qdrant_port=settings.qdrant_port,
                 collection_name=body.collection or settings.collection_name,
                 top_k=settings.top_k,
+                rerank=body.rerank,
             ):
                 if "token" in event:
                     tokens.append(event["token"])
@@ -180,6 +188,7 @@ async def chat(
                 qdrant_port=settings.qdrant_port,
                 collection_name=body.collection or settings.collection_name,
                 top_k=settings.top_k,
+                rerank=body.rerank,
             ):
                 yield {"data": json.dumps(event)}
         except (httpx.ConnectError, httpx.TimeoutException) as e:
@@ -206,6 +215,7 @@ async def search(
             qdrant_port=settings.qdrant_port,
             collection_name=body.collection or settings.collection_name,
             top_k=body.limit,
+            rerank=body.rerank,
         )
     except (httpx.ConnectError, httpx.TimeoutException) as e:
         logger.error("Embedding service error: %s", e)

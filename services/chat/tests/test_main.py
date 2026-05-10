@@ -228,6 +228,18 @@ def test_search_returns_chunks(mock_retrieve):
     assert data["retrieval"]["retrieval_mode"] == "hybrid"
 
 
+@patch("app.main.retrieve_chunks", new_callable=AsyncMock)
+def test_search_threads_rerank_flag_into_retrieve_chunks(mock_retrieve):
+    mock_retrieve.return_value = retrieval_result()
+
+    response = client.post(
+        "/search", json={"query": "hello", "limit": 5, "rerank": True}
+    )
+
+    assert response.status_code == 200
+    assert mock_retrieve.await_args.kwargs["rerank"] is True
+
+
 def test_search_requires_query():
     response = client.post("/search", json={})
     assert response.status_code == 422
@@ -264,6 +276,40 @@ def test_chat_json_mode(mock_rag_query):
     assert len(data["sources"]) == 1
     assert data["sources"][0]["file"] == "test.pdf"
     assert data["retrieval"]["retrieval_mode"] == "hybrid"
+
+
+@patch("app.main.rag_query")
+def test_chat_json_threads_rerank_flag_into_rag_query(mock_rag_query):
+    captured = {}
+
+    async def fake(**kwargs):
+        captured.update(kwargs)
+        yield {"done": True, "sources": [], "retrieval": {}}
+
+    mock_rag_query.side_effect = fake
+
+    response = client.post(
+        "/chat",
+        json={"question": "hi", "rerank": True},
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 200
+    assert captured["rerank"] is True
+
+
+def test_config_endpoint_returns_rerank_settings():
+    from app.config import settings
+
+    response = client.get("/config")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rerank_enabled"] == settings.rerank_enabled
+    assert body["rerank_model"] == settings.rerank_model
+    assert body["rerank_candidate_limit"] == settings.rerank_candidate_limit
+    assert body["rerank_max_candidates"] == settings.rerank_max_candidates
+    assert body["rerank_device"] == settings.rerank_device
 
 
 def test_cors_rejects_unknown_origin():
