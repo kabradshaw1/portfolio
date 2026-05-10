@@ -66,6 +66,10 @@ func (f *fakeConfirmChannel) NotifyReturn(ret chan amqp.Return) chan amqp.Return
 	return ret
 }
 
+func (f *fakeConfirmChannel) GetNextPublishSeqNo() uint64 {
+	return uint64(f.publishCalls + 1)
+}
+
 func (f *fakeConfirmChannel) PublishWithContext(
 	_ context.Context,
 	_, _ string,

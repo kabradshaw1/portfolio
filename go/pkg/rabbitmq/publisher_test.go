@@ -12,12 +12,14 @@ import (
 )
 
 type fakeChannel struct {
-	confirmErr  error
-	confirmWait bool
-	publishErr  error
-	confirmCh   chan amqp.Confirmation
-	returnCh    chan amqp.Return
-	onPublish   func(*fakeChannel)
+	confirmErr         error
+	confirmWait        bool
+	publishErr         error
+	confirmCh          chan amqp.Confirmation
+	returnCh           chan amqp.Return
+	onPublish          func(*fakeChannel)
+	nextPublishSeq     uint64
+	currentDeliveryTag uint64
 
 	publishCount int
 	publishing   amqp.Publishing
@@ -28,8 +30,9 @@ type fakeChannel struct {
 
 func newFakeChannel() *fakeChannel {
 	return &fakeChannel{
-		confirmCh: make(chan amqp.Confirmation, 4),
-		returnCh:  make(chan amqp.Return, 4),
+		confirmCh:      make(chan amqp.Confirmation, 4),
+		returnCh:       make(chan amqp.Return, 4),
+		nextPublishSeq: 1,
 	}
 }
 
@@ -52,6 +55,10 @@ func (f *fakeChannel) NotifyReturn(ret chan amqp.Return) chan amqp.Return {
 	return f.returnCh
 }
 
+func (f *fakeChannel) GetNextPublishSeqNo() uint64 {
+	return f.nextPublishSeq
+}
+
 func (f *fakeChannel) PublishWithContext(
 	_ context.Context,
 	_, _ string,
@@ -59,6 +66,7 @@ func (f *fakeChannel) PublishWithContext(
 	msg amqp.Publishing,
 ) error {
 	f.publishCount++
+	f.currentDeliveryTag = f.nextPublishSeq
 	f.publishing = msg
 	f.mandatory = mandatory
 	f.immediate = immediate
@@ -66,7 +74,11 @@ func (f *fakeChannel) PublishWithContext(
 	if f.onPublish != nil {
 		f.onPublish(f)
 	}
-	return f.publishErr
+	if f.publishErr != nil {
+		return f.publishErr
+	}
+	f.nextPublishSeq++
+	return nil
 }
 
 func TestNewPublisherReturnsConfirmError(t *testing.T) {
@@ -174,7 +186,7 @@ func TestPublisherReturnsPublishError(t *testing.T) {
 	}
 }
 
-func TestPublisherAdvancesSequenceAfterPublishError(t *testing.T) {
+func TestPublisherUsesChannelSequenceAfterPublishError(t *testing.T) {
 	want := errors.New("publish failed before broker send")
 	fake := newFakeChannel()
 	fake.publishErr = want
@@ -191,7 +203,7 @@ func TestPublisherAdvancesSequenceAfterPublishError(t *testing.T) {
 	fake.publishErr = nil
 	fake.onPublish = func(f *fakeChannel) {
 		if f.publishCount == 2 {
-			f.confirmCh <- amqp.Confirmation{DeliveryTag: 2, Ack: true}
+			f.confirmCh <- amqp.Confirmation{DeliveryTag: f.currentDeliveryTag, Ack: true}
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -245,7 +257,7 @@ func TestPublisherIgnoresReturnAfterPublishError(t *testing.T) {
 	case <-time.After(20 * time.Millisecond):
 	}
 
-	fake.confirmCh <- amqp.Confirmation{DeliveryTag: 2, Ack: true}
+	fake.confirmCh <- amqp.Confirmation{DeliveryTag: fake.currentDeliveryTag, Ack: true}
 	select {
 	case err := <-secondDone:
 		if err != nil {
