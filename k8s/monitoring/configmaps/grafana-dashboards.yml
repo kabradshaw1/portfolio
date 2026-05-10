@@ -3603,7 +3603,7 @@ data:
           "panels": []
         },
         {
-          "title": "Notification Failures",
+          "title": "State History Write Failures",
           "type": "stat",
           "gridPos": {
             "h": 4,
@@ -3618,7 +3618,7 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(increase(grafana_alerting_notifications_failed_total[24h])) or vector(0)",
+              "expr": "sum(increase(grafana_alerting_remote_writer_writes_total{backend=\"prometheus\",status_code!~\"2..\"}[24h])) or vector(0)",
               "legendFormat": "failures",
               "refId": "A"
             }

@@ -1,7 +1,15 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from app.evaluator import build_ragas_dataset, run_evaluation
+from app.evaluator import (
+    EvaluationError,
+    JudgeScores,
+    build_evaluation_dataset,
+    parse_judge_scores,
+    run_evaluation,
+    score_context_precision,
+    score_context_recall,
+)
 from app.rag_client import RAGClient
 
 
@@ -50,12 +58,14 @@ def mock_chat_answer():
 
 
 @pytest.mark.asyncio
-async def test_build_ragas_dataset(golden_items, mock_search_results, mock_chat_answer):
+async def test_build_evaluation_dataset(
+    golden_items, mock_search_results, mock_chat_answer
+):
     rag_client = MagicMock(spec=RAGClient)
     rag_client.search = AsyncMock(return_value=mock_search_results)
     rag_client.ask = AsyncMock(return_value=mock_chat_answer)
 
-    dataset = await build_ragas_dataset(
+    dataset = await build_evaluation_dataset(
         items=golden_items,
         rag_client=rag_client,
         collection=None,
@@ -70,20 +80,21 @@ async def test_build_ragas_dataset(golden_items, mock_search_results, mock_chat_
     assert dataset[0]["reference"] == (
         "Splitting text into smaller pieces for embedding."
     )
+    assert dataset[0]["expected_sources"] == ["ingestion.pdf"]
 
     assert rag_client.search.call_count == 2
     assert rag_client.ask.call_count == 2
 
 
 @pytest.mark.asyncio
-async def test_build_ragas_dataset_with_collection(
+async def test_build_evaluation_dataset_with_collection(
     golden_items, mock_search_results, mock_chat_answer
 ):
     rag_client = MagicMock(spec=RAGClient)
     rag_client.search = AsyncMock(return_value=mock_search_results)
     rag_client.ask = AsyncMock(return_value=mock_chat_answer)
 
-    await build_ragas_dataset(
+    await build_evaluation_dataset(
         items=golden_items,
         rag_client=rag_client,
         collection="my-docs",
@@ -96,11 +107,86 @@ async def test_build_ragas_dataset_with_collection(
 
 
 @pytest.mark.asyncio
-@patch("app.evaluator._create_llm")
-@patch("ragas.evaluate")
-async def test_run_evaluation(
-    mock_ragas_evaluate,
-    mock_create_llm,
+async def test_build_evaluation_dataset_passes_rerank(
+    golden_items, mock_search_results, mock_chat_answer
+):
+    rag_client = AsyncMock()
+    rag_client.search.return_value = mock_search_results
+    rag_client.ask.return_value = mock_chat_answer
+
+    await build_evaluation_dataset(
+        items=golden_items,
+        rag_client=rag_client,
+        collection="documents",
+        rerank=True,
+    )
+
+    assert rag_client.search.call_args_list[0].kwargs["rerank"] is True
+    assert rag_client.ask.call_args_list[0].kwargs["rerank"] is True
+
+
+def test_score_context_recall_counts_reference_terms_in_contexts():
+    score = score_context_recall(
+        reference="Splitting text into smaller pieces for embedding.",
+        contexts=[
+            "Text chunking splits documents into smaller pieces.",
+            "Embedding stores chunks for retrieval.",
+        ],
+    )
+
+    assert score == pytest.approx(0.8, abs=0.0001)
+
+
+def test_score_context_precision_averages_context_usefulness():
+    score = score_context_precision(
+        query="What is chunking?",
+        reference="Splitting text into smaller pieces for embedding.",
+        contexts=[
+            "Text chunking splits documents into smaller pieces.",
+            "The deployment uses Kubernetes ingress.",
+        ],
+    )
+
+    assert score == pytest.approx(0.3333, abs=0.0001)
+
+
+def test_context_scores_are_zero_for_empty_inputs():
+    assert score_context_recall(reference="", contexts=["anything"]) == 0.0
+    assert score_context_recall(reference="answer", contexts=[]) == 0.0
+    assert (
+        score_context_precision(query="question", reference="answer", contexts=[])
+        == 0.0
+    )
+
+
+def test_parse_judge_scores_accepts_json_and_clamps_scores():
+    scores = parse_judge_scores(
+        '{"faithfulness": {"score": 1.2, "reason": "supported"}, '
+        '"answer_relevancy": {"score": -0.1, "reason": "off topic"}}'
+    )
+
+    assert scores == JudgeScores(
+        faithfulness=1.0,
+        answer_relevancy=0.0,
+        reasons={
+            "faithfulness": "supported",
+            "answer_relevancy": "off topic",
+        },
+    )
+
+
+def test_parse_judge_scores_rejects_malformed_json():
+    with pytest.raises(EvaluationError, match="judge returned invalid JSON"):
+        parse_judge_scores("not json")
+
+
+def test_parse_judge_scores_rejects_missing_metric():
+    with pytest.raises(EvaluationError, match="missing answer_relevancy"):
+        parse_judge_scores('{"faithfulness": {"score": 0.5, "reason": "partial"}}')
+
+
+@pytest.mark.asyncio
+async def test_run_evaluation_preserves_result_shape(
     golden_items,
     mock_search_results,
     mock_chat_answer,
@@ -109,23 +195,26 @@ async def test_run_evaluation(
     rag_client.search = AsyncMock(return_value=mock_search_results)
     rag_client.ask = AsyncMock(return_value=mock_chat_answer)
 
-    # Mock RAGAS evaluate to return fake scores
-    mock_result = MagicMock()
-    mock_result.scores = [
-        {
-            "faithfulness": 0.9,
-            "answer_relevancy": 0.85,
-            "context_precision": 0.8,
-            "context_recall": 0.88,
-        },
-        {
-            "faithfulness": 0.82,
-            "answer_relevancy": 0.9,
-            "context_precision": 0.75,
-            "context_recall": 0.8,
-        },
-    ]
-    mock_ragas_evaluate.return_value = mock_result
+    judge = AsyncMock(
+        side_effect=[
+            JudgeScores(
+                faithfulness=0.9,
+                answer_relevancy=0.85,
+                reasons={
+                    "faithfulness": "answer is supported",
+                    "answer_relevancy": "answer addresses the question",
+                },
+            ),
+            JudgeScores(
+                faithfulness=0.82,
+                answer_relevancy=0.9,
+                reasons={
+                    "faithfulness": "mostly supported",
+                    "answer_relevancy": "directly answers",
+                },
+            ),
+        ]
+    )
 
     aggregate, results = await run_evaluation(
         items=golden_items,
@@ -135,12 +224,38 @@ async def test_run_evaluation(
         llm_base_url="http://localhost:11434",
         llm_model="qwen2.5:14b",
         llm_api_key="",
+        judge=judge,
     )
 
-    assert "faithfulness" in aggregate
-    assert "answer_relevancy" in aggregate
+    assert aggregate["faithfulness"] == 0.86
+    assert aggregate["answer_relevancy"] == 0.875
+    assert "context_precision" in aggregate
+    assert "context_recall" in aggregate
     assert len(results) == 2
     assert results[0]["query"] == "What is chunking?"
     assert results[0]["scores"]["faithfulness"] == 0.9
+    assert results[0]["score_reasons"]["faithfulness"] == "answer is supported"
 
-    mock_ragas_evaluate.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_run_evaluation_empty_items_returns_empty_results():
+    rag_client = MagicMock(spec=RAGClient)
+
+    aggregate, results = await run_evaluation(
+        items=[],
+        rag_client=rag_client,
+        collection=None,
+        llm_provider="ollama",
+        llm_base_url="http://localhost:11434",
+        llm_model="qwen2.5:14b",
+        llm_api_key="",
+        judge=AsyncMock(),
+    )
+
+    assert aggregate == {
+        "faithfulness": None,
+        "answer_relevancy": None,
+        "context_precision": None,
+        "context_recall": None,
+    }
+    assert results == []

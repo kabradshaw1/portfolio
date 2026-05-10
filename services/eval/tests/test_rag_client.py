@@ -69,6 +69,19 @@ async def test_search_with_collection(mock_search_response):
 
 
 @pytest.mark.asyncio
+async def test_search_passes_rerank_when_true(mock_search_response):
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["rerank"] is True
+        return httpx.Response(200, json=mock_search_response)
+
+    transport = httpx.MockTransport(mock_handler)
+    client = RAGClient(base_url="http://chat:8000", transport=transport)
+
+    await client.search("test", collection=None, limit=5, rerank=True)
+
+
+@pytest.mark.asyncio
 async def test_ask(mock_chat_response):
     async def mock_handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/chat"
@@ -86,6 +99,19 @@ async def test_ask(mock_chat_response):
     )
     assert answer["answer"] == expected
     assert len(answer["sources"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_ask_passes_rerank_when_true(mock_chat_response):
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["rerank"] is True
+        return httpx.Response(200, json=mock_chat_response)
+
+    transport = httpx.MockTransport(mock_handler)
+    client = RAGClient(base_url="http://chat:8000", transport=transport)
+
+    await client.ask("test", collection=None, rerank=True)
 
 
 @pytest.mark.asyncio

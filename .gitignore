@@ -74,3 +74,5 @@ frontend/.next/
 docs/security/*.dat
 /go/cart-service/server
 /go/ecommerce-service/server
+
+.claire

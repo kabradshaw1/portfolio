@@ -1,25 +1,114 @@
 from __future__ import annotations
 
+import json
 import logging
+import re
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from llm.factory import get_llm_provider
 
 if TYPE_CHECKING:
     from app.rag_client import RAGClient
 
 logger = logging.getLogger(__name__)
 
+METRIC_NAMES = (
+    "faithfulness",
+    "answer_relevancy",
+    "context_precision",
+    "context_recall",
+)
 
-async def build_ragas_dataset(
+STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "for",
+    "in",
+    "into",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "what",
+    "with",
+}
+
+
+class EvaluationError(RuntimeError):
+    """Raised when an evaluation run cannot produce trustworthy scores."""
+
+
+@dataclass(frozen=True)
+class JudgeScores:
+    faithfulness: float
+    answer_relevancy: float
+    reasons: dict[str, str]
+
+
+JudgeFn = Callable[[dict], Awaitable[JudgeScores]]
+
+
+def _tokens(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", text.lower())
+        if len(token) > 2 and token not in STOPWORDS
+    }
+
+
+def _round_score(value: float) -> float:
+    return round(max(0.0, min(1.0, value)), 4)
+
+
+def score_context_recall(reference: str, contexts: list[str]) -> float:
+    reference_terms = _tokens(reference)
+    if not reference_terms or not contexts:
+        return 0.0
+    context_terms = _tokens(" ".join(contexts))
+    return _round_score(len(reference_terms & context_terms) / len(reference_terms))
+
+
+def score_context_precision(query: str, reference: str, contexts: list[str]) -> float:
+    if not contexts:
+        return 0.0
+    useful_terms = _tokens(f"{query} {reference}")
+    if not useful_terms:
+        return 0.0
+
+    context_scores = []
+    for context in contexts:
+        context_terms = _tokens(context)
+        if not context_terms:
+            context_scores.append(0.0)
+            continue
+        context_scores.append(len(context_terms & useful_terms) / len(context_terms))
+    return _round_score(sum(context_scores) / len(context_scores))
+
+
+async def build_evaluation_dataset(
     items: list[dict],
     rag_client: RAGClient,
     collection: str | None,
+    rerank: bool = False,
 ) -> list[dict]:
-    """Run each golden item through the RAG pipeline and build RAGAS evaluation rows."""
+    """Run each golden item through the RAG pipeline and build evaluation rows."""
     dataset = []
     for item in items:
         query = item["query"]
-        search_results = await rag_client.search(query, collection=collection, limit=5)
-        chat_response = await rag_client.ask(query, collection=collection)
+        search_results = await rag_client.search(
+            query, collection=collection, limit=5, rerank=rerank
+        )
+        chat_response = await rag_client.ask(
+            query, collection=collection, rerank=rerank
+        )
 
         dataset.append(
             {
@@ -27,19 +116,112 @@ async def build_ragas_dataset(
                 "retrieved_contexts": [r["text"] for r in search_results],
                 "response": chat_response["answer"],
                 "reference": item["expected_answer"],
+                "expected_sources": item.get("expected_sources", []),
             }
         )
     return dataset
 
 
-def _create_llm(provider: str, base_url: str, model: str, api_key: str):
-    """Create a RAGAS-compatible LLM from the service config."""
-    from ragas.llms import llm_factory
+def parse_judge_scores(raw: str) -> JudgeScores:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise EvaluationError("judge returned invalid JSON") from exc
 
-    if provider == "ollama":
-        return llm_factory(model=model, base_url=f"{base_url}/v1")
-    else:
-        return llm_factory(model=model, base_url=base_url)
+    scores: dict[str, float] = {}
+    reasons: dict[str, str] = {}
+    for metric in ("faithfulness", "answer_relevancy"):
+        if metric not in payload:
+            raise EvaluationError(f"judge response missing {metric}")
+        metric_payload = payload[metric]
+        if not isinstance(metric_payload, dict):
+            raise EvaluationError(f"judge response {metric} must be an object")
+        if "score" not in metric_payload:
+            raise EvaluationError(f"judge response missing {metric}.score")
+        try:
+            score = float(metric_payload["score"])
+        except (TypeError, ValueError) as exc:
+            raise EvaluationError(
+                f"judge response {metric}.score must be numeric"
+            ) from exc
+        reason = metric_payload.get("reason", "")
+        scores[metric] = _round_score(score)
+        reasons[metric] = reason if isinstance(reason, str) else ""
+
+    return JudgeScores(
+        faithfulness=scores["faithfulness"],
+        answer_relevancy=scores["answer_relevancy"],
+        reasons=reasons,
+    )
+
+
+def _judge_prompt(row: dict) -> str:
+    contexts = "\n\n".join(
+        f"[Context {index + 1}]\n{text}"
+        for index, text in enumerate(row["retrieved_contexts"])
+    )
+    return f"""Score this RAG answer. Return only valid JSON.
+
+JSON schema:
+{{
+  "faithfulness": {{"score": 0.0, "reason": "short reason"}},
+  "answer_relevancy": {{"score": 0.0, "reason": "short reason"}}
+}}
+
+Scoring rules:
+- faithfulness: 1.0 means the answer is fully supported by the contexts;
+  0.0 means unsupported or contradicted.
+- answer_relevancy: 1.0 means the answer directly addresses the question
+  and reference; 0.0 means irrelevant.
+
+Question:
+{row["user_input"]}
+
+Reference answer:
+{row["reference"]}
+
+Retrieved contexts:
+{contexts or "(no contexts)"}
+
+Generated answer:
+{row["response"]}
+"""
+
+
+async def judge_generation_scores(
+    row: dict,
+    provider: str,
+    base_url: str,
+    model: str,
+    api_key: str,
+) -> JudgeScores:
+    llm = get_llm_provider(
+        provider=provider,
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+    )
+    response = await llm.chat(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "You are a strict RAG evaluation judge. Return only valid JSON."
+                ),
+            },
+            {"role": "user", "content": _judge_prompt(row)},
+        ]
+    )
+    raw = response.get("message", {}).get("content", "")
+    return parse_judge_scores(raw)
+
+
+def _aggregate(scores: list[dict]) -> dict:
+    aggregate = {}
+    for name in METRIC_NAMES:
+        values = [score.get(name) for score in scores if score.get(name) is not None]
+        aggregate[name] = round(sum(values) / len(values), 4) if values else None
+    return aggregate
 
 
 async def run_evaluation(
@@ -50,76 +232,57 @@ async def run_evaluation(
     llm_base_url: str,
     llm_model: str,
     llm_api_key: str,
+    rerank: bool = False,
+    judge: JudgeFn | None = None,
 ) -> tuple[dict, list[dict]]:
-    """Run a full RAGAS evaluation and return (aggregate_scores, per_query_results).
-
-    RAGAS imports are deferred to call time because ragas uses nest_asyncio
-    at import time, which is incompatible with uvloop (used by uvicorn).
-    """
-    # Lazy imports — ragas + nest_asyncio conflict with uvloop at import time
-    from ragas import EvaluationDataset
-    from ragas import evaluate as ragas_evaluate
-    from ragas.dataset_schema import SingleTurnSample
-    from ragas.metrics import (
-        AnswerRelevancy,
-        ContextPrecision,
-        ContextRecall,
-        Faithfulness,
+    """Run a full first-party RAG evaluation."""
+    raw_dataset = await build_evaluation_dataset(
+        items, rag_client, collection, rerank=rerank
     )
+    if not raw_dataset:
+        return {name: None for name in METRIC_NAMES}, []
 
-    # Step 1: Build dataset by running queries through RAG pipeline
-    raw_dataset = await build_ragas_dataset(items, rag_client, collection)
+    if judge is None:
 
-    # Step 2: Convert to RAGAS EvaluationDataset
-    samples = [
-        SingleTurnSample(
-            user_input=row["user_input"],
-            retrieved_contexts=row["retrieved_contexts"],
-            response=row["response"],
-            reference=row["reference"],
-        )
-        for row in raw_dataset
-    ]
-    eval_dataset = EvaluationDataset(samples=samples)
+        async def judge(row: dict) -> JudgeScores:
+            return await judge_generation_scores(
+                row=row,
+                provider=llm_provider,
+                base_url=llm_base_url,
+                model=llm_model,
+                api_key=llm_api_key,
+            )
 
-    # Step 3: Create LLM for judge calls
-    judge_llm = _create_llm(llm_provider, llm_base_url, llm_model, llm_api_key)
-
-    # Step 4: Run RAGAS evaluate
-    metrics = [
-        Faithfulness(llm=judge_llm),
-        AnswerRelevancy(llm=judge_llm),
-        ContextPrecision(llm=judge_llm),
-        ContextRecall(llm=judge_llm),
-    ]
-
-    result = ragas_evaluate(dataset=eval_dataset, metrics=metrics)
-
-    # Step 5: Extract scores
-    scores = result.scores
-    metric_names = [
-        "faithfulness",
-        "answer_relevancy",
-        "context_precision",
-        "context_recall",
-    ]
-
-    # Compute aggregates
-    aggregate = {}
-    for name in metric_names:
-        values = [s.get(name) for s in scores if s.get(name) is not None]
-        aggregate[name] = round(sum(values) / len(values), 4) if values else None
-
-    # Build per-query results
     per_query = []
-    for i, row in enumerate(raw_dataset):
+    all_scores = []
+    for index, row in enumerate(raw_dataset):
+        try:
+            judge_scores = await judge(row)
+        except Exception as exc:
+            raise EvaluationError(f"judge failed for row {index}: {exc}") from exc
+
+        scores = {
+            "faithfulness": judge_scores.faithfulness,
+            "answer_relevancy": judge_scores.answer_relevancy,
+            "context_precision": score_context_precision(
+                query=row["user_input"],
+                reference=row["reference"],
+                contexts=row["retrieved_contexts"],
+            ),
+            "context_recall": score_context_recall(
+                reference=row["reference"],
+                contexts=row["retrieved_contexts"],
+            ),
+        }
+        all_scores.append(scores)
         per_query.append(
             {
                 "query": row["user_input"],
                 "answer": row["response"],
                 "contexts": row["retrieved_contexts"],
-                "scores": scores[i] if i < len(scores) else {},
+                "scores": scores,
+                "score_reasons": judge_scores.reasons,
             }
         )
 
-    return aggregate, per_query
+    return _aggregate(all_scores), per_query
