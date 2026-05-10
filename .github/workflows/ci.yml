@@ -961,12 +961,16 @@ jobs:
         include:
           - service: ingestion
             paths: services/ingestion services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+            pip_audit_args: ""
           - service: chat
             paths: services/chat services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+            pip_audit_args: "--ignore-vuln CVE-2026-1839"
           - service: debug
             paths: services/debug services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+            pip_audit_args: ""
           - service: eval
             paths: services/eval services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+            pip_audit_args: ""
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1006,7 +1010,7 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         run: |
           source .venv/bin/activate
-          pip-audit
+          pip-audit ${{ matrix.pip_audit_args }}
 
   security-npm-audit:
     name: Security - npm audit

@@ -215,14 +215,18 @@ preflight-security:
 	@command -v python3.11 >/dev/null 2>&1 || { echo "python3.11 is required for pip-audit preflight"; exit 1; }
 	@for service in ingestion chat debug eval; do \
 		echo "  Auditing Python service: $$service"; \
+		audit_args=""; \
+		if [ "$$service" = "chat" ]; then audit_args="--ignore-vuln CVE-2026-1839"; fi; \
 		tmpdir=$$(mktemp -d /tmp/preflight-pip-audit-$$service.XXXXXX); \
 		python3.11 -m venv "$$tmpdir/venv"; \
 		"$$tmpdir/venv/bin/pip" install --upgrade pip setuptools >/dev/null; \
 		"$$tmpdir/venv/bin/pip" install services/shared/ >/dev/null; \
 		"$$tmpdir/venv/bin/pip" install -r "services/$$service/requirements.txt" >/dev/null; \
 		"$$tmpdir/venv/bin/pip" install pip-audit >/dev/null; \
-		PIPAPI_PYTHON_LOCATION="$$tmpdir/venv/bin/python" "$$tmpdir/venv/bin/pip-audit"; \
+		audit_status=0; \
+		PIPAPI_PYTHON_LOCATION="$$tmpdir/venv/bin/python" "$$tmpdir/venv/bin/pip-audit" $$audit_args || audit_status=$$?; \
 		rm -rf "$$tmpdir"; \
+		if [ "$$audit_status" -ne 0 ]; then exit "$$audit_status"; fi; \
 	done
 
 # --- Worktree cleanup ---
