@@ -4,7 +4,7 @@
 
 **Goal:** Add repo-owned Debian postboot recovery and health-check scripts so the portfolio stack self-recovers after host outages.
 
-**Architecture:** Implement three focused ops scripts: mutating recovery, read-only health verification, and systemd installation. The installer copies the runtime scripts to Debian over SSH so the Linux host does not need a repo checkout. Keep recovery idempotent and limited to Minikube DNS repair plus deletion of pods already blocked on image pulls.
+**Architecture:** Implement focused ops scripts for mutating recovery, read-only health verification, boot runner orchestration, and autostart installation. The installer copies the runtime scripts to Debian over SSH and installs a managed user crontab `@reboot` entry, so the Linux host does not need a repo checkout or host-level sudo. Keep recovery idempotent and limited to Minikube DNS repair plus deletion of pods already blocked on image pulls.
 
 **Tech Stack:** Bash, SSH, systemd, kubectl, minikube, curl.
 
@@ -40,22 +40,21 @@ URLs.
 Run: `bash -n scripts/ops/check-postboot-health.sh`
 Expected: exit 0.
 
-### Task 3: Add Systemd Installer
+### Task 3: Add Autostart Installer
 
 **Files:**
-- Create: `scripts/ops/install-postboot-recovery-systemd.sh`
+- Create: `scripts/ops/run-postboot-recovery.sh`
+- Create: `scripts/ops/install-postboot-recovery-autostart.sh`
 
 - [ ] **Step 1: Create the installer**
 
 Copy the recovery and health scripts to
-`/home/kyle/.local/lib/portfolio-postboot`, then install
-`portfolio-postboot-recovery.service`, `portfolio-postboot-health.service`, and
-`portfolio-postboot-health.timer` on Debian. Enable recovery and health timer
-without automatically running recovery during install.
+`/home/kyle/.local/lib/portfolio-postboot`, then install a managed user crontab
+`@reboot` entry that runs `run-postboot-recovery.sh`.
 
 - [ ] **Step 2: Syntax check**
 
-Run: `bash -n scripts/ops/install-postboot-recovery-systemd.sh`
+Run: `bash -n scripts/ops/run-postboot-recovery.sh && bash -n scripts/ops/install-postboot-recovery-autostart.sh`
 Expected: exit 0.
 
 ### Task 4: Verify and Commit
@@ -65,7 +64,8 @@ Expected: exit 0.
 - Modify: `docs/superpowers/plans/2026-05-10-postboot-recovery.md`
 - Create: `scripts/ops/recover-after-host-boot.sh`
 - Create: `scripts/ops/check-postboot-health.sh`
-- Create: `scripts/ops/install-postboot-recovery-systemd.sh`
+- Create: `scripts/ops/run-postboot-recovery.sh`
+- Create: `scripts/ops/install-postboot-recovery-autostart.sh`
 
 - [ ] **Step 1: Run script syntax checks**
 
@@ -74,7 +74,8 @@ Run:
 ```bash
 bash -n scripts/ops/recover-after-host-boot.sh
 bash -n scripts/ops/check-postboot-health.sh
-bash -n scripts/ops/install-postboot-recovery-systemd.sh
+bash -n scripts/ops/run-postboot-recovery.sh
+bash -n scripts/ops/install-postboot-recovery-autostart.sh
 ```
 
 Expected: all exit 0.
@@ -89,6 +90,6 @@ Expected: all checks pass against Debian.
 Run:
 
 ```bash
-git add docs/superpowers/specs/2026-05-10-postboot-recovery-design.md docs/superpowers/plans/2026-05-10-postboot-recovery.md scripts/ops/recover-after-host-boot.sh scripts/ops/check-postboot-health.sh scripts/ops/install-postboot-recovery-systemd.sh
+git add docs/superpowers/specs/2026-05-10-postboot-recovery-design.md docs/superpowers/plans/2026-05-10-postboot-recovery.md scripts/ops/recover-after-host-boot.sh scripts/ops/check-postboot-health.sh scripts/ops/run-postboot-recovery.sh scripts/ops/install-postboot-recovery-autostart.sh
 git commit -m "Add postboot recovery automation"
 ```

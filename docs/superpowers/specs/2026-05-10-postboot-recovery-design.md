@@ -15,7 +15,7 @@ are separate follow-up hardening items.
 
 ## Architecture
 
-The recovery path is split into three scripts:
+The recovery path is split into four scripts:
 
 - `scripts/ops/recover-after-host-boot.sh` performs mutating, idempotent
   recovery against Debian. It waits for required systemd services, waits for
@@ -25,14 +25,17 @@ The recovery path is split into three scripts:
 - `scripts/ops/check-postboot-health.sh` is read-only verification. It checks
   Kubernetes readiness, confirms no active image-pull failures remain, verifies
   representative service endpoints, and probes representative external routes.
-- `scripts/ops/install-postboot-recovery-systemd.sh` copies the committed
-  recovery and health scripts over SSH into `/home/kyle/.local/lib/portfolio-postboot`
-  on Debian, then installs systemd unit files that run those copied scripts.
+- `scripts/ops/run-postboot-recovery.sh` runs recovery followed by the read-only
+  health check and writes a timestamped boot log.
+- `scripts/ops/install-postboot-recovery-autostart.sh` copies the committed
+  recovery, health, and runner scripts over SSH into
+  `/home/kyle/.local/lib/portfolio-postboot` on Debian, then installs a managed
+  user crontab `@reboot` entry that runs the copied runner script.
 
 The Debian host does not need to clone or pull this repository. It receives
-only the runtime scripts that systemd needs. The source of truth remains the
-committed scripts in this repo, and installation is performed from the Mac via
-SSH.
+only the runtime scripts needed for boot recovery. The source of truth remains
+the committed scripts in this repo, and installation is performed from the Mac
+via SSH.
 
 ## Recovery Behavior
 
@@ -64,20 +67,17 @@ The health script is read-only. It verifies:
 The old failed backup verification Jobs are explicitly tolerated because they
 pre-date this outage and are not serving-path workloads.
 
-## Systemd Behavior
+## Autostart Behavior
 
 The installer copies scripts into `/home/kyle/.local/lib/portfolio-postboot`
-and writes these units on Debian:
+and writes one managed `@reboot` crontab entry for user `kyle`:
 
-- `portfolio-postboot-recovery.service`: one-shot recovery after Docker,
-  Tailscale, Minikube, minikube tunnel, and Cloudflare tunnel are expected to be
-  online.
-- `portfolio-postboot-health.service`: one-shot read-only health check.
-- `portfolio-postboot-health.timer`: periodic health check after boot.
+- `@reboot sleep 90; /home/kyle/.local/lib/portfolio-postboot/run-postboot-recovery.sh # portfolio-postboot-recovery`
 
-The installer enables the recovery service and the health timer. It may start
-the timer immediately, but it must not run the recovery service during install;
-operators can run it explicitly when needed.
+The 90-second delay gives host services time to start. The recovery script still
+performs bounded waits for Docker, Tailscale, Minikube, minikube tunnel, and
+Cloudflare tunnel before mutating anything. Logs are written under
+`/home/kyle/.local/state/portfolio-postboot/`.
 
 ## Verification
 
