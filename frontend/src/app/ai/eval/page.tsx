@@ -6,13 +6,15 @@ import { HealthGate } from "@/components/HealthGate";
 import { GoAuthProvider, useGoAuth } from "@/components/go/GoAuthProvider";
 import { DashboardTab } from "@/components/eval/DashboardTab";
 import { DatasetTab } from "@/components/eval/DatasetTab";
+import { EvalGuideTab } from "@/components/eval/EvalGuideTab";
 import EvaluateTab from "@/components/eval/EvaluateTab";
 import ResultsTab from "@/components/eval/ResultsTab";
 import { EvaluationDetail } from "@/lib/eval-api";
 
-type TabId = "datasets" | "evaluate" | "results" | "dashboard";
+type TabId = "guide" | "datasets" | "evaluate" | "results" | "dashboard";
 
 const TABS: { id: TabId; label: string }[] = [
+  { id: "guide", label: "Guide" },
   { id: "datasets", label: "Datasets" },
   { id: "evaluate", label: "Evaluate" },
   { id: "results", label: "Results" },
@@ -21,7 +23,7 @@ const TABS: { id: TabId; label: string }[] = [
 
 function EvalPageInner() {
   const { isLoggedIn } = useGoAuth();
-  const [activeTab, setActiveTab] = useState<TabId>("datasets");
+  const [activeTab, setActiveTab] = useState<TabId>("guide");
   const [completedEval, setCompletedEval] = useState<EvaluationDetail | null>(
     null,
   );
@@ -80,6 +82,7 @@ function EvalPageInner() {
         </div>
 
         {/* Tab content */}
+        {activeTab === "guide" && <EvalGuideTab onSelectTab={setActiveTab} />}
         {activeTab === "datasets" && <DatasetTab />}
         {activeTab === "evaluate" && (
           <EvaluateTab onComplete={handleEvalComplete} />
