@@ -650,8 +650,20 @@ jobs:
           # Smoke tests verify service configuration (env vars, routing, health),
           # not the code itself — unit tests cover that.
           REPO="ghcr.io/${{ github.repository }}"
+          pull_image() {
+            local image="$1"
+            for attempt in 1 2 3; do
+              if docker pull "$image"; then
+                return 0
+              fi
+              echo "docker pull failed for ${image} on attempt ${attempt}/3" >&2
+              sleep 10
+            done
+            return 1
+          }
+
           for svc in ingestion chat debug; do
-            docker pull "${REPO}/${svc}:latest"
+            pull_image "${REPO}/${svc}:latest"
           done
 
           # Only start services needed for the Python RAG smoke path.
