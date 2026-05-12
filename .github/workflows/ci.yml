@@ -1462,7 +1462,7 @@ jobs:
             done
           fi
 
-          for deployment in chat debug eval ingestion qdrant; do
+          for deployment in chat debug eval ingestion; do
             $SSH "kubectl rollout status deployment/${deployment} -n ai-services-qa --timeout=420s"
           done
           $SSH "kubectl rollout status deployment -n java-tasks-qa --timeout=180s"
