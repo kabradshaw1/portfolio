@@ -826,7 +826,7 @@ python3.11 -m venv "$tmpdir/venv"
 "$tmpdir/venv/bin/pip" install --upgrade pip setuptools
 "$tmpdir/venv/bin/pip" install services/shared/
 "$tmpdir/venv/bin/pip" install -r services/eval/requirements.txt
-"$tmpdir/venv/bin/python" -c "import app.evaluator; import pytest; print(pytest.__version__)" 
+"$tmpdir/venv/bin/python" -c "import app.evaluator; import pytest; print(pytest.__version__)"
 ```
 
 Expected: command exits 0 and prints `9.0.3`.
