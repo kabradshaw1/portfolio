@@ -139,9 +139,11 @@ def test_start_evaluation_dataset_not_found(mock_get_db):
 
     response = client.post(
         "/evaluations",
-        json={"dataset_id": "nonexistent"},
+        json={"dataset_id": "nonexistent", "baseline_eval_id": "eval-prev"},
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == "Dataset not found"
+    mock_db.get_evaluation.assert_not_awaited()
 
 
 def _baseline_run(
