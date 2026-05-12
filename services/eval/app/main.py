@@ -168,6 +168,28 @@ async def _run_evaluation_task(
         await rag_client.close()
 
 
+async def _validate_baseline(
+    db: EvalDB, baseline_eval_id: str, dataset_id: str, collection: str
+) -> None:
+    baseline = await db.get_evaluation(baseline_eval_id)
+    if not baseline:
+        raise HTTPException(status_code=404, detail="Baseline evaluation not found")
+    if baseline["status"] != "completed":
+        raise HTTPException(
+            status_code=400, detail="Baseline evaluation must be completed"
+        )
+    if baseline["dataset_id"] != dataset_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Baseline evaluation must use the same dataset",
+        )
+    if baseline["collection"] != collection:
+        raise HTTPException(
+            status_code=400,
+            detail="Baseline evaluation must use the same collection",
+        )
+
+
 @app.post("/evaluations", status_code=202)
 @limiter.limit("5/minute")
 async def start_evaluation(
@@ -181,9 +203,13 @@ async def start_evaluation(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
+    collection = body.collection or "documents"
+    if body.baseline_eval_id is not None:
+        await _validate_baseline(db, body.baseline_eval_id, body.dataset_id, collection)
+
     eval_id = await db.create_evaluation(
         dataset_id=body.dataset_id,
-        collection=body.collection or "documents",
+        collection=collection,
         notes=body.notes,
         baseline_eval_id=body.baseline_eval_id,
     )
