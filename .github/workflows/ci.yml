@@ -1440,8 +1440,13 @@ jobs:
             exit 1
           fi
 
-          # Restart QA deployments
-          $SSH "kubectl rollout restart deployment -n ai-services-qa"
+          # Restart QA deployments. Wait for ai-services one deployment at a
+          # time so a slow old pod termination cannot exhaust one aggregate
+          # namespace-wide timeout and skip smoke tests after a successful
+          # rollout.
+          for deployment in chat debug eval ingestion; do
+            $SSH "kubectl rollout restart deployment/${deployment} -n ai-services-qa"
+          done
           $SSH "kubectl rollout restart deployment -n java-tasks-qa"
           $SSH "kubectl rollout restart deployment -n go-ecommerce-qa"
 
@@ -1457,7 +1462,9 @@ jobs:
             done
           fi
 
-          $SSH "kubectl rollout status deployment -n ai-services-qa --timeout=180s"
+          for deployment in chat debug eval ingestion qdrant; do
+            $SSH "kubectl rollout status deployment/${deployment} -n ai-services-qa --timeout=420s"
+          done
           $SSH "kubectl rollout status deployment -n java-tasks-qa --timeout=180s"
           $SSH "kubectl rollout status deployment -n go-ecommerce-qa --timeout=180s"
 
@@ -1587,8 +1594,12 @@ jobs:
           # Only restart deployments that have new images
           if [ "$PYTHON_CHANGED" = "true" ] || [ "$K8S_CHANGED" = "true" ]; then
             echo "Restarting ai-services..."
-            $SSH "kubectl rollout restart deployment -n ai-services"
-            $SSH "kubectl rollout status deployment -n ai-services --timeout=180s"
+            for deployment in chat debug eval ingestion; do
+              $SSH "kubectl rollout restart deployment/${deployment} -n ai-services"
+            done
+            for deployment in chat debug eval ingestion qdrant; do
+              $SSH "kubectl rollout status deployment/${deployment} -n ai-services --timeout=420s"
+            done
           fi
 
           if [ "$JAVA_CHANGED" = "true" ] || [ "$K8S_CHANGED" = "true" ]; then
