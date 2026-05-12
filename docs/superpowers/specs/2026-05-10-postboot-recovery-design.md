@@ -25,13 +25,14 @@ The recovery path is split into three scripts:
 - `scripts/ops/check-postboot-health.sh` is read-only verification. It checks
   Kubernetes readiness, confirms no active image-pull failures remain, verifies
   representative service endpoints, and probes representative external routes.
-- `scripts/ops/install-postboot-recovery-systemd.sh` installs systemd unit
-  files on Debian that run the recovery script once after boot and run the
-  health check both after boot and periodically.
+- `scripts/ops/install-postboot-recovery-systemd.sh` copies the committed
+  recovery and health scripts over SSH into `/home/kyle/.local/lib/portfolio-postboot`
+  on Debian, then installs systemd unit files that run those copied scripts.
 
-The installed units invoke scripts from the checked-out repository path on the
-Debian host. That keeps operational behavior versioned in git instead of
-embedding a large shell body in systemd.
+The Debian host does not need to clone or pull this repository. It receives
+only the runtime scripts that systemd needs. The source of truth remains the
+committed scripts in this repo, and installation is performed from the Mac via
+SSH.
 
 ## Recovery Behavior
 
@@ -65,7 +66,8 @@ pre-date this outage and are not serving-path workloads.
 
 ## Systemd Behavior
 
-The installer writes these units on Debian:
+The installer copies scripts into `/home/kyle/.local/lib/portfolio-postboot`
+and writes these units on Debian:
 
 - `portfolio-postboot-recovery.service`: one-shot recovery after Docker,
   Tailscale, Minikube, minikube tunnel, and Cloudflare tunnel are expected to be

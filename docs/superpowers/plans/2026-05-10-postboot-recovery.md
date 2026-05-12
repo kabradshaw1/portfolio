@@ -4,7 +4,7 @@
 
 **Goal:** Add repo-owned Debian postboot recovery and health-check scripts so the portfolio stack self-recovers after host outages.
 
-**Architecture:** Implement three focused ops scripts: mutating recovery, read-only health verification, and systemd installation. Keep recovery idempotent and limited to Minikube DNS repair plus deletion of pods already blocked on image pulls.
+**Architecture:** Implement three focused ops scripts: mutating recovery, read-only health verification, and systemd installation. The installer copies the runtime scripts to Debian over SSH so the Linux host does not need a repo checkout. Keep recovery idempotent and limited to Minikube DNS repair plus deletion of pods already blocked on image pulls.
 
 **Tech Stack:** Bash, SSH, systemd, kubectl, minikube, curl.
 
@@ -47,10 +47,11 @@ Expected: exit 0.
 
 - [ ] **Step 1: Create the installer**
 
-Install `portfolio-postboot-recovery.service`,
-`portfolio-postboot-health.service`, and `portfolio-postboot-health.timer` on
-Debian. Enable recovery and health timer without automatically running
-recovery during install.
+Copy the recovery and health scripts to
+`/home/kyle/.local/lib/portfolio-postboot`, then install
+`portfolio-postboot-recovery.service`, `portfolio-postboot-health.service`, and
+`portfolio-postboot-health.timer` on Debian. Enable recovery and health timer
+without automatically running recovery during install.
 
 - [ ] **Step 2: Syntax check**
 

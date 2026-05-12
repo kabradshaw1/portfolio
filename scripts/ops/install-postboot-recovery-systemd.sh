@@ -1,17 +1,35 @@
 #!/usr/bin/env bash
-# Install Debian systemd units for portfolio postboot recovery and health checks.
+# Copy postboot scripts to Debian and install systemd units for them.
 # Idempotent: yes.
 
 set -euo pipefail
 
-REMOTE_REPO="${REMOTE_REPO:-/home/kyle/repos/gen_ai_engineer}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REMOTE_INSTALL_DIR="${REMOTE_INSTALL_DIR:-/home/kyle/.local/lib/portfolio-postboot}"
+RECOVERY_SOURCE="${SCRIPT_DIR}/recover-after-host-boot.sh"
+HEALTH_SOURCE="${SCRIPT_DIR}/check-postboot-health.sh"
 
-ssh debian bash -s -- "$REMOTE_REPO" <<'REMOTE'
+if [[ ! -x "$RECOVERY_SOURCE" ]]; then
+  echo "ERROR: recovery script is missing or not executable: ${RECOVERY_SOURCE}" >&2
+  exit 1
+fi
+
+if [[ ! -x "$HEALTH_SOURCE" ]]; then
+  echo "ERROR: health script is missing or not executable: ${HEALTH_SOURCE}" >&2
+  exit 1
+fi
+
+ssh debian install -d -m 0755 "$REMOTE_INSTALL_DIR"
+scp "$RECOVERY_SOURCE" "$HEALTH_SOURCE" "debian:${REMOTE_INSTALL_DIR}/"
+
+ssh debian bash -s -- "$REMOTE_INSTALL_DIR" <<'REMOTE'
 set -euo pipefail
 
-REMOTE_REPO="$1"
-RECOVERY_SCRIPT="${REMOTE_REPO}/scripts/ops/recover-after-host-boot.sh"
-HEALTH_SCRIPT="${REMOTE_REPO}/scripts/ops/check-postboot-health.sh"
+REMOTE_INSTALL_DIR="$1"
+RECOVERY_SCRIPT="${REMOTE_INSTALL_DIR}/recover-after-host-boot.sh"
+HEALTH_SCRIPT="${REMOTE_INSTALL_DIR}/check-postboot-health.sh"
+
+chmod 0755 "$RECOVERY_SCRIPT" "$HEALTH_SCRIPT"
 
 if [[ ! -x "$RECOVERY_SCRIPT" ]]; then
   echo "ERROR: recovery script is missing or not executable: ${RECOVERY_SCRIPT}" >&2
@@ -33,7 +51,7 @@ Wants=network-online.target docker.service tailscaled.service minikube.service m
 [Service]
 Type=oneshot
 User=kyle
-WorkingDirectory=${REMOTE_REPO}
+WorkingDirectory=/home/kyle
 Environment=WAIT_SECONDS=900
 ExecStart=${RECOVERY_SCRIPT}
 StandardOutput=journal
@@ -53,7 +71,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=kyle
-WorkingDirectory=${REMOTE_REPO}
+WorkingDirectory=/home/kyle
 ExecStart=${HEALTH_SCRIPT}
 StandardOutput=journal
 StandardError=journal
