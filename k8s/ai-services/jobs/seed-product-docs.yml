@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-product-docs
+  namespace: ai-services
+  annotations:
+    ops.kylebradshaw.dev/idempotent: "true"
+    ops.kylebradshaw.dev/runs-on: deploy
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: OnFailure
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: seed
+          image: ghcr.io/kabradshaw1/portfolio/ingestion:latest
+          envFrom:
+            - configMapRef:
+                name: ingestion-config
+          command:
+            - python
+            - -m
+            - app.seed_product_catalog
+            - --pdf-dir
+            - /app/seed/product-catalog
+          volumeMounts:
+            - name: ingestion-data
+              mountPath: /app/data
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
+      volumes:
+        - name: ingestion-data
+          persistentVolumeClaim:
+            claimName: ingestion-data

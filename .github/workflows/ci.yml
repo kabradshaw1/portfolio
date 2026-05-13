@@ -1148,10 +1148,10 @@ jobs:
       matrix:
         include:
           - service: ingestion
-            context: services
+            context: .
             file: services/ingestion/Dockerfile
             image: ingestion
-            paths: services/ingestion services/shared
+            paths: services/ingestion services/shared docs/product-catalog
           - service: chat
             context: services
             file: services/chat/Dockerfile
@@ -1477,6 +1477,15 @@ jobs:
           for deployment in chat debug eval ingestion; do
             $SSH "kubectl rollout status deployment/${deployment} -n ai-services-qa --timeout=420s"
           done
+
+          echo "Seeding QA product documents into RAG..."
+          $SSH "kubectl delete job seed-product-docs -n ai-services-qa --ignore-not-found --wait=true"
+          sed 's/namespace: ai-services$/namespace: ai-services-qa/' k8s/ai-services/jobs/seed-product-docs.yml | $SSH "kubectl apply -f -"
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=300s job/seed-product-docs -n ai-services-qa"; then
+            $SSH "kubectl logs job/seed-product-docs -n ai-services-qa --tail=200" || true
+            exit 1
+          fi
+
           $SSH "kubectl rollout status deployment -n java-tasks-qa --timeout=180s"
           $SSH "kubectl rollout status deployment -n go-ecommerce-qa --timeout=180s"
 
@@ -1517,6 +1526,7 @@ jobs:
           filters: |
             python:
               - 'services/**'
+              - 'docs/product-catalog/**'
             java:
               - 'java/**'
             go:
@@ -1566,7 +1576,7 @@ jobs:
 
           # Always apply namespaces and manifests (cheap, idempotent)
           for f in $(find k8s go/k8s java/k8s -name 'namespace.yml' 2>/dev/null); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
-          for f in $(find k8s/ai-services -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          for f in $(find k8s/ai-services -name '*.yml' -not -name 'namespace.yml' -not -path '*/jobs/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           $SSH "minikube ssh 'sudo mkdir -p /backups/postgres && sudo chmod 777 /backups/postgres'"
           # Bootstrap Jobs have immutable spec.template — a stale Job from a
           # prior deploy with a different command/env fails the apply below
@@ -1612,6 +1622,14 @@ jobs:
             for deployment in chat debug eval ingestion qdrant; do
               $SSH "kubectl rollout status deployment/${deployment} -n ai-services --timeout=420s"
             done
+
+            echo "Seeding production product documents into RAG..."
+            $SSH "kubectl delete job seed-product-docs -n ai-services --ignore-not-found --wait=true"
+            $SSH "kubectl apply -f -" < k8s/ai-services/jobs/seed-product-docs.yml
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=300s job/seed-product-docs -n ai-services"; then
+              $SSH "kubectl logs job/seed-product-docs -n ai-services --tail=200" || true
+              exit 1
+            fi
           fi
 
           if [ "$JAVA_CHANGED" = "true" ] || [ "$K8S_CHANGED" = "true" ]; then
