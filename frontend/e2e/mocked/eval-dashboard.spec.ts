@@ -152,6 +152,14 @@ async function mockEvalApi(page: import("@playwright/test").Page) {
     });
   });
 
+  await page.route("**/eval/evaluations/eval-base-001", async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(historyRuns[0]),
+    }),
+  );
+
   await page.route("**/eval/evaluations/eval-new-003", async (route) =>
     route.fulfill({
       status: 200,
@@ -253,6 +261,65 @@ test.describe("/ai/eval dashboard", () => {
     ).toBeVisible();
   });
 
+  test("results tab shows a saved-evaluations load error", async ({ page }) => {
+    await page.unroute("**/eval/evaluations");
+    await page.route("**/eval/evaluations", async (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "boom" }),
+        });
+      }
+      return route.fallback();
+    });
+
+    await page.goto("/ai/eval");
+    await page.getByRole("button", { name: "Results", exact: true }).click();
+
+    await expect(
+      page.getByText("Could not load saved evaluations. Refresh or sign in again."),
+    ).toBeVisible();
+    await expect(
+      page.getByText("No evaluation results yet. Go to the Evaluate tab to run one."),
+    ).not.toBeVisible();
+  });
+
+  test("results tab shows a selected-evaluation detail load error", async ({
+    page,
+  }) => {
+    await page.unroute("**/eval/evaluations");
+    await page.route("**/eval/evaluations", async (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ evaluations: [historyRuns[1]] }),
+        });
+      }
+      return route.fallback();
+    });
+    await page.unroute("**/eval/evaluations/eval-tuned-002");
+    await page.route("**/eval/evaluations/eval-tuned-002", async (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "boom" }),
+      }),
+    );
+
+    await page.goto("/ai/eval");
+    await page.getByRole("button", { name: "Results", exact: true }).click();
+
+    await expect(page.getByLabel("Evaluation")).toBeVisible();
+    await expect(
+      page.getByText(
+        "Could not load the selected evaluation. Try selecting it again or refresh.",
+      ),
+    ).toBeVisible();
+    await expect(page.getByText("Aggregate Scores")).not.toBeVisible();
+  });
+
   test("change log opens the existing Results view for a run", async ({
     page,
   }) => {
@@ -281,6 +348,29 @@ test.describe("/ai/eval dashboard", () => {
       /border-b-2/,
     );
     await expect(page.getByText("Aggregate Scores")).toBeVisible();
+  });
+
+  test("evaluate tab shows a non-blocking baseline history warning", async ({
+    page,
+  }) => {
+    await page.unroute("**/eval/evaluations/history?**");
+    await page.route("**/eval/evaluations/history?**", async (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "boom" }),
+      }),
+    );
+
+    await page.goto("/ai/eval");
+    await page.getByRole("button", { name: "Evaluate" }).click();
+
+    await expect(
+      page.getByText("Could not load baseline runs for this dataset and collection."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Run Evaluation" }),
+    ).toBeEnabled();
   });
 
   test("keeps light form controls readable in the dark document theme", async ({
