@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import type { Locator } from "@playwright/test";
 
 const goUser = {
   userId: "user-1",
@@ -173,6 +174,15 @@ async function mockEvalApi(page: import("@playwright/test").Page) {
   );
 }
 
+async function expectReadableWhiteControl(locator: Locator) {
+  const colors = await locator.evaluate((element) => ({
+    control: getComputedStyle(element).color,
+    page: getComputedStyle(document.body).color,
+  }));
+
+  expect(colors.control).not.toBe(colors.page);
+}
+
 test.describe("/ai/eval dashboard", () => {
   test.beforeEach(async ({ page }) => {
     await seedGoAuth(page);
@@ -271,5 +281,26 @@ test.describe("/ai/eval dashboard", () => {
       /border-b-2/,
     );
     await expect(page.getByText("Aggregate Scores")).toBeVisible();
+  });
+
+  test("keeps light form controls readable in the dark document theme", async ({
+    page,
+  }) => {
+    await page.goto("/ai/eval");
+
+    await page.getByRole("button", { name: "Evaluate" }).click();
+    await expectReadableWhiteControl(page.getByLabel("Dataset"));
+    await expectReadableWhiteControl(page.getByLabel("Collection"));
+    await expectReadableWhiteControl(page.getByLabel("Notes"));
+    await expectReadableWhiteControl(page.getByLabel("Baseline run"));
+
+    await page.getByRole("button", { name: "Results" }).click();
+    await expectReadableWhiteControl(page.getByLabel("Evaluation"));
+
+    await page.getByRole("button", { name: "Dashboard" }).click();
+    await expectReadableWhiteControl(page.getByLabel("Dataset"));
+    await expectReadableWhiteControl(page.getByLabel("Collection"));
+    await expectReadableWhiteControl(page.getByLabel("Baseline comparison run"));
+    await expectReadableWhiteControl(page.getByLabel("Candidate comparison run"));
   });
 });

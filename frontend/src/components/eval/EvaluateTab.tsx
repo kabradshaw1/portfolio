@@ -161,7 +161,7 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
             value={selectedDatasetId}
             onChange={(e) => setSelectedDatasetId(e.target.value)}
             disabled={running}
-            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
           >
             {datasets.length === 0 && (
               <option value="">No datasets available</option>
@@ -193,7 +193,7 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
             onChange={(e) => setCollection(e.target.value)}
             placeholder="documents"
             disabled={running}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
           />
         </div>
 
@@ -212,7 +212,7 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
             placeholder="What changed since the last run?"
             rows={3}
             disabled={running}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
           />
           <p className="mt-1 text-xs text-gray-500">{notes.length}/500</p>
         </div>
@@ -236,7 +236,7 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
               baselineRuns.length === 0 ||
               !collection.trim()
             }
-            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
           >
             <option value="">
               {baselineLoading ? "Loading baselines..." : "(none)"}
