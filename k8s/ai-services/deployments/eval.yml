@@ -46,4 +46,5 @@ spec:
             timeoutSeconds: 5
       volumes:
         - name: eval-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: eval-data
