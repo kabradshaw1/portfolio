@@ -22,6 +22,7 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
   const [baselineEvalId, setBaselineEvalId] = useState<string>("");
   const [baselineRuns, setBaselineRuns] = useState<EvaluationDetail[]>([]);
   const [baselineLoading, setBaselineLoading] = useState<boolean>(false);
+  const [baselineWarning, setBaselineWarning] = useState<string>("");
   const [running, setRunning] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
@@ -55,10 +56,12 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
     let cancelled = false;
     void Promise.resolve().then(async () => {
       setBaselineLoading(true);
+      setBaselineWarning("");
       try {
         const history = await getHistory(selectedDatasetId, trimmedCollection);
         if (cancelled) return;
         setBaselineRuns(history.runs);
+        setBaselineWarning("");
         setBaselineEvalId((current) =>
           history.runs.some((run) => run.id === current) ? current : "",
         );
@@ -66,6 +69,9 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
         if (cancelled) return;
         setBaselineRuns([]);
         setBaselineEvalId("");
+        setBaselineWarning(
+          "Could not load baseline runs for this dataset and collection.",
+        );
       } finally {
         if (!cancelled) setBaselineLoading(false);
       }
@@ -248,6 +254,9 @@ export default function EvaluateTab({ onComplete }: EvaluateTabProps) {
               </option>
             ))}
           </select>
+          {baselineWarning && (
+            <p className="mt-1 text-sm text-yellow-700">{baselineWarning}</p>
+          )}
         </div>
 
         {/* Error */}

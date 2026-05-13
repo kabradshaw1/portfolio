@@ -350,6 +350,29 @@ test.describe("/ai/eval dashboard", () => {
     await expect(page.getByText("Aggregate Scores")).toBeVisible();
   });
 
+  test("evaluate tab shows a non-blocking baseline history warning", async ({
+    page,
+  }) => {
+    await page.unroute("**/eval/evaluations/history?**");
+    await page.route("**/eval/evaluations/history?**", async (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "boom" }),
+      }),
+    );
+
+    await page.goto("/ai/eval");
+    await page.getByRole("button", { name: "Evaluate" }).click();
+
+    await expect(
+      page.getByText("Could not load baseline runs for this dataset and collection."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Run Evaluation" }),
+    ).toBeEnabled();
+  });
+
   test("keeps light form controls readable in the dark document theme", async ({
     page,
   }) => {
