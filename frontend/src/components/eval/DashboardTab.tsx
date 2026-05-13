@@ -194,7 +194,7 @@ export function DashboardTab({ onSelectEvaluation }: DashboardTabProps) {
             id="dashboard-dataset"
             value={selectedDatasetId}
             onChange={(event) => setSelectedDatasetId(event.target.value)}
-            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           >
             {datasets.length === 0 && (
               <option value="">No datasets available</option>
@@ -218,7 +218,7 @@ export function DashboardTab({ onSelectEvaluation }: DashboardTabProps) {
             id="dashboard-collection"
             value={collection}
             onChange={(event) => setCollection(event.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
         </div>
       </div>
@@ -287,7 +287,7 @@ export function DashboardTab({ onSelectEvaluation }: DashboardTabProps) {
                       aria-label="Baseline comparison run"
                       value={baselineId}
                       onChange={(event) => setBaselineId(event.target.value)}
-                      className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                      className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
                     >
                       {runs.map((run) => (
                         <option key={run.id} value={run.id}>
@@ -299,7 +299,7 @@ export function DashboardTab({ onSelectEvaluation }: DashboardTabProps) {
                       aria-label="Candidate comparison run"
                       value={candidateId}
                       onChange={(event) => setCandidateId(event.target.value)}
-                      className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                      className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
                     >
                       {runs.map((run) => (
                         <option key={run.id} value={run.id}>
