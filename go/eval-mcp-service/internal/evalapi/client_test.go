@@ -66,9 +66,23 @@ func TestGetEvaluationAndCompare(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/evaluations/eval-1":
-			_ = json.NewEncoder(w).Encode(EvaluationDetail{
-				ID: "eval-1", Status: "completed",
-				AggregateScores: &Scores{ContextPrecision: ptr(0.42)},
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":     "eval-1",
+				"status": "completed",
+				"aggregate_scores": map[string]float64{
+					"context_precision": 0.42,
+				},
+				"results": []map[string]any{{
+					"query":    "what is rag?",
+					"answer":   "retrieval augmented generation",
+					"contexts": []string{"context"},
+					"scores": map[string]float64{
+						"faithfulness": 0.9,
+					},
+					"score_reasons": map[string]string{
+						"faithfulness": "answer is grounded in the retrieved context",
+					},
+				}},
 			})
 		case "/evaluations/compare":
 			if got := r.URL.Query().Get("ids"); got != "eval-1,eval-2" {
@@ -88,6 +102,9 @@ func TestGetEvaluationAndCompare(t *testing.T) {
 	}
 	if run.AggregateScores == nil || run.AggregateScores.ContextPrecision == nil || *run.AggregateScores.ContextPrecision != 0.42 {
 		t.Fatalf("run = %#v", run)
+	}
+	if len(run.Results) != 1 || run.Results[0].ScoreReasons["faithfulness"] != "answer is grounded in the retrieved context" {
+		t.Fatalf("score reasons = %#v", run.Results)
 	}
 	comp, err := client.CompareEvaluations(context.Background(), []string{"eval-1", "eval-2"})
 	if err != nil {
@@ -113,8 +130,6 @@ func TestHTTPErrorIncludesStatusAndExcerpt(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
-
-func ptr(v float64) *float64 { return &v }
 
 func TestNewUsesDefaultHTTPClient(t *testing.T) {
 	client := New("http://example.test/eval", "", nil)

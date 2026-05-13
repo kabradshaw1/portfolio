@@ -198,7 +198,9 @@ func (d *DB) AttachRun(ctx context.Context, experimentID int64, label, evalID, n
 	if err != nil {
 		return fmt.Errorf("begin attach run: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	var exists int
 	err = tx.QueryRowContext(ctx, `SELECT 1 FROM experiments WHERE id = ?`, experimentID).Scan(&exists)
@@ -302,16 +304,4 @@ ORDER BY created_at ASC, label ASC`, experimentID)
 		return nil, fmt.Errorf("list experiment runs rows: %w", err)
 	}
 	return runs, nil
-}
-
-func (d *DB) requireExperiment(ctx context.Context, id int64) error {
-	var exists int
-	err := d.db.QueryRowContext(ctx, `SELECT 1 FROM experiments WHERE id = ?`, id).Scan(&exists)
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("experiment %d: %w", id, ErrNotFound)
-	}
-	if err != nil {
-		return fmt.Errorf("load experiment: %w", err)
-	}
-	return nil
 }

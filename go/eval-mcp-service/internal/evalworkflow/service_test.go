@@ -41,6 +41,7 @@ func TestStartRunAttachesReturnedEvalIDWhenExperimentProvided(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-123", Status: "queued"}}
 	st := newFakeStore()
+	st.experiments[7] = store.Experiment{ID: 7}
 	svc := New(api, st, time.Millisecond, time.Second)
 
 	got, err := svc.StartRun(ctx, StartRunInput{
@@ -69,6 +70,29 @@ func TestStartRunAttachesReturnedEvalIDWhenExperimentProvided(t *testing.T) {
 	}
 	if st.attachCalls[0] != (attachCall{experimentID: 7, label: "candidate", evalID: "eval-123", notes: "candidate notes"}) {
 		t.Fatalf("AttachRun call = %#v", st.attachCalls[0])
+	}
+}
+
+func TestStartRunPrevalidatesExperimentBeforeStartingRemoteRun(t *testing.T) {
+	ctx := context.Background()
+	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-orphan", Status: "queued"}}
+	st := newFakeStore()
+	svc := New(api, st, time.Millisecond, time.Second)
+
+	_, err := svc.StartRun(ctx, StartRunInput{
+		DatasetID:    "dataset-1",
+		Collection:   "kb",
+		ExperimentID: 99,
+		Label:        "candidate",
+	})
+	if err == nil {
+		t.Fatal("StartRun error = nil, want missing experiment error")
+	}
+	if len(api.startRequests) != 0 {
+		t.Fatalf("StartEvaluation calls = %d, want 0", len(api.startRequests))
+	}
+	if len(st.attachCalls) != 0 {
+		t.Fatalf("AttachRun calls = %d, want 0", len(st.attachCalls))
 	}
 }
 

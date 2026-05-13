@@ -164,6 +164,12 @@ func (s *Service) ListDatasets(ctx context.Context) ([]evalapi.Dataset, error) {
 }
 
 func (s *Service) StartRun(ctx context.Context, in StartRunInput) (StartRunResult, error) {
+	if in.ExperimentID != 0 && in.Label != "" {
+		if _, err := s.store.GetExperiment(ctx, in.ExperimentID); err != nil {
+			return StartRunResult{}, err
+		}
+	}
+
 	resp, err := s.api.StartEvaluation(ctx, evalapi.StartEvaluationRequest{
 		DatasetID:      in.DatasetID,
 		Collection:     in.Collection,

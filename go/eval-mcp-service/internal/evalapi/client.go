@@ -51,10 +51,11 @@ type Scores struct {
 }
 
 type QueryResult struct {
-	Query    string   `json:"query"`
-	Answer   string   `json:"answer"`
-	Contexts []string `json:"contexts"`
-	Scores   Scores   `json:"scores"`
+	Query        string            `json:"query"`
+	Answer       string            `json:"answer"`
+	Contexts     []string          `json:"contexts"`
+	Scores       Scores            `json:"scores"`
+	ScoreReasons map[string]string `json:"score_reasons,omitempty"`
 }
 
 type EvaluationDetail struct {
