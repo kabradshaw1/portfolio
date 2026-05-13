@@ -75,7 +75,13 @@ if [ "$ENV" = "qa" ]; then
   kubectl wait --for=condition=available --timeout=180s deployment/go-payment-service -n go-ecommerce-qa
 
   echo "==> Seeding product documents for RAG (QA)..."
-  "$REPO_DIR/scripts/seed-product-docs.sh" "http://$(minikube ip):80/qa/ingestion" || echo "WARN: Product doc seeding failed (non-fatal)"
+  kubectl delete job seed-product-docs -n ai-services-qa --ignore-not-found --wait=true
+  sed 's/namespace: ai-services$/namespace: ai-services-qa/' \
+    "$SCRIPT_DIR/ai-services/jobs/seed-product-docs.yml" | kubectl apply -f -
+  if ! kubectl wait --for=condition=complete --timeout=300s job/seed-product-docs -n ai-services-qa; then
+    kubectl logs job/seed-product-docs -n ai-services-qa --tail=200 || true
+    exit 1
+  fi
 
   echo ""
   echo "==> QA environment deployed!"
@@ -161,7 +167,12 @@ kubectl wait --for=condition=available --timeout=120s deployment/kube-state-metr
 kubectl wait --for=condition=available --timeout=120s deployment/grafana -n monitoring
 
 echo "==> Seeding product documents for RAG..."
-"$REPO_DIR/scripts/seed-product-docs.sh" "http://$(minikube ip):80/ingestion" || echo "WARN: Product doc seeding failed (non-fatal)"
+kubectl delete job seed-product-docs -n ai-services --ignore-not-found --wait=true
+kubectl apply -f "$SCRIPT_DIR/ai-services/jobs/seed-product-docs.yml"
+if ! kubectl wait --for=condition=complete --timeout=300s job/seed-product-docs -n ai-services; then
+  kubectl logs job/seed-product-docs -n ai-services --tail=200 || true
+  exit 1
+fi
 
 echo ""
 echo "==> All services deployed! (env: $ENV)"
