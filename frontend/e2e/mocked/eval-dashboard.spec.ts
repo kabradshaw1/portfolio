@@ -179,6 +179,50 @@ test.describe("/ai/eval dashboard", () => {
     await mockEvalApi(page);
   });
 
+  test("opens on guide tab and links to eval workflow tabs", async ({
+    page,
+  }) => {
+    await page.goto("/ai/eval");
+
+    await expect(page.getByRole("button", { name: "Guide" })).toHaveClass(
+      /border-b-2/,
+    );
+    await expect(
+      page.getByRole("heading", { name: "RAG Evaluation Workflow" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("stable golden dataset, baseline run, candidate run"),
+    ).toBeVisible();
+    await expect(page.getByText("Decision checklist")).toBeVisible();
+
+    await page.getByRole("button", { name: "Create dataset" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Create a Golden Dataset" }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Guide" }).click();
+    await page.getByRole("button", { name: "Run baseline" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Run Evaluation" }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Guide" }).click();
+    await page.getByRole("button", { name: "Run candidate" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Run Evaluation" }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Guide" }).click();
+    await page.getByRole("button", { name: "Review results" }).click();
+    await expect(page.getByLabel("Evaluation")).toBeVisible();
+
+    await page.getByRole("button", { name: "Guide" }).click();
+    await page.getByRole("button", { name: "Compare runs" }).click();
+    await expect(
+      page.getByRole("heading", { name: "RAG Improvement Dashboard" }),
+    ).toBeVisible();
+  });
+
   test("renders dashboard tab with trends, comparison, and change log", async ({
     page,
   }) => {

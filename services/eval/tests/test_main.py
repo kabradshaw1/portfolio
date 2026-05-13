@@ -139,9 +139,33 @@ def test_start_evaluation_dataset_not_found(mock_get_db):
 
     response = client.post(
         "/evaluations",
-        json={"dataset_id": "nonexistent"},
+        json={"dataset_id": "nonexistent", "baseline_eval_id": "eval-prev"},
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == "Dataset not found"
+    mock_db.get_evaluation.assert_not_awaited()
+
+
+def _baseline_run(
+    *,
+    status="completed",
+    dataset_id="ds-123",
+    collection="documents",
+):
+    return {
+        "id": "eval-prev",
+        "dataset_id": dataset_id,
+        "status": status,
+        "collection": collection,
+        "aggregate_scores": {"faithfulness": 0.87},
+        "results": [],
+        "error": None,
+        "created_at": "2026-04-16T00:00:00Z",
+        "completed_at": "2026-04-16T00:05:00Z",
+        "notes": None,
+        "config": None,
+        "baseline_eval_id": None,
+    }
 
 
 @patch("app.main.get_db")
@@ -213,6 +237,7 @@ def test_start_evaluation_persists_notes_and_baseline(mock_get_db):
         "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
         "created_at": "2026-04-16T00:00:00Z",
     }
+    mock_db.get_evaluation.return_value = _baseline_run()
     mock_db.create_evaluation.return_value = "eval-789"
     mock_get_db.return_value = mock_db
 
@@ -225,10 +250,160 @@ def test_start_evaluation_persists_notes_and_baseline(mock_get_db):
         },
     )
     assert response.status_code == 202
+    mock_db.get_evaluation.assert_awaited_once_with("eval-prev")
     mock_db.create_evaluation.assert_awaited_once_with(
         dataset_id="ds-123",
         collection="documents",
         notes="bumped chunk overlap to 300",
+        baseline_eval_id="eval-prev",
+    )
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_unknown_baseline(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_evaluation.return_value = None
+    mock_db.create_evaluation.return_value = "eval-new"
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "baseline_eval_id": "missing-eval"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Baseline evaluation not found"
+    mock_db.get_evaluation.assert_awaited_once_with("missing-eval")
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_incomplete_baseline(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_evaluation.return_value = _baseline_run(status="running")
+    mock_db.create_evaluation.return_value = "eval-new"
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "baseline_eval_id": "eval-prev"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Baseline evaluation must be completed"
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_failed_baseline(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_evaluation.return_value = _baseline_run(status="failed")
+    mock_db.create_evaluation.return_value = "eval-new"
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "baseline_eval_id": "eval-prev"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Baseline evaluation must be completed"
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_baseline_for_different_dataset(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_evaluation.return_value = _baseline_run(dataset_id="other-ds")
+    mock_db.create_evaluation.return_value = "eval-new"
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "baseline_eval_id": "eval-prev"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Baseline evaluation must use the same dataset"
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_baseline_for_different_collection(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_evaluation.return_value = _baseline_run(collection="other-docs")
+    mock_db.create_evaluation.return_value = "eval-new"
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "baseline_eval_id": "eval-prev"},
+    )
+
+    assert response.status_code == 400
+    assert (
+        response.json()["detail"] == "Baseline evaluation must use the same collection"
+    )
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_accepts_valid_baseline_for_custom_collection(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_evaluation.return_value = _baseline_run(collection="release-notes")
+    mock_db.create_evaluation.return_value = "eval-new"
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "collection": "release-notes",
+            "baseline_eval_id": "eval-prev",
+        },
+    )
+
+    assert response.status_code == 202
+    mock_db.create_evaluation.assert_awaited_once_with(
+        dataset_id="ds-123",
+        collection="release-notes",
+        notes=None,
         baseline_eval_id="eval-prev",
     )
 

@@ -107,6 +107,15 @@ Determine the current branch with `git branch --show-current`.
 Agents create feature worktrees in `.codex/worktrees/<branch-name>/` when a
 separate worktree is needed.
 
+After creating or selecting a feature worktree, immediately switch all work into
+that worktree. Confirm with `pwd`, `git branch --show-current`, and
+`git rev-parse --show-toplevel`. All subsequent file reads, searches, edits,
+tests, commits, pushes, and PR commands for that task must run with the
+worktree path as the command working directory. Before any file edit, confirm
+the working directory is inside `.codex/worktrees/<branch-name>/`; if it is not,
+stop and switch to the worktree before continuing. Do not edit task files from
+the original repo root after a feature worktree has been created.
+
 ## Verification
 
 Before every commit, run the relevant local preflight and fix failures:
