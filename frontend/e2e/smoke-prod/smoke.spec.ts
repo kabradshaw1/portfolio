@@ -267,12 +267,28 @@ test.describe("Go ecommerce smoke tests", () => {
   const SMOKE_EMAIL = "smoke@kylebradshaw.dev";
   const SMOKE_PASSWORD = process.env.SMOKE_GO_PASSWORD;
 
-  test("products endpoint returns a non-empty catalog", async ({ request }) => {
-    const res = await request.get(`${API_URL}/go-products/products`);
+  test("products endpoint returns the full fixed catalog", async ({ request }) => {
+    const res = await request.get(`${API_URL}/go-products/products?limit=100`);
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.products)).toBe(true);
-    expect(body.products.length).toBeGreaterThan(0);
+    expect(body.products.length).toBe(41);
+    expect(body.total).toBe(41);
+
+    const clothingProducts = body.products.filter(
+      (p: { category: string }) => p.category === "Clothing"
+    );
+    expect(clothingProducts.length).toBe(8);
+
+    const electronicsProducts = body.products.filter(
+      (p: { category: string }) => p.category === "Electronics"
+    );
+    expect(electronicsProducts.length).toBe(9);
+    expect(
+      electronicsProducts.some(
+        (p: { name: string }) => p.name === "Smoke Test Widget"
+      )
+    ).toBe(true);
   });
 
   test("categories endpoint returns a non-empty list", async ({ request }) => {
@@ -336,7 +352,7 @@ test.describe("Go ecommerce smoke tests", () => {
 
     // Step 2: Find the Smoke Test Widget product
     const productsRes = await authContext.get(
-      `${API_URL}/go-products/products?limit=50`
+      `${API_URL}/go-products/products?limit=100`
     );
     expect(productsRes.status()).toBe(200);
     const productsBody = await productsRes.json();

@@ -16,12 +16,47 @@ interface Product {
 export default function EcommercePage() {
   const { activeCategory } = useGoStore();
   const [products, setProducts] = useState<Product[]>([]);
+  const [status, setStatus] = useState<"loading" | "error" | "success">(
+    "loading",
+  );
 
   useEffect(() => {
-    fetch(`${GO_PRODUCT_URL}/products`)
-      .then((r) => r.json())
-      .then((data) => setProducts(data?.products ?? []))
-      .catch(() => {});
+    const controller = new AbortController();
+    const params = new URLSearchParams({ limit: "100" });
+
+    async function loadProducts() {
+      try {
+        const res = await fetch(`${GO_PRODUCT_URL}/products?${params.toString()}`, {
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to load products: ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        if (!Array.isArray(data?.products)) {
+          throw new Error("Product response did not include a products array");
+        }
+
+        setProducts(data.products);
+        setStatus("success");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        setProducts([]);
+        setStatus("error");
+      }
+    }
+
+    loadProducts();
+
+    return () => {
+      controller.abort();
+    };
   }, []);
 
   const filtered = activeCategory
@@ -43,7 +78,19 @@ export default function EcommercePage() {
         ))}
       </div>
 
-      {filtered.length === 0 && (
+      {status === "loading" && (
+        <p className="mt-12 text-center text-muted-foreground">
+          Loading products...
+        </p>
+      )}
+
+      {status === "error" && (
+        <p className="mt-12 text-center text-muted-foreground">
+          Products are temporarily unavailable.
+        </p>
+      )}
+
+      {status === "success" && filtered.length === 0 && (
         <p className="mt-12 text-center text-muted-foreground">
           No products found.
         </p>

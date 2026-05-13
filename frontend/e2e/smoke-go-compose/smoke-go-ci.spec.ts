@@ -64,18 +64,42 @@ test.describe("Go compose-smoke CI tests", () => {
     await ctx.dispose();
   });
 
-  test("product catalog returns data", async ({ request }) => {
-    const productsRes = await request.get(`${PRODUCT_URL}/products`);
+  test("product catalog returns the full fixed catalog", async ({ request }) => {
+    const productsRes = await request.get(`${PRODUCT_URL}/products?limit=100`);
     expect(productsRes.status()).toBe(200);
     const productsBody = await productsRes.json();
     expect(Array.isArray(productsBody.products)).toBe(true);
-    expect(productsBody.products.length).toBeGreaterThan(0);
+    expect(productsBody.products.length).toBe(41);
+    expect(productsBody.total).toBe(41);
+
+    const clothingProducts = productsBody.products.filter(
+      (p: { category: string }) => p.category === "Clothing"
+    );
+    expect(clothingProducts.length).toBe(8);
+
+    const electronicsProducts = productsBody.products.filter(
+      (p: { category: string }) => p.category === "Electronics"
+    );
+    expect(electronicsProducts.length).toBe(9);
+    expect(
+      electronicsProducts.some(
+        (p: { name: string }) => p.name === "Smoke Test Widget"
+      )
+    ).toBe(true);
 
     const categoriesRes = await request.get(`${PRODUCT_URL}/categories`);
     expect(categoriesRes.status()).toBe(200);
     const categoriesBody = await categoriesRes.json();
     expect(Array.isArray(categoriesBody.categories)).toBe(true);
-    expect(categoriesBody.categories.length).toBeGreaterThan(0);
+    expect(categoriesBody.categories).toEqual(
+      expect.arrayContaining([
+        "Books",
+        "Clothing",
+        "Electronics",
+        "Home",
+        "Sports",
+      ])
+    );
   });
 
   test("cart flow: add item and verify", async ({ playwright }) => {
@@ -95,7 +119,7 @@ test.describe("Go compose-smoke CI tests", () => {
     expect(loginRes.status()).toBe(200);
 
     // Find Smoke Test Widget
-    const productsRes = await authCtx.get(`${PRODUCT_URL}/products?limit=50`);
+    const productsRes = await authCtx.get(`${PRODUCT_URL}/products?limit=100`);
     const productsBody = await productsRes.json();
     const smokeProduct = productsBody.products.find(
       (p: { name: string }) => p.name === "Smoke Test Widget"
