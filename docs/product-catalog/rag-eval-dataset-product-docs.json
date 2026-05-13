@@ -1,0 +1,114 @@
+{
+  "name": "product-docs-rag-v1",
+  "items": [
+    {
+      "query": "What battery life should I expect from the Laptop Pro 15 under normal mixed use and under development workloads?",
+      "expected_answer": "The Laptop Pro 15 has a 72 Wh battery rated for up to 10 hours of mixed use. Under development or office workloads, expect about 7-8 hours.",
+      "expected_sources": [
+        "laptop-pro-15-specs.pdf",
+        "electronics-buying-guide.pdf"
+      ]
+    },
+    {
+      "query": "Can the 27 inch 4K Monitor charge a Laptop Pro 15 over the same cable used for display, and what are the display specs?",
+      "expected_answer": "Yes. The monitor's USB-C port supports 65W Power Delivery and can carry 4K video, USB hub functionality, and charging over one cable. The display is a 27 inch IPS panel with 3840 x 2160 4K UHD resolution, about 163 PPI, 60Hz refresh, and 99% sRGB coverage.",
+      "expected_sources": [
+        "27-4k-monitor-specs.pdf",
+        "electronics-buying-guide.pdf"
+      ]
+    },
+    {
+      "query": "What warranty and dead pixel coverage does the 27 inch 4K Monitor include?",
+      "expected_answer": "The monitor includes a 3-year panel warranty, 3 years parts and labor, and a 3-year backlight warranty. The panel warranty includes a zero bright-pixel policy, so any lit pixel visible under normal use is eligible for panel replacement.",
+      "expected_sources": [
+        "27-4k-monitor-specs.pdf"
+      ]
+    },
+    {
+      "query": "What ports and external display capabilities does the Laptop Pro 15 provide?",
+      "expected_answer": "The Laptop Pro 15 includes Thunderbolt 4 with 40 Gbps data, 8K video out, and up to 100W power delivery input; one USB-C 3.2 Gen 2 port; two USB-A 3.2 Gen 1 ports; HDMI 2.1 up to 4K 120Hz; a 3.5mm combo audio jack; and a MicroSD slot. Thunderbolt 4 supports dual 4K displays or one 8K display.",
+      "expected_sources": [
+        "laptop-pro-15-specs.pdf"
+      ]
+    },
+    {
+      "query": "Is the Smartwatch Sport suitable for swimming and long GPS workouts?",
+      "expected_answer": "The Smartwatch Sport is suitable for pool and open-water swimming with a 5ATM, 50-meter water resistance rating, but it is not rated for scuba or high-velocity water sports. Battery life is up to 18 hours in GPS mode or up to 12 hours with GPS plus music playback.",
+      "expected_sources": [
+        "smartwatch-sport-specs.pdf"
+      ]
+    },
+    {
+      "query": "How accurate is the Smartwatch Sport's dual-band GPS compared with single-band GPS?",
+      "expected_answer": "The Smartwatch Sport uses dual-band GPS with L1 and L5 frequencies to improve accuracy in urban canyons and tree cover. Typical accuracy is listed as 2-5 meters, compared with 10-15 meters for single-band GPS.",
+      "expected_sources": [
+        "smartwatch-sport-specs.pdf"
+      ]
+    },
+    {
+      "query": "What makes the Robot Vacuum a good option for pet hair and allergy households?",
+      "expected_answer": "The Robot Vacuum has up to 2500 Pa suction, strong pet hair performance on hard floors and low-pile carpet, LiDAR mapping, a self-emptying 2.5 liter base, and HEPA-grade filtration. Its filter captures 99.97% of particles at least 0.3 microns, and the self-emptying bag seals allergens during emptying.",
+      "expected_sources": [
+        "robot-vacuum-specs.pdf",
+        "home-kitchen-guide.pdf"
+      ]
+    },
+    {
+      "query": "How long can the Robot Vacuum run, how much area can it cover, and how often should the base bag be emptied?",
+      "expected_answer": "In standard mode, the Robot Vacuum can run up to 150 minutes and cover roughly 1,500-2,000 square feet on hard floors. In max mode it runs up to 90 minutes. The self-emptying base bag is typically emptied every 30-60 days.",
+      "expected_sources": [
+        "robot-vacuum-specs.pdf"
+      ]
+    },
+    {
+      "query": "What motor, bowl size, speeds, and attachments come with the Stand Mixer 5qt?",
+      "expected_answer": "The Stand Mixer 5qt uses a 325W brushless DC motor, has a 5-quart stainless steel bowl, and provides 10 speed settings from slow folding through high-speed whipping. It includes a flat beater, dough hook, wire whip, pouring shield, user manual, and recipe guide.",
+      "expected_sources": [
+        "stand-mixer-5qt-specs.pdf",
+        "home-kitchen-guide.pdf"
+      ]
+    },
+    {
+      "query": "What batches can the Stand Mixer 5qt bowl handle, and how much vertical clearance does the tilt head need?",
+      "expected_answer": "The 5-quart bowl can handle batches such as 1 or 2 dozen cookies, 4-loaf bread dough, a 9 inch layer cake, 6 egg whites for meringue, 1 lb of butter for creaming, or pasta for 6+ servings. The tilt head needs about 18 inches of vertical clearance above the countertop.",
+      "expected_sources": [
+        "stand-mixer-5qt-specs.pdf"
+      ]
+    },
+    {
+      "query": "How should I choose between the Pour-Over Coffee Maker and the French Press 34oz?",
+      "expected_answer": "Choose the Pour-Over Coffee Maker for clean, bright, nuanced coffee with a simple rinse cleanup and a 3-4 minute brew time. Choose the French Press 34oz for full-bodied, rich coffee that keeps natural oils, yields about 4 cups, has double-wall stainless insulation, and requires more complete filter disassembly for cleaning.",
+      "expected_sources": [
+        "home-kitchen-guide.pdf"
+      ]
+    },
+    {
+      "query": "What is the recommended minimal home gym setup under $200?",
+      "expected_answer": "The minimal setup under $200 is a Resistance Band Set for strength, mobility, and assisted pull-up work; a Yoga Mat 6mm for floor exercises, stretching, and bodyweight work; and a Speed Jump Rope for cardio.",
+      "expected_sources": [
+        "fitness-equipment-guide.pdf"
+      ]
+    },
+    {
+      "query": "How should someone use the Resistance Band Set to progress toward a pull-up?",
+      "expected_answer": "Loop a resistance band around the Doorway Pull-Up Bar and through itself, place a knee or foot in the loop, and perform assisted pull-ups. As strength improves, reduce band resistance over time.",
+      "expected_sources": [
+        "fitness-equipment-guide.pdf"
+      ]
+    },
+    {
+      "query": "What are the key features of the Hiking Backpack 40L for multi-day trips?",
+      "expected_answer": "The Hiking Backpack 40L is large enough for a 2-3 day trip while still manageable for day hikes. It includes an integrated rain cover, compatibility with standard 2-3L hydration reservoirs, a hip belt for loads over 20 lb, ventilated back channels, and multiple quick-access pockets.",
+      "expected_sources": [
+        "fitness-equipment-guide.pdf"
+      ]
+    },
+    {
+      "query": "What care does the Chef Knife Set 5pc require, and what knives are typically included?",
+      "expected_answer": "The Chef Knife Set 5pc should be hand washed and dried immediately, honed before each use, sharpened when honing no longer restores sharpness, and used with wooden or plastic cutting boards. It typically includes an 8 inch chef's knife, serrated bread knife, 5 inch utility knife, 3.5 inch paring knife, and honing steel.",
+      "expected_sources": [
+        "home-kitchen-guide.pdf"
+      ]
+    }
+  ]
+}
