@@ -7,10 +7,10 @@ ENV FASTEMBED_CACHE_PATH=/app/.cache/fastembed
 WORKDIR /app
 
 # Install shared LLM package first (changes less frequently)
-COPY shared/ /shared/
+COPY services/shared/ /shared/
 RUN pip install --no-cache-dir /shared
 
-COPY ingestion/requirements.txt .
+COPY services/ingestion/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Preload FastEmbed's sparse BM25 assets during the image build. In-cluster
@@ -20,8 +20,9 @@ RUN mkdir -p "$FASTEMBED_CACHE_PATH" \
     && python -c 'from fastembed import SparseTextEmbedding; list(SparseTextEmbedding(model_name="Qdrant/bm25").embed(["warm cache"]))' \
     && chmod -R a+rX /app/.cache
 
-COPY shared/ ./shared/
-COPY ingestion/app/ ./app/
+COPY services/shared/ ./shared/
+COPY services/ingestion/app/ ./app/
+COPY docs/product-catalog/*.pdf ./seed/product-catalog/
 
 RUN useradd --create-home appuser
 USER appuser
