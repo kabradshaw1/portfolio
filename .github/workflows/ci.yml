@@ -234,6 +234,8 @@ jobs:
             paths: go/qa-mcp-service
           - service: coding-exercises-mcp-service
             paths: go/coding-exercises-mcp-service
+          - service: eval-mcp-service
+            paths: go/eval-mcp-service
           - service: migration-lint
             dir: cmd/migration-lint
             paths: go/cmd/migration-lint
@@ -283,6 +285,8 @@ jobs:
             paths: go/qa-mcp-service
           - service: coding-exercises-mcp-service
             paths: go/coding-exercises-mcp-service
+          - service: eval-mcp-service
+            paths: go/eval-mcp-service
           - service: migration-lint
             dir: cmd/migration-lint
             paths: go/cmd/migration-lint
