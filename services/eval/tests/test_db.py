@@ -250,3 +250,118 @@ async def test_list_experiments_filters_by_status(db):
     experiments = await db.list_experiments(status="running")
 
     assert [exp["id"] for exp in experiments] == [running_id]
+
+
+@pytest.mark.asyncio
+async def test_attach_running_completed_and_failed_runs_to_experiment(db):
+    ds_id = await db.create_dataset(name="ds-runs", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id=ds_id,
+        collection="documents",
+        status="running",
+    )
+    running_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+    completed_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+    failed_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+    await db.complete_evaluation(
+        completed_id,
+        aggregate_scores={"context_precision": 0.4},
+        results=[],
+    )
+    await db.fail_evaluation(failed_id, error="judge failed")
+
+    await db.attach_experiment_run(
+        exp_id, running_id, label="candidate_running", notes="still running"
+    )
+    await db.attach_experiment_run(
+        exp_id, completed_id, label="candidate_completed", notes="finished"
+    )
+    await db.attach_experiment_run(
+        exp_id, failed_id, label="candidate_failed", notes="failed"
+    )
+
+    detail = await db.get_experiment(exp_id)
+    labels = [run["label"] for run in detail["runs"]]
+    statuses = [run["evaluation"]["status"] for run in detail["runs"]]
+    assert labels == ["candidate_running", "candidate_completed", "candidate_failed"]
+    assert statuses == ["running", "completed", "failed"]
+
+
+@pytest.mark.asyncio
+async def test_attach_experiment_run_rejects_duplicate_label(db):
+    ds_id = await db.create_dataset(name="ds-dupe-label", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id=ds_id,
+        collection="documents",
+    )
+    run_1 = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+    run_2 = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+
+    await db.attach_experiment_run(exp_id, run_1, label="candidate")
+
+    with pytest.raises(ValueError, match="duplicate experiment run label"):
+        await db.attach_experiment_run(exp_id, run_2, label="candidate")
+
+
+@pytest.mark.asyncio
+async def test_attach_experiment_run_rejects_completed_experiment(db):
+    ds_id = await db.create_dataset(name="ds-completed-exp", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id=ds_id,
+        collection="documents",
+        status="completed",
+    )
+    run_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+
+    with pytest.raises(ValueError, match="completed experiments cannot accept runs"):
+        await db.attach_experiment_run(exp_id, run_id, label="candidate")
+
+
+@pytest.mark.asyncio
+async def test_attach_experiment_run_returns_none_for_missing_experiment_or_run(db):
+    ds_id = await db.create_dataset(name="ds-missing-run", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id=ds_id,
+        collection="documents",
+    )
+
+    assert (
+        await db.attach_experiment_run("missing-exp", "missing-run", "candidate")
+        is None
+    )
+    missing_run = await db.attach_experiment_run(exp_id, "missing-run", "candidate")
+    assert missing_run is None
+
+
+@pytest.mark.asyncio
+async def test_attach_experiment_run_rejects_dataset_or_collection_mismatch(db):
+    ds_id = await db.create_dataset(name="ds-match", items=SIMPLE_ITEM)
+    other_ds_id = await db.create_dataset(name="ds-other", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id=ds_id,
+        collection="documents",
+    )
+    other_dataset_run = await db.create_evaluation(
+        dataset_id=other_ds_id, collection="documents"
+    )
+    other_collection_run = await db.create_evaluation(
+        dataset_id=ds_id, collection="release-notes"
+    )
+
+    with pytest.raises(ValueError, match="same dataset"):
+        await db.attach_experiment_run(exp_id, other_dataset_run, label="other_ds")
+
+    with pytest.raises(ValueError, match="same collection"):
+        await db.attach_experiment_run(
+            exp_id, other_collection_run, label="other_collection"
+        )

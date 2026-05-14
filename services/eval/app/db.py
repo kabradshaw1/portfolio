@@ -337,8 +337,70 @@ class EvalDB:
         )
         await self._db.commit()
 
+    def _experiment_run_row_to_dict(self, row) -> dict:
+        evaluation = self._row_to_dict(row, include_results=False)
+        return {
+            "evaluation_id": row["evaluation_id"],
+            "label": row["label"],
+            "notes": row["run_notes"],
+            "attached_at": row["attached_at"],
+            "evaluation": evaluation,
+        }
+
+    async def attach_experiment_run(
+        self,
+        experiment_id: str,
+        evaluation_id: str,
+        label: str,
+        notes: str | None = None,
+    ) -> dict | None:
+        experiment_cursor = await self._db.execute(
+            "SELECT * FROM experiments WHERE id = ?", (experiment_id,)
+        )
+        experiment = await experiment_cursor.fetchone()
+        if not experiment:
+            return None
+
+        evaluation = await self.get_evaluation(evaluation_id)
+        if not evaluation:
+            return None
+
+        if experiment["status"] == "completed":
+            raise ValueError("completed experiments cannot accept runs")
+        if experiment["dataset_id"] != evaluation["dataset_id"]:
+            raise ValueError("experiment run must use the same dataset")
+        if experiment["collection"] != evaluation["collection"]:
+            raise ValueError("experiment run must use the same collection")
+
+        now = datetime.now(_UTC).isoformat()
+        try:
+            await self._db.execute(
+                "INSERT INTO experiment_runs "
+                "(experiment_id, evaluation_id, label, notes, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (experiment_id, evaluation_id, label, notes, now),
+            )
+        except aiosqlite.IntegrityError as exc:
+            if "experiment_runs.experiment_id, experiment_runs.label" in str(exc):
+                raise ValueError("duplicate experiment run label") from exc
+            raise
+        await self._db.commit()
+        return await self.get_experiment(experiment_id)
+
     async def list_experiment_runs(self, experiment_id: str) -> list[dict]:
-        return []
+        cursor = await self._db.execute(
+            "SELECT "
+            "er.evaluation_id, er.label, er.notes AS run_notes, "
+            "er.created_at AS attached_at, "
+            "e.* "
+            "FROM experiment_runs er "
+            "JOIN evaluations e ON e.id = er.evaluation_id "
+            "WHERE er.experiment_id = ? "
+            "ORDER BY er.created_at ASC",
+            (experiment_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._experiment_run_row_to_dict(r) for r in rows]
 
     async def complete_evaluation(
         self, eval_id: str, aggregate_scores: dict, results: list[dict]
