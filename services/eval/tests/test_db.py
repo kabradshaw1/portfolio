@@ -171,3 +171,82 @@ async def test_init_is_idempotent_after_columns_exist(tmp_path):
     db2 = EvalDB(db_path)
     await db2.init()  # must not raise even though columns already exist
     await db2.close()
+
+
+@pytest.mark.asyncio
+async def test_create_get_and_list_experiment(db):
+    ds_id = await db.create_dataset(name="ds-exp", items=SIMPLE_ITEM)
+
+    exp_id = await db.create_experiment(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id=ds_id,
+        collection="documents",
+        baseline_eval_id=None,
+        status="running",
+        notes="first pass",
+    )
+
+    detail = await db.get_experiment(exp_id)
+    assert detail["id"] == exp_id
+    assert detail["name"] == "precision tuning"
+    assert detail["hypothesis"] == "Reranking improves context precision"
+    assert detail["dataset_id"] == ds_id
+    assert detail["collection"] == "documents"
+    assert detail["status"] == "running"
+    assert detail["decision"] is None
+    assert detail["notes"] == "first pass"
+    assert detail["runs"] == []
+
+    experiments = await db.list_experiments(dataset_id=ds_id, collection="documents")
+    assert [exp["id"] for exp in experiments] == [exp_id]
+
+
+@pytest.mark.asyncio
+async def test_update_experiment_changes_mutable_fields(db):
+    ds_id = await db.create_dataset(name="ds-update", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="precision tuning",
+        hypothesis="initial hypothesis",
+        dataset_id=ds_id,
+        collection="documents",
+    )
+
+    await db.update_experiment(
+        exp_id,
+        hypothesis="revised hypothesis",
+        baseline_eval_id=None,
+        status="completed",
+        decision="keep",
+        notes="rerank won",
+    )
+
+    detail = await db.get_experiment(exp_id)
+    assert detail["hypothesis"] == "revised hypothesis"
+    assert detail["status"] == "completed"
+    assert detail["decision"] == "keep"
+    assert detail["notes"] == "rerank won"
+    assert detail["updated_at"] >= detail["created_at"]
+
+
+@pytest.mark.asyncio
+async def test_list_experiments_filters_by_status(db):
+    ds_id = await db.create_dataset(name="ds-filter", items=SIMPLE_ITEM)
+    running_id = await db.create_experiment(
+        name="running exp",
+        hypothesis="running hypothesis",
+        dataset_id=ds_id,
+        collection="documents",
+        status="running",
+    )
+    await db.create_experiment(
+        name="planned exp",
+        hypothesis="planned hypothesis",
+        dataset_id=ds_id,
+        collection="documents",
+        status="planned",
+    )
+
+    experiments = await db.list_experiments(status="running")
+
+    assert [exp["id"] for exp in experiments] == [running_id]
