@@ -699,6 +699,202 @@ def test_history_empty_returns_200(mock_get_db):
     assert response.json() == {"runs": []}
 
 
+# --- Experiment endpoints ---
+
+
+def _stub_experiment(exp_id="exp-1", status="running", runs=None):
+    return {
+        "id": exp_id,
+        "name": "precision tuning",
+        "hypothesis": "Reranking improves context precision",
+        "dataset_id": "ds-1",
+        "collection": "documents",
+        "baseline_eval_id": None,
+        "status": status,
+        "decision": None,
+        "notes": "first pass",
+        "created_at": "2026-05-13T10:00:00+00:00",
+        "updated_at": "2026-05-13T10:00:00+00:00",
+        "runs": runs or [],
+    }
+
+
+@patch("app.main.get_db")
+def test_create_experiment(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {"id": "ds-1", "name": "ds", "items": []}
+    mock_db.create_experiment.return_value = "exp-1"
+    mock_db.get_experiment.return_value = _stub_experiment()
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments",
+        json={
+            "name": "precision tuning",
+            "hypothesis": "Reranking improves context precision",
+            "dataset_id": "ds-1",
+            "collection": "documents",
+            "status": "running",
+            "notes": "first pass",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["id"] == "exp-1"
+    mock_db.create_experiment.assert_awaited_once_with(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id="ds-1",
+        collection="documents",
+        baseline_eval_id=None,
+        status="running",
+        notes="first pass",
+    )
+
+
+@patch("app.main.get_db")
+def test_create_experiment_rejects_unknown_dataset(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = None
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments",
+        json={
+            "name": "precision tuning",
+            "hypothesis": "Reranking improves context precision",
+            "dataset_id": "missing",
+            "collection": "documents",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Dataset not found"
+
+
+@patch("app.main.get_db")
+def test_list_experiments(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.list_experiments.return_value = [_stub_experiment(runs=None)]
+    mock_get_db.return_value = mock_db
+
+    response = client.get(
+        "/experiments?dataset_id=ds-1&collection=documents&status=running"
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["experiments"]) == 1
+    mock_db.list_experiments.assert_awaited_once_with(
+        dataset_id="ds-1", collection="documents", status="running"
+    )
+
+
+@patch("app.main.get_db")
+def test_get_experiment(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.return_value = _stub_experiment()
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/experiments/exp-1")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "exp-1"
+
+
+@patch("app.main.get_db")
+def test_get_experiment_not_found(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.return_value = None
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/experiments/missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Experiment not found"
+
+
+@patch("app.main.get_db")
+def test_patch_experiment_records_decision_when_completed(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.side_effect = [
+        _stub_experiment(status="running"),
+        _stub_experiment(status="completed"),
+    ]
+    mock_get_db.return_value = mock_db
+
+    response = client.patch(
+        "/experiments/exp-1",
+        json={"status": "completed", "decision": "keep", "notes": "rerank won"},
+    )
+
+    assert response.status_code == 200
+    mock_db.update_experiment.assert_awaited_once_with(
+        "exp-1",
+        hypothesis=None,
+        baseline_eval_id=None,
+        status="completed",
+        decision="keep",
+        notes="rerank won",
+    )
+
+
+@patch("app.main.get_db")
+def test_patch_experiment_rejects_decision_without_completed_status(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.return_value = _stub_experiment(status="running")
+    mock_get_db.return_value = mock_db
+
+    response = client.patch("/experiments/exp-1", json={"decision": "keep"})
+
+    assert response.status_code == 400
+    assert "decision requires completed status" in response.json()["detail"]
+
+
+@patch("app.main.get_db")
+def test_attach_experiment_run_endpoint(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.attach_experiment_run.return_value = _stub_experiment(
+        runs=[
+            {
+                "evaluation_id": "eval-1",
+                "label": "candidate",
+                "notes": None,
+                "attached_at": "2026-05-13T10:01:00+00:00",
+                "evaluation": _stub_run("eval-1", "ds-1", {"context_precision": 0.42}),
+            }
+        ]
+    )
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments/exp-1/runs",
+        json={"evaluation_id": "eval-1", "label": "candidate"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["runs"][0]["label"] == "candidate"
+    mock_db.attach_experiment_run.assert_awaited_once_with(
+        "exp-1", "eval-1", label="candidate", notes=None
+    )
+
+
+@patch("app.main.get_db")
+def test_attach_experiment_run_duplicate_label_returns_409(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.attach_experiment_run.side_effect = ValueError(
+        "duplicate experiment run label"
+    )
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments/exp-1/runs",
+        json={"evaluation_id": "eval-1", "label": "candidate"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "duplicate experiment run label"
+
+
 # --- Health check ---
 
 

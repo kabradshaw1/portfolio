@@ -24,7 +24,13 @@ from app.metrics import (
     eval_queries_total,
     eval_run_duration_seconds,
 )
-from app.models import CreateDatasetRequest, StartEvaluationRequest
+from app.models import (
+    AttachExperimentRunRequest,
+    CreateDatasetRequest,
+    CreateExperimentRequest,
+    StartEvaluationRequest,
+    UpdateExperimentRequest,
+)
 from app.rag_client import RAGClient
 
 logger = logging.getLogger(__name__)
@@ -190,6 +196,24 @@ async def _validate_baseline(
         )
 
 
+async def _validate_experiment_baseline(
+    db: EvalDB, baseline_eval_id: str, dataset_id: str, collection: str
+) -> None:
+    baseline = await db.get_evaluation(baseline_eval_id)
+    if not baseline:
+        raise HTTPException(status_code=404, detail="Baseline evaluation not found")
+    if baseline["dataset_id"] != dataset_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Baseline evaluation must use the same dataset",
+        )
+    if baseline["collection"] != collection:
+        raise HTTPException(
+            status_code=400,
+            detail="Baseline evaluation must use the same collection",
+        )
+
+
 @app.post("/evaluations", status_code=202)
 @limiter.limit("5/minute")
 async def start_evaluation(
@@ -219,6 +243,142 @@ async def start_evaluation(
     )
 
     return {"id": eval_id, "status": "running"}
+
+
+@app.post("/experiments", status_code=201)
+@limiter.limit("10/minute")
+async def create_experiment(
+    request: Request,
+    body: CreateExperimentRequest,
+    user_id: str = Depends(require_auth),
+):
+    db = await get_db()
+    dataset = await db.get_dataset(body.dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if body.baseline_eval_id is not None:
+        await _validate_experiment_baseline(
+            db, body.baseline_eval_id, body.dataset_id, body.collection
+        )
+
+    exp_id = await db.create_experiment(
+        name=body.name,
+        hypothesis=body.hypothesis,
+        dataset_id=body.dataset_id,
+        collection=body.collection,
+        baseline_eval_id=body.baseline_eval_id,
+        status=body.status,
+        notes=body.notes,
+    )
+    if body.baseline_eval_id is not None:
+        await db.attach_experiment_run(
+            exp_id, body.baseline_eval_id, label="baseline", notes="baseline"
+        )
+    experiment = await db.get_experiment(exp_id)
+    return experiment
+
+
+@app.get("/experiments")
+@limiter.limit("30/minute")
+async def list_experiments(
+    request: Request,
+    dataset_id: str | None = None,
+    collection: str | None = None,
+    status: str | None = None,
+    user_id: str = Depends(require_auth),
+):
+    db = await get_db()
+    experiments = await db.list_experiments(
+        dataset_id=dataset_id, collection=collection, status=status
+    )
+    return {"experiments": experiments}
+
+
+@app.get("/experiments/{experiment_id}")
+@limiter.limit("30/minute")
+async def get_experiment(
+    request: Request, experiment_id: str, user_id: str = Depends(require_auth)
+):
+    db = await get_db()
+    experiment = await db.get_experiment(experiment_id)
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return experiment
+
+
+@app.patch("/experiments/{experiment_id}")
+@limiter.limit("10/minute")
+async def update_experiment(
+    request: Request,
+    experiment_id: str,
+    body: UpdateExperimentRequest,
+    user_id: str = Depends(require_auth),
+):
+    db = await get_db()
+    experiment = await db.get_experiment(experiment_id)
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    final_status = body.status or experiment["status"]
+    if body.decision is not None and final_status != "completed":
+        raise HTTPException(
+            status_code=400, detail="decision requires completed status"
+        )
+    baseline_eval_id = body.baseline_eval_id
+    if baseline_eval_id is not None:
+        await _validate_experiment_baseline(
+            db,
+            baseline_eval_id,
+            experiment["dataset_id"],
+            experiment["collection"],
+        )
+
+    await db.update_experiment(
+        experiment_id,
+        hypothesis=body.hypothesis,
+        baseline_eval_id=baseline_eval_id,
+        status=body.status,
+        decision=body.decision,
+        notes=body.notes,
+    )
+    updated = await db.get_experiment(experiment_id)
+    return updated
+
+
+@app.get("/experiments/{experiment_id}/runs")
+@limiter.limit("30/minute")
+async def list_experiment_runs(
+    request: Request, experiment_id: str, user_id: str = Depends(require_auth)
+):
+    db = await get_db()
+    experiment = await db.get_experiment(experiment_id)
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return {"runs": experiment["runs"]}
+
+
+@app.post("/experiments/{experiment_id}/runs")
+@limiter.limit("10/minute")
+async def attach_experiment_run(
+    request: Request,
+    experiment_id: str,
+    body: AttachExperimentRunRequest,
+    user_id: str = Depends(require_auth),
+):
+    db = await get_db()
+    try:
+        experiment = await db.attach_experiment_run(
+            experiment_id, body.evaluation_id, label=body.label, notes=body.notes
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 409 if "duplicate" in detail else 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    if not experiment:
+        raise HTTPException(
+            status_code=404, detail="Experiment or evaluation not found"
+        )
+    return experiment
 
 
 @app.get("/evaluations")
