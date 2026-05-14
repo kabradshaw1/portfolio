@@ -516,6 +516,147 @@ def test_start_evaluation_omits_optional_fields(mock_get_db):
     )
 
 
+@patch("app.main.get_db")
+def test_start_evaluation_attaches_run_to_experiment(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_experiment.return_value = {
+        **_stub_experiment(status="running"),
+        "dataset_id": "ds-123",
+    }
+    mock_db.create_evaluation.return_value = "eval-candidate"
+    mock_db.attach_experiment_run.return_value = _stub_experiment()
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "experiment_id": "exp-1",
+            "experiment_label": "rerank_on",
+        },
+    )
+
+    assert response.status_code == 202
+    mock_db.attach_experiment_run.assert_awaited_once_with(
+        "exp-1", "eval-candidate", label="rerank_on", notes=None
+    )
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_experiment_attachment_without_label(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "experiment_id": "exp-1"},
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail == "experiment_label is required with experiment_id"
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_missing_experiment(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_experiment.return_value = None
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "experiment_id": "missing-exp",
+            "experiment_label": "candidate",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Experiment not found"
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_experiment_dataset_mismatch(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_experiment.return_value = {
+        **_stub_experiment(status="running"),
+        "dataset_id": "other-ds",
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "experiment_id": "exp-1",
+            "experiment_label": "candidate",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Experiment must use the same dataset"
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_experiment_collection_mismatch(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_experiment.return_value = {
+        **_stub_experiment(status="running"),
+        "dataset_id": "ds-123",
+        "collection": "release-notes",
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "experiment_id": "exp-1",
+            "experiment_label": "candidate",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Experiment must use the same collection"
+    mock_db.create_evaluation.assert_not_awaited()
+
+
 # --- Compare endpoint ---
 
 

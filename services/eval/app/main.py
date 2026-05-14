@@ -214,6 +214,26 @@ async def _validate_experiment_baseline(
         )
 
 
+async def _validate_experiment_for_run(
+    db: EvalDB, experiment_id: str, dataset_id: str, collection: str
+) -> None:
+    experiment = await db.get_experiment(experiment_id)
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if experiment["dataset_id"] != dataset_id:
+        raise HTTPException(
+            status_code=400, detail="Experiment must use the same dataset"
+        )
+    if experiment["collection"] != collection:
+        raise HTTPException(
+            status_code=400, detail="Experiment must use the same collection"
+        )
+    if experiment["status"] == "completed":
+        raise HTTPException(
+            status_code=400, detail="completed experiments cannot accept runs"
+        )
+
+
 @app.post("/evaluations", status_code=202)
 @limiter.limit("5/minute")
 async def start_evaluation(
@@ -230,6 +250,15 @@ async def start_evaluation(
     collection = body.collection or "documents"
     if body.baseline_eval_id is not None:
         await _validate_baseline(db, body.baseline_eval_id, body.dataset_id, collection)
+    if body.experiment_id is not None:
+        if body.experiment_label is None:
+            raise HTTPException(
+                status_code=400,
+                detail="experiment_label is required with experiment_id",
+            )
+        await _validate_experiment_for_run(
+            db, body.experiment_id, body.dataset_id, collection
+        )
 
     eval_id = await db.create_evaluation(
         dataset_id=body.dataset_id,
@@ -237,6 +266,18 @@ async def start_evaluation(
         notes=body.notes,
         baseline_eval_id=body.baseline_eval_id,
     )
+    if body.experiment_id is not None and body.experiment_label is not None:
+        try:
+            await db.attach_experiment_run(
+                body.experiment_id,
+                eval_id,
+                label=body.experiment_label,
+                notes=body.notes,
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            status_code = 409 if "duplicate" in detail else 400
+            raise HTTPException(status_code=status_code, detail=detail) from exc
 
     background_tasks.add_task(
         _run_evaluation_task, eval_id, dataset["items"], body.collection, body.rerank
