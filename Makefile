@@ -57,6 +57,7 @@ preflight-go:
 	cd go/qa-mcp-service && golangci-lint run ./...
 	cd go/coding-exercises-mcp-service && golangci-lint run ./...
 	cd go/observability-mcp-service && golangci-lint run ./...
+	cd go/eval-mcp-service && golangci-lint run ./...
 	@echo "\n=== Go: tests ==="
 	cd go/auth-service && go test ./... -v -race
 	cd go/order-service && go test ./... -v -race
@@ -69,6 +70,7 @@ preflight-go:
 	cd go/qa-mcp-service && go test ./... -v -race
 	cd go/coding-exercises-mcp-service && go test ./... -v -race
 	cd go/observability-mcp-service && go test ./... -v -race
+	cd go/eval-mcp-service && go test ./... -v -race
 
 # --- Go migration static lint (no Docker required) ---
 # Builds the migration-lint binary fresh and runs it over every service's
