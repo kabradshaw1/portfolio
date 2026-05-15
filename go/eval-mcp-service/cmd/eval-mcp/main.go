@@ -9,11 +9,14 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/authclient"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/authprovider"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/config"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalworkflow"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/mcpserver"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/store"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/tokenstore"
 )
 
 type app struct {
@@ -43,7 +46,21 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 	if err := db.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate store: %w", err)
 	}
-	api := evalapi.New(cfg.EvalAPIURL, cfg.APIToken, &http.Client{Timeout: cfg.WaitTimeout})
+	httpClient := &http.Client{Timeout: cfg.WaitTimeout}
+	var api *evalapi.Client
+	if cfg.APIToken != "" {
+		api = evalapi.New(cfg.EvalAPIURL, cfg.APIToken, httpClient)
+	} else {
+		authClient := authclient.New(cfg.AuthServiceURL, httpClient)
+		tokenStore := tokenstore.NewFileStore(cfg.TokenCachePath)
+		provider := authprovider.New(authClient, tokenStore, authprovider.Config{
+			Email:          cfg.AuthEmail,
+			Password:       cfg.AuthPassword,
+			AuthServiceURL: cfg.AuthServiceURL,
+			RefreshSkew:    cfg.TokenRefreshSkew,
+		})
+		api = evalapi.NewWithTokenProvider(cfg.EvalAPIURL, provider, httpClient)
+	}
 	service := evalworkflow.New(api, db, cfg.PollInterval, cfg.WaitTimeout)
 	logger.Printf("eval MCP server running on stdio eval_api_url=%s db_path=%s", cfg.EvalAPIURL, cfg.DBPath)
 	return runServer(ctx, &app{service: service, cfg: cfg})
