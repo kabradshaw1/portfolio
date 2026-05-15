@@ -62,7 +62,10 @@ func main() {
 	refreshTTL := time.Duration(refreshTokenTTLMs) * time.Millisecond
 	cookieCfg := handler.CookieConfig{Secure: cfg.CookieSecure, Domain: cfg.CookieDomain, SameSite: cfg.CookieSameSite}
 	authHandler := handler.NewAuthHandler(authSvc, googleClient, denylist, accessTTL, refreshTTL, cookieCfg)
-	healthHandler := handler.NewHealthHandler(pool)
+	healthHandler := handler.NewHealthHandler(
+		pool,
+		handler.OAuthDependencyHosts(cfg.GoogleTokenURL, cfg.GoogleUserinfoURL),
+	)
 
 	router := setupRouter(cfg, authHandler, healthHandler, authLimiter)
 

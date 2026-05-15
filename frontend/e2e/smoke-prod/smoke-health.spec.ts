@@ -7,6 +7,7 @@ test.describe("Service health checks", () => {
   test("Go service health endpoints return 200", async ({ request }) => {
     const endpoints = [
       "/go-auth/health",
+      "/go-auth/ready",
       "/go-orders/health",
       "/go-products/health",
       "/go-cart/health",
