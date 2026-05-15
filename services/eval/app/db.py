@@ -45,8 +45,11 @@ class EvalDB:
                 dataset_id TEXT NOT NULL REFERENCES datasets(id),
                 collection TEXT NOT NULL,
                 baseline_eval_id TEXT REFERENCES evaluations(id),
+                focus_metric TEXT NOT NULL DEFAULT 'context_precision',
                 status TEXT NOT NULL,
                 decision TEXT,
+                conclusion TEXT,
+                evidence TEXT,
                 notes TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -71,6 +74,10 @@ class EvalDB:
             "ALTER TABLE evaluations ADD COLUMN config TEXT",
             "ALTER TABLE evaluations "
             "ADD COLUMN baseline_eval_id TEXT REFERENCES evaluations(id)",
+            "ALTER TABLE experiments "
+            "ADD COLUMN focus_metric TEXT NOT NULL DEFAULT 'context_precision'",
+            "ALTER TABLE experiments ADD COLUMN conclusion TEXT",
+            "ALTER TABLE experiments ADD COLUMN evidence TEXT",
         ):
             try:
                 await self._db.execute(column_ddl)
@@ -218,6 +225,19 @@ class EvalDB:
         rows = await cursor.fetchall()
         return [self._row_to_dict(r) for r in rows]
 
+    async def get_completed_evaluations_for_dashboard(
+        self, dataset_id: str, collection: str
+    ) -> list[dict]:
+        """Completed compact runs for dashboard summaries, ordered ASC."""
+        cursor = await self._db.execute(
+            "SELECT * FROM evaluations "
+            "WHERE dataset_id = ? AND collection = ? AND status = 'completed' "
+            "ORDER BY created_at ASC",
+            (dataset_id, collection),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_dict(r, include_results=False) for r in rows]
+
     def _experiment_row_to_dict(self, row, *, runs: list[dict] | None = None) -> dict:
         out = {
             "id": row["id"],
@@ -226,8 +246,11 @@ class EvalDB:
             "dataset_id": row["dataset_id"],
             "collection": row["collection"],
             "baseline_eval_id": row["baseline_eval_id"],
+            "focus_metric": row["focus_metric"],
             "status": row["status"],
             "decision": row["decision"],
+            "conclusion": row["conclusion"],
+            "evidence": json.loads(row["evidence"]) if row["evidence"] else None,
             "notes": row["notes"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -243,6 +266,7 @@ class EvalDB:
         dataset_id: str,
         collection: str,
         baseline_eval_id: str | None = None,
+        focus_metric: str = "context_precision",
         status: str = "planned",
         notes: str | None = None,
     ) -> str:
@@ -251,8 +275,8 @@ class EvalDB:
         await self._db.execute(
             "INSERT INTO experiments "
             "(id, name, hypothesis, dataset_id, collection, baseline_eval_id, "
-            "status, decision, notes, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)",
+            "focus_metric, status, decision, notes, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)",
             (
                 exp_id,
                 name,
@@ -260,6 +284,7 @@ class EvalDB:
                 dataset_id,
                 collection,
                 baseline_eval_id,
+                focus_metric,
                 status,
                 notes,
                 now,
@@ -311,8 +336,11 @@ class EvalDB:
         *,
         hypothesis: str | None = None,
         baseline_eval_id: str | None = None,
+        focus_metric: str | None = None,
         status: str | None = None,
         decision: str | None = None,
+        conclusion: str | None = None,
+        evidence: dict | None = None,
         notes: str | None = None,
     ) -> None:
         now = datetime.now(_UTC).isoformat()
@@ -320,16 +348,22 @@ class EvalDB:
             "UPDATE experiments "
             "SET hypothesis = COALESCE(?, hypothesis), "
             "baseline_eval_id = ?, "
+            "focus_metric = COALESCE(?, focus_metric), "
             "status = COALESCE(?, status), "
             "decision = ?, "
+            "conclusion = ?, "
+            "evidence = ?, "
             "notes = COALESCE(?, notes), "
             "updated_at = ? "
             "WHERE id = ?",
             (
                 hypothesis,
                 baseline_eval_id,
+                focus_metric,
                 status,
                 decision,
+                conclusion,
+                json.dumps(evidence) if evidence is not None else None,
                 notes,
                 now,
                 experiment_id,

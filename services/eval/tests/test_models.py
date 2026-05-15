@@ -2,10 +2,15 @@ import pytest
 from app.models import (
     AttachExperimentRunRequest,
     CreateExperimentRequest,
+    DashboardBaselineDeltas,
+    DashboardDatasetSummary,
+    DashboardRunSummary,
+    EvaluationDashboard,
     EvaluationDetail,
     ExperimentDetail,
     ExperimentRun,
     ExperimentRunEvaluation,
+    MetricTrendPoint,
     QueryScore,
     RunComparison,
     RunHistory,
@@ -81,6 +86,78 @@ def test_run_history_shape():
     assert hist.runs == []
 
 
+def test_evaluation_dashboard_shape_excludes_detail_payloads():
+    dashboard = EvaluationDashboard(
+        dataset=DashboardDatasetSummary(
+            id="ds-1",
+            name="rag-golden",
+            item_count=2,
+        ),
+        collection="documents",
+        completed_run_count=2,
+        first_completed_run=DashboardRunSummary(
+            id="eval-1",
+            created_at="2026-05-01T00:00:00+00:00",
+            completed_at="2026-05-01T00:01:00+00:00",
+            notes="baseline",
+            config_captured=True,
+            aggregate_scores=QueryScore(
+                faithfulness=0.8,
+                answer_relevancy=0.7,
+                context_precision=0.6,
+                context_recall=0.5,
+            ),
+            baseline_eval_id=None,
+        ),
+        latest_completed_run=DashboardRunSummary(
+            id="eval-2",
+            created_at="2026-05-02T00:00:00+00:00",
+            completed_at="2026-05-02T00:01:00+00:00",
+            notes="rerank on",
+            config_captured=False,
+            aggregate_scores=QueryScore(
+                faithfulness=0.9,
+                answer_relevancy=0.75,
+                context_precision=0.65,
+                context_recall=0.55,
+            ),
+            baseline_eval_id="eval-1",
+        ),
+        metric_trends={
+            "faithfulness": [
+                MetricTrendPoint(
+                    evaluation_id="eval-1",
+                    completed_at="2026-05-01T00:01:00+00:00",
+                    score=0.8,
+                )
+            ],
+            "answer_relevancy": [],
+            "context_precision": [],
+            "context_recall": [],
+        },
+        recent_runs=[],
+        baseline_to_latest_deltas=DashboardBaselineDeltas(
+            baseline_eval_id="eval-1",
+            latest_eval_id="eval-2",
+            deltas=QueryScore(
+                faithfulness=0.1,
+                answer_relevancy=0.05,
+                context_precision=0.05,
+                context_recall=0.05,
+            ),
+        ),
+    )
+
+    payload = dashboard.model_dump()
+
+    assert payload["dataset"]["item_count"] == 2
+    assert payload["first_completed_run"]["config_captured"] is True
+    assert payload["baseline_to_latest_deltas"]["deltas"]["faithfulness"] == 0.1
+    assert "results" not in payload["first_completed_run"]
+    assert "error" not in payload["first_completed_run"]
+    assert "config" not in payload["first_completed_run"]
+
+
 def test_create_experiment_request_defaults_to_planned():
     req = CreateExperimentRequest(
         name="precision tuning",
@@ -153,6 +230,7 @@ def test_experiment_detail_includes_attached_runs():
         dataset_id="ds-1",
         collection="documents",
         baseline_eval_id="eval-base",
+        focus_metric="context_precision",
         status="running",
         decision=None,
         notes="first pass",
@@ -182,3 +260,91 @@ def test_experiment_detail_includes_attached_runs():
 
     assert detail.runs[0].label == "baseline"
     assert detail.runs[0].evaluation.aggregate_scores.context_precision == 0.31
+
+
+def test_create_experiment_request_accepts_focus_metric():
+    req = CreateExperimentRequest(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id="ds-1",
+        collection="documents",
+        focus_metric="context_precision",
+    )
+
+    assert req.focus_metric == "context_precision"
+
+
+def test_create_experiment_request_rejects_unknown_focus_metric():
+    with pytest.raises(ValidationError):
+        CreateExperimentRequest(
+            name="precision tuning",
+            hypothesis="Reranking improves context precision",
+            dataset_id="ds-1",
+            collection="documents",
+            focus_metric="accuracy",
+        )
+
+
+def test_update_experiment_request_accepts_conclusion_and_evidence():
+    evidence = {
+        "baseline_eval_id": "eval-base",
+        "candidate_eval_ids": ["eval-candidate"],
+        "focus_metric": "context_precision",
+        "metric_deltas": {
+            "candidate": {
+                "faithfulness": 0.0,
+                "answer_relevancy": 0.01,
+                "context_precision": 0.08,
+                "context_recall": -0.02,
+            }
+        },
+        "worst_cases": [
+            {
+                "label": "candidate",
+                "eval_id": "eval-candidate",
+                "query": "What is chunking?",
+                "metric": "context_precision",
+                "score": 0.25,
+                "reason": "retrieved context missed expected source",
+            }
+        ],
+        "config_diffs": [{"label": "candidate", "summary": "rerank enabled"}],
+        "caveats": ["small dataset size"],
+    }
+
+    req = UpdateExperimentRequest(
+        status="completed",
+        decision="keep",
+        conclusion="Keep reranking because context precision improved.",
+        evidence=evidence,
+    )
+
+    assert req.conclusion == "Keep reranking because context precision improved."
+    assert req.evidence == evidence
+
+
+def test_experiment_detail_includes_focus_conclusion_and_evidence():
+    detail = ExperimentDetail(
+        id="exp-1",
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id="ds-1",
+        collection="documents",
+        baseline_eval_id="eval-base",
+        focus_metric="context_precision",
+        status="completed",
+        decision="keep",
+        conclusion="Keep reranking.",
+        evidence={
+            "baseline_eval_id": "eval-base",
+            "candidate_eval_ids": ["eval-candidate"],
+        },
+        notes="final",
+        created_at="2026-05-13T10:00:00+00:00",
+        updated_at="2026-05-13T10:00:00+00:00",
+        runs=[],
+    )
+
+    assert detail.focus_metric == "context_precision"
+    assert detail.conclusion == "Keep reranking."
+    assert detail.evidence["candidate_eval_ids"] == ["eval-candidate"]
