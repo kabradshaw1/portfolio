@@ -17,13 +17,28 @@ The service logs to stderr and reserves stdout for MCP protocol messages.
 ## Register With Codex
 
 ```bash
+export EVAL_MCP_AUTH_EMAIL='you@example.com'
+export EVAL_MCP_AUTH_PASSWORD='use-a-local-secret-source'
+export AUTH_SERVICE_URL='http://localhost:8091/auth'
+
 codex mcp add eval -- zsh -lc 'cd /Users/kylebradshaw/repos/gen_ai_engineer/go/eval-mcp-service && exec go run ./cmd/eval-mcp'
 ```
 
 ## Configuration
 
 - `EVAL_API_URL`: eval API base URL, defaults to `http://localhost:8000/eval`.
-- `EVAL_API_TOKEN`: optional bearer token for authenticated eval API calls.
+- `EVAL_API_TOKEN`: optional bearer token override for eval API calls. When set,
+  the service skips auth-service login and token cache refresh.
+- `AUTH_SERVICE_URL`: auth-service base URL, defaults to
+  `http://localhost:8091/auth`.
+- `EVAL_MCP_AUTH_EMAIL`: auth-service email. Required when `EVAL_API_TOKEN` is
+  empty.
+- `EVAL_MCP_AUTH_PASSWORD`: auth-service password. Required when
+  `EVAL_API_TOKEN` is empty.
+- `EVAL_MCP_TOKEN_CACHE_PATH`: local token cache path, defaults to
+  `data/eval-mcp-auth.json`.
+- `EVAL_MCP_TOKEN_REFRESH_SKEW`: refresh lead time before access token expiry,
+  defaults to `1m`.
 - `EVAL_MCP_POLL_INTERVAL`: polling interval, defaults to `1s`.
 - `EVAL_MCP_WAIT_TIMEOUT`: wait timeout, defaults to `5m`.
 
