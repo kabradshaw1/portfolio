@@ -408,6 +408,187 @@ def test_start_evaluation_accepts_valid_baseline_for_custom_collection(mock_get_
     )
 
 
+@patch("app.main.get_db")
+def test_create_experiment_persists_focus_metric(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_experiment.return_value = "exp-1"
+    mock_db.get_experiment.return_value = {
+        "id": "exp-1",
+        "name": "precision tuning",
+        "hypothesis": "Reranking improves context precision",
+        "dataset_id": "ds-123",
+        "collection": "documents",
+        "baseline_eval_id": None,
+        "focus_metric": "context_precision",
+        "status": "running",
+        "decision": None,
+        "conclusion": None,
+        "evidence": None,
+        "notes": None,
+        "created_at": "2026-05-15T00:00:00Z",
+        "updated_at": "2026-05-15T00:00:00Z",
+        "runs": [],
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments",
+        json={
+            "name": "precision tuning",
+            "hypothesis": "Reranking improves context precision",
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "focus_metric": "context_precision",
+            "status": "running",
+        },
+    )
+
+    assert response.status_code == 201
+    mock_db.create_experiment.assert_awaited_once_with(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id="ds-123",
+        collection="documents",
+        baseline_eval_id=None,
+        focus_metric="context_precision",
+        status="running",
+        notes=None,
+    )
+    assert response.json()["focus_metric"] == "context_precision"
+
+
+@patch("app.main.get_db")
+def test_update_experiment_can_complete_with_evidence(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.side_effect = [
+        {
+            "id": "exp-1",
+            "name": "precision tuning",
+            "hypothesis": "Reranking improves context precision",
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "baseline_eval_id": None,
+            "focus_metric": "context_precision",
+            "status": "running",
+            "decision": None,
+            "conclusion": None,
+            "evidence": None,
+            "notes": None,
+            "created_at": "2026-05-15T00:00:00Z",
+            "updated_at": "2026-05-15T00:00:00Z",
+            "runs": [],
+        },
+        {
+            "id": "exp-1",
+            "name": "precision tuning",
+            "hypothesis": "Reranking improves context precision",
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "baseline_eval_id": None,
+            "focus_metric": "context_precision",
+            "status": "completed",
+            "decision": "keep",
+            "conclusion": "Keep reranking.",
+            "evidence": {
+                "baseline_eval_id": "eval-base",
+                "candidate_eval_ids": ["eval-candidate"],
+            },
+            "notes": None,
+            "created_at": "2026-05-15T00:00:00Z",
+            "updated_at": "2026-05-15T00:05:00Z",
+            "runs": [],
+        },
+    ]
+    mock_get_db.return_value = mock_db
+
+    evidence = {
+        "baseline_eval_id": "eval-base",
+        "candidate_eval_ids": ["eval-candidate"],
+    }
+    response = client.patch(
+        "/experiments/exp-1",
+        json={
+            "status": "completed",
+            "decision": "keep",
+            "conclusion": "Keep reranking.",
+            "evidence": evidence,
+        },
+    )
+
+    assert response.status_code == 200
+    mock_db.update_experiment.assert_awaited_once_with(
+        "exp-1",
+        hypothesis=None,
+        baseline_eval_id=None,
+        focus_metric=None,
+        status="completed",
+        decision="keep",
+        conclusion="Keep reranking.",
+        evidence=evidence,
+        notes=None,
+    )
+    assert response.json()["evidence"] == evidence
+
+
+@patch("app.main.get_db")
+def test_update_experiment_rejects_completed_without_decision_conclusion_or_evidence(
+    mock_get_db,
+):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.return_value = {
+        "id": "exp-1",
+        "name": "precision tuning",
+        "hypothesis": "Reranking improves context precision",
+        "dataset_id": "ds-123",
+        "collection": "documents",
+        "baseline_eval_id": None,
+        "focus_metric": "context_precision",
+        "status": "running",
+        "decision": None,
+        "conclusion": None,
+        "evidence": None,
+        "notes": None,
+        "created_at": "2026-05-15T00:00:00Z",
+        "updated_at": "2026-05-15T00:00:00Z",
+        "runs": [],
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.patch("/experiments/exp-1", json={"status": "completed"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "completed experiments require a decision"
+    mock_db.update_experiment.assert_not_awaited()
+
+    response = client.patch(
+        "/experiments/exp-1",
+        json={"status": "completed", "decision": "keep"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "completed experiments require a conclusion"
+    mock_db.update_experiment.assert_not_awaited()
+
+    response = client.patch(
+        "/experiments/exp-1",
+        json={
+            "status": "completed",
+            "decision": "keep",
+            "conclusion": "Keep reranking.",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "completed experiments require evidence"
+    mock_db.update_experiment.assert_not_awaited()
+
+
 @patch("app.main.run_evaluation", new_callable=AsyncMock)
 @patch("app.main.capture_run_config", new_callable=AsyncMock)
 @patch("app.main.get_db")
@@ -851,8 +1032,11 @@ def _stub_experiment(exp_id="exp-1", status="running", runs=None):
         "dataset_id": "ds-1",
         "collection": "documents",
         "baseline_eval_id": None,
+        "focus_metric": "context_precision",
         "status": status,
         "decision": None,
+        "conclusion": None,
+        "evidence": None,
         "notes": "first pass",
         "created_at": "2026-05-13T10:00:00+00:00",
         "updated_at": "2026-05-13T10:00:00+00:00",
@@ -888,6 +1072,7 @@ def test_create_experiment(mock_get_db):
         dataset_id="ds-1",
         collection="documents",
         baseline_eval_id=None,
+        focus_metric="context_precision",
         status="running",
         notes="first pass",
     )
@@ -965,7 +1150,13 @@ def test_patch_experiment_records_decision_when_completed(mock_get_db):
 
     response = client.patch(
         "/experiments/exp-1",
-        json={"status": "completed", "decision": "keep", "notes": "rerank won"},
+        json={
+            "status": "completed",
+            "decision": "keep",
+            "conclusion": "Keep reranking.",
+            "evidence": {"baseline_eval_id": "eval-base"},
+            "notes": "rerank won",
+        },
     )
 
     assert response.status_code == 200
@@ -973,8 +1164,11 @@ def test_patch_experiment_records_decision_when_completed(mock_get_db):
         "exp-1",
         hypothesis=None,
         baseline_eval_id=None,
+        focus_metric=None,
         status="completed",
         decision="keep",
+        conclusion="Keep reranking.",
+        evidence={"baseline_eval_id": "eval-base"},
         notes="rerank won",
     )
 
