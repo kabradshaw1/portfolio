@@ -59,6 +59,21 @@ func (h *AuthHandler) clearAuthCookies(c *gin.Context) {
 	c.SetCookie("refresh_token", "", -1, "/go-auth/auth", h.cookieCfg.Domain, h.cookieCfg.Secure, true)
 }
 
+func authJSON(resp *model.AuthResponse, includeTokens bool) gin.H {
+	body := gin.H{
+		"userId":    resp.UserID,
+		"email":     resp.Email,
+		"name":      resp.Name,
+		"avatarUrl": resp.AvatarURL,
+	}
+	if includeTokens {
+		body["accessToken"] = resp.AccessToken
+		body["refreshToken"] = resp.RefreshToken
+		body["expiresInSeconds"] = resp.ExpiresInSeconds
+	}
+	return body
+}
+
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req model.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -91,19 +106,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 	h.setAuthCookies(c, resp)
-	c.JSON(http.StatusOK, gin.H{
-		"userId":    resp.UserID,
-		"email":     resp.Email,
-		"name":      resp.Name,
-		"avatarUrl": resp.AvatarURL,
-	})
+	c.JSON(http.StatusOK, authJSON(resp, req.IncludeTokens))
 }
 
 func (h *AuthHandler) Refresh(c *gin.Context) {
+	var req model.RefreshRequest
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil || refreshToken == "" {
 		// Fallback to JSON body for backward compatibility
-		var req model.RefreshRequest
 		if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
 			_ = c.Error(apperror.Unauthorized("MISSING_TOKEN", "missing refresh token"))
 			return
@@ -116,12 +126,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 	h.setAuthCookies(c, resp)
-	c.JSON(http.StatusOK, gin.H{
-		"userId":    resp.UserID,
-		"email":     resp.Email,
-		"name":      resp.Name,
-		"avatarUrl": resp.AvatarURL,
-	})
+	c.JSON(http.StatusOK, authJSON(resp, req.IncludeTokens))
 }
 
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {

@@ -22,12 +22,14 @@ type RegisterRequest struct {
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email         string `json:"email" binding:"required,email"`
+	Password      string `json:"password" binding:"required"`
+	IncludeTokens bool   `json:"includeTokens"`
 }
 
 type RefreshRequest struct {
-	RefreshToken string `json:"refreshToken" binding:"required"`
+	RefreshToken  string `json:"refreshToken" binding:"required"`
+	IncludeTokens bool   `json:"includeTokens"`
 }
 
 type GoogleLoginRequest struct {
@@ -36,10 +38,11 @@ type GoogleLoginRequest struct {
 }
 
 type AuthResponse struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	UserID       string `json:"userId"`
-	Email        string `json:"email"`
-	Name         string `json:"name"`
-	AvatarURL    string `json:"avatarUrl,omitempty"`
+	AccessToken      string `json:"accessToken"`
+	RefreshToken     string `json:"refreshToken"`
+	ExpiresInSeconds int64  `json:"expiresInSeconds"`
+	UserID           string `json:"userId"`
+	Email            string `json:"email"`
+	Name             string `json:"name"`
+	AvatarURL        string `json:"avatarUrl,omitempty"`
 }
