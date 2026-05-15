@@ -45,6 +45,44 @@ func TestRunWiresDependenciesAndCallsServer(t *testing.T) {
 	}
 }
 
+func TestRunAcceptsAuthServiceConfigWithoutStaticToken(t *testing.T) {
+	apiServer := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(apiServer.Close)
+	authServer := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(authServer.Close)
+
+	t.Setenv("EVAL_MCP_DB_PATH", filepath.Join(t.TempDir(), "eval-mcp.db"))
+	t.Setenv("EVAL_API_URL", apiServer.URL)
+	t.Setenv("EVAL_API_TOKEN", "")
+	t.Setenv("AUTH_SERVICE_URL", authServer.URL)
+	t.Setenv("EVAL_MCP_AUTH_EMAIL", "eval@example.test")
+	t.Setenv("EVAL_MCP_AUTH_PASSWORD", "secret")
+	t.Setenv("EVAL_MCP_TOKEN_CACHE_PATH", filepath.Join(t.TempDir(), "tokens.json"))
+	t.Setenv("EVAL_MCP_POLL_INTERVAL", "10ms")
+	t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "2s")
+
+	called := false
+	err := run(context.Background(), log.New(&bytes.Buffer{}, "", 0), func(_ context.Context, application *app) error {
+		called = true
+		if application.service == nil {
+			t.Fatal("expected service")
+		}
+		if application.cfg.APIToken != "" {
+			t.Fatalf("APIToken = %q", application.cfg.APIToken)
+		}
+		if application.cfg.AuthServiceURL != authServer.URL {
+			t.Fatalf("AuthServiceURL = %q", application.cfg.AuthServiceURL)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected runner to be called")
+	}
+}
+
 func TestRunReturnsConfigError(t *testing.T) {
 	t.Setenv("EVAL_MCP_POLL_INTERVAL", "nope")
 

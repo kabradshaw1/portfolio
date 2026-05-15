@@ -131,6 +131,72 @@ func TestHTTPErrorIncludesStatusAndExcerpt(t *testing.T) {
 	}
 }
 
+func TestListDatasetsRetriesOnceAfterUnauthorized(t *testing.T) {
+	provider := &sequenceTokenProvider{tokens: []string{"expired-token", "fresh-token"}}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch requests {
+		case 1:
+			if got := r.Header.Get("Authorization"); got != "Bearer expired-token" {
+				t.Fatalf("first Authorization = %q", got)
+			}
+			http.Error(w, "expired", http.StatusUnauthorized)
+		case 2:
+			if got := r.Header.Get("Authorization"); got != "Bearer fresh-token" {
+				t.Fatalf("retry Authorization = %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"datasets": []Dataset{{ID: "ds-retry", Name: "rag"}}})
+		default:
+			t.Fatalf("unexpected request %d", requests)
+		}
+	}))
+	defer server.Close()
+
+	client := NewWithTokenProvider(server.URL, provider, server.Client())
+	got, err := client.ListDatasets(context.Background())
+	if err != nil {
+		t.Fatalf("ListDatasets error: %v", err)
+	}
+	if provider.invalidations != 1 {
+		t.Fatalf("invalidations = %d", provider.invalidations)
+	}
+	if provider.calls != 2 {
+		t.Fatalf("token calls = %d", provider.calls)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d", requests)
+	}
+	if len(got) != 1 || got[0].ID != "ds-retry" {
+		t.Fatalf("datasets = %#v", got)
+	}
+}
+
+func TestListDatasetsDoesNotRetryNonUnauthorizedError(t *testing.T) {
+	provider := &sequenceTokenProvider{tokens: []string{"token-1"}}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Error(w, "broken", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := NewWithTokenProvider(server.URL, provider, server.Client())
+	_, err := client.ListDatasets(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d", requests)
+	}
+	if provider.invalidations != 0 {
+		t.Fatalf("invalidations = %d", provider.invalidations)
+	}
+	if !strings.Contains(err.Error(), "status 502") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestNewUsesDefaultHTTPClient(t *testing.T) {
 	client := New("http://example.test/eval", "", nil)
 	if client.httpClient == nil {
@@ -139,4 +205,23 @@ func TestNewUsesDefaultHTTPClient(t *testing.T) {
 	if client.httpClient.Timeout != 30*time.Second {
 		t.Fatalf("timeout = %s", client.httpClient.Timeout)
 	}
+}
+
+type sequenceTokenProvider struct {
+	tokens        []string
+	calls         int
+	invalidations int
+}
+
+func (p *sequenceTokenProvider) Token(context.Context) (string, error) {
+	if p.calls >= len(p.tokens) {
+		return "", nil
+	}
+	token := p.tokens[p.calls]
+	p.calls++
+	return token, nil
+}
+
+func (p *sequenceTokenProvider) Invalidate() {
+	p.invalidations++
 }
