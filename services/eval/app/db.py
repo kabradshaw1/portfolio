@@ -218,6 +218,19 @@ class EvalDB:
         rows = await cursor.fetchall()
         return [self._row_to_dict(r) for r in rows]
 
+    async def get_completed_evaluations_for_dashboard(
+        self, dataset_id: str, collection: str
+    ) -> list[dict]:
+        """Completed compact runs for dashboard summaries, ordered ASC."""
+        cursor = await self._db.execute(
+            "SELECT * FROM evaluations "
+            "WHERE dataset_id = ? AND collection = ? AND status = 'completed' "
+            "ORDER BY created_at ASC",
+            (dataset_id, collection),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_dict(r, include_results=False) for r in rows]
+
     def _experiment_row_to_dict(self, row, *, runs: list[dict] | None = None) -> dict:
         out = {
             "id": row["id"],
