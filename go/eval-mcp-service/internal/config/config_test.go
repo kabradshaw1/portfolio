@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -97,16 +98,19 @@ func TestFromEnvStaticTokenBypassesAuthCredentials(t *testing.T) {
 func TestFromEnvRequiresAuthConfigWithoutStaticToken(t *testing.T) {
 	tests := []struct {
 		name     string
+		envVar   string
 		email    string
 		password string
 	}{
 		{
 			name:     "missing email",
+			envVar:   "EVAL_MCP_AUTH_EMAIL",
 			password: "secret",
 		},
 		{
-			name:  "missing password",
-			email: "user@example.test",
+			name:   "missing password",
+			envVar: "EVAL_MCP_AUTH_PASSWORD",
+			email:  "user@example.test",
 		},
 	}
 
@@ -115,10 +119,16 @@ func TestFromEnvRequiresAuthConfigWithoutStaticToken(t *testing.T) {
 			t.Setenv("EVAL_API_TOKEN", "")
 			t.Setenv("EVAL_MCP_AUTH_EMAIL", tt.email)
 			t.Setenv("EVAL_MCP_AUTH_PASSWORD", tt.password)
+			t.Setenv("EVAL_MCP_POLL_INTERVAL", "")
+			t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "")
+			t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "")
 
 			_, err := FromEnv()
 			if err == nil {
 				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tt.envVar) {
+				t.Fatalf("error = %q, want %q", err, tt.envVar)
 			}
 		})
 	}

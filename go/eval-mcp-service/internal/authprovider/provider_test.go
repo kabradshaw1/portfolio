@@ -3,6 +3,7 @@ package authprovider
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -129,6 +130,41 @@ func TestTokenFallsBackToLoginWhenRefreshFails(t *testing.T) {
 	})
 }
 
+func TestTokenReportsRefreshContextWhenFallbackLoginFails(t *testing.T) {
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	store := &fakeStore{
+		state: tokenstore.State{
+			AccessToken:    "access-old",
+			RefreshToken:   "refresh-old",
+			AccessTokenExp: now.Add(-time.Second),
+			AuthEmail:      "user@example.test",
+			AuthServiceURL: "http://auth.test/auth",
+		},
+		ok: true,
+	}
+	client := &fakeClient{
+		refreshErr: errors.New("auth service rejected refresh"),
+		loginErr:   errors.New("auth service rejected login"),
+	}
+	provider := New(client, store, testConfig(now))
+
+	_, err := provider.Token(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	got := err.Error()
+	for _, want := range []string{"refresh", "auth service rejected refresh", "login", "auth service rejected login"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("error = %q, want %q", got, want)
+		}
+	}
+	for _, sensitive := range []string{"refresh-old", "secret"} {
+		if strings.Contains(got, sensitive) {
+			t.Fatalf("error leaked sensitive value %q: %q", sensitive, got)
+		}
+	}
+}
+
 func TestInvalidateForcesRefreshForValidCachedAccessToken(t *testing.T) {
 	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
 	store := &fakeStore{
@@ -169,6 +205,70 @@ func TestInvalidateForcesRefreshForValidCachedAccessToken(t *testing.T) {
 		AuthServiceURL: "http://auth.test/auth",
 		WrittenAt:      now,
 	})
+}
+
+func TestInvalidatePersistsWhenReplacementFails(t *testing.T) {
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name        string
+		client      *fakeClient
+		saveErr     error
+		wantRefresh int
+		wantLogin   int
+	}{
+		{
+			name: "refresh and login fail",
+			client: &fakeClient{
+				refreshErr: errors.New("refresh unavailable"),
+				loginErr:   errors.New("login unavailable"),
+			},
+			wantRefresh: 2,
+			wantLogin:   2,
+		},
+		{
+			name: "save fails after refresh",
+			client: &fakeClient{
+				refreshResponse: authclient.TokenResponse{
+					AccessToken:      "access-refreshed",
+					RefreshToken:     "refresh-refreshed",
+					ExpiresInSeconds: 180,
+				},
+			},
+			saveErr:     errors.New("disk unavailable"),
+			wantRefresh: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &fakeStore{
+				state: tokenstore.State{
+					AccessToken:    "access-cached",
+					RefreshToken:   "refresh-cached",
+					AccessTokenExp: now.Add(2 * time.Minute),
+					AuthEmail:      "user@example.test",
+					AuthServiceURL: "http://auth.test/auth",
+				},
+				ok:      true,
+				saveErr: tt.saveErr,
+			}
+			provider := New(tt.client, store, testConfig(now))
+
+			provider.Invalidate()
+			for i := 0; i < 2; i++ {
+				got, err := provider.Token(context.Background())
+				if err == nil {
+					t.Fatalf("Token call %d returned token %q, expected error", i+1, got)
+				}
+				if got == "access-cached" {
+					t.Fatalf("Token call %d reused invalidated cached token", i+1)
+				}
+			}
+			if tt.client.refreshCalls != tt.wantRefresh || tt.client.loginCalls != tt.wantLogin {
+				t.Fatalf("client calls: login=%d refresh=%d, want login=%d refresh=%d", tt.client.loginCalls, tt.client.refreshCalls, tt.wantLogin, tt.wantRefresh)
+			}
+		})
+	}
 }
 
 func testConfig(now time.Time) Config {
@@ -232,10 +332,11 @@ func (c *fakeClient) Refresh(_ context.Context, refreshToken string) (authclient
 }
 
 type fakeStore struct {
-	state tokenstore.State
-	ok    bool
-	err   error
-	saves []tokenstore.State
+	state   tokenstore.State
+	ok      bool
+	err     error
+	saveErr error
+	saves   []tokenstore.State
 }
 
 func (s *fakeStore) Load(context.Context) (tokenstore.State, bool, error) {
@@ -246,6 +347,9 @@ func (s *fakeStore) Load(context.Context) (tokenstore.State, bool, error) {
 }
 
 func (s *fakeStore) Save(_ context.Context, state tokenstore.State) error {
+	if s.saveErr != nil {
+		return s.saveErr
+	}
 	s.saves = append(s.saves, state)
 	s.state = state
 	s.ok = true

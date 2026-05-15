@@ -2,6 +2,7 @@ package authprovider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -62,17 +63,23 @@ func (p *Provider) Token(ctx context.Context) (string, error) {
 		return state.AccessToken, nil
 	}
 
-	p.invalidated = false
-
+	var refreshErr error
 	if ok && p.cacheIdentityMatches(state) && state.RefreshToken != "" {
 		response, err := p.client.Refresh(ctx, state.RefreshToken)
 		if err == nil {
 			return p.saveAndReturn(ctx, now, response)
 		}
+		refreshErr = err
 	}
 
 	response, err := p.client.Login(ctx, p.cfg.Email, p.cfg.Password)
 	if err != nil {
+		if refreshErr != nil {
+			return "", fmt.Errorf("replace token: %w", errors.Join(
+				fmt.Errorf("refresh: %w", refreshErr),
+				fmt.Errorf("login: %w", err),
+			))
+		}
 		return "", fmt.Errorf("login: %w", err)
 	}
 	return p.saveAndReturn(ctx, now, response)
@@ -106,5 +113,6 @@ func (p *Provider) saveAndReturn(ctx context.Context, now time.Time, response au
 	if err := p.store.Save(ctx, state); err != nil {
 		return "", fmt.Errorf("save token state: %w", err)
 	}
+	p.invalidated = false
 	return response.AccessToken, nil
 }
