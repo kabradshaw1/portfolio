@@ -2,9 +2,9 @@
 
 Local-only MCP stdio server for agent-driven RAG evaluation experiments.
 
-The Python eval API remains the source of truth for datasets, runs, scores, and
-per-query results. This MCP service stores only local experiment metadata such
-as labels, hypotheses, notes, and conclusions.
+The Python eval API is the source of truth for datasets, evaluations,
+experiments, labels, decisions, conclusions, and evidence. This MCP service is
+a local stdio workflow adapter over that API.
 
 ## Run Directly
 
@@ -26,7 +26,6 @@ codex mcp add eval -- zsh -lc 'cd /Users/kylebradshaw/repos/gen_ai_engineer/go/e
 
 ## Configuration
 
-- `EVAL_MCP_DB_PATH`: SQLite path, defaults to `data/eval-mcp.db`.
 - `EVAL_API_URL`: eval API base URL, defaults to `http://localhost:8000/eval`.
 - `EVAL_API_TOKEN`: optional bearer token override for eval API calls. When set,
   the service skips auth-service login and token cache refresh.

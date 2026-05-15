@@ -314,6 +314,7 @@ async def create_experiment(
         dataset_id=body.dataset_id,
         collection=body.collection,
         baseline_eval_id=body.baseline_eval_id,
+        focus_metric=body.focus_metric,
         status=body.status,
         notes=body.notes,
     )
@@ -371,6 +372,27 @@ async def update_experiment(
         raise HTTPException(
             status_code=400, detail="decision requires completed status"
         )
+    final_decision = (
+        body.decision if body.decision is not None else experiment["decision"]
+    )
+    final_conclusion = (
+        body.conclusion if body.conclusion is not None else experiment["conclusion"]
+    )
+    final_evidence = (
+        body.evidence if body.evidence is not None else experiment["evidence"]
+    )
+    if final_status == "completed" and final_decision is None:
+        raise HTTPException(
+            status_code=400, detail="completed experiments require a decision"
+        )
+    if final_status == "completed" and final_conclusion is None:
+        raise HTTPException(
+            status_code=400, detail="completed experiments require a conclusion"
+        )
+    if final_status == "completed" and final_evidence is None:
+        raise HTTPException(
+            status_code=400, detail="completed experiments require evidence"
+        )
     baseline_eval_id = body.baseline_eval_id
     if baseline_eval_id is not None:
         await _validate_experiment_baseline(
@@ -384,8 +406,11 @@ async def update_experiment(
         experiment_id,
         hypothesis=body.hypothesis,
         baseline_eval_id=baseline_eval_id,
+        focus_metric=body.focus_metric,
         status=body.status,
         decision=body.decision,
+        conclusion=body.conclusion,
+        evidence=body.evidence,
         notes=body.notes,
     )
     updated = await db.get_experiment(experiment_id)

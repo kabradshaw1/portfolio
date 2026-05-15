@@ -429,3 +429,56 @@ async def test_attach_experiment_run_rejects_dataset_or_collection_mismatch(db):
         await db.attach_experiment_run(
             exp_id, other_collection_run, label="other_collection"
         )
+
+
+@pytest.mark.asyncio
+async def test_experiment_persists_focus_conclusion_and_evidence(db):
+    ds_id = await db.create_dataset(name="ds-evidence", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id=ds_id,
+        collection="documents",
+        focus_metric="context_precision",
+        status="running",
+        notes="first pass",
+    )
+
+    evidence = {
+        "baseline_eval_id": "eval-base",
+        "candidate_eval_ids": ["eval-candidate"],
+        "focus_metric": "context_precision",
+        "metric_deltas": {"candidate": {"context_precision": 0.08}},
+        "worst_cases": [{"label": "candidate", "query": "q", "score": 0.25}],
+        "config_diffs": [{"label": "candidate", "summary": "rerank enabled"}],
+        "caveats": ["small dataset size"],
+    }
+    await db.update_experiment(
+        exp_id,
+        focus_metric="context_precision",
+        status="completed",
+        decision="keep",
+        conclusion="Keep reranking.",
+        evidence=evidence,
+        notes="final",
+    )
+
+    detail = await db.get_experiment(exp_id)
+    assert detail["focus_metric"] == "context_precision"
+    assert detail["decision"] == "keep"
+    assert detail["conclusion"] == "Keep reranking."
+    assert detail["evidence"] == evidence
+    assert detail["notes"] == "final"
+
+
+@pytest.mark.asyncio
+async def test_init_is_idempotent_after_experiment_evidence_columns_exist(tmp_path):
+    db_path = str(tmp_path / "experiment-evidence.db")
+
+    db1 = EvalDB(db_path)
+    await db1.init()
+    await db1.close()
+
+    db2 = EvalDB(db_path)
+    await db2.init()
+    await db2.close()
