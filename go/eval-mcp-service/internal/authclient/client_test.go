@@ -160,6 +160,61 @@ func TestRefreshHTTPErrorRedactsSubmittedRefreshToken(t *testing.T) {
 	}
 }
 
+func TestRefreshHTTPErrorRedactsLongSubmittedRefreshTokenPrefix(t *testing.T) {
+	refreshToken := strings.Repeat("refresh-token-prefix-", 30)
+	leakedPrefix := refreshToken[:120]
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "invalid refresh token "+refreshToken, http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client := New(server.URL+"/auth", server.Client())
+	_, err := client.Refresh(context.Background(), refreshToken)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("error = %q, want redaction marker", got)
+	}
+	if strings.Contains(got, leakedPrefix) {
+		t.Fatalf("error leaked refresh token prefix: %q", got)
+	}
+	if len(got) > len("POST /refresh: status 401: ")+errorExcerptLimit {
+		t.Fatalf("error excerpt was not bounded after redaction: %q", got)
+	}
+}
+
+func TestLoginHTTPErrorRedactsJSONEscapedSubmittedPassword(t *testing.T) {
+	password := `json-"secret"\value`
+	escapedPasswordBytes, err := json.Marshal(password)
+	if err != nil {
+		t.Fatalf("marshal password: %v", err)
+	}
+	escapedPassword := strings.Trim(string(escapedPasswordBytes), `"`)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid password ` + escapedPassword + `"}`))
+	}))
+	defer server.Close()
+
+	client := New(server.URL+"/auth", server.Client())
+	_, err = client.Login(context.Background(), "user@example.test", password)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("error = %q, want redaction marker", got)
+	}
+	for _, leaked := range []string{password, escapedPassword} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("error leaked password value %q: %q", leaked, got)
+		}
+	}
+}
+
 func TestRejectsInvalidTokenResponse(t *testing.T) {
 	tests := []struct {
 		name     string

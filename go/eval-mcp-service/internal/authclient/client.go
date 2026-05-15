@@ -111,9 +111,30 @@ func redact(value string, redactions ...string) string {
 		if secret == "" {
 			continue
 		}
-		value = strings.ReplaceAll(value, secret, "[REDACTED]")
+		for _, variant := range secretVariants(secret) {
+			value = strings.ReplaceAll(value, variant, "[REDACTED]")
+			for prefixLen := len(variant) - 1; prefixLen >= 8; prefixLen-- {
+				value = strings.ReplaceAll(value, variant[:prefixLen], "[REDACTED]")
+			}
+		}
+	}
+	if len(value) > errorExcerptLimit {
+		return value[:errorExcerptLimit]
 	}
 	return value
+}
+
+func secretVariants(secret string) []string {
+	quoted, err := json.Marshal(secret)
+	if err != nil {
+		return []string{secret}
+	}
+
+	escaped := strings.Trim(string(quoted), `"`)
+	if escaped == secret {
+		return []string{secret}
+	}
+	return []string{secret, escaped}
 }
 
 func validateTokenResponse(response TokenResponse) error {
