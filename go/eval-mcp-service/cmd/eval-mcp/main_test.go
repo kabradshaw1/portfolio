@@ -14,7 +14,6 @@ func TestRunWiresDependenciesAndCallsServer(t *testing.T) {
 	apiServer := httptest.NewServer(http.NotFoundHandler())
 	t.Cleanup(apiServer.Close)
 
-	t.Setenv("EVAL_MCP_DB_PATH", "/tmp/removed-eval-mcp.db")
 	t.Setenv("EVAL_API_URL", apiServer.URL)
 	t.Setenv("EVAL_API_TOKEN", "test-token")
 	t.Setenv("EVAL_MCP_POLL_INTERVAL", "10ms")
@@ -50,13 +49,12 @@ func TestRunAcceptsAuthServiceConfigWithoutStaticToken(t *testing.T) {
 	authServer := httptest.NewServer(http.NotFoundHandler())
 	t.Cleanup(authServer.Close)
 
-	t.Setenv("EVAL_MCP_DB_PATH", filepath.Join(t.TempDir(), "eval-mcp.db"))
 	t.Setenv("EVAL_API_URL", apiServer.URL)
 	t.Setenv("EVAL_API_TOKEN", "")
 	t.Setenv("AUTH_SERVICE_URL", authServer.URL)
 	t.Setenv("EVAL_MCP_AUTH_EMAIL", "eval@example.test")
 	t.Setenv("EVAL_MCP_AUTH_PASSWORD", "secret")
-	t.Setenv("EVAL_MCP_TOKEN_CACHE_PATH", filepath.Join(t.TempDir(), "tokens.json"))
+	t.Setenv("EVAL_MCP_TOKEN_CACHE_PATH", t.TempDir()+"/tokens.json")
 	t.Setenv("EVAL_MCP_POLL_INTERVAL", "10ms")
 	t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "2s")
 

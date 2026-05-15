@@ -7,7 +7,6 @@ import (
 )
 
 func TestFromEnvDefaults(t *testing.T) {
-	t.Setenv("EVAL_MCP_DB_PATH", "")
 	t.Setenv("EVAL_API_URL", "")
 	t.Setenv("EVAL_API_TOKEN", "")
 	t.Setenv("AUTH_SERVICE_URL", "")
@@ -52,7 +51,6 @@ func TestFromEnvDefaults(t *testing.T) {
 }
 
 func TestFromEnvOverrides(t *testing.T) {
-	t.Setenv("EVAL_MCP_DB_PATH", "/tmp/eval.db")
 	t.Setenv("EVAL_API_URL", "http://127.0.0.1:9000/eval")
 	t.Setenv("EVAL_API_TOKEN", "token-123")
 	t.Setenv("AUTH_SERVICE_URL", "http://127.0.0.1:8091/auth")
@@ -67,7 +65,7 @@ func TestFromEnvOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FromEnv returned error: %v", err)
 	}
-	if cfg.DBPath != "/tmp/eval.db" || cfg.EvalAPIURL != "http://127.0.0.1:9000/eval" || cfg.APIToken != "token-123" || cfg.AuthServiceURL != "http://127.0.0.1:8091/auth" || cfg.AuthEmail != "user@example.test" || cfg.AuthPassword != "secret" || cfg.TokenCachePath != "/tmp/tokens.json" {
+	if cfg.EvalAPIURL != "http://127.0.0.1:9000/eval" || cfg.APIToken != "token-123" || cfg.AuthServiceURL != "http://127.0.0.1:8091/auth" || cfg.AuthEmail != "user@example.test" || cfg.AuthPassword != "secret" || cfg.TokenCachePath != "/tmp/tokens.json" {
 		t.Fatalf("unexpected config: %#v", cfg)
 	}
 	if cfg.PollInterval != 250*time.Millisecond || cfg.WaitTimeout != 30*time.Second || cfg.TokenRefreshSkew != 2*time.Minute {

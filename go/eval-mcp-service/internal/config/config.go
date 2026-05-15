@@ -7,7 +7,6 @@ import (
 )
 
 const (
-	defaultDBPath           = "data/eval-mcp.db"
 	defaultEvalAPIURL       = "http://localhost:8000/eval"
 	defaultAuthServiceURL   = "http://localhost:8091/auth"
 	defaultTokenCachePath   = "data/eval-mcp-auth.json"
@@ -17,7 +16,6 @@ const (
 )
 
 type Config struct {
-	DBPath           string
 	EvalAPIURL       string
 	APIToken         string
 	AuthServiceURL   string
@@ -65,7 +63,6 @@ func FromEnv() (Config, error) {
 	}
 
 	return Config{
-		DBPath:           getenv("EVAL_MCP_DB_PATH", defaultDBPath),
 		EvalAPIURL:       getenv("EVAL_API_URL", defaultEvalAPIURL),
 		APIToken:         apiToken,
 		AuthServiceURL:   getenv("AUTH_SERVICE_URL", defaultAuthServiceURL),
