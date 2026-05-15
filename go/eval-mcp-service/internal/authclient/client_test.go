@@ -116,6 +116,50 @@ func TestHTTPErrorIncludesStatusAndBoundedExcerpt(t *testing.T) {
 	}
 }
 
+func TestLoginHTTPErrorRedactsSubmittedPassword(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `invalid password "super-secret-password"`, http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client := New(server.URL+"/auth", server.Client())
+	_, err := client.Login(context.Background(), "user@example.test", "super-secret-password")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	got := err.Error()
+	for _, want := range []string{"POST", "/login", "status 401", "[REDACTED]"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("error = %q, want %q", got, want)
+		}
+	}
+	if strings.Contains(got, "super-secret-password") {
+		t.Fatalf("error leaked password: %q", got)
+	}
+}
+
+func TestRefreshHTTPErrorRedactsSubmittedRefreshToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `invalid refresh token refresh-token-secret`, http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client := New(server.URL+"/auth", server.Client())
+	_, err := client.Refresh(context.Background(), "refresh-token-secret")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	got := err.Error()
+	for _, want := range []string{"POST", "/refresh", "status 401", "[REDACTED]"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("error = %q, want %q", got, want)
+		}
+	}
+	if strings.Contains(got, "refresh-token-secret") {
+		t.Fatalf("error leaked refresh token: %q", got)
+	}
+}
+
 func TestRejectsInvalidTokenResponse(t *testing.T) {
 	tests := []struct {
 		name     string

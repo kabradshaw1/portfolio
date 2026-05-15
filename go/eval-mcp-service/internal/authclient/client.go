@@ -49,7 +49,7 @@ func (c *Client) Login(ctx context.Context, email, password string) (TokenRespon
 	}
 
 	var response TokenResponse
-	if err := c.do(ctx, http.MethodPost, "/login", body, &response); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/login", body, &response, password); err != nil {
 		return TokenResponse{}, err
 	}
 	if err := validateTokenResponse(response); err != nil {
@@ -68,7 +68,7 @@ func (c *Client) Refresh(ctx context.Context, refreshToken string) (TokenRespons
 	}
 
 	var response TokenResponse
-	if err := c.do(ctx, http.MethodPost, "/refresh", body, &response); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/refresh", body, &response, refreshToken); err != nil {
 		return TokenResponse{}, err
 	}
 	if err := validateTokenResponse(response); err != nil {
@@ -77,7 +77,7 @@ func (c *Client) Refresh(ctx context.Context, refreshToken string) (TokenRespons
 	return response, nil
 }
 
-func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
+func (c *Client) do(ctx context.Context, method, path string, body any, out any, redactions ...string) error {
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(body); err != nil {
 		return fmt.Errorf("%s %s: encode request: %w", method, path, err)
@@ -97,13 +97,23 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		excerpt, _ := io.ReadAll(io.LimitReader(resp.Body, errorExcerptLimit))
-		return fmt.Errorf("%s %s: status %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(excerpt)))
+		return fmt.Errorf("%s %s: status %d: %s", method, path, resp.StatusCode, redact(strings.TrimSpace(string(excerpt)), redactions...))
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("%s %s: decode response: %w", method, path, err)
 	}
 	return nil
+}
+
+func redact(value string, redactions ...string) string {
+	for _, secret := range redactions {
+		if secret == "" {
+			continue
+		}
+		value = strings.ReplaceAll(value, secret, "[REDACTED]")
+	}
+	return value
 }
 
 func validateTokenResponse(response TokenResponse) error {

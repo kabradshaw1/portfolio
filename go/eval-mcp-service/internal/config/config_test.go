@@ -82,6 +82,9 @@ func TestFromEnvStaticTokenBypassesAuthCredentials(t *testing.T) {
 	t.Setenv("EVAL_API_TOKEN", "token-123")
 	t.Setenv("EVAL_MCP_AUTH_EMAIL", "")
 	t.Setenv("EVAL_MCP_AUTH_PASSWORD", "")
+	t.Setenv("EVAL_MCP_POLL_INTERVAL", "")
+	t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "")
+	t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "")
 
 	cfg, err := FromEnv()
 	if err != nil {
