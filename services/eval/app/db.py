@@ -381,11 +381,44 @@ class EvalDB:
                 (experiment_id, evaluation_id, label, notes, now),
             )
         except aiosqlite.IntegrityError as exc:
-            if "experiment_runs.experiment_id, experiment_runs.label" in str(exc):
+            exc_text = str(exc)
+            if "experiment_runs.experiment_id, experiment_runs.label" in exc_text:
                 raise ValueError("duplicate experiment run label") from exc
+            if (
+                "experiment_runs.experiment_id, experiment_runs.evaluation_id"
+                in exc_text
+            ):
+                raise ValueError("evaluation already attached to experiment") from exc
             raise
         await self._db.commit()
         return await self.get_experiment(experiment_id)
+
+    async def sync_experiment_baseline_run(
+        self, experiment_id: str, baseline_eval_id: str | None
+    ) -> None:
+        await self._db.execute(
+            "DELETE FROM experiment_runs WHERE experiment_id = ? AND label = 'baseline'",
+            (experiment_id,),
+        )
+        if baseline_eval_id is None:
+            await self._db.commit()
+            return
+
+        now = datetime.now(_UTC).isoformat()
+        cursor = await self._db.execute(
+            "UPDATE experiment_runs "
+            "SET label = 'baseline', notes = ?, created_at = ? "
+            "WHERE experiment_id = ? AND evaluation_id = ?",
+            ("baseline", now, experiment_id, baseline_eval_id),
+        )
+        if cursor.rowcount == 0:
+            await self._db.execute(
+                "INSERT INTO experiment_runs "
+                "(experiment_id, evaluation_id, label, notes, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (experiment_id, baseline_eval_id, "baseline", "baseline", now),
+            )
+        await self._db.commit()
 
     async def list_experiment_runs(self, experiment_id: str) -> list[dict]:
         cursor = await self._db.execute(

@@ -41,7 +41,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -234,6 +234,12 @@ async def _validate_experiment_for_run(
         )
 
 
+def _experiment_attach_error_status(detail: str) -> int:
+    if "duplicate" in detail or "already attached" in detail:
+        return 409
+    return 400
+
+
 @app.post("/evaluations", status_code=202)
 @limiter.limit("5/minute")
 async def start_evaluation(
@@ -276,7 +282,15 @@ async def start_evaluation(
             )
         except ValueError as exc:
             detail = str(exc)
-            status_code = 409 if "duplicate" in detail else 400
+            try:
+                await db.fail_evaluation(
+                    eval_id, error=f"experiment attach failed: {detail}"
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to mark evaluation %s as failed after attach error", eval_id
+                )
+            status_code = _experiment_attach_error_status(detail)
             raise HTTPException(status_code=status_code, detail=detail) from exc
 
     background_tasks.add_task(
@@ -365,23 +379,31 @@ async def update_experiment(
         raise HTTPException(
             status_code=400, detail="decision requires completed status"
         )
+    fields_set = body.model_fields_set
     baseline_eval_id = body.baseline_eval_id
-    if baseline_eval_id is not None:
+    if "baseline_eval_id" not in fields_set:
+        baseline_eval_id = experiment["baseline_eval_id"]
+    elif baseline_eval_id is not None:
         await _validate_experiment_baseline(
             db,
             baseline_eval_id,
             experiment["dataset_id"],
             experiment["collection"],
         )
+    decision = body.decision
+    if "decision" not in fields_set:
+        decision = experiment["decision"]
 
     await db.update_experiment(
         experiment_id,
         hypothesis=body.hypothesis,
         baseline_eval_id=baseline_eval_id,
         status=body.status,
-        decision=body.decision,
+        decision=decision,
         notes=body.notes,
     )
+    if "baseline_eval_id" in fields_set:
+        await db.sync_experiment_baseline_run(experiment_id, baseline_eval_id)
     updated = await db.get_experiment(experiment_id)
     return updated
 
@@ -413,7 +435,7 @@ async def attach_experiment_run(
         )
     except ValueError as exc:
         detail = str(exc)
-        status_code = 409 if "duplicate" in detail else 400
+        status_code = _experiment_attach_error_status(detail)
         raise HTTPException(status_code=status_code, detail=detail) from exc
     if not experiment:
         raise HTTPException(

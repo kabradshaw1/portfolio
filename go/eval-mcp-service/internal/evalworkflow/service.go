@@ -124,10 +124,7 @@ func New(api API, st Store, pollInterval, waitTimeout time.Duration) *Service {
 }
 
 func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) (store.Experiment, error) {
-	collection := in.Collection
-	if collection == "" {
-		collection = DefaultCollection
-	}
+	collection := normalizeCollection(in.Collection)
 	focusMetric := in.FocusMetric
 	if focusMetric == "" {
 		focusMetric = DefaultFocusMetric
@@ -148,6 +145,11 @@ func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) 
 	if err != nil {
 		return store.Experiment{}, err
 	}
+	if in.BaselineEvalID != "" {
+		if err := s.store.AttachRun(ctx, id, "baseline", in.BaselineEvalID, "baseline"); err != nil {
+			return store.Experiment{}, err
+		}
+	}
 	return s.store.GetExperiment(ctx, id)
 }
 
@@ -165,8 +167,20 @@ func (s *Service) ListDatasets(ctx context.Context) ([]evalapi.Dataset, error) {
 
 func (s *Service) StartRun(ctx context.Context, in StartRunInput) (StartRunResult, error) {
 	if in.ExperimentID != 0 && in.Label != "" {
-		if _, err := s.store.GetExperiment(ctx, in.ExperimentID); err != nil {
+		exp, err := s.store.GetExperiment(ctx, in.ExperimentID)
+		if err != nil {
 			return StartRunResult{}, err
+		}
+		if exp.DatasetID != "" && exp.DatasetID != in.DatasetID {
+			return StartRunResult{}, fmt.Errorf("experiment %d requires dataset %q; got %q", in.ExperimentID, exp.DatasetID, in.DatasetID)
+		}
+		runCollection := normalizeCollection(in.Collection)
+		expCollection := normalizeCollection(exp.Collection)
+		if exp.Collection != "" && expCollection != runCollection {
+			return StartRunResult{}, fmt.Errorf("experiment %d requires collection %q; got %q", in.ExperimentID, expCollection, runCollection)
+		}
+		if in.BaselineEvalID == "" && exp.BaselineEvalID != "" {
+			in.BaselineEvalID = exp.BaselineEvalID
 		}
 	}
 
@@ -403,6 +417,13 @@ func normalizeWorstLimit(limit int) int {
 		return maxWorstLimit
 	}
 	return limit
+}
+
+func normalizeCollection(collection string) string {
+	if collection == "" {
+		return DefaultCollection
+	}
+	return collection
 }
 
 func validateMetric(metric string) error {

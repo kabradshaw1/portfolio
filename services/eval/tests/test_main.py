@@ -7,6 +7,13 @@ from fastapi.testclient import TestClient
 client = TestClient(app)
 
 
+def test_cors_allows_patch_method():
+    cors = next(
+        middleware for middleware in app.user_middleware if middleware.cls.__name__ == "CORSMiddleware"
+    )
+    assert "PATCH" in cors.options["allow_methods"]
+
+
 # --- Dataset endpoints ---
 
 
@@ -550,6 +557,39 @@ def test_start_evaluation_attaches_run_to_experiment(mock_get_db):
 
 
 @patch("app.main.get_db")
+def test_start_evaluation_attach_failure_marks_run_failed(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_experiment.return_value = {
+        **_stub_experiment(status="running"),
+        "dataset_id": "ds-123",
+    }
+    mock_db.create_evaluation.return_value = "eval-candidate"
+    mock_db.attach_experiment_run.side_effect = ValueError("duplicate experiment run label")
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "experiment_id": "exp-1",
+            "experiment_label": "candidate",
+        },
+    )
+
+    assert response.status_code == 409
+    mock_db.fail_evaluation.assert_awaited_once_with(
+        "eval-candidate", error="experiment attach failed: duplicate experiment run label"
+    )
+
+
+@patch("app.main.get_db")
 def test_start_evaluation_rejects_experiment_attachment_without_label(mock_get_db):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
@@ -980,6 +1020,55 @@ def test_patch_experiment_records_decision_when_completed(mock_get_db):
 
 
 @patch("app.main.get_db")
+def test_patch_experiment_preserves_omitted_nullable_fields(mock_get_db):
+    existing = {
+        **_stub_experiment(status="completed"),
+        "baseline_eval_id": "eval-base",
+        "decision": "keep",
+    }
+    updated = {
+        **existing,
+        "notes": "updated notes",
+    }
+    mock_db = AsyncMock()
+    mock_db.get_experiment.side_effect = [existing, updated]
+    mock_get_db.return_value = mock_db
+
+    response = client.patch("/experiments/exp-1", json={"notes": "updated notes"})
+
+    assert response.status_code == 200
+    mock_db.update_experiment.assert_awaited_once_with(
+        "exp-1",
+        hypothesis=None,
+        baseline_eval_id="eval-base",
+        status=None,
+        decision="keep",
+        notes="updated notes",
+    )
+    mock_db.sync_experiment_baseline_run.assert_not_called()
+
+
+@patch("app.main.get_db")
+def test_patch_experiment_syncs_baseline_label_when_changed(mock_get_db):
+    existing = {
+        **_stub_experiment(status="running"),
+        "baseline_eval_id": "eval-old",
+    }
+    updated = {
+        **existing,
+        "baseline_eval_id": "eval-new",
+    }
+    mock_db = AsyncMock()
+    mock_db.get_experiment.side_effect = [existing, updated]
+    mock_get_db.return_value = mock_db
+
+    response = client.patch("/experiments/exp-1", json={"baseline_eval_id": "eval-new"})
+
+    assert response.status_code == 200
+    mock_db.sync_experiment_baseline_run.assert_awaited_once_with("exp-1", "eval-new")
+
+
+@patch("app.main.get_db")
 def test_patch_experiment_rejects_decision_without_completed_status(mock_get_db):
     mock_db = AsyncMock()
     mock_db.get_experiment.return_value = _stub_experiment(status="running")
@@ -1034,6 +1123,23 @@ def test_attach_experiment_run_duplicate_label_returns_409(mock_get_db):
 
     assert response.status_code == 409
     assert response.json()["detail"] == "duplicate experiment run label"
+
+
+@patch("app.main.get_db")
+def test_attach_experiment_run_duplicate_evaluation_returns_409(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.attach_experiment_run.side_effect = ValueError(
+        "evaluation already attached to experiment"
+    )
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments/exp-1/runs",
+        json={"evaluation_id": "eval-1", "label": "candidate"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "evaluation already attached to experiment"
 
 
 # --- Health check ---

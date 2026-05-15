@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -43,7 +42,7 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 	if err := db.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate store: %w", err)
 	}
-	api := evalapi.New(cfg.EvalAPIURL, cfg.APIToken, &http.Client{Timeout: cfg.WaitTimeout})
+	api := evalapi.New(cfg.EvalAPIURL, cfg.APIToken, nil)
 	service := evalworkflow.New(api, db, cfg.PollInterval, cfg.WaitTimeout)
 	logger.Printf("eval MCP server running on stdio eval_api_url=%s db_path=%s", cfg.EvalAPIURL, cfg.DBPath)
 	return runServer(ctx, &app{service: service, cfg: cfg})

@@ -230,6 +230,47 @@ async def test_update_experiment_changes_mutable_fields(db):
 
 
 @pytest.mark.asyncio
+async def test_sync_experiment_baseline_run_updates_labels(db):
+    ds_id = await db.create_dataset(name="ds-sync-baseline", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="baseline sync",
+        hypothesis="baseline should be relabeled",
+        dataset_id=ds_id,
+        collection="documents",
+    )
+    first_run = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+    second_run = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+    await db.attach_experiment_run(exp_id, first_run, label="baseline")
+    await db.attach_experiment_run(exp_id, second_run, label="candidate")
+
+    await db.sync_experiment_baseline_run(exp_id, second_run)
+
+    detail = await db.get_experiment(exp_id)
+    labels = {run["evaluation_id"]: run["label"] for run in detail["runs"]}
+    assert labels[first_run] != "baseline"
+    assert labels[second_run] == "baseline"
+
+
+@pytest.mark.asyncio
+async def test_sync_experiment_baseline_run_clears_baseline_label(db):
+    ds_id = await db.create_dataset(name="ds-clear-baseline", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="baseline clear",
+        hypothesis="clear baseline",
+        dataset_id=ds_id,
+        collection="documents",
+    )
+    run_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+    await db.attach_experiment_run(exp_id, run_id, label="baseline")
+
+    await db.sync_experiment_baseline_run(exp_id, None)
+
+    detail = await db.get_experiment(exp_id)
+    labels = [run["label"] for run in detail["runs"]]
+    assert "baseline" not in labels
+
+
+@pytest.mark.asyncio
 async def test_list_experiments_filters_by_status(db):
     ds_id = await db.create_dataset(name="ds-filter", items=SIMPLE_ITEM)
     running_id = await db.create_experiment(
@@ -305,6 +346,23 @@ async def test_attach_experiment_run_rejects_duplicate_label(db):
 
     with pytest.raises(ValueError, match="duplicate experiment run label"):
         await db.attach_experiment_run(exp_id, run_2, label="candidate")
+
+
+@pytest.mark.asyncio
+async def test_attach_experiment_run_rejects_already_attached_evaluation(db):
+    ds_id = await db.create_dataset(name="ds-dupe-run", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id=ds_id,
+        collection="documents",
+    )
+    run_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+
+    await db.attach_experiment_run(exp_id, run_id, label="candidate")
+
+    with pytest.raises(ValueError, match="evaluation already attached"):
+        await db.attach_experiment_run(exp_id, run_id, label="challenger")
 
 
 @pytest.mark.asyncio

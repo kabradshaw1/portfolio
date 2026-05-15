@@ -37,6 +37,31 @@ func TestStartExperimentDefaultsCollectionAndFocusMetric(t *testing.T) {
 	}
 }
 
+func TestStartExperimentAttachesBaselineRunWhenProvided(t *testing.T) {
+	ctx := context.Background()
+	api := &fakeAPI{}
+	st := newFakeStore()
+	svc := New(api, st, time.Millisecond, time.Second)
+
+	got, err := svc.StartExperiment(ctx, StartExperimentInput{
+		Name:           "rerank trial",
+		DatasetID:      "dataset-1",
+		BaselineEvalID: "eval-base",
+	})
+	if err != nil {
+		t.Fatalf("StartExperiment error: %v", err)
+	}
+	if got.BaselineEvalID != "eval-base" {
+		t.Fatalf("BaselineEvalID = %q, want %q", got.BaselineEvalID, "eval-base")
+	}
+	if len(st.attachCalls) != 1 {
+		t.Fatalf("AttachRun calls = %d, want 1", len(st.attachCalls))
+	}
+	if st.attachCalls[0] != (attachCall{experimentID: got.ID, label: "baseline", evalID: "eval-base", notes: "baseline"}) {
+		t.Fatalf("AttachRun call = %#v", st.attachCalls[0])
+	}
+}
+
 func TestStartRunAttachesReturnedEvalIDWhenExperimentProvided(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-123", Status: "queued"}}
@@ -93,6 +118,72 @@ func TestStartRunPrevalidatesExperimentBeforeStartingRemoteRun(t *testing.T) {
 	}
 	if len(st.attachCalls) != 0 {
 		t.Fatalf("AttachRun calls = %d, want 0", len(st.attachCalls))
+	}
+}
+
+func TestStartRunRejectsExperimentDatasetMismatch(t *testing.T) {
+	ctx := context.Background()
+	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-orphan", Status: "queued"}}
+	st := newFakeStore()
+	st.experiments[7] = store.Experiment{ID: 7, DatasetID: "dataset-1", Collection: "kb"}
+	svc := New(api, st, time.Millisecond, time.Second)
+
+	_, err := svc.StartRun(ctx, StartRunInput{
+		DatasetID:    "dataset-2",
+		Collection:   "kb",
+		ExperimentID: 7,
+		Label:        "candidate",
+	})
+	if err == nil || !strings.Contains(err.Error(), `requires dataset "dataset-1"; got "dataset-2"`) {
+		t.Fatalf("StartRun error = %v, want dataset mismatch", err)
+	}
+	if len(api.startRequests) != 0 {
+		t.Fatalf("StartEvaluation calls = %d, want 0", len(api.startRequests))
+	}
+}
+
+func TestStartRunRejectsExperimentCollectionMismatch(t *testing.T) {
+	ctx := context.Background()
+	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-orphan", Status: "queued"}}
+	st := newFakeStore()
+	st.experiments[7] = store.Experiment{ID: 7, DatasetID: "dataset-1", Collection: "kb"}
+	svc := New(api, st, time.Millisecond, time.Second)
+
+	_, err := svc.StartRun(ctx, StartRunInput{
+		DatasetID:    "dataset-1",
+		Collection:   "documents",
+		ExperimentID: 7,
+		Label:        "candidate",
+	})
+	if err == nil || !strings.Contains(err.Error(), `requires collection "kb"; got "documents"`) {
+		t.Fatalf("StartRun error = %v, want collection mismatch", err)
+	}
+	if len(api.startRequests) != 0 {
+		t.Fatalf("StartEvaluation calls = %d, want 0", len(api.startRequests))
+	}
+}
+
+func TestStartRunUsesExperimentBaselineWhenNotProvided(t *testing.T) {
+	ctx := context.Background()
+	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-123", Status: "queued"}}
+	st := newFakeStore()
+	st.experiments[7] = store.Experiment{ID: 7, DatasetID: "dataset-1", Collection: "kb", BaselineEvalID: "eval-base"}
+	svc := New(api, st, time.Millisecond, time.Second)
+
+	_, err := svc.StartRun(ctx, StartRunInput{
+		DatasetID:    "dataset-1",
+		Collection:   "kb",
+		ExperimentID: 7,
+		Label:        "candidate",
+	})
+	if err != nil {
+		t.Fatalf("StartRun error: %v", err)
+	}
+	if len(api.startRequests) != 1 {
+		t.Fatalf("StartEvaluation calls = %d, want 1", len(api.startRequests))
+	}
+	if api.startRequests[0].BaselineEvalID != "eval-base" {
+		t.Fatalf("BaselineEvalID = %q, want %q", api.startRequests[0].BaselineEvalID, "eval-base")
 	}
 }
 
