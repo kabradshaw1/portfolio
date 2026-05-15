@@ -2,10 +2,15 @@ import pytest
 from app.models import (
     AttachExperimentRunRequest,
     CreateExperimentRequest,
+    DashboardBaselineDeltas,
+    DashboardDatasetSummary,
+    DashboardRunSummary,
+    EvaluationDashboard,
     EvaluationDetail,
     ExperimentDetail,
     ExperimentRun,
     ExperimentRunEvaluation,
+    MetricTrendPoint,
     QueryScore,
     RunComparison,
     RunHistory,
@@ -79,6 +84,78 @@ def test_run_comparison_shape():
 def test_run_history_shape():
     hist = RunHistory(runs=[])
     assert hist.runs == []
+
+
+def test_evaluation_dashboard_shape_excludes_detail_payloads():
+    dashboard = EvaluationDashboard(
+        dataset=DashboardDatasetSummary(
+            id="ds-1",
+            name="rag-golden",
+            item_count=2,
+        ),
+        collection="documents",
+        completed_run_count=2,
+        first_completed_run=DashboardRunSummary(
+            id="eval-1",
+            created_at="2026-05-01T00:00:00+00:00",
+            completed_at="2026-05-01T00:01:00+00:00",
+            notes="baseline",
+            config_captured=True,
+            aggregate_scores=QueryScore(
+                faithfulness=0.8,
+                answer_relevancy=0.7,
+                context_precision=0.6,
+                context_recall=0.5,
+            ),
+            baseline_eval_id=None,
+        ),
+        latest_completed_run=DashboardRunSummary(
+            id="eval-2",
+            created_at="2026-05-02T00:00:00+00:00",
+            completed_at="2026-05-02T00:01:00+00:00",
+            notes="rerank on",
+            config_captured=False,
+            aggregate_scores=QueryScore(
+                faithfulness=0.9,
+                answer_relevancy=0.75,
+                context_precision=0.65,
+                context_recall=0.55,
+            ),
+            baseline_eval_id="eval-1",
+        ),
+        metric_trends={
+            "faithfulness": [
+                MetricTrendPoint(
+                    evaluation_id="eval-1",
+                    completed_at="2026-05-01T00:01:00+00:00",
+                    score=0.8,
+                )
+            ],
+            "answer_relevancy": [],
+            "context_precision": [],
+            "context_recall": [],
+        },
+        recent_runs=[],
+        baseline_to_latest_deltas=DashboardBaselineDeltas(
+            baseline_eval_id="eval-1",
+            latest_eval_id="eval-2",
+            deltas=QueryScore(
+                faithfulness=0.1,
+                answer_relevancy=0.05,
+                context_precision=0.05,
+                context_recall=0.05,
+            ),
+        ),
+    )
+
+    payload = dashboard.model_dump()
+
+    assert payload["dataset"]["item_count"] == 2
+    assert payload["first_completed_run"]["config_captured"] is True
+    assert payload["baseline_to_latest_deltas"]["deltas"]["faithfulness"] == 0.1
+    assert "results" not in payload["first_completed_run"]
+    assert "error" not in payload["first_completed_run"]
+    assert "config" not in payload["first_completed_run"]
 
 
 def test_create_experiment_request_defaults_to_planned():

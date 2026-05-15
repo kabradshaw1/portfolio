@@ -157,3 +157,42 @@ class RunComparison(BaseModel):
 
 class RunHistory(BaseModel):
     runs: list[EvaluationDetail]
+
+
+class DashboardDatasetSummary(BaseModel):
+    id: str
+    name: str
+    item_count: int
+
+
+class DashboardRunSummary(BaseModel):
+    id: str
+    created_at: str
+    completed_at: str | None
+    notes: str | None = None
+    config_captured: bool
+    aggregate_scores: QueryScore | None
+    baseline_eval_id: str | None = None
+
+
+class MetricTrendPoint(BaseModel):
+    evaluation_id: str
+    completed_at: str | None
+    score: float | None
+
+
+class DashboardBaselineDeltas(BaseModel):
+    baseline_eval_id: str
+    latest_eval_id: str
+    deltas: QueryScore
+
+
+class EvaluationDashboard(BaseModel):
+    dataset: DashboardDatasetSummary
+    collection: str
+    completed_run_count: int
+    first_completed_run: DashboardRunSummary | None = None
+    latest_completed_run: DashboardRunSummary | None = None
+    metric_trends: dict[str, list[MetricTrendPoint]]
+    recent_runs: list[DashboardRunSummary]
+    baseline_to_latest_deltas: DashboardBaselineDeltas | None = None
