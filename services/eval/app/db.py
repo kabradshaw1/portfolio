@@ -8,6 +8,7 @@ import aiosqlite
 
 # timezone.utc spelled out for Python 3.9 compat; noqa suppresses UP017 on each use
 _UTC = timezone.utc  # noqa: UP017
+_BASELINE_RUN_LABEL = "baseline"
 
 
 class EvalDB:
@@ -397,8 +398,8 @@ class EvalDB:
         self, experiment_id: str, baseline_eval_id: str | None
     ) -> None:
         await self._db.execute(
-            "DELETE FROM experiment_runs WHERE experiment_id = ? AND label = 'baseline'",
-            (experiment_id,),
+            "DELETE FROM experiment_runs WHERE experiment_id = ? AND label = ?",
+            (experiment_id, _BASELINE_RUN_LABEL),
         )
         if baseline_eval_id is None:
             await self._db.commit()
@@ -407,16 +408,28 @@ class EvalDB:
         now = datetime.now(_UTC).isoformat()
         cursor = await self._db.execute(
             "UPDATE experiment_runs "
-            "SET label = 'baseline', notes = ?, created_at = ? "
+            "SET label = ?, notes = ?, created_at = ? "
             "WHERE experiment_id = ? AND evaluation_id = ?",
-            ("baseline", now, experiment_id, baseline_eval_id),
+            (
+                _BASELINE_RUN_LABEL,
+                _BASELINE_RUN_LABEL,
+                now,
+                experiment_id,
+                baseline_eval_id,
+            ),
         )
         if cursor.rowcount == 0:
             await self._db.execute(
                 "INSERT INTO experiment_runs "
                 "(experiment_id, evaluation_id, label, notes, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",
-                (experiment_id, baseline_eval_id, "baseline", "baseline", now),
+                (
+                    experiment_id,
+                    baseline_eval_id,
+                    _BASELINE_RUN_LABEL,
+                    _BASELINE_RUN_LABEL,
+                    now,
+                ),
             )
         await self._db.commit()
 

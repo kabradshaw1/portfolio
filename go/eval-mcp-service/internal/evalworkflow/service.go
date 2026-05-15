@@ -15,6 +15,7 @@ import (
 const (
 	DefaultCollection  = "documents"
 	DefaultFocusMetric = "context_precision"
+	baselineRunLabel   = "baseline"
 	defaultWorstLimit  = 5
 	maxWorstLimit      = 20
 	minCompareEvalIDs  = 2
@@ -146,7 +147,7 @@ func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) 
 		return store.Experiment{}, err
 	}
 	if in.BaselineEvalID != "" {
-		if err := s.store.AttachRun(ctx, id, "baseline", in.BaselineEvalID, "baseline"); err != nil {
+		if err := s.store.AttachRun(ctx, id, baselineRunLabel, in.BaselineEvalID, baselineRunLabel); err != nil {
 			return store.Experiment{}, err
 		}
 	}
