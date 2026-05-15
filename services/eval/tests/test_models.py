@@ -153,6 +153,7 @@ def test_experiment_detail_includes_attached_runs():
         dataset_id="ds-1",
         collection="documents",
         baseline_eval_id="eval-base",
+        focus_metric="context_precision",
         status="running",
         decision=None,
         notes="first pass",
@@ -182,3 +183,91 @@ def test_experiment_detail_includes_attached_runs():
 
     assert detail.runs[0].label == "baseline"
     assert detail.runs[0].evaluation.aggregate_scores.context_precision == 0.31
+
+
+def test_create_experiment_request_accepts_focus_metric():
+    req = CreateExperimentRequest(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id="ds-1",
+        collection="documents",
+        focus_metric="context_precision",
+    )
+
+    assert req.focus_metric == "context_precision"
+
+
+def test_create_experiment_request_rejects_unknown_focus_metric():
+    with pytest.raises(ValidationError):
+        CreateExperimentRequest(
+            name="precision tuning",
+            hypothesis="Reranking improves context precision",
+            dataset_id="ds-1",
+            collection="documents",
+            focus_metric="accuracy",
+        )
+
+
+def test_update_experiment_request_accepts_conclusion_and_evidence():
+    evidence = {
+        "baseline_eval_id": "eval-base",
+        "candidate_eval_ids": ["eval-candidate"],
+        "focus_metric": "context_precision",
+        "metric_deltas": {
+            "candidate": {
+                "faithfulness": 0.0,
+                "answer_relevancy": 0.01,
+                "context_precision": 0.08,
+                "context_recall": -0.02,
+            }
+        },
+        "worst_cases": [
+            {
+                "label": "candidate",
+                "eval_id": "eval-candidate",
+                "query": "What is chunking?",
+                "metric": "context_precision",
+                "score": 0.25,
+                "reason": "retrieved context missed expected source",
+            }
+        ],
+        "config_diffs": [{"label": "candidate", "summary": "rerank enabled"}],
+        "caveats": ["small dataset size"],
+    }
+
+    req = UpdateExperimentRequest(
+        status="completed",
+        decision="keep",
+        conclusion="Keep reranking because context precision improved.",
+        evidence=evidence,
+    )
+
+    assert req.conclusion == "Keep reranking because context precision improved."
+    assert req.evidence == evidence
+
+
+def test_experiment_detail_includes_focus_conclusion_and_evidence():
+    detail = ExperimentDetail(
+        id="exp-1",
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id="ds-1",
+        collection="documents",
+        baseline_eval_id="eval-base",
+        focus_metric="context_precision",
+        status="completed",
+        decision="keep",
+        conclusion="Keep reranking.",
+        evidence={
+            "baseline_eval_id": "eval-base",
+            "candidate_eval_ids": ["eval-candidate"],
+        },
+        notes="final",
+        created_at="2026-05-13T10:00:00+00:00",
+        updated_at="2026-05-13T10:00:00+00:00",
+        runs=[],
+    )
+
+    assert detail.focus_metric == "context_precision"
+    assert detail.conclusion == "Keep reranking."
+    assert detail.evidence["candidate_eval_ids"] == ["eval-candidate"]
