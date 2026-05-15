@@ -11,7 +11,6 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalworkflow"
-	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/store"
 )
 
 const workflowResourceURI = "eval://workflow"
@@ -22,18 +21,18 @@ const (
 )
 
 type EvalService interface {
-	StartExperiment(context.Context, evalworkflow.StartExperimentInput) (store.Experiment, error)
-	ListExperiments(context.Context) ([]store.Experiment, error)
-	GetExperiment(context.Context, int64) (store.Experiment, error)
+	StartExperiment(context.Context, evalworkflow.StartExperimentInput) (evalapi.Experiment, error)
+	ListExperiments(context.Context) ([]evalapi.Experiment, error)
+	GetExperiment(context.Context, string) (evalapi.Experiment, error)
 	ListDatasets(context.Context) ([]evalapi.Dataset, error)
 	StartRun(context.Context, evalworkflow.StartRunInput) (evalworkflow.StartRunResult, error)
 	WaitForRun(context.Context, string) (evalworkflow.WaitResult, error)
-	AttachRun(context.Context, int64, string, string, string) error
+	AttachRun(context.Context, string, string, string, string) error
 	GetRun(context.Context, string) (evalapi.EvaluationDetail, error)
 	Compare(context.Context, evalworkflow.CompareInput) (evalapi.Comparison, error)
 	WorstCases(context.Context, evalworkflow.WorstCasesInput) (evalworkflow.WorstCasesResult, error)
-	SummarizeExperiment(context.Context, int64) (evalworkflow.ExperimentSummary, error)
-	RecordConclusion(context.Context, int64, string) error
+	SummarizeExperiment(context.Context, string) (evalworkflow.ExperimentSummary, error)
+	RecordConclusion(context.Context, evalworkflow.RecordConclusionInput) error
 }
 
 func New(service EvalService) *sdkmcp.Server {
@@ -111,12 +110,12 @@ func listEvalExperimentsHandler(service EvalService) sdkmcp.ToolHandler {
 func getEvalExperimentHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var in struct {
-			ExperimentID int64 `json:"experiment_id"`
+			ExperimentID string `json:"experiment_id"`
 		}
 		if err := decodeArgs(req, &in); err != nil {
 			return toolError(err.Error()), nil
 		}
-		if in.ExperimentID <= 0 {
+		if strings.TrimSpace(in.ExperimentID) == "" {
 			return toolError("experiment_id is required"), nil
 		}
 		result, err := service.GetExperiment(ctx, in.ExperimentID)
@@ -139,7 +138,7 @@ func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 			Notes          string `json:"notes,omitempty"`
 			BaselineEvalID string `json:"baseline_eval_id,omitempty"`
 			Rerank         bool   `json:"rerank,omitempty"`
-			ExperimentID   int64  `json:"experiment_id,omitempty"`
+			ExperimentID   string `json:"experiment_id,omitempty"`
 			Label          string `json:"label,omitempty"`
 		}
 		if err := decodeArgs(req, &args); err != nil {
@@ -151,10 +150,10 @@ func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 		if strings.TrimSpace(args.Collection) == "" {
 			return toolError("collection is required"), nil
 		}
-		if strings.TrimSpace(args.Label) != "" && args.ExperimentID <= 0 {
+		if strings.TrimSpace(args.Label) != "" && strings.TrimSpace(args.ExperimentID) == "" {
 			return toolError("experiment_id is required when label is provided"), nil
 		}
-		if args.ExperimentID != 0 && strings.TrimSpace(args.Label) == "" {
+		if strings.TrimSpace(args.ExperimentID) != "" && strings.TrimSpace(args.Label) == "" {
 			return toolError("label is required when experiment_id is set"), nil
 		}
 		in := evalworkflow.StartRunInput{
@@ -185,7 +184,7 @@ func waitForEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 func attachEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var in struct {
-			ExperimentID int64  `json:"experiment_id"`
+			ExperimentID string `json:"experiment_id"`
 			Label        string `json:"label"`
 			EvalID       string `json:"eval_id"`
 			Notes        string `json:"notes,omitempty"`
@@ -193,7 +192,7 @@ func attachEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 		if err := decodeArgs(req, &in); err != nil {
 			return toolError(err.Error()), nil
 		}
-		if in.ExperimentID <= 0 {
+		if strings.TrimSpace(in.ExperimentID) == "" {
 			return toolError("experiment_id is required"), nil
 		}
 		if strings.TrimSpace(in.Label) == "" {
@@ -224,16 +223,16 @@ func compareEvalRunsHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var args struct {
 			EvalIDs      []string `json:"eval_ids,omitempty"`
-			ExperimentID int64    `json:"experiment_id,omitempty"`
+			ExperimentID string   `json:"experiment_id,omitempty"`
 			Labels       []string `json:"labels,omitempty"`
 		}
 		if err := decodeArgs(req, &args); err != nil {
 			return toolError(err.Error()), nil
 		}
-		if len(args.EvalIDs) == 0 && (args.ExperimentID <= 0 || len(args.Labels) == 0) {
+		if len(args.EvalIDs) == 0 && (strings.TrimSpace(args.ExperimentID) == "" || len(args.Labels) == 0) {
 			return toolError("eval_ids or experiment_id with labels is required"), nil
 		}
-		if len(args.Labels) > 0 && args.ExperimentID <= 0 {
+		if len(args.Labels) > 0 && strings.TrimSpace(args.ExperimentID) == "" {
 			return toolError("experiment_id is required when labels are provided"), nil
 		}
 		totalInputs := len(args.EvalIDs) + len(args.Labels)
@@ -286,12 +285,12 @@ func worstCasesHandler(service EvalService) sdkmcp.ToolHandler {
 func summarizeExperimentHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var in struct {
-			ExperimentID int64 `json:"experiment_id"`
+			ExperimentID string `json:"experiment_id"`
 		}
 		if err := decodeArgs(req, &in); err != nil {
 			return toolError(err.Error()), nil
 		}
-		if in.ExperimentID <= 0 {
+		if strings.TrimSpace(in.ExperimentID) == "" {
 			return toolError("experiment_id is required"), nil
 		}
 		result, err := service.SummarizeExperiment(ctx, in.ExperimentID)
@@ -302,19 +301,32 @@ func summarizeExperimentHandler(service EvalService) sdkmcp.ToolHandler {
 func recordConclusionHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var in struct {
-			ExperimentID int64  `json:"experiment_id"`
-			Conclusion   string `json:"conclusion"`
+			ExperimentID string         `json:"experiment_id"`
+			Decision     string         `json:"decision"`
+			Conclusion   string         `json:"conclusion"`
+			Evidence     map[string]any `json:"evidence"`
 		}
 		if err := decodeArgs(req, &in); err != nil {
 			return toolError(err.Error()), nil
 		}
-		if in.ExperimentID <= 0 {
+		if strings.TrimSpace(in.ExperimentID) == "" {
 			return toolError("experiment_id is required"), nil
+		}
+		if strings.TrimSpace(in.Decision) == "" {
+			return toolError("decision is required"), nil
 		}
 		if strings.TrimSpace(in.Conclusion) == "" {
 			return toolError("conclusion is required"), nil
 		}
-		if err := service.RecordConclusion(ctx, in.ExperimentID, in.Conclusion); err != nil {
+		if in.Evidence == nil {
+			return toolError("evidence is required"), nil
+		}
+		if err := service.RecordConclusion(ctx, evalworkflow.RecordConclusionInput{
+			ExperimentID: in.ExperimentID,
+			Decision:     in.Decision,
+			Conclusion:   in.Conclusion,
+			Evidence:     in.Evidence,
+		}); err != nil {
 			return toolError(err.Error()), nil
 		}
 		return jsonResult(map[string]bool{"ok": true}), nil
@@ -418,11 +430,11 @@ func startEvalExperimentSchema() json.RawMessage {
 }
 
 func experimentIDSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"experiment_id":{"type":"integer","minimum":1}},"required":["experiment_id"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"experiment_id":{"type":"string","minLength":1}},"required":["experiment_id"],"additionalProperties":false}`)
 }
 
 func startEvalRunSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"integer","minimum":1},"label":{"type":"string"}},"required":["dataset_id","collection"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"}},"required":["dataset_id","collection"],"additionalProperties":false}`)
 }
 
 func waitEvalRunSchema() json.RawMessage {
@@ -430,7 +442,7 @@ func waitEvalRunSchema() json.RawMessage {
 }
 
 func attachEvalRunSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"experiment_id":{"type":"integer","minimum":1},"label":{"type":"string"},"eval_id":{"type":"string"},"notes":{"type":"string"}},"required":["experiment_id","label","eval_id"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"},"eval_id":{"type":"string"},"notes":{"type":"string"}},"required":["experiment_id","label","eval_id"],"additionalProperties":false}`)
 }
 
 func evalIDSchema() json.RawMessage {
@@ -438,7 +450,7 @@ func evalIDSchema() json.RawMessage {
 }
 
 func compareEvalRunsSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","description":"Compare 2 to 5 total runs supplied as explicit eval_ids plus optional experiment labels.","properties":{"eval_ids":{"type":"array","description":"Explicit eval run IDs. eval_ids plus labels must total 2 to 5.","items":{"type":"string"},"minItems":1,"maxItems":5},"experiment_id":{"type":"integer","minimum":1,"description":"Local experiment ID used to resolve labels."},"labels":{"type":"array","description":"Experiment run labels. eval_ids plus labels must total 2 to 5.","items":{"type":"string"},"minItems":1,"maxItems":5}},"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","description":"Compare 2 to 5 total runs supplied as explicit eval_ids plus optional experiment labels.","properties":{"eval_ids":{"type":"array","description":"Explicit eval run IDs. eval_ids plus labels must total 2 to 5.","items":{"type":"string"},"minItems":1,"maxItems":5},"experiment_id":{"type":"string","minLength":1,"description":"Eval API experiment ID used to resolve labels."},"labels":{"type":"array","description":"Experiment run labels. eval_ids plus labels must total 2 to 5.","items":{"type":"string"},"minItems":1,"maxItems":5}},"additionalProperties":false}`)
 }
 
 func worstCasesSchema() json.RawMessage {
@@ -446,5 +458,5 @@ func worstCasesSchema() json.RawMessage {
 }
 
 func recordConclusionSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"experiment_id":{"type":"integer","minimum":1},"conclusion":{"type":"string"}},"required":["experiment_id","conclusion"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"experiment_id":{"type":"string","minLength":1},"decision":{"type":"string","enum":["keep","revert","needs_more_data"]},"conclusion":{"type":"string"},"evidence":{"type":"object"}},"required":["experiment_id","decision","conclusion","evidence"],"additionalProperties":false}`)
 }
