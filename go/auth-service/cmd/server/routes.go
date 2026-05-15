@@ -28,6 +28,7 @@ func setupRouter(cfg Config, authHandler *handler.AuthHandler, healthHandler *ha
 	router.POST("/auth/google", authLimiter.Middleware(), authHandler.GoogleLogin)
 	router.POST("/auth/logout", authHandler.Logout)
 	router.GET("/health", healthHandler.Health)
+	router.GET("/ready", healthHandler.Ready)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	return router
