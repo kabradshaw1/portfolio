@@ -161,7 +161,7 @@ func TestBackupVerification_Success(t *testing.T) {
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image: "postgres:17-alpine",
 			Cmd: []string{"sh", "-c",
-				"apk add --no-cache curl >/dev/null && chown -R postgres:postgres /var/lib/postgresql/data && exec gosu postgres /scripts/pg-verify-backups.sh"},
+				"chown -R postgres:postgres /var/lib/postgresql/data && exec gosu postgres /scripts/pg-verify-backups.sh"},
 			Env: map[string]string{
 				"PUSHGATEWAY_URL": pg.URLForContainer(),
 				"VERIFY_DBS":      "appdb",
@@ -225,7 +225,7 @@ func TestBackupVerification_FailureOnCorruptDump(t *testing.T) {
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image: "postgres:17-alpine",
 			Cmd: []string{"sh", "-c",
-				"apk add --no-cache curl >/dev/null && chown -R postgres:postgres /var/lib/postgresql/data && exec gosu postgres /scripts/pg-verify-backups.sh"},
+				"chown -R postgres:postgres /var/lib/postgresql/data && exec gosu postgres /scripts/pg-verify-backups.sh"},
 			Env: map[string]string{
 				"PUSHGATEWAY_URL": pg.URLForContainer(),
 				"VERIFY_DBS":      "appdb",
