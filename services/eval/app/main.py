@@ -28,6 +28,12 @@ from app.models import (
     AttachExperimentRunRequest,
     CreateDatasetRequest,
     CreateExperimentRequest,
+    DashboardBaselineDeltas,
+    DashboardDatasetSummary,
+    DashboardRunSummary,
+    EvaluationDashboard,
+    MetricTrendPoint,
+    QueryScore,
     StartEvaluationRequest,
     UpdateExperimentRequest,
 )
@@ -443,9 +449,63 @@ _EVAL_METRICS = (
 )
 
 
+def _dashboard_run_summary(run: dict) -> DashboardRunSummary:
+    return DashboardRunSummary(
+        id=run["id"],
+        created_at=run["created_at"],
+        completed_at=run["completed_at"],
+        notes=run.get("notes"),
+        config_captured=run.get("config") is not None,
+        aggregate_scores=run.get("aggregate_scores"),
+        baseline_eval_id=run.get("baseline_eval_id"),
+    )
+
+
+def _metric_trends(runs: list[dict]) -> dict[str, list[MetricTrendPoint]]:
+    trends: dict[str, list[MetricTrendPoint]] = {}
+    for metric in _EVAL_METRICS:
+        trends[metric] = [
+            MetricTrendPoint(
+                evaluation_id=run["id"],
+                completed_at=run.get("completed_at"),
+                score=(run.get("aggregate_scores") or {}).get(metric),
+            )
+            for run in runs
+        ]
+    return trends
+
+
+def _baseline_to_latest_deltas(runs: list[dict]) -> DashboardBaselineDeltas | None:
+    if len(runs) < 2:
+        return None
+
+    baseline = runs[0]
+    latest = runs[-1]
+    baseline_scores = baseline.get("aggregate_scores") or {}
+    latest_scores = latest.get("aggregate_scores") or {}
+    deltas: dict[str, float | None] = {}
+    for metric in _EVAL_METRICS:
+        baseline_score = baseline_scores.get(metric)
+        latest_score = latest_scores.get(metric)
+        if baseline_score is None or latest_score is None:
+            deltas[metric] = None
+        else:
+            deltas[metric] = round(latest_score - baseline_score, 6)
+
+    return DashboardBaselineDeltas(
+        baseline_eval_id=baseline["id"],
+        latest_eval_id=latest["id"],
+        deltas=QueryScore(**deltas),
+    )
+
+
+def _empty_metric_trends() -> dict[str, list[MetricTrendPoint]]:
+    return {metric: [] for metric in _EVAL_METRICS}
+
+
 # NOTE: /evaluations/compare and /evaluations/history must be defined BEFORE
 # /evaluations/{eval_id} so FastAPI matches the literal paths first instead
-# of treating "compare"/"history" as an eval_id.
+# of treating "compare"/"history"/"dashboard" as an eval_id.
 
 
 @app.get("/evaluations/compare")
@@ -516,6 +576,55 @@ async def get_history(
     db = await get_db()
     runs = await db.get_history(dataset_id=dataset_id, collection=collection)
     return {"runs": runs}
+
+
+@app.get("/evaluations/dashboard", response_model=EvaluationDashboard)
+@limiter.limit("30/minute")
+async def get_dashboard(
+    request: Request,
+    dataset_id: str | None = None,
+    collection: str | None = None,
+    recent_limit: int = 10,
+    user_id: str = Depends(require_auth),
+):
+    """Compact dashboard summary for completed runs on one dataset+collection."""
+    if not dataset_id or not collection:
+        raise HTTPException(
+            status_code=400,
+            detail="dataset_id and collection are both required",
+        )
+    if not (1 <= recent_limit <= 100):
+        raise HTTPException(
+            status_code=400,
+            detail="recent_limit must be between 1 and 100",
+        )
+
+    db = await get_db()
+    dataset = await db.get_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    runs = await db.get_completed_evaluations_for_dashboard(
+        dataset_id=dataset_id,
+        collection=collection,
+    )
+    run_summaries = [_dashboard_run_summary(run) for run in runs]
+    recent_runs = list(reversed(run_summaries))[:recent_limit]
+
+    return EvaluationDashboard(
+        dataset=DashboardDatasetSummary(
+            id=dataset["id"],
+            name=dataset["name"],
+            item_count=len(dataset["items"]),
+        ),
+        collection=collection,
+        completed_run_count=len(runs),
+        first_completed_run=run_summaries[0] if run_summaries else None,
+        latest_completed_run=run_summaries[-1] if run_summaries else None,
+        metric_trends=_metric_trends(runs) if runs else _empty_metric_trends(),
+        recent_runs=recent_runs,
+        baseline_to_latest_deltas=_baseline_to_latest_deltas(runs),
+    )
 
 
 @app.get("/evaluations/{eval_id}")
