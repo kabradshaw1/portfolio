@@ -31,11 +31,13 @@ type Dataset struct {
 }
 
 type StartEvaluationRequest struct {
-	DatasetID      string `json:"dataset_id"`
-	Collection     string `json:"collection,omitempty"`
-	Notes          string `json:"notes,omitempty"`
-	BaselineEvalID string `json:"baseline_eval_id,omitempty"`
-	Rerank         bool   `json:"rerank"`
+	DatasetID       string `json:"dataset_id"`
+	Collection      string `json:"collection,omitempty"`
+	Notes           string `json:"notes,omitempty"`
+	BaselineEvalID  string `json:"baseline_eval_id,omitempty"`
+	ExperimentID    string `json:"experiment_id,omitempty"`
+	ExperimentLabel string `json:"experiment_label,omitempty"`
+	Rerank          bool   `json:"rerank"`
 }
 
 type StartEvaluationResponse struct {
@@ -76,6 +78,60 @@ type EvaluationDetail struct {
 type Comparison struct {
 	Runs   []EvaluationDetail   `json:"runs"`
 	Deltas map[string][]float64 `json:"deltas"`
+}
+
+type Experiment struct {
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	Hypothesis     string          `json:"hypothesis"`
+	DatasetID      string          `json:"dataset_id"`
+	Collection     string          `json:"collection"`
+	BaselineEvalID *string         `json:"baseline_eval_id"`
+	FocusMetric    string          `json:"focus_metric"`
+	Status         string          `json:"status"`
+	Decision       string          `json:"decision"`
+	Conclusion     string          `json:"conclusion"`
+	Evidence       map[string]any  `json:"evidence"`
+	Notes          *string         `json:"notes"`
+	CreatedAt      string          `json:"created_at"`
+	UpdatedAt      string          `json:"updated_at"`
+	Runs           []ExperimentRun `json:"runs,omitempty"`
+}
+
+type ExperimentRun struct {
+	EvaluationID string           `json:"evaluation_id"`
+	Label        string           `json:"label"`
+	Notes        *string          `json:"notes"`
+	AttachedAt   string           `json:"attached_at"`
+	Evaluation   EvaluationDetail `json:"evaluation"`
+}
+
+type CreateExperimentRequest struct {
+	Name           string `json:"name"`
+	Hypothesis     string `json:"hypothesis"`
+	DatasetID      string `json:"dataset_id"`
+	Collection     string `json:"collection"`
+	BaselineEvalID string `json:"baseline_eval_id,omitempty"`
+	FocusMetric    string `json:"focus_metric,omitempty"`
+	Status         string `json:"status,omitempty"`
+	Notes          string `json:"notes,omitempty"`
+}
+
+type UpdateExperimentRequest struct {
+	Hypothesis     string         `json:"hypothesis,omitempty"`
+	BaselineEvalID string         `json:"baseline_eval_id,omitempty"`
+	FocusMetric    string         `json:"focus_metric,omitempty"`
+	Status         string         `json:"status,omitempty"`
+	Decision       string         `json:"decision,omitempty"`
+	Conclusion     string         `json:"conclusion,omitempty"`
+	Evidence       map[string]any `json:"evidence,omitempty"`
+	Notes          string         `json:"notes,omitempty"`
+}
+
+type AttachExperimentRunRequest struct {
+	EvaluationID string `json:"evaluation_id"`
+	Label        string `json:"label"`
+	Notes        string `json:"notes,omitempty"`
 }
 
 func New(baseURL, token string, httpClient *http.Client) *Client {
@@ -124,6 +180,48 @@ func (c *Client) CompareEvaluations(ctx context.Context, ids []string) (Comparis
 	var response Comparison
 	if err := c.do(ctx, http.MethodGet, path, nil, &response); err != nil {
 		return Comparison{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) CreateExperiment(ctx context.Context, body CreateExperimentRequest) (Experiment, error) {
+	var response Experiment
+	if err := c.do(ctx, http.MethodPost, "/experiments", body, &response); err != nil {
+		return Experiment{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) ListExperiments(ctx context.Context) ([]Experiment, error) {
+	var response struct {
+		Experiments []Experiment `json:"experiments"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/experiments", nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Experiments, nil
+}
+
+func (c *Client) GetExperiment(ctx context.Context, id string) (Experiment, error) {
+	var response Experiment
+	if err := c.do(ctx, http.MethodGet, "/experiments/"+url.PathEscape(id), nil, &response); err != nil {
+		return Experiment{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) UpdateExperiment(ctx context.Context, id string, body UpdateExperimentRequest) (Experiment, error) {
+	var response Experiment
+	if err := c.do(ctx, http.MethodPatch, "/experiments/"+url.PathEscape(id), body, &response); err != nil {
+		return Experiment{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) AttachExperimentRun(ctx context.Context, id string, body AttachExperimentRunRequest) (Experiment, error) {
+	var response Experiment
+	if err := c.do(ctx, http.MethodPost, "/experiments/"+url.PathEscape(id)+"/runs", body, &response); err != nil {
+		return Experiment{}, err
 	}
 	return response, nil
 }
