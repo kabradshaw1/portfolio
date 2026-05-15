@@ -7,14 +7,12 @@ import (
 )
 
 const (
-	defaultDBPath       = "data/eval-mcp.db"
 	defaultEvalAPIURL   = "http://localhost:8000/eval"
 	defaultPollInterval = time.Second
 	defaultWaitTimeout  = 5 * time.Minute
 )
 
 type Config struct {
-	DBPath       string
 	EvalAPIURL   string
 	APIToken     string
 	PollInterval time.Duration
@@ -37,7 +35,6 @@ func FromEnv() (Config, error) {
 		return Config{}, fmt.Errorf("EVAL_MCP_WAIT_TIMEOUT must be positive")
 	}
 	return Config{
-		DBPath:       getenv("EVAL_MCP_DB_PATH", defaultDBPath),
 		EvalAPIURL:   getenv("EVAL_API_URL", defaultEvalAPIURL),
 		APIToken:     os.Getenv("EVAL_API_TOKEN"),
 		PollInterval: pollInterval,

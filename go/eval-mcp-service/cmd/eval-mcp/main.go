@@ -13,7 +13,6 @@ import (
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalworkflow"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/mcpserver"
-	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/store"
 )
 
 type app struct {
@@ -35,17 +34,9 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
-	db, err := store.Open(cfg.DBPath)
-	if err != nil {
-		return fmt.Errorf("open store: %w", err)
-	}
-	defer db.Close()
-	if err := db.Migrate(ctx); err != nil {
-		return fmt.Errorf("migrate store: %w", err)
-	}
 	api := evalapi.New(cfg.EvalAPIURL, cfg.APIToken, &http.Client{Timeout: cfg.WaitTimeout})
-	service := evalworkflow.New(api, db, cfg.PollInterval, cfg.WaitTimeout)
-	logger.Printf("eval MCP server running on stdio eval_api_url=%s db_path=%s", cfg.EvalAPIURL, cfg.DBPath)
+	service := evalworkflow.New(api, cfg.PollInterval, cfg.WaitTimeout)
+	logger.Printf("eval MCP server running on stdio eval_api_url=%s", cfg.EvalAPIURL)
 	return runServer(ctx, &app{service: service, cfg: cfg})
 }
 

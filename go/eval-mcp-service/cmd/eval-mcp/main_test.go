@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -15,7 +14,7 @@ func TestRunWiresDependenciesAndCallsServer(t *testing.T) {
 	apiServer := httptest.NewServer(http.NotFoundHandler())
 	t.Cleanup(apiServer.Close)
 
-	t.Setenv("EVAL_MCP_DB_PATH", filepath.Join(t.TempDir(), "eval-mcp.db"))
+	t.Setenv("EVAL_MCP_DB_PATH", "/tmp/removed-eval-mcp.db")
 	t.Setenv("EVAL_API_URL", apiServer.URL)
 	t.Setenv("EVAL_API_TOKEN", "test-token")
 	t.Setenv("EVAL_MCP_POLL_INTERVAL", "10ms")

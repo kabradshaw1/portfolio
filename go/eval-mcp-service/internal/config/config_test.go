@@ -16,9 +16,6 @@ func TestFromEnvDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FromEnv returned error: %v", err)
 	}
-	if cfg.DBPath != "data/eval-mcp.db" {
-		t.Fatalf("DBPath = %q", cfg.DBPath)
-	}
 	if cfg.EvalAPIURL != "http://localhost:8000/eval" {
 		t.Fatalf("EvalAPIURL = %q", cfg.EvalAPIURL)
 	}
@@ -44,11 +41,22 @@ func TestFromEnvOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FromEnv returned error: %v", err)
 	}
-	if cfg.DBPath != "/tmp/eval.db" || cfg.EvalAPIURL != "http://127.0.0.1:9000/eval" || cfg.APIToken != "token-123" {
+	if cfg.EvalAPIURL != "http://127.0.0.1:9000/eval" || cfg.APIToken != "token-123" {
 		t.Fatalf("unexpected config: %#v", cfg)
 	}
 	if cfg.PollInterval != 250*time.Millisecond || cfg.WaitTimeout != 30*time.Second {
 		t.Fatalf("unexpected durations: %#v", cfg)
+	}
+}
+
+func TestFromEnvIgnoresRemovedDBPath(t *testing.T) {
+	t.Setenv("EVAL_MCP_DB_PATH", "/tmp/old.db")
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv error: %v", err)
+	}
+	if cfg.EvalAPIURL == "" {
+		t.Fatalf("EvalAPIURL is empty")
 	}
 }
 
