@@ -19,9 +19,10 @@ const (
 )
 
 type Client struct {
-	baseURL       string
-	tokenProvider TokenProvider
-	httpClient    *http.Client
+	baseURL           string
+	tokenProvider     TokenProvider
+	retryUnauthorized bool
+	httpClient        *http.Client
 }
 
 type TokenProvider interface {
@@ -110,7 +111,14 @@ func New(baseURL, token string, httpClient *http.Client) *Client {
 	if token != "" {
 		provider = staticTokenProvider{token: token}
 	}
-	return NewWithTokenProvider(baseURL, provider, httpClient)
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+	}
+	return &Client{
+		baseURL:       strings.TrimRight(baseURL, "/"),
+		tokenProvider: provider,
+		httpClient:    httpClient,
+	}
 }
 
 func NewWithTokenProvider(baseURL string, tokenProvider TokenProvider, httpClient *http.Client) *Client {
@@ -118,9 +126,10 @@ func NewWithTokenProvider(baseURL string, tokenProvider TokenProvider, httpClien
 		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	return &Client{
-		baseURL:       strings.TrimRight(baseURL, "/"),
-		tokenProvider: tokenProvider,
-		httpClient:    httpClient,
+		baseURL:           strings.TrimRight(baseURL, "/"),
+		tokenProvider:     tokenProvider,
+		retryUnauthorized: tokenProvider != nil,
+		httpClient:        httpClient,
 	}
 }
 
@@ -174,7 +183,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 	}
 
 	err := c.doOnce(ctx, method, path, payload, body != nil, out)
-	if err == nil || c.tokenProvider == nil {
+	if err == nil || c.tokenProvider == nil || !c.retryUnauthorized {
 		return err
 	}
 
