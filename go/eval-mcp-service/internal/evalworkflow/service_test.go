@@ -10,14 +10,12 @@ import (
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
-	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/store"
 )
 
 func TestStartExperimentDefaultsCollectionAndFocusMetric(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{}
-	st := newFakeStore()
-	svc := New(api, st, time.Millisecond, time.Second)
+	svc := New(api, time.Millisecond, time.Second)
 
 	got, err := svc.StartExperiment(ctx, StartExperimentInput{
 		Name:      "rerank trial",
@@ -32,48 +30,21 @@ func TestStartExperimentDefaultsCollectionAndFocusMetric(t *testing.T) {
 	if got.FocusMetric != DefaultFocusMetric {
 		t.Fatalf("FocusMetric = %q, want %q", got.FocusMetric, DefaultFocusMetric)
 	}
-	if st.createCalls[0].Collection != DefaultCollection || st.createCalls[0].FocusMetric != DefaultFocusMetric {
-		t.Fatalf("CreateExperiment input = %#v", st.createCalls[0])
+	if api.createExperimentRequests[0].Collection != DefaultCollection || api.createExperimentRequests[0].FocusMetric != DefaultFocusMetric {
+		t.Fatalf("CreateExperiment input = %#v", api.createExperimentRequests[0])
 	}
 }
 
-func TestStartExperimentAttachesBaselineRunWhenProvided(t *testing.T) {
-	ctx := context.Background()
-	api := &fakeAPI{}
-	st := newFakeStore()
-	svc := New(api, st, time.Millisecond, time.Second)
-
-	got, err := svc.StartExperiment(ctx, StartExperimentInput{
-		Name:           "rerank trial",
-		DatasetID:      "dataset-1",
-		BaselineEvalID: "eval-base",
-	})
-	if err != nil {
-		t.Fatalf("StartExperiment error: %v", err)
-	}
-	if got.BaselineEvalID != "eval-base" {
-		t.Fatalf("BaselineEvalID = %q, want %q", got.BaselineEvalID, "eval-base")
-	}
-	if len(st.attachCalls) != 1 {
-		t.Fatalf("AttachRun calls = %d, want 1", len(st.attachCalls))
-	}
-	if st.attachCalls[0] != (attachCall{experimentID: got.ID, label: "baseline", evalID: "eval-base", notes: "baseline"}) {
-		t.Fatalf("AttachRun call = %#v", st.attachCalls[0])
-	}
-}
-
-func TestStartRunAttachesReturnedEvalIDWhenExperimentProvided(t *testing.T) {
+func TestStartRunSendsExperimentAttachmentToEvalAPI(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-123", Status: "queued"}}
-	st := newFakeStore()
-	st.experiments[7] = store.Experiment{ID: 7}
-	svc := New(api, st, time.Millisecond, time.Second)
+	svc := New(api, time.Millisecond, time.Second)
 
 	got, err := svc.StartRun(ctx, StartRunInput{
 		DatasetID:      "dataset-1",
 		Collection:     "kb",
 		Notes:          "candidate notes",
-		ExperimentID:   7,
+		ExperimentID:   "exp-7",
 		Label:          "candidate",
 		BaselineEvalID: "eval-base",
 		Rerank:         true,
@@ -87,103 +58,31 @@ func TestStartRunAttachesReturnedEvalIDWhenExperimentProvided(t *testing.T) {
 	if len(api.startRequests) != 1 {
 		t.Fatalf("StartEvaluation calls = %d, want 1", len(api.startRequests))
 	}
-	if api.startRequests[0].DatasetID != "dataset-1" || api.startRequests[0].Collection != "kb" || api.startRequests[0].BaselineEvalID != "eval-base" || !api.startRequests[0].Rerank {
-		t.Fatalf("StartEvaluation request = %#v", api.startRequests[0])
-	}
-	if len(st.attachCalls) != 1 {
-		t.Fatalf("AttachRun calls = %d, want 1", len(st.attachCalls))
-	}
-	if st.attachCalls[0] != (attachCall{experimentID: 7, label: "candidate", evalID: "eval-123", notes: "candidate notes"}) {
-		t.Fatalf("AttachRun call = %#v", st.attachCalls[0])
+	req := api.startRequests[0]
+	if req.ExperimentID != "exp-7" || req.ExperimentLabel != "candidate" {
+		t.Fatalf("StartEvaluation request = %#v", req)
 	}
 }
 
-func TestStartRunPrevalidatesExperimentBeforeStartingRemoteRun(t *testing.T) {
+func TestRecordConclusionCompletesExperimentWithEvidence(t *testing.T) {
 	ctx := context.Background()
-	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-orphan", Status: "queued"}}
-	st := newFakeStore()
-	svc := New(api, st, time.Millisecond, time.Second)
+	api := &fakeAPI{}
+	svc := New(api, time.Millisecond, time.Second)
+	evidence := map[string]any{"baseline_eval_id": "eval-base"}
 
-	_, err := svc.StartRun(ctx, StartRunInput{
-		DatasetID:    "dataset-1",
-		Collection:   "kb",
-		ExperimentID: 99,
-		Label:        "candidate",
-	})
-	if err == nil {
-		t.Fatal("StartRun error = nil, want missing experiment error")
+	if err := svc.RecordConclusion(ctx, RecordConclusionInput{
+		ExperimentID: "exp-1",
+		Decision:     "keep",
+		Conclusion:   "Keep reranking.",
+		Evidence:     evidence,
+	}); err != nil {
+		t.Fatalf("RecordConclusion error: %v", err)
 	}
-	if len(api.startRequests) != 0 {
-		t.Fatalf("StartEvaluation calls = %d, want 0", len(api.startRequests))
+	if api.updateExperimentID != "exp-1" {
+		t.Fatalf("updateExperimentID = %q", api.updateExperimentID)
 	}
-	if len(st.attachCalls) != 0 {
-		t.Fatalf("AttachRun calls = %d, want 0", len(st.attachCalls))
-	}
-}
-
-func TestStartRunRejectsExperimentDatasetMismatch(t *testing.T) {
-	ctx := context.Background()
-	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-orphan", Status: "queued"}}
-	st := newFakeStore()
-	st.experiments[7] = store.Experiment{ID: 7, DatasetID: "dataset-1", Collection: "kb"}
-	svc := New(api, st, time.Millisecond, time.Second)
-
-	_, err := svc.StartRun(ctx, StartRunInput{
-		DatasetID:    "dataset-2",
-		Collection:   "kb",
-		ExperimentID: 7,
-		Label:        "candidate",
-	})
-	if err == nil || !strings.Contains(err.Error(), `requires dataset "dataset-1"; got "dataset-2"`) {
-		t.Fatalf("StartRun error = %v, want dataset mismatch", err)
-	}
-	if len(api.startRequests) != 0 {
-		t.Fatalf("StartEvaluation calls = %d, want 0", len(api.startRequests))
-	}
-}
-
-func TestStartRunRejectsExperimentCollectionMismatch(t *testing.T) {
-	ctx := context.Background()
-	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-orphan", Status: "queued"}}
-	st := newFakeStore()
-	st.experiments[7] = store.Experiment{ID: 7, DatasetID: "dataset-1", Collection: "kb"}
-	svc := New(api, st, time.Millisecond, time.Second)
-
-	_, err := svc.StartRun(ctx, StartRunInput{
-		DatasetID:    "dataset-1",
-		Collection:   "documents",
-		ExperimentID: 7,
-		Label:        "candidate",
-	})
-	if err == nil || !strings.Contains(err.Error(), `requires collection "kb"; got "documents"`) {
-		t.Fatalf("StartRun error = %v, want collection mismatch", err)
-	}
-	if len(api.startRequests) != 0 {
-		t.Fatalf("StartEvaluation calls = %d, want 0", len(api.startRequests))
-	}
-}
-
-func TestStartRunUsesExperimentBaselineWhenNotProvided(t *testing.T) {
-	ctx := context.Background()
-	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-123", Status: "queued"}}
-	st := newFakeStore()
-	st.experiments[7] = store.Experiment{ID: 7, DatasetID: "dataset-1", Collection: "kb", BaselineEvalID: "eval-base"}
-	svc := New(api, st, time.Millisecond, time.Second)
-
-	_, err := svc.StartRun(ctx, StartRunInput{
-		DatasetID:    "dataset-1",
-		Collection:   "kb",
-		ExperimentID: 7,
-		Label:        "candidate",
-	})
-	if err != nil {
-		t.Fatalf("StartRun error: %v", err)
-	}
-	if len(api.startRequests) != 1 {
-		t.Fatalf("StartEvaluation calls = %d, want 1", len(api.startRequests))
-	}
-	if api.startRequests[0].BaselineEvalID != "eval-base" {
-		t.Fatalf("BaselineEvalID = %q, want %q", api.startRequests[0].BaselineEvalID, "eval-base")
+	if api.updateExperimentRequest.Status != "completed" || api.updateExperimentRequest.Decision != "keep" || api.updateExperimentRequest.Conclusion != "Keep reranking." {
+		t.Fatalf("update request = %#v", api.updateExperimentRequest)
 	}
 }
 
@@ -195,7 +94,7 @@ func TestWaitForRunReturnsCompletedRun(t *testing.T) {
 			{ID: "eval-1", Status: "completed"},
 		},
 	}}
-	svc := New(api, newFakeStore(), time.Millisecond, time.Second)
+	svc := New(api, time.Millisecond, time.Second)
 
 	got, err := svc.WaitForRun(ctx, "eval-1")
 	if err != nil {
@@ -214,7 +113,7 @@ func TestWaitForRunTimesOutWithLatestStatus(t *testing.T) {
 			{ID: "eval-1", Status: "running"},
 		},
 	}}
-	svc := New(api, newFakeStore(), time.Millisecond, 3*time.Millisecond)
+	svc := New(api, time.Millisecond, 3*time.Millisecond)
 
 	got, err := svc.WaitForRun(ctx, "eval-1")
 	if err == nil {
@@ -230,7 +129,7 @@ func TestWaitForRunCancelsGetEvaluationWithWaitTimeout(t *testing.T) {
 	defer cancelParent()
 
 	api := &blockingGetEvaluationAPI{entered: make(chan struct{})}
-	svc := New(api, newFakeStore(), time.Hour, 5*time.Millisecond)
+	svc := New(api, time.Hour, 5*time.Millisecond)
 
 	type waitOutcome struct {
 		result WaitResult
@@ -276,7 +175,7 @@ func TestWaitForRunParentDeadlineIsNotServiceTimeout(t *testing.T) {
 	defer cancelParent()
 
 	api := &blockingGetEvaluationAPI{entered: make(chan struct{})}
-	svc := New(api, newFakeStore(), time.Hour, time.Minute)
+	svc := New(api, time.Hour, time.Minute)
 
 	type waitOutcome struct {
 		result WaitResult
@@ -323,7 +222,7 @@ func TestWorstCasesSortsAscendingByMetric(t *testing.T) {
 			},
 		}},
 	}}
-	svc := New(api, newFakeStore(), time.Millisecond, time.Second)
+	svc := New(api, time.Millisecond, time.Second)
 
 	got, err := svc.WorstCases(ctx, WorstCasesInput{
 		EvalID: "eval-1",
@@ -345,21 +244,22 @@ func TestWorstCasesSortsAscendingByMetric(t *testing.T) {
 func TestCompareResolvesExperimentLabels(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{}
-	st := newFakeStore()
-	st.experiments[9] = store.Experiment{
-		ID: 9,
-		Runs: []store.RunLabel{
-			{Label: "baseline", EvalID: "eval-base"},
-			{Label: "candidate", EvalID: "eval-candidate"},
+	api.experiments = map[string]evalapi.Experiment{
+		"exp-9": {
+			ID: "exp-9",
+			Runs: []evalapi.ExperimentRun{
+				{Label: "baseline", EvaluationID: "eval-base"},
+				{Label: "candidate", EvaluationID: "eval-candidate"},
+			},
 		},
 	}
-	svc := New(api, st, time.Millisecond, time.Second)
+	svc := New(api, time.Millisecond, time.Second)
 
-	if _, err := svc.Compare(ctx, CompareInput{ExperimentID: 9, Labels: []string{"baseline", "missing"}}); err == nil || !strings.Contains(err.Error(), "known labels: baseline, candidate") {
+	if _, err := svc.Compare(ctx, CompareInput{ExperimentID: "exp-9", Labels: []string{"baseline", "missing"}}); err == nil || !strings.Contains(err.Error(), "known labels: baseline, candidate") {
 		t.Fatalf("Compare missing label error = %v", err)
 	}
 
-	if _, err := svc.Compare(ctx, CompareInput{ExperimentID: 9, Labels: []string{"baseline", "candidate"}}); err != nil {
+	if _, err := svc.Compare(ctx, CompareInput{ExperimentID: "exp-9", Labels: []string{"baseline", "candidate"}}); err != nil {
 		t.Fatalf("Compare error: %v", err)
 	}
 	if !reflect.DeepEqual(api.compareIDs, []string{"eval-base", "eval-candidate"}) {
@@ -370,7 +270,7 @@ func TestCompareResolvesExperimentLabels(t *testing.T) {
 func TestCompareRequiresTwoToFiveIDs(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{}
-	svc := New(api, newFakeStore(), time.Millisecond, time.Second)
+	svc := New(api, time.Millisecond, time.Second)
 
 	if _, err := svc.Compare(ctx, CompareInput{EvalIDs: []string{"eval-1"}}); err == nil || !strings.Contains(err.Error(), "requires 2 to 5 eval IDs") {
 		t.Fatalf("Compare one ID error = %v", err)
@@ -403,18 +303,19 @@ func TestSummarizeExperimentReturnsBaselineCandidateAndWorstCases(t *testing.T) 
 			},
 		}},
 	}}
-	st := newFakeStore()
-	st.experiments[3] = store.Experiment{
-		ID:          3,
-		FocusMetric: "context_precision",
-		Runs: []store.RunLabel{
-			{Label: "baseline", EvalID: "eval-base"},
-			{Label: "candidate", EvalID: "eval-candidate"},
+	api.experiments = map[string]evalapi.Experiment{
+		"exp-3": {
+			ID:          "exp-3",
+			FocusMetric: "context_precision",
+			Runs: []evalapi.ExperimentRun{
+				{Label: "baseline", EvaluationID: "eval-base"},
+				{Label: "candidate", EvaluationID: "eval-candidate"},
+			},
 		},
 	}
-	svc := New(api, st, time.Millisecond, time.Second)
+	svc := New(api, time.Millisecond, time.Second)
 
-	got, err := svc.SummarizeExperiment(ctx, 3)
+	got, err := svc.SummarizeExperiment(ctx, "exp-3")
 	if err != nil {
 		t.Fatalf("SummarizeExperiment error: %v", err)
 	}
@@ -438,25 +339,24 @@ func TestSummarizeExperimentReturnsBaselineCandidateAndWorstCases(t *testing.T) 
 func TestSummarizeExperimentComparesFirstFiveRuns(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{detailsByID: make(map[string][]evalapi.EvaluationDetail)}
-	st := newFakeStore()
-	exp := store.Experiment{
-		ID:          4,
+	exp := evalapi.Experiment{
+		ID:          "exp-4",
 		FocusMetric: "context_precision",
 	}
 	for i := 1; i <= 6; i++ {
 		label := fmt.Sprintf("run-%d", i)
 		evalID := fmt.Sprintf("eval-%d", i)
-		exp.Runs = append(exp.Runs, store.RunLabel{Label: label, EvalID: evalID})
+		exp.Runs = append(exp.Runs, evalapi.ExperimentRun{Label: label, EvaluationID: evalID})
 		api.detailsByID[evalID] = []evalapi.EvaluationDetail{{
 			ID:      evalID,
 			Status:  "completed",
 			Results: []evalapi.QueryResult{queryResult(label+" low", float64(i)/10)},
 		}}
 	}
-	st.experiments[4] = exp
-	svc := New(api, st, time.Millisecond, time.Second)
+	api.experiments = map[string]evalapi.Experiment{"exp-4": exp}
+	svc := New(api, time.Millisecond, time.Second)
 
-	got, err := svc.SummarizeExperiment(ctx, 4)
+	got, err := svc.SummarizeExperiment(ctx, "exp-4")
 	if err != nil {
 		t.Fatalf("SummarizeExperiment error: %v", err)
 	}
@@ -478,12 +378,16 @@ func queryResult(query string, contextPrecision float64) evalapi.QueryResult {
 }
 
 type fakeAPI struct {
-	datasets      []evalapi.Dataset
-	startResponse evalapi.StartEvaluationResponse
-	startRequests []evalapi.StartEvaluationRequest
-	detailsByID   map[string][]evalapi.EvaluationDetail
-	compareIDs    []string
-	comparison    evalapi.Comparison
+	datasets                 []evalapi.Dataset
+	startResponse            evalapi.StartEvaluationResponse
+	startRequests            []evalapi.StartEvaluationRequest
+	detailsByID              map[string][]evalapi.EvaluationDetail
+	compareIDs               []string
+	comparison               evalapi.Comparison
+	experiments              map[string]evalapi.Experiment
+	createExperimentRequests []evalapi.CreateExperimentRequest
+	updateExperimentID       string
+	updateExperimentRequest  evalapi.UpdateExperimentRequest
 }
 
 func (f *fakeAPI) ListDatasets(context.Context) ([]evalapi.Dataset, error) {
@@ -516,6 +420,60 @@ func (f *fakeAPI) CompareEvaluations(_ context.Context, ids []string) (evalapi.C
 	return evalapi.Comparison{Runs: nil, Deltas: map[string][]float64{}}, nil
 }
 
+func (f *fakeAPI) CreateExperiment(_ context.Context, in evalapi.CreateExperimentRequest) (evalapi.Experiment, error) {
+	f.createExperimentRequests = append(f.createExperimentRequests, in)
+	return evalapi.Experiment{
+		ID:             "exp-1",
+		Name:           in.Name,
+		DatasetID:      in.DatasetID,
+		Collection:     in.Collection,
+		BaselineEvalID: nil,
+		FocusMetric:    in.FocusMetric,
+		Status:         in.Status,
+	}, nil
+}
+
+func (f *fakeAPI) ListExperiments(context.Context) ([]evalapi.Experiment, error) {
+	experiments := make([]evalapi.Experiment, 0, len(f.experiments))
+	for _, exp := range f.experiments {
+		experiments = append(experiments, exp)
+	}
+	return experiments, nil
+}
+
+func (f *fakeAPI) GetExperiment(_ context.Context, id string) (evalapi.Experiment, error) {
+	exp, ok := f.experiments[id]
+	if !ok {
+		return evalapi.Experiment{}, errors.New("missing experiment")
+	}
+	return exp, nil
+}
+
+func (f *fakeAPI) AttachExperimentRun(_ context.Context, id string, in evalapi.AttachExperimentRunRequest) (evalapi.Experiment, error) {
+	exp := f.experiments[id]
+	exp.Runs = append(exp.Runs, evalapi.ExperimentRun{
+		EvaluationID: in.EvaluationID,
+		Label:        in.Label,
+	})
+	f.experiments[id] = exp
+	return exp, nil
+}
+
+func (f *fakeAPI) UpdateExperiment(_ context.Context, id string, in evalapi.UpdateExperimentRequest) (evalapi.Experiment, error) {
+	f.updateExperimentID = id
+	f.updateExperimentRequest = in
+	if f.experiments == nil {
+		return evalapi.Experiment{ID: id, Status: in.Status, Decision: in.Decision, Conclusion: in.Conclusion, Evidence: in.Evidence}, nil
+	}
+	exp := f.experiments[id]
+	exp.Status = in.Status
+	exp.Decision = in.Decision
+	exp.Conclusion = in.Conclusion
+	exp.Evidence = in.Evidence
+	f.experiments[id] = exp
+	return exp, nil
+}
+
 type blockingGetEvaluationAPI struct {
 	entered chan struct{}
 }
@@ -538,78 +496,22 @@ func (b *blockingGetEvaluationAPI) CompareEvaluations(context.Context, []string)
 	return evalapi.Comparison{}, nil
 }
 
-type fakeStore struct {
-	nextID      int64
-	experiments map[int64]store.Experiment
-	createCalls []store.CreateExperimentInput
-	attachCalls []attachCall
-	conclusions []recordConclusionCall
+func (b *blockingGetEvaluationAPI) CreateExperiment(context.Context, evalapi.CreateExperimentRequest) (evalapi.Experiment, error) {
+	return evalapi.Experiment{}, nil
 }
 
-type attachCall struct {
-	experimentID int64
-	label        string
-	evalID       string
-	notes        string
+func (b *blockingGetEvaluationAPI) ListExperiments(context.Context) ([]evalapi.Experiment, error) {
+	return nil, nil
 }
 
-type recordConclusionCall struct {
-	experimentID int64
-	conclusion   string
+func (b *blockingGetEvaluationAPI) GetExperiment(context.Context, string) (evalapi.Experiment, error) {
+	return evalapi.Experiment{}, nil
 }
 
-func newFakeStore() *fakeStore {
-	return &fakeStore{
-		nextID:      1,
-		experiments: make(map[int64]store.Experiment),
-	}
+func (b *blockingGetEvaluationAPI) AttachExperimentRun(context.Context, string, evalapi.AttachExperimentRunRequest) (evalapi.Experiment, error) {
+	return evalapi.Experiment{}, nil
 }
 
-func (f *fakeStore) CreateExperiment(_ context.Context, in store.CreateExperimentInput) (int64, error) {
-	f.createCalls = append(f.createCalls, in)
-	id := f.nextID
-	f.nextID++
-	f.experiments[id] = store.Experiment{
-		ID:             id,
-		Name:           in.Name,
-		DatasetID:      in.DatasetID,
-		Collection:     in.Collection,
-		BaselineEvalID: in.BaselineEvalID,
-		FocusMetric:    in.FocusMetric,
-		Hypothesis:     in.Hypothesis,
-		Notes:          in.Notes,
-	}
-	return id, nil
-}
-
-func (f *fakeStore) ListExperiments(context.Context) ([]store.Experiment, error) {
-	experiments := make([]store.Experiment, 0, len(f.experiments))
-	for _, exp := range f.experiments {
-		experiments = append(experiments, exp)
-	}
-	return experiments, nil
-}
-
-func (f *fakeStore) GetExperiment(_ context.Context, id int64) (store.Experiment, error) {
-	exp, ok := f.experiments[id]
-	if !ok {
-		return store.Experiment{}, store.ErrNotFound
-	}
-	return exp, nil
-}
-
-func (f *fakeStore) AttachRun(_ context.Context, experimentID int64, label, evalID, notes string) error {
-	f.attachCalls = append(f.attachCalls, attachCall{experimentID: experimentID, label: label, evalID: evalID, notes: notes})
-	exp := f.experiments[experimentID]
-	exp.Runs = append(exp.Runs, store.RunLabel{Label: label, EvalID: evalID, Notes: notes})
-	f.experiments[experimentID] = exp
-	return nil
-}
-
-func (f *fakeStore) RecordConclusion(_ context.Context, experimentID int64, conclusion string) error {
-	f.conclusions = append(f.conclusions, recordConclusionCall{experimentID: experimentID, conclusion: conclusion})
-	exp := f.experiments[experimentID]
-	exp.Conclusion = conclusion
-	f.experiments[experimentID] = exp
-	return nil
+func (b *blockingGetEvaluationAPI) UpdateExperiment(context.Context, string, evalapi.UpdateExperimentRequest) (evalapi.Experiment, error) {
+	return evalapi.Experiment{}, nil
 }

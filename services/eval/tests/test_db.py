@@ -161,6 +161,70 @@ async def test_set_config_persists_json(db):
 
 
 @pytest.mark.asyncio
+async def test_get_dashboard_completed_runs_filters_orders_and_omits_results(db):
+    ds_id = await db.create_dataset(name="ds-dashboard", items=SIMPLE_ITEM)
+    other_ds_id = await db.create_dataset(name="ds-other-dashboard", items=SIMPLE_ITEM)
+
+    running_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+    baseline_id = await db.create_evaluation(
+        dataset_id=ds_id,
+        collection="documents",
+        notes="baseline",
+    )
+    await db.set_evaluation_config(baseline_id, {"chat": {"llm_model": "qwen"}})
+    latest_id = await db.create_evaluation(
+        dataset_id=ds_id,
+        collection="documents",
+        notes="rerank on",
+        baseline_eval_id=baseline_id,
+    )
+    other_collection_id = await db.create_evaluation(
+        dataset_id=ds_id,
+        collection="archive",
+    )
+    other_dataset_id = await db.create_evaluation(
+        dataset_id=other_ds_id,
+        collection="documents",
+    )
+    failed_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+
+    await db.complete_evaluation(
+        baseline_id,
+        aggregate_scores={"faithfulness": 0.8},
+        results=[{"query": "q1", "answer": "a1", "contexts": [], "scores": {}}],
+    )
+    await db.complete_evaluation(
+        latest_id,
+        aggregate_scores={"faithfulness": 0.9},
+        results=[{"query": "q2", "answer": "a2", "contexts": [], "scores": {}}],
+    )
+    await db.complete_evaluation(
+        other_collection_id,
+        aggregate_scores={"faithfulness": 0.1},
+        results=[],
+    )
+    await db.complete_evaluation(
+        other_dataset_id,
+        aggregate_scores={"faithfulness": 0.2},
+        results=[],
+    )
+    await db.fail_evaluation(failed_id, error="judge failed")
+
+    runs = await db.get_completed_evaluations_for_dashboard(
+        dataset_id=ds_id,
+        collection="documents",
+    )
+
+    assert [run["id"] for run in runs] == [baseline_id, latest_id]
+    assert running_id not in [run["id"] for run in runs]
+    assert runs[0]["notes"] == "baseline"
+    assert runs[0]["config"] == {"chat": {"llm_model": "qwen"}}
+    assert runs[1]["baseline_eval_id"] == baseline_id
+    assert "results" not in runs[0]
+    assert "error" not in runs[0]
+
+
+@pytest.mark.asyncio
 async def test_init_is_idempotent_after_columns_exist(tmp_path):
     db_path = str(tmp_path / "idempotent.db")
 
@@ -227,47 +291,6 @@ async def test_update_experiment_changes_mutable_fields(db):
     assert detail["decision"] == "keep"
     assert detail["notes"] == "rerank won"
     assert detail["updated_at"] >= detail["created_at"]
-
-
-@pytest.mark.asyncio
-async def test_sync_experiment_baseline_run_updates_labels(db):
-    ds_id = await db.create_dataset(name="ds-sync-baseline", items=SIMPLE_ITEM)
-    exp_id = await db.create_experiment(
-        name="baseline sync",
-        hypothesis="baseline should be relabeled",
-        dataset_id=ds_id,
-        collection="documents",
-    )
-    first_run = await db.create_evaluation(dataset_id=ds_id, collection="documents")
-    second_run = await db.create_evaluation(dataset_id=ds_id, collection="documents")
-    await db.attach_experiment_run(exp_id, first_run, label="baseline")
-    await db.attach_experiment_run(exp_id, second_run, label="candidate")
-
-    await db.sync_experiment_baseline_run(exp_id, second_run)
-
-    detail = await db.get_experiment(exp_id)
-    labels = {run["evaluation_id"]: run["label"] for run in detail["runs"]}
-    assert labels[first_run] != "baseline"
-    assert labels[second_run] == "baseline"
-
-
-@pytest.mark.asyncio
-async def test_sync_experiment_baseline_run_clears_baseline_label(db):
-    ds_id = await db.create_dataset(name="ds-clear-baseline", items=SIMPLE_ITEM)
-    exp_id = await db.create_experiment(
-        name="baseline clear",
-        hypothesis="clear baseline",
-        dataset_id=ds_id,
-        collection="documents",
-    )
-    run_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
-    await db.attach_experiment_run(exp_id, run_id, label="baseline")
-
-    await db.sync_experiment_baseline_run(exp_id, None)
-
-    detail = await db.get_experiment(exp_id)
-    labels = [run["label"] for run in detail["runs"]]
-    assert "baseline" not in labels
 
 
 @pytest.mark.asyncio
@@ -349,23 +372,6 @@ async def test_attach_experiment_run_rejects_duplicate_label(db):
 
 
 @pytest.mark.asyncio
-async def test_attach_experiment_run_rejects_already_attached_evaluation(db):
-    ds_id = await db.create_dataset(name="ds-dupe-run", items=SIMPLE_ITEM)
-    exp_id = await db.create_experiment(
-        name="precision tuning",
-        hypothesis="Reranking improves context precision",
-        dataset_id=ds_id,
-        collection="documents",
-    )
-    run_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
-
-    await db.attach_experiment_run(exp_id, run_id, label="candidate")
-
-    with pytest.raises(ValueError, match="evaluation already attached"):
-        await db.attach_experiment_run(exp_id, run_id, label="challenger")
-
-
-@pytest.mark.asyncio
 async def test_attach_experiment_run_rejects_completed_experiment(db):
     ds_id = await db.create_dataset(name="ds-completed-exp", items=SIMPLE_ITEM)
     exp_id = await db.create_experiment(
@@ -423,3 +429,56 @@ async def test_attach_experiment_run_rejects_dataset_or_collection_mismatch(db):
         await db.attach_experiment_run(
             exp_id, other_collection_run, label="other_collection"
         )
+
+
+@pytest.mark.asyncio
+async def test_experiment_persists_focus_conclusion_and_evidence(db):
+    ds_id = await db.create_dataset(name="ds-evidence", items=SIMPLE_ITEM)
+    exp_id = await db.create_experiment(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id=ds_id,
+        collection="documents",
+        focus_metric="context_precision",
+        status="running",
+        notes="first pass",
+    )
+
+    evidence = {
+        "baseline_eval_id": "eval-base",
+        "candidate_eval_ids": ["eval-candidate"],
+        "focus_metric": "context_precision",
+        "metric_deltas": {"candidate": {"context_precision": 0.08}},
+        "worst_cases": [{"label": "candidate", "query": "q", "score": 0.25}],
+        "config_diffs": [{"label": "candidate", "summary": "rerank enabled"}],
+        "caveats": ["small dataset size"],
+    }
+    await db.update_experiment(
+        exp_id,
+        focus_metric="context_precision",
+        status="completed",
+        decision="keep",
+        conclusion="Keep reranking.",
+        evidence=evidence,
+        notes="final",
+    )
+
+    detail = await db.get_experiment(exp_id)
+    assert detail["focus_metric"] == "context_precision"
+    assert detail["decision"] == "keep"
+    assert detail["conclusion"] == "Keep reranking."
+    assert detail["evidence"] == evidence
+    assert detail["notes"] == "final"
+
+
+@pytest.mark.asyncio
+async def test_init_is_idempotent_after_experiment_evidence_columns_exist(tmp_path):
+    db_path = str(tmp_path / "experiment-evidence.db")
+
+    db1 = EvalDB(db_path)
+    await db1.init()
+    await db1.close()
+
+    db2 = EvalDB(db_path)
+    await db2.init()
+    await db2.close()

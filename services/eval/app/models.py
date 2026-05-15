@@ -70,6 +70,13 @@ class EvaluationSummary(BaseModel):
 ExperimentStatus = Literal["planned", "running", "completed", "abandoned"]
 InitialExperimentStatus = Literal["planned", "running"]
 ExperimentDecision = Literal["keep", "revert", "needs_more_data"]
+FocusMetric = Literal[
+    "faithfulness",
+    "answer_relevancy",
+    "context_precision",
+    "context_recall",
+]
+ExperimentEvidence = dict[str, Any]
 
 
 class CreateExperimentRequest(BaseModel):
@@ -78,6 +85,7 @@ class CreateExperimentRequest(BaseModel):
     dataset_id: str
     collection: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,100}$")
     baseline_eval_id: str | None = None
+    focus_metric: FocusMetric = "context_precision"
     status: InitialExperimentStatus = "planned"
     notes: str | None = Field(default=None, max_length=2000)
 
@@ -85,8 +93,11 @@ class CreateExperimentRequest(BaseModel):
 class UpdateExperimentRequest(BaseModel):
     hypothesis: str | None = Field(default=None, min_length=1, max_length=1000)
     baseline_eval_id: str | None = None
+    focus_metric: FocusMetric | None = None
     status: ExperimentStatus | None = None
     decision: ExperimentDecision | None = None
+    conclusion: str | None = Field(default=None, max_length=5000)
+    evidence: ExperimentEvidence | None = None
     notes: str | None = Field(default=None, max_length=2000)
 
 
@@ -124,8 +135,11 @@ class ExperimentSummary(BaseModel):
     dataset_id: str
     collection: str
     baseline_eval_id: str | None = None
+    focus_metric: FocusMetric
     status: ExperimentStatus
     decision: ExperimentDecision | None = None
+    conclusion: str | None = None
+    evidence: ExperimentEvidence | None = None
     notes: str | None = None
     created_at: str
     updated_at: str
@@ -157,3 +171,42 @@ class RunComparison(BaseModel):
 
 class RunHistory(BaseModel):
     runs: list[EvaluationDetail]
+
+
+class DashboardDatasetSummary(BaseModel):
+    id: str
+    name: str
+    item_count: int
+
+
+class DashboardRunSummary(BaseModel):
+    id: str
+    created_at: str
+    completed_at: str | None
+    notes: str | None = None
+    config_captured: bool
+    aggregate_scores: QueryScore | None
+    baseline_eval_id: str | None = None
+
+
+class MetricTrendPoint(BaseModel):
+    evaluation_id: str
+    completed_at: str | None
+    score: float | None
+
+
+class DashboardBaselineDeltas(BaseModel):
+    baseline_eval_id: str
+    latest_eval_id: str
+    deltas: QueryScore
+
+
+class EvaluationDashboard(BaseModel):
+    dataset: DashboardDatasetSummary
+    collection: str
+    completed_run_count: int
+    first_completed_run: DashboardRunSummary | None = None
+    latest_completed_run: DashboardRunSummary | None = None
+    metric_trends: dict[str, list[MetricTrendPoint]]
+    recent_runs: list[DashboardRunSummary]
+    baseline_to_latest_deltas: DashboardBaselineDeltas | None = None

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,9 +19,36 @@ const (
 )
 
 type Client struct {
-	baseURL    string
-	token      string
-	httpClient *http.Client
+	baseURL           string
+	tokenProvider     TokenProvider
+	retryUnauthorized bool
+	httpClient        *http.Client
+}
+
+type TokenProvider interface {
+	Token(context.Context) (string, error)
+	Invalidate()
+}
+
+type staticTokenProvider struct {
+	token string
+}
+
+func (p staticTokenProvider) Token(context.Context) (string, error) {
+	return p.token, nil
+}
+
+func (p staticTokenProvider) Invalidate() {}
+
+type HTTPError struct {
+	Method     string
+	Path       string
+	StatusCode int
+	Excerpt    string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("%s %s: status %d: %s", e.Method, e.Path, e.StatusCode, e.Excerpt)
 }
 
 type Dataset struct {
@@ -31,11 +59,13 @@ type Dataset struct {
 }
 
 type StartEvaluationRequest struct {
-	DatasetID      string `json:"dataset_id"`
-	Collection     string `json:"collection,omitempty"`
-	Notes          string `json:"notes,omitempty"`
-	BaselineEvalID string `json:"baseline_eval_id,omitempty"`
-	Rerank         bool   `json:"rerank"`
+	DatasetID       string `json:"dataset_id"`
+	Collection      string `json:"collection,omitempty"`
+	Notes           string `json:"notes,omitempty"`
+	BaselineEvalID  string `json:"baseline_eval_id,omitempty"`
+	ExperimentID    string `json:"experiment_id,omitempty"`
+	ExperimentLabel string `json:"experiment_label,omitempty"`
+	Rerank          bool   `json:"rerank"`
 }
 
 type StartEvaluationResponse struct {
@@ -78,14 +108,84 @@ type Comparison struct {
 	Deltas map[string][]float64 `json:"deltas"`
 }
 
+type Experiment struct {
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	Hypothesis     string          `json:"hypothesis"`
+	DatasetID      string          `json:"dataset_id"`
+	Collection     string          `json:"collection"`
+	BaselineEvalID *string         `json:"baseline_eval_id"`
+	FocusMetric    string          `json:"focus_metric"`
+	Status         string          `json:"status"`
+	Decision       string          `json:"decision"`
+	Conclusion     string          `json:"conclusion"`
+	Evidence       map[string]any  `json:"evidence"`
+	Notes          *string         `json:"notes"`
+	CreatedAt      string          `json:"created_at"`
+	UpdatedAt      string          `json:"updated_at"`
+	Runs           []ExperimentRun `json:"runs,omitempty"`
+}
+
+type ExperimentRun struct {
+	EvaluationID string           `json:"evaluation_id"`
+	Label        string           `json:"label"`
+	Notes        *string          `json:"notes"`
+	AttachedAt   string           `json:"attached_at"`
+	Evaluation   EvaluationDetail `json:"evaluation"`
+}
+
+type CreateExperimentRequest struct {
+	Name           string `json:"name"`
+	Hypothesis     string `json:"hypothesis"`
+	DatasetID      string `json:"dataset_id"`
+	Collection     string `json:"collection"`
+	BaselineEvalID string `json:"baseline_eval_id,omitempty"`
+	FocusMetric    string `json:"focus_metric,omitempty"`
+	Status         string `json:"status,omitempty"`
+	Notes          string `json:"notes,omitempty"`
+}
+
+type UpdateExperimentRequest struct {
+	Hypothesis     string         `json:"hypothesis,omitempty"`
+	BaselineEvalID string         `json:"baseline_eval_id,omitempty"`
+	FocusMetric    string         `json:"focus_metric,omitempty"`
+	Status         string         `json:"status,omitempty"`
+	Decision       string         `json:"decision,omitempty"`
+	Conclusion     string         `json:"conclusion,omitempty"`
+	Evidence       map[string]any `json:"evidence,omitempty"`
+	Notes          string         `json:"notes,omitempty"`
+}
+
+type AttachExperimentRunRequest struct {
+	EvaluationID string `json:"evaluation_id"`
+	Label        string `json:"label"`
+	Notes        string `json:"notes,omitempty"`
+}
+
 func New(baseURL, token string, httpClient *http.Client) *Client {
+	var provider TokenProvider
+	if token != "" {
+		provider = staticTokenProvider{token: token}
+	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	return &Client{
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		token:      token,
-		httpClient: httpClient,
+		baseURL:       strings.TrimRight(baseURL, "/"),
+		tokenProvider: provider,
+		httpClient:    httpClient,
+	}
+}
+
+func NewWithTokenProvider(baseURL string, tokenProvider TokenProvider, httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+	}
+	return &Client{
+		baseURL:           strings.TrimRight(baseURL, "/"),
+		tokenProvider:     tokenProvider,
+		retryUnauthorized: tokenProvider != nil,
+		httpClient:        httpClient,
 	}
 }
 
@@ -128,25 +228,93 @@ func (c *Client) CompareEvaluations(ctx context.Context, ids []string) (Comparis
 	return response, nil
 }
 
+func (c *Client) CreateExperiment(ctx context.Context, body CreateExperimentRequest) (Experiment, error) {
+	var response Experiment
+	if err := c.do(ctx, http.MethodPost, "/experiments", body, &response); err != nil {
+		return Experiment{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) ListExperiments(ctx context.Context) ([]Experiment, error) {
+	var response struct {
+		Experiments []Experiment `json:"experiments"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/experiments", nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Experiments, nil
+}
+
+func (c *Client) GetExperiment(ctx context.Context, id string) (Experiment, error) {
+	var response Experiment
+	if err := c.do(ctx, http.MethodGet, "/experiments/"+url.PathEscape(id), nil, &response); err != nil {
+		return Experiment{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) UpdateExperiment(ctx context.Context, id string, body UpdateExperimentRequest) (Experiment, error) {
+	var response Experiment
+	if err := c.do(ctx, http.MethodPatch, "/experiments/"+url.PathEscape(id), body, &response); err != nil {
+		return Experiment{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) AttachExperimentRun(ctx context.Context, id string, body AttachExperimentRunRequest) (Experiment, error) {
+	var response Experiment
+	if err := c.do(ctx, http.MethodPost, "/experiments/"+url.PathEscape(id)+"/runs", body, &response); err != nil {
+		return Experiment{}, err
+	}
+	return response, nil
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
-	var reader io.Reader
+	var payload []byte
 	if body != nil {
 		var buf bytes.Buffer
 		if err := json.NewEncoder(&buf).Encode(body); err != nil {
 			return fmt.Errorf("%s %s: encode request: %w", method, path, err)
 		}
-		reader = &buf
+		payload = buf.Bytes()
+	}
+
+	err := c.doOnce(ctx, method, path, payload, body != nil, out)
+	if err == nil || c.tokenProvider == nil || !c.retryUnauthorized {
+		return err
+	}
+
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusUnauthorized {
+		return err
+	}
+
+	c.tokenProvider.Invalidate()
+	return c.doOnce(ctx, method, path, payload, body != nil, out)
+}
+
+func (c *Client) doOnce(ctx context.Context, method, path string, payload []byte, hasBody bool, out any) error {
+	var reader io.Reader
+	if hasBody {
+		reader = bytes.NewReader(payload)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {
 		return fmt.Errorf("%s %s: create request: %w", method, path, err)
 	}
-	if body != nil {
+	if hasBody {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.tokenProvider != nil {
+		token, err := c.tokenProvider.Token(ctx)
+		if err != nil {
+			return fmt.Errorf("%s %s: token: %w", method, path, err)
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -157,7 +325,12 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		excerpt, _ := io.ReadAll(io.LimitReader(resp.Body, errorExcerptLimit))
-		return fmt.Errorf("%s %s: status %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(excerpt)))
+		return &HTTPError{
+			Method:     method,
+			Path:       path,
+			StatusCode: resp.StatusCode,
+			Excerpt:    strings.TrimSpace(string(excerpt)),
+		}
 	}
 
 	if out == nil {

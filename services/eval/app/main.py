@@ -28,6 +28,12 @@ from app.models import (
     AttachExperimentRunRequest,
     CreateDatasetRequest,
     CreateExperimentRequest,
+    DashboardBaselineDeltas,
+    DashboardDatasetSummary,
+    DashboardRunSummary,
+    EvaluationDashboard,
+    MetricTrendPoint,
+    QueryScore,
     StartEvaluationRequest,
     UpdateExperimentRequest,
 )
@@ -41,7 +47,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -234,12 +240,6 @@ async def _validate_experiment_for_run(
         )
 
 
-def _experiment_attach_error_status(detail: str) -> int:
-    if "duplicate" in detail or "already attached" in detail:
-        return 409
-    return 400
-
-
 @app.post("/evaluations", status_code=202)
 @limiter.limit("5/minute")
 async def start_evaluation(
@@ -282,15 +282,7 @@ async def start_evaluation(
             )
         except ValueError as exc:
             detail = str(exc)
-            try:
-                await db.fail_evaluation(
-                    eval_id, error=f"experiment attach failed: {detail}"
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to mark evaluation %s as failed after attach error", eval_id
-                )
-            status_code = _experiment_attach_error_status(detail)
+            status_code = 409 if "duplicate" in detail else 400
             raise HTTPException(status_code=status_code, detail=detail) from exc
 
     background_tasks.add_task(
@@ -322,6 +314,7 @@ async def create_experiment(
         dataset_id=body.dataset_id,
         collection=body.collection,
         baseline_eval_id=body.baseline_eval_id,
+        focus_metric=body.focus_metric,
         status=body.status,
         notes=body.notes,
     )
@@ -379,31 +372,47 @@ async def update_experiment(
         raise HTTPException(
             status_code=400, detail="decision requires completed status"
         )
-    fields_set = body.model_fields_set
+    final_decision = (
+        body.decision if body.decision is not None else experiment["decision"]
+    )
+    final_conclusion = (
+        body.conclusion if body.conclusion is not None else experiment["conclusion"]
+    )
+    final_evidence = (
+        body.evidence if body.evidence is not None else experiment["evidence"]
+    )
+    if final_status == "completed" and final_decision is None:
+        raise HTTPException(
+            status_code=400, detail="completed experiments require a decision"
+        )
+    if final_status == "completed" and final_conclusion is None:
+        raise HTTPException(
+            status_code=400, detail="completed experiments require a conclusion"
+        )
+    if final_status == "completed" and final_evidence is None:
+        raise HTTPException(
+            status_code=400, detail="completed experiments require evidence"
+        )
     baseline_eval_id = body.baseline_eval_id
-    if "baseline_eval_id" not in fields_set:
-        baseline_eval_id = experiment["baseline_eval_id"]
-    elif baseline_eval_id is not None:
+    if baseline_eval_id is not None:
         await _validate_experiment_baseline(
             db,
             baseline_eval_id,
             experiment["dataset_id"],
             experiment["collection"],
         )
-    decision = body.decision
-    if "decision" not in fields_set:
-        decision = experiment["decision"]
 
     await db.update_experiment(
         experiment_id,
         hypothesis=body.hypothesis,
         baseline_eval_id=baseline_eval_id,
+        focus_metric=body.focus_metric,
         status=body.status,
-        decision=decision,
+        decision=body.decision,
+        conclusion=body.conclusion,
+        evidence=body.evidence,
         notes=body.notes,
     )
-    if "baseline_eval_id" in fields_set:
-        await db.sync_experiment_baseline_run(experiment_id, baseline_eval_id)
     updated = await db.get_experiment(experiment_id)
     return updated
 
@@ -435,7 +444,7 @@ async def attach_experiment_run(
         )
     except ValueError as exc:
         detail = str(exc)
-        status_code = _experiment_attach_error_status(detail)
+        status_code = 409 if "duplicate" in detail else 400
         raise HTTPException(status_code=status_code, detail=detail) from exc
     if not experiment:
         raise HTTPException(
@@ -465,9 +474,63 @@ _EVAL_METRICS = (
 )
 
 
+def _dashboard_run_summary(run: dict) -> DashboardRunSummary:
+    return DashboardRunSummary(
+        id=run["id"],
+        created_at=run["created_at"],
+        completed_at=run["completed_at"],
+        notes=run.get("notes"),
+        config_captured=run.get("config") is not None,
+        aggregate_scores=run.get("aggregate_scores"),
+        baseline_eval_id=run.get("baseline_eval_id"),
+    )
+
+
+def _metric_trends(runs: list[dict]) -> dict[str, list[MetricTrendPoint]]:
+    trends: dict[str, list[MetricTrendPoint]] = {}
+    for metric in _EVAL_METRICS:
+        trends[metric] = [
+            MetricTrendPoint(
+                evaluation_id=run["id"],
+                completed_at=run.get("completed_at"),
+                score=(run.get("aggregate_scores") or {}).get(metric),
+            )
+            for run in runs
+        ]
+    return trends
+
+
+def _baseline_to_latest_deltas(runs: list[dict]) -> DashboardBaselineDeltas | None:
+    if len(runs) < 2:
+        return None
+
+    baseline = runs[0]
+    latest = runs[-1]
+    baseline_scores = baseline.get("aggregate_scores") or {}
+    latest_scores = latest.get("aggregate_scores") or {}
+    deltas: dict[str, float | None] = {}
+    for metric in _EVAL_METRICS:
+        baseline_score = baseline_scores.get(metric)
+        latest_score = latest_scores.get(metric)
+        if baseline_score is None or latest_score is None:
+            deltas[metric] = None
+        else:
+            deltas[metric] = round(latest_score - baseline_score, 6)
+
+    return DashboardBaselineDeltas(
+        baseline_eval_id=baseline["id"],
+        latest_eval_id=latest["id"],
+        deltas=QueryScore(**deltas),
+    )
+
+
+def _empty_metric_trends() -> dict[str, list[MetricTrendPoint]]:
+    return {metric: [] for metric in _EVAL_METRICS}
+
+
 # NOTE: /evaluations/compare and /evaluations/history must be defined BEFORE
 # /evaluations/{eval_id} so FastAPI matches the literal paths first instead
-# of treating "compare"/"history" as an eval_id.
+# of treating "compare"/"history"/"dashboard" as an eval_id.
 
 
 @app.get("/evaluations/compare")
@@ -538,6 +601,55 @@ async def get_history(
     db = await get_db()
     runs = await db.get_history(dataset_id=dataset_id, collection=collection)
     return {"runs": runs}
+
+
+@app.get("/evaluations/dashboard", response_model=EvaluationDashboard)
+@limiter.limit("30/minute")
+async def get_dashboard(
+    request: Request,
+    dataset_id: str | None = None,
+    collection: str | None = None,
+    recent_limit: int = 10,
+    user_id: str = Depends(require_auth),
+):
+    """Compact dashboard summary for completed runs on one dataset+collection."""
+    if not dataset_id or not collection:
+        raise HTTPException(
+            status_code=400,
+            detail="dataset_id and collection are both required",
+        )
+    if not (1 <= recent_limit <= 100):
+        raise HTTPException(
+            status_code=400,
+            detail="recent_limit must be between 1 and 100",
+        )
+
+    db = await get_db()
+    dataset = await db.get_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    runs = await db.get_completed_evaluations_for_dashboard(
+        dataset_id=dataset_id,
+        collection=collection,
+    )
+    run_summaries = [_dashboard_run_summary(run) for run in runs]
+    recent_runs = list(reversed(run_summaries))[:recent_limit]
+
+    return EvaluationDashboard(
+        dataset=DashboardDatasetSummary(
+            id=dataset["id"],
+            name=dataset["name"],
+            item_count=len(dataset["items"]),
+        ),
+        collection=collection,
+        completed_run_count=len(runs),
+        first_completed_run=run_summaries[0] if run_summaries else None,
+        latest_completed_run=run_summaries[-1] if run_summaries else None,
+        metric_trends=_metric_trends(runs) if runs else _empty_metric_trends(),
+        recent_runs=recent_runs,
+        baseline_to_latest_deltas=_baseline_to_latest_deltas(runs),
+    )
 
 
 @app.get("/evaluations/{eval_id}")

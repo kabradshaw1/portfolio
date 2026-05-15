@@ -137,11 +137,12 @@ func (s *AuthService) generateTokens(user *model.User) (*model.AuthResponse, err
 	}
 
 	return &model.AuthResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		UserID:       user.ID.String(),
-		Email:        user.Email,
-		Name:         user.Name,
-		AvatarURL:    avatar,
+		AccessToken:      accessToken,
+		RefreshToken:     refreshToken,
+		ExpiresInSeconds: int64(s.accessTokenTTL.Seconds()),
+		UserID:           user.ID.String(),
+		Email:            user.Email,
+		Name:             user.Name,
+		AvatarURL:        avatar,
 	}, nil
 }

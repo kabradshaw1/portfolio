@@ -9,13 +9,11 @@ import (
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
-	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/store"
 )
 
 const (
 	DefaultCollection  = "documents"
 	DefaultFocusMetric = "context_precision"
-	baselineRunLabel   = "baseline"
 	defaultWorstLimit  = 5
 	maxWorstLimit      = 20
 	minCompareEvalIDs  = 2
@@ -27,19 +25,15 @@ type API interface {
 	StartEvaluation(context.Context, evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error)
 	GetEvaluation(context.Context, string) (evalapi.EvaluationDetail, error)
 	CompareEvaluations(context.Context, []string) (evalapi.Comparison, error)
-}
-
-type Store interface {
-	CreateExperiment(context.Context, store.CreateExperimentInput) (int64, error)
-	ListExperiments(context.Context) ([]store.Experiment, error)
-	GetExperiment(context.Context, int64) (store.Experiment, error)
-	AttachRun(context.Context, int64, string, string, string) error
-	RecordConclusion(context.Context, int64, string) error
+	CreateExperiment(context.Context, evalapi.CreateExperimentRequest) (evalapi.Experiment, error)
+	ListExperiments(context.Context) ([]evalapi.Experiment, error)
+	GetExperiment(context.Context, string) (evalapi.Experiment, error)
+	AttachExperimentRun(context.Context, string, evalapi.AttachExperimentRunRequest) (evalapi.Experiment, error)
+	UpdateExperiment(context.Context, string, evalapi.UpdateExperimentRequest) (evalapi.Experiment, error)
 }
 
 type Service struct {
 	api          API
-	store        Store
 	pollInterval time.Duration
 	waitTimeout  time.Duration
 }
@@ -60,7 +54,7 @@ type StartRunInput struct {
 	Notes          string
 	BaselineEvalID string
 	Rerank         bool
-	ExperimentID   int64
+	ExperimentID   string
 	Label          string
 }
 
@@ -76,7 +70,7 @@ type WaitResult struct {
 
 type CompareInput struct {
 	EvalIDs      []string
-	ExperimentID int64
+	ExperimentID string
 	Labels       []string
 }
 
@@ -108,33 +102,42 @@ type LabeledWorstCases struct {
 }
 
 type ExperimentSummary struct {
-	Experiment store.Experiment
+	Experiment evalapi.Experiment
 	Baseline   *LabeledRun
 	Candidates []LabeledRun
 	Comparison *evalapi.Comparison
 	WorstCases []LabeledWorstCases
 }
 
-func New(api API, st Store, pollInterval, waitTimeout time.Duration) *Service {
+type RecordConclusionInput struct {
+	ExperimentID string
+	Decision     string
+	Conclusion   string
+	Evidence     map[string]any
+}
+
+func New(api API, pollInterval, waitTimeout time.Duration) *Service {
 	return &Service{
 		api:          api,
-		store:        st,
 		pollInterval: pollInterval,
 		waitTimeout:  waitTimeout,
 	}
 }
 
-func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) (store.Experiment, error) {
-	collection := normalizeCollection(in.Collection)
+func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) (evalapi.Experiment, error) {
+	collection := in.Collection
+	if collection == "" {
+		collection = DefaultCollection
+	}
 	focusMetric := in.FocusMetric
 	if focusMetric == "" {
 		focusMetric = DefaultFocusMetric
 	}
 	if err := validateMetric(focusMetric); err != nil {
-		return store.Experiment{}, err
+		return evalapi.Experiment{}, err
 	}
 
-	id, err := s.store.CreateExperiment(ctx, store.CreateExperimentInput{
+	return s.api.CreateExperiment(ctx, evalapi.CreateExperimentRequest{
 		Name:           in.Name,
 		DatasetID:      in.DatasetID,
 		Collection:     collection,
@@ -142,24 +145,16 @@ func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) 
 		FocusMetric:    focusMetric,
 		Hypothesis:     in.Hypothesis,
 		Notes:          in.Notes,
+		Status:         "running",
 	})
-	if err != nil {
-		return store.Experiment{}, err
-	}
-	if in.BaselineEvalID != "" {
-		if err := s.store.AttachRun(ctx, id, baselineRunLabel, in.BaselineEvalID, baselineRunLabel); err != nil {
-			return store.Experiment{}, err
-		}
-	}
-	return s.store.GetExperiment(ctx, id)
 }
 
-func (s *Service) ListExperiments(ctx context.Context) ([]store.Experiment, error) {
-	return s.store.ListExperiments(ctx)
+func (s *Service) ListExperiments(ctx context.Context) ([]evalapi.Experiment, error) {
+	return s.api.ListExperiments(ctx)
 }
 
-func (s *Service) GetExperiment(ctx context.Context, id int64) (store.Experiment, error) {
-	return s.store.GetExperiment(ctx, id)
+func (s *Service) GetExperiment(ctx context.Context, id string) (evalapi.Experiment, error) {
+	return s.api.GetExperiment(ctx, id)
 }
 
 func (s *Service) ListDatasets(ctx context.Context) ([]evalapi.Dataset, error) {
@@ -167,38 +162,17 @@ func (s *Service) ListDatasets(ctx context.Context) ([]evalapi.Dataset, error) {
 }
 
 func (s *Service) StartRun(ctx context.Context, in StartRunInput) (StartRunResult, error) {
-	if in.ExperimentID != 0 && in.Label != "" {
-		exp, err := s.store.GetExperiment(ctx, in.ExperimentID)
-		if err != nil {
-			return StartRunResult{}, err
-		}
-		if exp.DatasetID != "" && exp.DatasetID != in.DatasetID {
-			return StartRunResult{}, fmt.Errorf("experiment %d requires dataset %q; got %q", in.ExperimentID, exp.DatasetID, in.DatasetID)
-		}
-		runCollection := normalizeCollection(in.Collection)
-		expCollection := normalizeCollection(exp.Collection)
-		if exp.Collection != "" && expCollection != runCollection {
-			return StartRunResult{}, fmt.Errorf("experiment %d requires collection %q; got %q", in.ExperimentID, expCollection, runCollection)
-		}
-		if in.BaselineEvalID == "" && exp.BaselineEvalID != "" {
-			in.BaselineEvalID = exp.BaselineEvalID
-		}
-	}
-
 	resp, err := s.api.StartEvaluation(ctx, evalapi.StartEvaluationRequest{
-		DatasetID:      in.DatasetID,
-		Collection:     in.Collection,
-		Notes:          in.Notes,
-		BaselineEvalID: in.BaselineEvalID,
-		Rerank:         in.Rerank,
+		DatasetID:       in.DatasetID,
+		Collection:      in.Collection,
+		Notes:           in.Notes,
+		BaselineEvalID:  in.BaselineEvalID,
+		Rerank:          in.Rerank,
+		ExperimentID:    in.ExperimentID,
+		ExperimentLabel: in.Label,
 	})
 	if err != nil {
 		return StartRunResult{}, err
-	}
-	if in.ExperimentID != 0 && in.Label != "" {
-		if err := s.store.AttachRun(ctx, in.ExperimentID, in.Label, resp.ID, in.Notes); err != nil {
-			return StartRunResult{}, err
-		}
 	}
 	return StartRunResult{EvalID: resp.ID, Status: resp.Status}, nil
 }
@@ -261,8 +235,13 @@ func (s *Service) WaitForRun(ctx context.Context, evalID string) (WaitResult, er
 	}
 }
 
-func (s *Service) AttachRun(ctx context.Context, experimentID int64, label, evalID, notes string) error {
-	return s.store.AttachRun(ctx, experimentID, label, evalID, notes)
+func (s *Service) AttachRun(ctx context.Context, experimentID, label, evalID, notes string) error {
+	_, err := s.api.AttachExperimentRun(ctx, experimentID, evalapi.AttachExperimentRunRequest{
+		EvaluationID: evalID,
+		Label:        label,
+		Notes:        notes,
+	})
+	return err
 }
 
 func (s *Service) GetRun(ctx context.Context, evalID string) (evalapi.EvaluationDetail, error) {
@@ -271,7 +250,7 @@ func (s *Service) GetRun(ctx context.Context, evalID string) (evalapi.Evaluation
 
 func (s *Service) Compare(ctx context.Context, in CompareInput) (evalapi.Comparison, error) {
 	ids := append([]string(nil), in.EvalIDs...)
-	if in.ExperimentID != 0 {
+	if in.ExperimentID != "" {
 		resolved, err := s.resolveLabels(ctx, in.ExperimentID, in.Labels)
 		if err != nil {
 			return evalapi.Comparison{}, err
@@ -319,8 +298,8 @@ func worstCasesFromResults(evalID, metric string, limit int, results []evalapi.Q
 	return WorstCasesResult{EvalID: evalID, Metric: metric, Cases: cases}
 }
 
-func (s *Service) SummarizeExperiment(ctx context.Context, experimentID int64) (ExperimentSummary, error) {
-	exp, err := s.store.GetExperiment(ctx, experimentID)
+func (s *Service) SummarizeExperiment(ctx context.Context, experimentID string) (ExperimentSummary, error) {
+	exp, err := s.api.GetExperiment(ctx, experimentID)
 	if err != nil {
 		return ExperimentSummary{}, err
 	}
@@ -328,9 +307,9 @@ func (s *Service) SummarizeExperiment(ctx context.Context, experimentID int64) (
 	summary := ExperimentSummary{Experiment: exp}
 	evalIDs := make([]string, 0, len(exp.Runs))
 	for i, runLabel := range exp.Runs {
-		run, err := s.api.GetEvaluation(ctx, runLabel.EvalID)
+		run, err := s.api.GetEvaluation(ctx, runLabel.EvaluationID)
 		if err != nil {
-			return ExperimentSummary{}, fmt.Errorf("get run %q (%s): %w", runLabel.Label, runLabel.EvalID, err)
+			return ExperimentSummary{}, fmt.Errorf("get run %q (%s): %w", runLabel.Label, runLabel.EvaluationID, err)
 		}
 		labeledRun := LabeledRun{Label: runLabel.Label, Run: run}
 		if i == 0 {
@@ -338,7 +317,7 @@ func (s *Service) SummarizeExperiment(ctx context.Context, experimentID int64) (
 		} else {
 			summary.Candidates = append(summary.Candidates, labeledRun)
 		}
-		evalIDs = append(evalIDs, runLabel.EvalID)
+		evalIDs = append(evalIDs, runLabel.EvaluationID)
 
 		metric := exp.FocusMetric
 		if metric == "" {
@@ -349,7 +328,7 @@ func (s *Service) SummarizeExperiment(ctx context.Context, experimentID int64) (
 		}
 		summary.WorstCases = append(summary.WorstCases, LabeledWorstCases{
 			Label:            runLabel.Label,
-			WorstCasesResult: worstCasesFromResults(runLabel.EvalID, metric, defaultWorstLimit, run.Results),
+			WorstCasesResult: worstCasesFromResults(runLabel.EvaluationID, metric, defaultWorstLimit, run.Results),
 		})
 	}
 	if len(evalIDs) >= minCompareEvalIDs {
@@ -366,8 +345,14 @@ func (s *Service) SummarizeExperiment(ctx context.Context, experimentID int64) (
 	return summary, nil
 }
 
-func (s *Service) RecordConclusion(ctx context.Context, experimentID int64, conclusion string) error {
-	return s.store.RecordConclusion(ctx, experimentID, conclusion)
+func (s *Service) RecordConclusion(ctx context.Context, in RecordConclusionInput) error {
+	_, err := s.api.UpdateExperiment(ctx, in.ExperimentID, evalapi.UpdateExperimentRequest{
+		Status:     "completed",
+		Decision:   in.Decision,
+		Conclusion: in.Conclusion,
+		Evidence:   in.Evidence,
+	})
+	return err
 }
 
 func waitTimeoutError(evalID string, timeout time.Duration, latestStatus string) error {
@@ -381,15 +366,15 @@ func validateCompareIDs(ids []string) error {
 	return nil
 }
 
-func (s *Service) resolveLabels(ctx context.Context, experimentID int64, labels []string) ([]string, error) {
-	exp, err := s.store.GetExperiment(ctx, experimentID)
+func (s *Service) resolveLabels(ctx context.Context, experimentID string, labels []string) ([]string, error) {
+	exp, err := s.api.GetExperiment(ctx, experimentID)
 	if err != nil {
 		return nil, err
 	}
 	byLabel := make(map[string]string, len(exp.Runs))
 	known := make([]string, 0, len(exp.Runs))
 	for _, run := range exp.Runs {
-		byLabel[run.Label] = run.EvalID
+		byLabel[run.Label] = run.EvaluationID
 		known = append(known, run.Label)
 	}
 	sort.Strings(known)
@@ -405,7 +390,7 @@ func (s *Service) resolveLabels(ctx context.Context, experimentID int64, labels 
 		ids = append(ids, evalID)
 	}
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("experiment %d missing run labels %s; known labels: %s", experimentID, strings.Join(missing, ", "), strings.Join(known, ", "))
+		return nil, fmt.Errorf("experiment %s missing run labels %s; known labels: %s", experimentID, strings.Join(missing, ", "), strings.Join(known, ", "))
 	}
 	return ids, nil
 }
@@ -418,13 +403,6 @@ func normalizeWorstLimit(limit int) int {
 		return maxWorstLimit
 	}
 	return limit
-}
-
-func normalizeCollection(collection string) string {
-	if collection == "" {
-		return DefaultCollection
-	}
-	return collection
 }
 
 func validateMetric(metric string) error {
