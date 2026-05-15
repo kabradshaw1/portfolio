@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -112,7 +113,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req model.RefreshRequest
 	refreshToken, err := c.Cookie("refresh_token")
-	if err != nil || refreshToken == "" {
+	if err == nil && refreshToken != "" {
+		var body struct {
+			IncludeTokens bool `json:"includeTokens"`
+		}
+		if c.Request.Body != nil && c.Request.Body != http.NoBody && c.Request.ContentLength != 0 {
+			if bindErr := json.NewDecoder(c.Request.Body).Decode(&body); bindErr != nil {
+				_ = c.Error(apperror.BadRequest("VALIDATION_ERROR", bindErr.Error()))
+				return
+			}
+			req.IncludeTokens = body.IncludeTokens
+		}
+	} else {
 		// Fallback to JSON body for backward compatibility
 		if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
 			_ = c.Error(apperror.Unauthorized("MISSING_TOKEN", "missing refresh token"))

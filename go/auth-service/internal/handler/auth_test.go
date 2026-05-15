@@ -246,6 +246,85 @@ func TestLoginHandler_IncludeTokensReturnsTokenFields(t *testing.T) {
 	}
 }
 
+func TestRefreshHandler_DefaultResponseOmitsTokensWithCookie(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := newMockUserRepo()
+	svc := service.NewAuthService(repo, "test-secret", 900000, 604800000)
+	registered, err := svc.Register(context.Background(), "refresh@example.com", "password123456", "Refresh")
+	if err != nil {
+		t.Fatalf("register fixture: %v", err)
+	}
+	h := handler.NewAuthHandler(svc, nil, service.NewTokenDenylist(nil), 15*time.Minute, 7*24*time.Hour, defaultCookieCfg())
+
+	router := testRouter()
+	router.POST("/auth/refresh", h.Refresh)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/refresh", nil)
+	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: registered.RefreshToken})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := resp["accessToken"]; ok {
+		t.Fatal("accessToken must not appear without includeTokens")
+	}
+	if _, ok := resp["refreshToken"]; ok {
+		t.Fatal("refreshToken must not appear without includeTokens")
+	}
+	if _, ok := resp["expiresInSeconds"]; ok {
+		t.Fatal("expiresInSeconds must not appear without includeTokens")
+	}
+	if !hasCookie(w, "access_token") || !hasCookie(w, "refresh_token") {
+		t.Fatal("expected refreshed auth cookies")
+	}
+}
+
+func TestRefreshHandler_IncludeTokensReturnsTokenFieldsWithCookie(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := newMockUserRepo()
+	svc := service.NewAuthService(repo, "test-secret", 900000, 604800000)
+	registered, err := svc.Register(context.Background(), "refresh@example.com", "password123456", "Refresh")
+	if err != nil {
+		t.Fatalf("register fixture: %v", err)
+	}
+	h := handler.NewAuthHandler(svc, nil, service.NewTokenDenylist(nil), 15*time.Minute, 7*24*time.Hour, defaultCookieCfg())
+
+	router := testRouter()
+	router.POST("/auth/refresh", h.Refresh)
+
+	body := strings.NewReader(`{"includeTokens":true}`)
+	req := httptest.NewRequest(http.MethodPost, "/auth/refresh", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: registered.RefreshToken})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp["accessToken"] == "" || resp["refreshToken"] == "" {
+		t.Fatalf("expected token fields, got %#v", resp)
+	}
+	if resp["expiresInSeconds"] != float64(900) {
+		t.Fatalf("expiresInSeconds = %#v", resp["expiresInSeconds"])
+	}
+	if !hasCookie(w, "access_token") || !hasCookie(w, "refresh_token") {
+		t.Fatal("expected refreshed auth cookies")
+	}
+}
+
 // --- fake auth service for Google handler tests ---
 
 type fakeAuthService struct {
