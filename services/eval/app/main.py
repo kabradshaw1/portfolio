@@ -149,6 +149,7 @@ async def _run_evaluation_task(
             chat_url=settings.chat_service_url,
             ingestion_url=settings.ingestion_service_url,
             collection=coll_name,
+            requested_rerank=rerank,
         )
         await db.set_evaluation_config(eval_id, config)
 

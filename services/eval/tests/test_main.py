@@ -715,6 +715,36 @@ def test_start_evaluation_passes_rerank_to_background_run(
 
     assert response.status_code == 202
     assert mock_run_evaluation.await_args.kwargs["rerank"] is True
+    assert mock_capture.await_args.kwargs["requested_rerank"] is True
+    assert mock_capture.await_args.kwargs["collection"] == "documents"
+
+
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_records_baseline_rerank_metadata(
+    mock_get_db, mock_capture, mock_run_evaluation, mock_validate_collection
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-base",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-base"
+    mock_get_db.return_value = mock_db
+    mock_capture.return_value = {"captured_at": "x", "requested_rerank": False}
+    mock_run_evaluation.return_value = ({"faithfulness": 0.7}, [])
+
+    response = client.post("/evaluations", json={"dataset_id": "ds-base"})
+
+    assert response.status_code == 202
+    assert mock_capture.await_args.kwargs["requested_rerank"] is False
+    mock_db.set_evaluation_config.assert_awaited_once_with(
+        "eval-base", mock_capture.return_value
+    )
 
 
 @patch("app.main.validate_collection_exists", new_callable=AsyncMock)
