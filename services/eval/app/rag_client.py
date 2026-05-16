@@ -24,11 +24,9 @@ class RAGClient:
         rerank: bool = False,
     ) -> list[dict]:
         """Call POST /search for retrieval-only results."""
-        body: dict = {"query": query, "limit": limit}
+        body: dict = {"query": query, "limit": limit, "rerank": rerank}
         if collection:
             body["collection"] = collection
-        if rerank:
-            body["rerank"] = True
 
         resp = await self._client.post("/search", json=body)
         resp.raise_for_status()
@@ -38,11 +36,9 @@ class RAGClient:
         self, question: str, collection: str | None, rerank: bool = False
     ) -> dict:
         """Call POST /chat with Accept: application/json for a full RAG response."""
-        body: dict = {"question": question}
+        body: dict = {"question": question, "rerank": rerank}
         if collection:
             body["collection"] = collection
-        if rerank:
-            body["rerank"] = True
 
         resp = await self._client.post(
             "/chat", json=body, headers={"Accept": "application/json"}

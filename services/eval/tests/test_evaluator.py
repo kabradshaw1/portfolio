@@ -57,6 +57,24 @@ def mock_chat_answer():
     }
 
 
+@pytest.fixture
+def mock_chat_answer_with_retrieval(mock_chat_answer):
+    return {
+        **mock_chat_answer,
+        "retrieval": {
+            "retrieval_mode": "hybrid",
+            "retrieval_fallback": False,
+            "rerank_requested": True,
+            "rerank_enabled": True,
+            "rerank_applied": True,
+            "rerank_fallback": False,
+            "rerank_model": "cross-encoder/ms-marco-MiniLM-L6-v2",
+            "rerank_candidate_count": 20,
+            "rerank_returned_count": 5,
+        },
+    }
+
+
 @pytest.mark.asyncio
 async def test_build_evaluation_dataset(
     golden_items, mock_search_results, mock_chat_answer
@@ -123,6 +141,24 @@ async def test_build_evaluation_dataset_passes_rerank(
 
     assert rag_client.search.call_args_list[0].kwargs["rerank"] is True
     assert rag_client.ask.call_args_list[0].kwargs["rerank"] is True
+
+
+@pytest.mark.asyncio
+async def test_build_evaluation_dataset_preserves_retrieval_metadata(
+    golden_items, mock_search_results, mock_chat_answer_with_retrieval
+):
+    rag_client = AsyncMock()
+    rag_client.search.return_value = mock_search_results
+    rag_client.ask.return_value = mock_chat_answer_with_retrieval
+
+    dataset = await build_evaluation_dataset(
+        items=golden_items,
+        rag_client=rag_client,
+        collection="documents",
+        rerank=True,
+    )
+
+    assert dataset[0]["retrieval"] == mock_chat_answer_with_retrieval["retrieval"]
 
 
 def test_score_context_recall_counts_reference_terms_in_contexts():
@@ -235,6 +271,44 @@ async def test_run_evaluation_preserves_result_shape(
     assert results[0]["query"] == "What is chunking?"
     assert results[0]["scores"]["faithfulness"] == 0.9
     assert results[0]["score_reasons"]["faithfulness"] == "answer is supported"
+    assert "retrieval" not in results[0]
+
+
+@pytest.mark.asyncio
+async def test_run_evaluation_persists_retrieval_metadata_in_results(
+    golden_items,
+    mock_search_results,
+    mock_chat_answer_with_retrieval,
+):
+    rag_client = MagicMock(spec=RAGClient)
+    rag_client.search = AsyncMock(return_value=mock_search_results)
+    rag_client.ask = AsyncMock(return_value=mock_chat_answer_with_retrieval)
+    judge = AsyncMock(
+        return_value=JudgeScores(
+            faithfulness=1.0,
+            answer_relevancy=1.0,
+            reasons={
+                "faithfulness": "supported",
+                "answer_relevancy": "direct",
+            },
+        )
+    )
+
+    aggregate, results = await run_evaluation(
+        items=golden_items,
+        rag_client=rag_client,
+        collection="documents",
+        llm_provider="ollama",
+        llm_base_url="http://localhost:11434",
+        llm_model="qwen2.5:14b",
+        llm_api_key="",
+        rerank=True,
+        judge=judge,
+    )
+
+    assert aggregate["faithfulness"] == 1.0
+    assert aggregate["answer_relevancy"] == 1.0
+    assert results[0]["retrieval"] == mock_chat_answer_with_retrieval["retrieval"]
 
 
 @pytest.mark.asyncio

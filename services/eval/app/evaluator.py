@@ -110,15 +110,16 @@ async def build_evaluation_dataset(
             query, collection=collection, rerank=rerank
         )
 
-        dataset.append(
-            {
-                "user_input": query,
-                "retrieved_contexts": [r["text"] for r in search_results],
-                "response": chat_response["answer"],
-                "reference": item["expected_answer"],
-                "expected_sources": item.get("expected_sources", []),
-            }
-        )
+        row = {
+            "user_input": query,
+            "retrieved_contexts": [r["text"] for r in search_results],
+            "response": chat_response["answer"],
+            "reference": item["expected_answer"],
+            "expected_sources": item.get("expected_sources", []),
+        }
+        if "retrieval" in chat_response:
+            row["retrieval"] = chat_response["retrieval"]
+        dataset.append(row)
     return dataset
 
 
@@ -275,14 +276,15 @@ async def run_evaluation(
             ),
         }
         all_scores.append(scores)
-        per_query.append(
-            {
-                "query": row["user_input"],
-                "answer": row["response"],
-                "contexts": row["retrieved_contexts"],
-                "scores": scores,
-                "score_reasons": judge_scores.reasons,
-            }
-        )
+        result = {
+            "query": row["user_input"],
+            "answer": row["response"],
+            "contexts": row["retrieved_contexts"],
+            "scores": scores,
+            "score_reasons": judge_scores.reasons,
+        }
+        if "retrieval" in row:
+            result["retrieval"] = row["retrieval"]
+        per_query.append(result)
 
     return _aggregate(all_scores), per_query
