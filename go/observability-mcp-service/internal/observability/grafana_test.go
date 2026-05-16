@@ -84,3 +84,56 @@ func TestGrafanaLokiQueryUsesDatasourceProxy(t *testing.T) {
 		t.Fatal("truncated = true")
 	}
 }
+
+func TestGrafanaDatasourceUIDOverrides(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/datasources/proxy/uid/custom-prometheus/api/v1/query":
+			_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`))
+		case "/api/datasources/proxy/uid/custom-loki/loki/api/v1/query_range":
+			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[]}}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewGrafana(GrafanaConfig{
+		BaseURL:                 server.URL,
+		PrometheusDatasourceUID: "custom-prometheus",
+		LokiDatasourceUID:       "custom-loki",
+	}, server.Client())
+	if _, err := client.Query(context.Background(), "up"); err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	_, _, err := client.QueryLogs(context.Background(), LogQuery{
+		Service: "go-order-service",
+		Start:   time.Unix(1710000000, 0).UTC(),
+		End:     time.Unix(1710000060, 0).UTC(),
+		Limit:   2,
+	})
+	if err != nil {
+		t.Fatalf("QueryLogs() error = %v", err)
+	}
+}
+
+func TestGrafanaCloudflareHeadersRequirePair(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("CF-Access-Client-Id"); got != "" {
+			t.Fatalf("CF-Access-Client-Id = %q", got)
+		}
+		if got := r.Header.Get("CF-Access-Client-Secret"); got != "" {
+			t.Fatalf("CF-Access-Client-Secret = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`))
+	}))
+	defer server.Close()
+
+	client := NewGrafana(GrafanaConfig{
+		BaseURL:            server.URL,
+		AccessClientSecret: "cf-secret",
+	}, server.Client())
+	if _, err := client.Query(context.Background(), "up"); err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+}

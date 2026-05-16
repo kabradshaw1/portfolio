@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -113,7 +112,8 @@ func TestRunUsesGrafanaGatewayMode(t *testing.T) {
 	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_ID", "cf-id")
 	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET", "cf-secret")
 	var got *app
-	err := run(context.Background(), log.New(io.Discard, "", 0), func(_ context.Context, application *app) error {
+	var logs bytes.Buffer
+	err := run(context.Background(), log.New(&logs, "", 0), func(_ context.Context, application *app) error {
 		got = application
 		bundle := application.service.GetServiceEvidence(context.Background(), "go-order-service", time.Minute, "")
 		if len(bundle.Errors) > 0 {
@@ -129,6 +129,9 @@ func TestRunUsesGrafanaGatewayMode(t *testing.T) {
 	}
 	if !got.cfg.UseGrafanaGateway() {
 		t.Fatal("expected Grafana gateway mode")
+	}
+	if !strings.Contains(logs.String(), "grafana mode leaves jaeger on default direct URL") {
+		t.Fatalf("expected default Jaeger warning, got %q", logs.String())
 	}
 
 	prometheusPath := "/api/datasources/proxy/uid/PBFA97CFB590B2093/api/v1/query"
@@ -160,4 +163,6 @@ func clearEnv(t *testing.T) {
 	t.Setenv("OBS_GRAFANA_TOKEN", "")
 	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_ID", "")
 	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET", "")
+	t.Setenv("OBS_GRAFANA_PROMETHEUS_DS_UID", "")
+	t.Setenv("OBS_GRAFANA_LOKI_DS_UID", "")
 }

@@ -40,14 +40,19 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 	jaeger := observability.NewJaeger(cfg.JaegerURL, httpClient, cfg.MaxTraceSpans)
 	if cfg.UseGrafanaGateway() {
 		grafana := observability.NewGrafana(observability.GrafanaConfig{
-			BaseURL:            cfg.GrafanaURL,
-			Token:              cfg.GrafanaToken,
-			AccessClientID:     cfg.GrafanaAccessClientID,
-			AccessClientSecret: cfg.GrafanaAccessClientSecret,
+			BaseURL:                 cfg.GrafanaURL,
+			Token:                   cfg.GrafanaToken,
+			AccessClientID:          cfg.GrafanaAccessClientID,
+			AccessClientSecret:      cfg.GrafanaAccessClientSecret,
+			PrometheusDatasourceUID: cfg.GrafanaPrometheusDatasourceUID,
+			LokiDatasourceUID:       cfg.GrafanaLokiDatasourceUID,
 		}, httpClient)
 		prom = grafana
 		loki = grafana
 		logger.Printf("observability MCP server running on stdio grafana=%s jaeger=%s", cfg.GrafanaURL, cfg.JaegerURL)
+		if cfg.UsesDefaultJaegerURL() {
+			logger.Printf("observability MCP grafana mode leaves jaeger on default direct URL; set OBS_JAEGER_URL if trace lookup should use a reachable endpoint")
+		}
 	} else {
 		prom = observability.NewPrometheus(cfg.PrometheusURL, httpClient)
 		loki = observability.NewLoki(cfg.LokiURL, httpClient)

@@ -42,6 +42,15 @@ func TestFromEnvDefaults(t *testing.T) {
 	if cfg.GrafanaURL != "" || cfg.GrafanaToken != "" || cfg.GrafanaAccessClientID != "" || cfg.GrafanaAccessClientSecret != "" {
 		t.Fatalf("expected empty Grafana config by default: %+v", cfg)
 	}
+	if cfg.GrafanaPrometheusDatasourceUID != "PBFA97CFB590B2093" {
+		t.Fatalf("GrafanaPrometheusDatasourceUID = %q", cfg.GrafanaPrometheusDatasourceUID)
+	}
+	if cfg.GrafanaLokiDatasourceUID != "loki" {
+		t.Fatalf("GrafanaLokiDatasourceUID = %q", cfg.GrafanaLokiDatasourceUID)
+	}
+	if !cfg.UsesDefaultJaegerURL() {
+		t.Fatal("expected default Jaeger URL")
+	}
 }
 
 func TestFromEnvOverrides(t *testing.T) {
@@ -64,6 +73,9 @@ func TestFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.MaxLogLines != 25 || cfg.MaxTraceSpans != 50 {
 		t.Fatalf("limit overrides not applied: %+v", cfg)
+	}
+	if cfg.UsesDefaultJaegerURL() {
+		t.Fatal("expected Jaeger override to be detected")
 	}
 }
 
@@ -89,6 +101,23 @@ func TestFromEnvGrafanaMode(t *testing.T) {
 	}
 	if cfg.GrafanaAccessClientID != "cf-id" || cfg.GrafanaAccessClientSecret != "cf-secret" {
 		t.Fatalf("Cloudflare token config not loaded: %+v", cfg)
+	}
+}
+
+func TestFromEnvGrafanaDatasourceUIDOverrides(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("OBS_GRAFANA_PROMETHEUS_DS_UID", "custom-prometheus")
+	t.Setenv("OBS_GRAFANA_LOKI_DS_UID", "custom-loki")
+
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+	if cfg.GrafanaPrometheusDatasourceUID != "custom-prometheus" {
+		t.Fatalf("GrafanaPrometheusDatasourceUID = %q", cfg.GrafanaPrometheusDatasourceUID)
+	}
+	if cfg.GrafanaLokiDatasourceUID != "custom-loki" {
+		t.Fatalf("GrafanaLokiDatasourceUID = %q", cfg.GrafanaLokiDatasourceUID)
 	}
 }
 
@@ -125,6 +154,8 @@ func clearEnv(t *testing.T) {
 	t.Setenv("OBS_GRAFANA_TOKEN", "")
 	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_ID", "")
 	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET", "")
+	t.Setenv("OBS_GRAFANA_PROMETHEUS_DS_UID", "")
+	t.Setenv("OBS_GRAFANA_LOKI_DS_UID", "")
 }
 
 func TestValidateWindow(t *testing.T) {

@@ -8,24 +8,28 @@ import (
 )
 
 const (
-	defaultPrometheusURL = "http://localhost:9090"
-	defaultLokiURL       = "http://localhost:3100"
-	defaultJaegerURL     = "http://localhost:16686"
+	defaultPrometheusURL                  = "http://localhost:9090"
+	defaultLokiURL                        = "http://localhost:3100"
+	defaultJaegerURL                      = "http://localhost:16686"
+	defaultGrafanaPrometheusDatasourceUID = "PBFA97CFB590B2093"
+	defaultGrafanaLokiDatasourceUID       = "loki"
 )
 
 type Config struct {
-	PrometheusURL             string
-	LokiURL                   string
-	JaegerURL                 string
-	GrafanaURL                string
-	GrafanaToken              string
-	GrafanaAccessClientID     string
-	GrafanaAccessClientSecret string
-	QueryTimeout              time.Duration
-	DefaultWindow             time.Duration
-	MaxWindow                 time.Duration
-	MaxLogLines               int
-	MaxTraceSpans             int
+	PrometheusURL                  string
+	LokiURL                        string
+	JaegerURL                      string
+	GrafanaURL                     string
+	GrafanaToken                   string
+	GrafanaAccessClientID          string
+	GrafanaAccessClientSecret      string
+	GrafanaPrometheusDatasourceUID string
+	GrafanaLokiDatasourceUID       string
+	QueryTimeout                   time.Duration
+	DefaultWindow                  time.Duration
+	MaxWindow                      time.Duration
+	MaxLogLines                    int
+	MaxTraceSpans                  int
 }
 
 func FromEnv() (Config, error) {
@@ -51,18 +55,20 @@ func FromEnv() (Config, error) {
 	}
 
 	cfg := Config{
-		PrometheusURL:             getenv("OBS_PROMETHEUS_URL", defaultPrometheusURL),
-		LokiURL:                   getenv("OBS_LOKI_URL", defaultLokiURL),
-		JaegerURL:                 getenv("OBS_JAEGER_URL", defaultJaegerURL),
-		GrafanaURL:                getenv("OBS_GRAFANA_URL", ""),
-		GrafanaToken:              os.Getenv("OBS_GRAFANA_TOKEN"),
-		GrafanaAccessClientID:     os.Getenv("OBS_GRAFANA_ACCESS_CLIENT_ID"),
-		GrafanaAccessClientSecret: os.Getenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET"),
-		QueryTimeout:              queryTimeout,
-		DefaultWindow:             defaultWindow,
-		MaxWindow:                 maxWindow,
-		MaxLogLines:               maxLogLines,
-		MaxTraceSpans:             maxTraceSpans,
+		PrometheusURL:                  getenv("OBS_PROMETHEUS_URL", defaultPrometheusURL),
+		LokiURL:                        getenv("OBS_LOKI_URL", defaultLokiURL),
+		JaegerURL:                      getenv("OBS_JAEGER_URL", defaultJaegerURL),
+		GrafanaURL:                     getenv("OBS_GRAFANA_URL", ""),
+		GrafanaToken:                   os.Getenv("OBS_GRAFANA_TOKEN"),
+		GrafanaAccessClientID:          os.Getenv("OBS_GRAFANA_ACCESS_CLIENT_ID"),
+		GrafanaAccessClientSecret:      os.Getenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET"),
+		GrafanaPrometheusDatasourceUID: getenv("OBS_GRAFANA_PROMETHEUS_DS_UID", defaultGrafanaPrometheusDatasourceUID),
+		GrafanaLokiDatasourceUID:       getenv("OBS_GRAFANA_LOKI_DS_UID", defaultGrafanaLokiDatasourceUID),
+		QueryTimeout:                   queryTimeout,
+		DefaultWindow:                  defaultWindow,
+		MaxWindow:                      maxWindow,
+		MaxLogLines:                    maxLogLines,
+		MaxTraceSpans:                  maxTraceSpans,
 	}
 	if cfg.QueryTimeout <= 0 {
 		return Config{}, fmt.Errorf("OBS_QUERY_TIMEOUT must be positive")
@@ -90,6 +96,10 @@ func FromEnv() (Config, error) {
 
 func (c Config) UseGrafanaGateway() bool {
 	return c.GrafanaURL != ""
+}
+
+func (c Config) UsesDefaultJaegerURL() bool {
+	return c.JaegerURL == defaultJaegerURL
 }
 
 func (c Config) WindowOrDefault(raw string) (time.Duration, error) {

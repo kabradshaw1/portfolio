@@ -30,6 +30,8 @@ codex mcp add observability -- zsh -lc 'source ~/.codex/env/observability-mcp.en
 | `OBS_GRAFANA_TOKEN` | unset | Optional Grafana service account token. |
 | `OBS_GRAFANA_ACCESS_CLIENT_ID` | unset | Cloudflare Access service-token client ID for Grafana gateway mode. |
 | `OBS_GRAFANA_ACCESS_CLIENT_SECRET` | unset | Cloudflare Access service-token client secret for Grafana gateway mode. |
+| `OBS_GRAFANA_PROMETHEUS_DS_UID` | `PBFA97CFB590B2093` | Grafana Prometheus datasource UID for gateway mode. |
+| `OBS_GRAFANA_LOKI_DS_UID` | `loki` | Grafana Loki datasource UID for gateway mode. |
 | `OBS_QUERY_TIMEOUT` | `5s` | Shared HTTP client timeout. |
 | `OBS_DEFAULT_WINDOW` | `15m` | Default investigation window. |
 | `OBS_MAX_WINDOW` | `1h` | Maximum accepted investigation window. |

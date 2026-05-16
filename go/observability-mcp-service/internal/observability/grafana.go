@@ -8,15 +8,17 @@ import (
 )
 
 const (
-	grafanaPrometheusUID = "PBFA97CFB590B2093"
-	grafanaLokiUID       = "loki"
+	defaultGrafanaPrometheusUID = "PBFA97CFB590B2093"
+	defaultGrafanaLokiUID       = "loki"
 )
 
 type GrafanaConfig struct {
-	BaseURL            string
-	Token              string
-	AccessClientID     string
-	AccessClientSecret string
+	BaseURL                 string
+	Token                   string
+	AccessClientID          string
+	AccessClientSecret      string
+	PrometheusDatasourceUID string
+	LokiDatasourceUID       string
 }
 
 type GrafanaClient struct {
@@ -33,7 +35,7 @@ func NewGrafana(cfg GrafanaConfig, httpClient *http.Client) *GrafanaClient {
 	if cfg.Token != "" {
 		headers["Authorization"] = "Bearer " + cfg.Token
 	}
-	if cfg.AccessClientID != "" {
+	if cfg.AccessClientID != "" && cfg.AccessClientSecret != "" {
 		headers["CF-Access-Client-Id"] = cfg.AccessClientID
 		headers["CF-Access-Client-Secret"] = cfg.AccessClientSecret
 	}
@@ -45,9 +47,17 @@ func NewGrafana(cfg GrafanaConfig, httpClient *http.Client) *GrafanaClient {
 	}
 
 	baseURL := strings.TrimRight(cfg.BaseURL, "/")
+	prometheusUID := cfg.PrometheusDatasourceUID
+	if prometheusUID == "" {
+		prometheusUID = defaultGrafanaPrometheusUID
+	}
+	lokiUID := cfg.LokiDatasourceUID
+	if lokiUID == "" {
+		lokiUID = defaultGrafanaLokiUID
+	}
 	return &GrafanaClient{
-		prometheus: NewPrometheus(baseURL+"/api/datasources/proxy/uid/"+grafanaPrometheusUID, &client),
-		loki:       NewLoki(baseURL+"/api/datasources/proxy/uid/"+grafanaLokiUID, &client),
+		prometheus: NewPrometheus(baseURL+"/api/datasources/proxy/uid/"+prometheusUID, &client),
+		loki:       NewLoki(baseURL+"/api/datasources/proxy/uid/"+lokiUID, &client),
 	}
 }
 
