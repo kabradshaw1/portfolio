@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from app.config import settings
 from app.main import app
@@ -1526,13 +1527,15 @@ def test_attach_experiment_run_duplicate_label_returns_409(mock_get_db):
 
 
 @patch("app.main.httpx.AsyncClient")
-def test_health_degraded_when_chat_unreachable(mock_client_cls):
+def test_health_returns_200_when_chat_degraded(mock_client_cls):
     mock_client = AsyncMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.get.side_effect = Exception("connection refused")
+    mock_client.get.side_effect = httpx.ConnectError("boom")
     mock_client_cls.return_value = mock_client
 
     response = client.get("/health")
-    assert response.status_code == 503
-    assert response.json()["status"] == "degraded"
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "healthy"
+    assert body["chat_service"] == "unreachable"

@@ -94,11 +94,12 @@ async def health():
     except Exception:
         chat_ok = False
 
-    status = "healthy" if chat_ok else "degraded"
-    code = 200 if chat_ok else 503
     return JSONResponse(
-        status_code=code,
-        content={"status": status, "chat_service": "ok" if chat_ok else "unreachable"},
+        status_code=200,
+        content={
+            "status": "healthy",
+            "chat_service": "ok" if chat_ok else "unreachable",
+        },
     )
 
 
