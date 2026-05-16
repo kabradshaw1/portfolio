@@ -12,6 +12,8 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalworkflow"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/fixturecatalog"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/ingestionapi"
 )
 
 type fakeEvalService struct {
@@ -50,6 +52,22 @@ func (f *fakeEvalService) GetExperiment(context.Context, string) (evalapi.Experi
 
 func (f *fakeEvalService) ListDatasets(context.Context) ([]evalapi.Dataset, error) {
 	return []evalapi.Dataset{{ID: "ds-1", Name: "RAG Smoke", ItemCount: 3}}, nil
+}
+
+func (f *fakeEvalService) ListDatasetFixtures(context.Context) ([]fixturecatalog.Fixture, error) {
+	return []fixturecatalog.Fixture{{ID: "rag-eval-dataset-product-docs.json", Name: "product-docs-rag-v1", Valid: true}}, nil
+}
+
+func (f *fakeEvalService) CreateDatasetFromFixture(context.Context, string) (evalworkflow.CreateDatasetResult, error) {
+	return evalworkflow.CreateDatasetResult{ID: "ds-created", Name: "product-docs-rag-v1"}, nil
+}
+
+func (f *fakeEvalService) ListRAGCollections(context.Context) ([]ingestionapi.Collection, error) {
+	return []ingestionapi.Collection{{Name: "documents", PointsCount: 15}}, nil
+}
+
+func (f *fakeEvalService) GetRAGCollectionConfig(context.Context, string) (map[string]any, error) {
+	return map[string]any{"chunk_size": 1000}, nil
 }
 
 func (f *fakeEvalService) StartRun(_ context.Context, in evalworkflow.StartRunInput) (evalworkflow.StartRunResult, error) {
@@ -110,11 +128,15 @@ func TestServerRegistersPromptResourceAndTools(t *testing.T) {
 	wantTools := []string{
 		"attach_eval_run",
 		"compare_eval_runs",
+		"create_eval_dataset",
 		"get_eval_experiment",
 		"get_eval_run",
+		"get_rag_collection_config",
 		"get_worst_eval_cases",
+		"list_eval_dataset_fixtures",
 		"list_eval_datasets",
 		"list_eval_experiments",
+		"list_rag_collections",
 		"record_eval_experiment_conclusion",
 		"start_eval_experiment",
 		"start_eval_run",
@@ -166,6 +188,28 @@ func TestStartEvalRunValidationError(t *testing.T) {
 	}
 	if fake.startRunCalls != 0 {
 		t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+	}
+}
+
+func TestCreateEvalDatasetHandlerRequiresFixture(t *testing.T) {
+	result, err := createEvalDatasetHandler(&fakeEvalService{})(context.Background(), callReq(map[string]any{}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected MCP tool error")
+	}
+}
+
+func TestListRAGCollectionsHandler(t *testing.T) {
+	result, err := listRAGCollectionsHandler(&fakeEvalService{})(context.Background(), callReq(map[string]any{}))
+	if err != nil || result.IsError {
+		t.Fatalf("handler failed: result=%#v err=%v", result, err)
+	}
+	var payload []ingestionapi.Collection
+	unmarshalTextResult(t, result, &payload)
+	if len(payload) != 1 || payload[0].Name != "documents" {
+		t.Fatalf("unexpected payload: %#v", payload)
 	}
 }
 
@@ -315,7 +359,7 @@ func TestEvalPromptHandler(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected text prompt content, got %T", result.Messages[0].Content)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_datasets", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "Compare only completed runs"} {
 		if !strings.Contains(text.Text, want) {
 			t.Fatalf("expected prompt to mention %s, got %q", want, text.Text)
 		}
@@ -337,7 +381,7 @@ func TestWorkflowResourceHandler(t *testing.T) {
 	if content.MIMEType != "text/markdown" {
 		t.Fatalf("unexpected resource MIME type: %q", content.MIMEType)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_datasets", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "Compare only completed runs"} {
 		if !strings.Contains(content.Text, want) {
 			t.Fatalf("expected workflow resource to mention %s, got %q", want, content.Text)
 		}
