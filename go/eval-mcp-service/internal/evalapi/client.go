@@ -58,6 +58,21 @@ type Dataset struct {
 	ItemCount int    `json:"item_count"`
 }
 
+type GoldenItem struct {
+	Query           string   `json:"query"`
+	ExpectedAnswer  string   `json:"expected_answer"`
+	ExpectedSources []string `json:"expected_sources"`
+}
+
+type CreateDatasetRequest struct {
+	Name  string       `json:"name"`
+	Items []GoldenItem `json:"items"`
+}
+
+type CreateDatasetResponse struct {
+	ID string `json:"id"`
+}
+
 type StartEvaluationRequest struct {
 	DatasetID       string `json:"dataset_id"`
 	Collection      string `json:"collection,omitempty"`
@@ -197,6 +212,14 @@ func (c *Client) ListDatasets(ctx context.Context) ([]Dataset, error) {
 		return nil, err
 	}
 	return response.Datasets, nil
+}
+
+func (c *Client) CreateDataset(ctx context.Context, body CreateDatasetRequest) (CreateDatasetResponse, error) {
+	var response CreateDatasetResponse
+	if err := c.do(ctx, http.MethodPost, "/datasets", body, &response); err != nil {
+		return CreateDatasetResponse{}, err
+	}
+	return response, nil
 }
 
 func (c *Client) StartEvaluation(ctx context.Context, body StartEvaluationRequest) (StartEvaluationResponse, error) {

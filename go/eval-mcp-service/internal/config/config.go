@@ -3,11 +3,14 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
 const (
 	defaultEvalAPIURL       = "http://localhost:8000/eval"
+	defaultIngestionURL     = "http://localhost:8000/ingestion"
 	defaultAuthServiceURL   = "http://localhost:8091/auth"
 	defaultTokenCachePath   = "data/eval-mcp-auth.json"
 	defaultPollInterval     = time.Second
@@ -16,15 +19,17 @@ const (
 )
 
 type Config struct {
-	EvalAPIURL       string
-	APIToken         string
-	AuthServiceURL   string
-	AuthEmail        string
-	AuthPassword     string
-	TokenCachePath   string
-	PollInterval     time.Duration
-	WaitTimeout      time.Duration
-	TokenRefreshSkew time.Duration
+	EvalAPIURL          string
+	IngestionURL        string
+	APIToken            string
+	AuthServiceURL      string
+	AuthEmail           string
+	AuthPassword        string
+	TokenCachePath      string
+	PollInterval        time.Duration
+	WaitTimeout         time.Duration
+	TokenRefreshSkew    time.Duration
+	DatasetFixtureRoots []string
 }
 
 func FromEnv() (Config, error) {
@@ -63,15 +68,17 @@ func FromEnv() (Config, error) {
 	}
 
 	return Config{
-		EvalAPIURL:       getenv("EVAL_API_URL", defaultEvalAPIURL),
-		APIToken:         apiToken,
-		AuthServiceURL:   getenv("AUTH_SERVICE_URL", defaultAuthServiceURL),
-		AuthEmail:        authEmail,
-		AuthPassword:     authPassword,
-		TokenCachePath:   getenv("EVAL_MCP_TOKEN_CACHE_PATH", defaultTokenCachePath),
-		PollInterval:     pollInterval,
-		WaitTimeout:      waitTimeout,
-		TokenRefreshSkew: tokenRefreshSkew,
+		EvalAPIURL:          getenv("EVAL_API_URL", defaultEvalAPIURL),
+		IngestionURL:        getenv("EVAL_MCP_INGESTION_URL", defaultIngestionURL),
+		APIToken:            apiToken,
+		AuthServiceURL:      getenv("AUTH_SERVICE_URL", defaultAuthServiceURL),
+		AuthEmail:           authEmail,
+		AuthPassword:        authPassword,
+		TokenCachePath:      getenv("EVAL_MCP_TOKEN_CACHE_PATH", defaultTokenCachePath),
+		PollInterval:        pollInterval,
+		WaitTimeout:         waitTimeout,
+		TokenRefreshSkew:    tokenRefreshSkew,
+		DatasetFixtureRoots: datasetFixtureRoots(),
 	}, nil
 }
 
@@ -92,4 +99,19 @@ func durationEnv(key string, fallback time.Duration) (time.Duration, error) {
 		return 0, fmt.Errorf("%s: %w", key, err)
 	}
 	return parsed, nil
+}
+
+func datasetFixtureRoots() []string {
+	value := os.Getenv("EVAL_MCP_DATASET_FIXTURE_ROOTS")
+	if value != "" {
+		parts := strings.Split(value, string(os.PathListSeparator))
+		roots := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if strings.TrimSpace(part) != "" {
+				roots = append(roots, part)
+			}
+		}
+		return roots
+	}
+	return []string{filepath.Clean(filepath.Join("..", "..", "docs", "product-catalog"))}
 }

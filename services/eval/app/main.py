@@ -15,6 +15,7 @@ from slowapi.util import get_remote_address
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from app.collection_validation import validate_collection_exists
 from app.config import settings
 from app.config_capture import capture_run_config
 from app.db import EvalDB
@@ -93,11 +94,12 @@ async def health():
     except Exception:
         chat_ok = False
 
-    status = "healthy" if chat_ok else "degraded"
-    code = 200 if chat_ok else 503
     return JSONResponse(
-        status_code=code,
-        content={"status": status, "chat_service": "ok" if chat_ok else "unreachable"},
+        status_code=200,
+        content={
+            "status": "healthy",
+            "chat_service": "ok" if chat_ok else "unreachable",
+        },
     )
 
 
@@ -148,6 +150,7 @@ async def _run_evaluation_task(
             chat_url=settings.chat_service_url,
             ingestion_url=settings.ingestion_service_url,
             collection=coll_name,
+            requested_rerank=rerank,
         )
         await db.set_evaluation_config(eval_id, config)
 
@@ -266,6 +269,8 @@ async def start_evaluation(
             db, body.experiment_id, body.dataset_id, collection
         )
 
+    await validate_collection_exists(settings.ingestion_service_url, collection)
+
     eval_id = await db.create_evaluation(
         dataset_id=body.dataset_id,
         collection=collection,
@@ -286,7 +291,7 @@ async def start_evaluation(
             raise HTTPException(status_code=status_code, detail=detail) from exc
 
     background_tasks.add_task(
-        _run_evaluation_task, eval_id, dataset["items"], body.collection, body.rerank
+        _run_evaluation_task, eval_id, dataset["items"], collection, body.rerank
     )
 
     return {"id": eval_id, "status": "running"}
@@ -563,6 +568,18 @@ async def compare_evaluations(
     if len(datasets) > 1:
         raise HTTPException(
             status_code=400, detail="all runs must belong to the same dataset"
+        )
+
+    invalid_statuses = [
+        f"{r['id']}={r.get('status')}" for r in runs if r.get("status") != "completed"
+    ]
+    if invalid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "compare requires completed runs; invalid statuses: "
+                + ", ".join(invalid_statuses)
+            ),
         )
 
     deltas: dict[str, list[float]] = {}

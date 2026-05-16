@@ -32,6 +32,39 @@ func TestListDatasetsAddsBearerToken(t *testing.T) {
 	}
 }
 
+func TestClientCreateDataset(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/datasets" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body CreateDatasetRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body.Name != "product-docs-rag-v1" || len(body.Items) != 1 || body.Items[0].ExpectedSources[0] != "laptop-pro-15-specs.pdf" {
+			t.Fatalf("unexpected body: %#v", body)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": "ds-123"})
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "", server.Client())
+	got, err := client.CreateDataset(context.Background(), CreateDatasetRequest{
+		Name: "product-docs-rag-v1",
+		Items: []GoldenItem{{
+			Query:           "How long?",
+			ExpectedAnswer:  "Up to 10 hours.",
+			ExpectedSources: []string{"laptop-pro-15-specs.pdf"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateDataset returned error: %v", err)
+	}
+	if got.ID != "ds-123" {
+		t.Fatalf("ID = %q", got.ID)
+	}
+}
+
 func TestStartEvaluationSendsOptionalFields(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body StartEvaluationRequest

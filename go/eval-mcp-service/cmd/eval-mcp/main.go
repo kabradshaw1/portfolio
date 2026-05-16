@@ -14,6 +14,8 @@ import (
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/config"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalworkflow"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/fixturecatalog"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/ingestionapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/mcpserver"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/tokenstore"
 )
@@ -52,8 +54,10 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 		})
 		api = evalapi.NewWithTokenProvider(cfg.EvalAPIURL, provider, httpClient)
 	}
-	service := evalworkflow.New(api, cfg.PollInterval, cfg.WaitTimeout)
-	logger.Printf("eval MCP server running on stdio eval_api_url=%s", cfg.EvalAPIURL)
+	ingestion := ingestionapi.New(cfg.IngestionURL, cfg.APIToken, httpClient)
+	fixtures := fixturecatalog.New(cfg.DatasetFixtureRoots)
+	service := evalworkflow.New(api, ingestion, fixtures, cfg.PollInterval, cfg.WaitTimeout)
+	logger.Printf("eval MCP server running on stdio eval_api_url=%s ingestion_url=%s", cfg.EvalAPIURL, cfg.IngestionURL)
 	return runServer(ctx, &app{service: service, cfg: cfg})
 }
 
