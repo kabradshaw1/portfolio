@@ -16,7 +16,7 @@ HTTP listener in v1.
 ## Codex Registration
 
 ```bash
-codex mcp add observability -- go run /Users/kylebradshaw/repos/gen_ai_engineer/go/observability-mcp-service/cmd/observability-mcp
+codex mcp add observability -- zsh -lc 'source ~/.codex/env/observability-mcp.env && cd /Users/kylebradshaw/repos/gen_ai_engineer/go/observability-mcp-service && exec go run ./cmd/observability-mcp'
 ```
 
 ## Configuration
@@ -38,8 +38,9 @@ codex mcp add observability -- go run /Users/kylebradshaw/repos/gen_ai_engineer/
 
 ## Grafana Gateway Mode
 
-For normal development-machine usage, prefer Grafana gateway mode instead of
-direct local Prometheus/Loki/Jaeger ports.
+For normal development-machine usage, prefer Grafana gateway mode for
+Prometheus and Loki instead of direct local ports. Jaeger trace lookup still
+uses `OBS_JAEGER_URL` until Grafana trace proxy support is validated.
 
 Create an uncommitted local env file:
 
