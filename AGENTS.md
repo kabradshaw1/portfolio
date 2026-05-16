@@ -52,9 +52,10 @@ Load the narrowest relevant instruction file before touching that area:
 Project skills live under `.codex/skills/`. Use them when their trigger
 conditions match, especially `scaffold-go-service`,
 `go-grpc-service-reliability`, `go-kafka-consumer-reliability`,
-`go-rabbitmq-reliability`, and `java-rabbitmq-reliability`. Installed local
-skills such as `debug-observability` and `ops-as-code` still apply when their
-trigger conditions match.
+`go-rabbitmq-reliability`, `java-rabbitmq-reliability`, and
+`merge-conflict-resolution`. Installed local skills such as
+`debug-observability` and `ops-as-code` still apply when their trigger
+conditions match.
 
 ## Safety Gates
 
@@ -74,6 +75,17 @@ formatters, Playwright, Gradle, pytest, Go tests, file inspection, commits,
 branch pushes where branch rules allow them, PR creation where branch rules say
 to create a PR, or deleting temporary untracked files Codex created during the
 current task under the repo, `/tmp`, or `~/.codex/tmp`.
+
+## Merge Conflict Workflow
+
+Use the `merge-conflict-resolution` skill before resolving merge conflicts.
+Do not accept all incoming or all current changes blindly. First produce a
+conflict map: conflicted files, what each side changed, whether each conflict
+is mechanical, integration, or architecture/product/data-ownership, and the
+proposed resolution. Resolve mechanical conflicts autonomously. Escalate
+architecture, product, security, migration, deployment, public API, or
+data-ownership decisions to Kyle before editing. After resolution, inspect the
+final diff against the base branch and run targeted verification.
 
 ## Branch Workflow
 

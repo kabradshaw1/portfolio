@@ -18,6 +18,9 @@ env/
 .env
 .env.local
 
+# Local MCP auth/token caches
+go/eval-mcp-service/data/
+
 # Kubernetes secrets (never commit)
 **/k8s/secrets/*.yml
 !**/k8s/secrets/*.yml.template
