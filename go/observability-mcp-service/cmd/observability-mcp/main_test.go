@@ -69,15 +69,28 @@ func TestRunUsesGrafanaGatewayMode(t *testing.T) {
 
 	var mu sync.Mutex
 	seen := map[string]bool{}
+	var handlerErrors []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer token" {
-			t.Fatalf("Authorization = %q", got)
+			mu.Lock()
+			handlerErrors = append(handlerErrors, "Authorization = "+got)
+			mu.Unlock()
+			http.Error(w, "bad authorization", http.StatusUnauthorized)
+			return
 		}
 		if got := r.Header.Get("CF-Access-Client-Id"); got != "cf-id" {
-			t.Fatalf("CF-Access-Client-Id = %q", got)
+			mu.Lock()
+			handlerErrors = append(handlerErrors, "CF-Access-Client-Id = "+got)
+			mu.Unlock()
+			http.Error(w, "bad access client id", http.StatusUnauthorized)
+			return
 		}
 		if got := r.Header.Get("CF-Access-Client-Secret"); got != "cf-secret" {
-			t.Fatalf("CF-Access-Client-Secret = %q", got)
+			mu.Lock()
+			handlerErrors = append(handlerErrors, "CF-Access-Client-Secret = "+got)
+			mu.Unlock()
+			http.Error(w, "bad access client secret", http.StatusUnauthorized)
+			return
 		}
 
 		mu.Lock()
@@ -122,6 +135,9 @@ func TestRunUsesGrafanaGatewayMode(t *testing.T) {
 	lokiPath := "/api/datasources/proxy/uid/loki/loki/api/v1/query_range"
 	mu.Lock()
 	defer mu.Unlock()
+	if len(handlerErrors) > 0 {
+		t.Fatalf("handler errors = %+v", handlerErrors)
+	}
 	if !seen[prometheusPath] {
 		t.Fatalf("expected Prometheus datasource proxy request; saw paths %+v", seen)
 	}
