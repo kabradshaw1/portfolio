@@ -16,6 +16,9 @@ func TestGrafanaPrometheusQueryUsesDatasourceProxy(t *testing.T) {
 		if r.Header.Get("CF-Access-Client-Id") != "cf-id" {
 			t.Fatalf("CF-Access-Client-Id = %s", r.Header.Get("CF-Access-Client-Id"))
 		}
+		if r.Header.Get("CF-Access-Client-Secret") != "cf-secret" {
+			t.Fatalf("CF-Access-Client-Secret = %s", r.Header.Get("CF-Access-Client-Secret"))
+		}
 		if r.URL.Path != "/api/datasources/proxy/uid/PBFA97CFB590B2093/api/v1/query" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
@@ -27,9 +30,10 @@ func TestGrafanaPrometheusQueryUsesDatasourceProxy(t *testing.T) {
 	defer server.Close()
 
 	client := NewGrafana(GrafanaConfig{
-		BaseURL:        server.URL,
-		Token:          "grafana-token",
-		AccessClientID: "cf-id",
+		BaseURL:            server.URL,
+		Token:              "grafana-token",
+		AccessClientID:     "cf-id",
+		AccessClientSecret: "cf-secret",
 	}, server.Client())
 	got, err := client.Query(context.Background(), "up")
 	if err != nil {

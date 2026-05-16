@@ -22,7 +22,6 @@ type GrafanaConfig struct {
 type GrafanaClient struct {
 	prometheus *PrometheusClient
 	loki       *LokiClient
-	headers    map[string]string
 }
 
 func NewGrafana(cfg GrafanaConfig, httpClient *http.Client) *GrafanaClient {
@@ -49,7 +48,6 @@ func NewGrafana(cfg GrafanaConfig, httpClient *http.Client) *GrafanaClient {
 	return &GrafanaClient{
 		prometheus: NewPrometheus(baseURL+"/api/datasources/proxy/uid/"+grafanaPrometheusUID, &client),
 		loki:       NewLoki(baseURL+"/api/datasources/proxy/uid/"+grafanaLokiUID, &client),
-		headers:    headers,
 	}
 }
 
