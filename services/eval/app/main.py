@@ -570,6 +570,18 @@ async def compare_evaluations(
             status_code=400, detail="all runs must belong to the same dataset"
         )
 
+    invalid_statuses = [
+        f"{r['id']}={r.get('status')}" for r in runs if r.get("status") != "completed"
+    ]
+    if invalid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "compare requires completed runs; invalid statuses: "
+                + ", ".join(invalid_statuses)
+            ),
+        )
+
     deltas: dict[str, list[float]] = {}
     for metric in _EVAL_METRICS:
         baseline = (runs[0].get("aggregate_scores") or {}).get(metric)

@@ -1027,6 +1027,36 @@ def test_compare_400_on_mixed_datasets(mock_get_db):
 
 
 @patch("app.main.get_db")
+def test_compare_rejects_running_runs(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_evaluations_by_ids.return_value = [
+        _stub_run("base", "ds-1", {"faithfulness": 0.8}) | {"status": "completed"},
+        _stub_run("candidate", "ds-1", None) | {"status": "running"},
+    ]
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/evaluations/compare?ids=base,candidate")
+
+    assert response.status_code == 400
+    assert "candidate=running" in response.json()["detail"]
+
+
+@patch("app.main.get_db")
+def test_compare_rejects_failed_runs(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_evaluations_by_ids.return_value = [
+        _stub_run("base", "ds-1", {"faithfulness": 0.8}) | {"status": "completed"},
+        _stub_run("candidate", "ds-1", None) | {"status": "failed"},
+    ]
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/evaluations/compare?ids=base,candidate")
+
+    assert response.status_code == 400
+    assert "candidate=failed" in response.json()["detail"]
+
+
+@patch("app.main.get_db")
 def test_compare_404_on_unknown_id(mock_get_db):
     mock_db = AsyncMock()
     mock_db.get_evaluations_by_ids.return_value = []
