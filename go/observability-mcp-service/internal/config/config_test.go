@@ -14,6 +14,10 @@ func TestFromEnvDefaults(t *testing.T) {
 	t.Setenv("OBS_MAX_WINDOW", "")
 	t.Setenv("OBS_MAX_LOG_LINES", "")
 	t.Setenv("OBS_MAX_TRACE_SPANS", "")
+	t.Setenv("OBS_GRAFANA_URL", "")
+	t.Setenv("OBS_GRAFANA_TOKEN", "")
+	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_ID", "")
+	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET", "")
 
 	cfg, err := FromEnv()
 	if err != nil {
@@ -42,6 +46,12 @@ func TestFromEnvDefaults(t *testing.T) {
 	}
 	if cfg.MaxTraceSpans != 100 {
 		t.Fatalf("MaxTraceSpans = %d", cfg.MaxTraceSpans)
+	}
+	if cfg.UseGrafanaGateway() {
+		t.Fatal("expected direct backend mode by default")
+	}
+	if cfg.GrafanaURL != "" || cfg.GrafanaToken != "" || cfg.GrafanaAccessClientID != "" || cfg.GrafanaAccessClientSecret != "" {
+		t.Fatalf("expected empty Grafana config by default: %+v", cfg)
 	}
 }
 
