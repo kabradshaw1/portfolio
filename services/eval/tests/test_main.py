@@ -1,7 +1,9 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from app.config import settings
 from app.main import app
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -111,8 +113,9 @@ def test_list_datasets(mock_get_db):
 # --- Evaluation endpoints ---
 
 
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_start_evaluation(mock_get_db):
+def test_start_evaluation(mock_get_db, mock_validate_collection):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-123",
@@ -228,8 +231,11 @@ def test_list_evaluations(mock_get_db):
     assert len(response.json()["evaluations"]) == 1
 
 
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_start_evaluation_persists_notes_and_baseline(mock_get_db):
+def test_start_evaluation_persists_notes_and_baseline(
+    mock_get_db, mock_validate_collection
+):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-123",
@@ -377,8 +383,11 @@ def test_start_evaluation_rejects_baseline_for_different_collection(mock_get_db)
     mock_db.create_evaluation.assert_not_awaited()
 
 
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_start_evaluation_accepts_valid_baseline_for_custom_collection(mock_get_db):
+def test_start_evaluation_accepts_valid_baseline_for_custom_collection(
+    mock_get_db, mock_validate_collection
+):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-123",
@@ -406,6 +415,34 @@ def test_start_evaluation_accepts_valid_baseline_for_custom_collection(mock_get_
         notes=None,
         baseline_eval_id="eval-prev",
     )
+
+
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_missing_collection_before_create(
+    mock_get_db, mock_validate_collection
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_get_db.return_value = mock_db
+    mock_validate_collection.side_effect = HTTPException(
+        status_code=422,
+        detail='retrieval collection "missing" does not exist',
+    )
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "collection": "missing"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == 'retrieval collection "missing" does not exist'
+    mock_db.create_evaluation.assert_not_awaited()
 
 
 @patch("app.main.get_db")
@@ -591,8 +628,11 @@ def test_update_experiment_rejects_completed_without_decision_conclusion_or_evid
 
 @patch("app.main.run_evaluation", new_callable=AsyncMock)
 @patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_run_persists_config_snapshot(mock_get_db, mock_capture, mock_run_evaluation):
+def test_run_persists_config_snapshot(
+    mock_get_db, mock_validate_collection, mock_capture, mock_run_evaluation
+):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-cfg",
@@ -627,9 +667,10 @@ def test_run_persists_config_snapshot(mock_get_db, mock_capture, mock_run_evalua
 
 @patch("app.main.run_evaluation", new_callable=AsyncMock)
 @patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
 def test_run_uses_default_collection_when_none_provided(
-    mock_get_db, mock_capture, mock_run_evaluation
+    mock_get_db, mock_validate_collection, mock_capture, mock_run_evaluation
 ):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
@@ -650,9 +691,10 @@ def test_run_uses_default_collection_when_none_provided(
 
 @patch("app.main.run_evaluation", new_callable=AsyncMock)
 @patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
 def test_start_evaluation_passes_rerank_to_background_run(
-    mock_get_db, mock_capture, mock_run_evaluation
+    mock_get_db, mock_validate_collection, mock_capture, mock_run_evaluation
 ):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
@@ -675,8 +717,9 @@ def test_start_evaluation_passes_rerank_to_background_run(
     assert mock_run_evaluation.await_args.kwargs["rerank"] is True
 
 
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_start_evaluation_omits_optional_fields(mock_get_db):
+def test_start_evaluation_omits_optional_fields(mock_get_db, mock_validate_collection):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-123",
@@ -695,10 +738,16 @@ def test_start_evaluation_omits_optional_fields(mock_get_db):
         notes=None,
         baseline_eval_id=None,
     )
+    mock_validate_collection.assert_awaited_once_with(
+        settings.ingestion_service_url, "documents"
+    )
 
 
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_start_evaluation_attaches_run_to_experiment(mock_get_db):
+def test_start_evaluation_attaches_run_to_experiment(
+    mock_get_db, mock_validate_collection
+):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-123",
