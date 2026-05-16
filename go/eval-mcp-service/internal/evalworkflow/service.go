@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/fixturecatalog"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/ingestionapi"
 )
 
 const (
@@ -22,6 +24,7 @@ const (
 
 type API interface {
 	ListDatasets(context.Context) ([]evalapi.Dataset, error)
+	CreateDataset(context.Context, evalapi.CreateDatasetRequest) (evalapi.CreateDatasetResponse, error)
 	StartEvaluation(context.Context, evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error)
 	GetEvaluation(context.Context, string) (evalapi.EvaluationDetail, error)
 	CompareEvaluations(context.Context, []string) (evalapi.Comparison, error)
@@ -32,8 +35,20 @@ type API interface {
 	UpdateExperiment(context.Context, string, evalapi.UpdateExperimentRequest) (evalapi.Experiment, error)
 }
 
+type Ingestion interface {
+	ListCollections(context.Context) ([]ingestionapi.Collection, error)
+	GetCollectionConfig(context.Context, string) (map[string]any, error)
+}
+
+type Fixtures interface {
+	List() ([]fixturecatalog.Fixture, error)
+	Load(string) (fixturecatalog.Fixture, error)
+}
+
 type Service struct {
 	api          API
+	ingestion    Ingestion
+	fixtures     Fixtures
 	pollInterval time.Duration
 	waitTimeout  time.Duration
 }
@@ -61,6 +76,11 @@ type StartRunInput struct {
 type StartRunResult struct {
 	EvalID string
 	Status string
+}
+
+type CreateDatasetResult struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type WaitResult struct {
@@ -116,9 +136,11 @@ type RecordConclusionInput struct {
 	Evidence     map[string]any
 }
 
-func New(api API, pollInterval, waitTimeout time.Duration) *Service {
+func New(api API, ingestion Ingestion, fixtures Fixtures, pollInterval, waitTimeout time.Duration) *Service {
 	return &Service{
 		api:          api,
+		ingestion:    ingestion,
+		fixtures:     fixtures,
 		pollInterval: pollInterval,
 		waitTimeout:  waitTimeout,
 	}
@@ -134,6 +156,9 @@ func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) 
 		focusMetric = DefaultFocusMetric
 	}
 	if err := validateMetric(focusMetric); err != nil {
+		return evalapi.Experiment{}, err
+	}
+	if err := s.validateCollectionExists(ctx, collection); err != nil {
 		return evalapi.Experiment{}, err
 	}
 
@@ -161,7 +186,42 @@ func (s *Service) ListDatasets(ctx context.Context) ([]evalapi.Dataset, error) {
 	return s.api.ListDatasets(ctx)
 }
 
+func (s *Service) ListDatasetFixtures(context.Context) ([]fixturecatalog.Fixture, error) {
+	return s.fixtures.List()
+}
+
+func (s *Service) CreateDatasetFromFixture(ctx context.Context, fixtureID string) (CreateDatasetResult, error) {
+	fixture, err := s.fixtures.Load(fixtureID)
+	if err != nil {
+		return CreateDatasetResult{}, err
+	}
+	items := make([]evalapi.GoldenItem, 0, len(fixture.Items))
+	for _, item := range fixture.Items {
+		items = append(items, evalapi.GoldenItem{
+			Query:           item.Query,
+			ExpectedAnswer:  item.ExpectedAnswer,
+			ExpectedSources: item.ExpectedSources,
+		})
+	}
+	created, err := s.api.CreateDataset(ctx, evalapi.CreateDatasetRequest{Name: fixture.Name, Items: items})
+	if err != nil {
+		return CreateDatasetResult{}, err
+	}
+	return CreateDatasetResult{ID: created.ID, Name: fixture.Name}, nil
+}
+
+func (s *Service) ListRAGCollections(ctx context.Context) ([]ingestionapi.Collection, error) {
+	return s.ingestion.ListCollections(ctx)
+}
+
+func (s *Service) GetRAGCollectionConfig(ctx context.Context, name string) (map[string]any, error) {
+	return s.ingestion.GetCollectionConfig(ctx, name)
+}
+
 func (s *Service) StartRun(ctx context.Context, in StartRunInput) (StartRunResult, error) {
+	if err := s.validateCollectionExists(ctx, in.Collection); err != nil {
+		return StartRunResult{}, err
+	}
 	resp, err := s.api.StartEvaluation(ctx, evalapi.StartEvaluationRequest{
 		DatasetID:       in.DatasetID,
 		Collection:      in.Collection,
@@ -260,6 +320,9 @@ func (s *Service) Compare(ctx context.Context, in CompareInput) (evalapi.Compari
 	if err := validateCompareIDs(ids); err != nil {
 		return evalapi.Comparison{}, err
 	}
+	if err := s.requireCompletedRuns(ctx, ids); err != nil {
+		return evalapi.Comparison{}, err
+	}
 	return s.api.CompareEvaluations(ctx, ids)
 }
 
@@ -310,6 +373,9 @@ func (s *Service) SummarizeExperiment(ctx context.Context, experimentID string) 
 		run, err := s.api.GetEvaluation(ctx, runLabel.EvaluationID)
 		if err != nil {
 			return ExperimentSummary{}, fmt.Errorf("get run %q (%s): %w", runLabel.Label, runLabel.EvaluationID, err)
+		}
+		if run.Status != "completed" {
+			return ExperimentSummary{}, fmt.Errorf("summarize requires completed runs; %s=%s", run.ID, run.Status)
 		}
 		labeledRun := LabeledRun{Label: runLabel.Label, Run: run}
 		if i == 0 {
@@ -362,6 +428,36 @@ func waitTimeoutError(evalID string, timeout time.Duration, latestStatus string)
 func validateCompareIDs(ids []string) error {
 	if len(ids) < minCompareEvalIDs || len(ids) > maxCompareEvalIDs {
 		return fmt.Errorf("compare requires %d to %d eval IDs, got %d", minCompareEvalIDs, maxCompareEvalIDs, len(ids))
+	}
+	return nil
+}
+
+func (s *Service) validateCollectionExists(ctx context.Context, collection string) error {
+	collections, err := s.ingestion.ListCollections(ctx)
+	if err != nil {
+		return fmt.Errorf("list RAG collections: %w", err)
+	}
+	for _, candidate := range collections {
+		if candidate.Name == collection {
+			return nil
+		}
+	}
+	return fmt.Errorf("retrieval collection %q does not exist; call list_rag_collections and choose an existing collection", collection)
+}
+
+func (s *Service) requireCompletedRuns(ctx context.Context, ids []string) error {
+	var invalid []string
+	for _, id := range ids {
+		run, err := s.api.GetEvaluation(ctx, id)
+		if err != nil {
+			return fmt.Errorf("get run %q: %w", id, err)
+		}
+		if run.Status != "completed" {
+			invalid = append(invalid, fmt.Sprintf("%s=%s", id, run.Status))
+		}
+	}
+	if len(invalid) > 0 {
+		return fmt.Errorf("compare requires completed runs; invalid statuses: %s", strings.Join(invalid, ", "))
 	}
 	return nil
 }

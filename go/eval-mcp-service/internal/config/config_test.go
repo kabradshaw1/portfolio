@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +18,8 @@ func TestFromEnvDefaults(t *testing.T) {
 	t.Setenv("EVAL_MCP_POLL_INTERVAL", "")
 	t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "")
 	t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "")
+	t.Setenv("EVAL_MCP_INGESTION_URL", "")
+	t.Setenv("EVAL_MCP_DATASET_FIXTURE_ROOTS", "")
 
 	cfg, err := FromEnv()
 	if err != nil {
@@ -23,6 +27,9 @@ func TestFromEnvDefaults(t *testing.T) {
 	}
 	if cfg.EvalAPIURL != "http://localhost:8000/eval" {
 		t.Fatalf("EvalAPIURL = %q", cfg.EvalAPIURL)
+	}
+	if cfg.IngestionURL != "http://localhost:8000/ingestion" {
+		t.Fatalf("IngestionURL = %q", cfg.IngestionURL)
 	}
 	if cfg.APIToken != "" {
 		t.Fatalf("APIToken = %q", cfg.APIToken)
@@ -48,6 +55,9 @@ func TestFromEnvDefaults(t *testing.T) {
 	if cfg.TokenRefreshSkew != time.Minute {
 		t.Fatalf("TokenRefreshSkew = %s", cfg.TokenRefreshSkew)
 	}
+	if !slices.Equal(cfg.DatasetFixtureRoots, []string{"../../docs/product-catalog"}) {
+		t.Fatalf("DatasetFixtureRoots = %#v", cfg.DatasetFixtureRoots)
+	}
 }
 
 func TestFromEnvOverrides(t *testing.T) {
@@ -60,6 +70,8 @@ func TestFromEnvOverrides(t *testing.T) {
 	t.Setenv("EVAL_MCP_POLL_INTERVAL", "250ms")
 	t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "30s")
 	t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "2m")
+	t.Setenv("EVAL_MCP_INGESTION_URL", "http://127.0.0.1:8000/ingestion")
+	t.Setenv("EVAL_MCP_DATASET_FIXTURE_ROOTS", "/tmp/a"+string(os.PathListSeparator)+"/tmp/b")
 
 	cfg, err := FromEnv()
 	if err != nil {
@@ -70,6 +82,12 @@ func TestFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.PollInterval != 250*time.Millisecond || cfg.WaitTimeout != 30*time.Second || cfg.TokenRefreshSkew != 2*time.Minute {
 		t.Fatalf("unexpected durations: %#v", cfg)
+	}
+	if cfg.IngestionURL != "http://127.0.0.1:8000/ingestion" {
+		t.Fatalf("IngestionURL = %q", cfg.IngestionURL)
+	}
+	if !slices.Equal(cfg.DatasetFixtureRoots, []string{"/tmp/a", "/tmp/b"}) {
+		t.Fatalf("DatasetFixtureRoots = %#v", cfg.DatasetFixtureRoots)
 	}
 }
 
