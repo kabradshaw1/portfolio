@@ -27,6 +27,7 @@ async def capture_run_config(
     chat_url: str,
     ingestion_url: str,
     collection: str,
+    requested_rerank: bool,
 ) -> dict:
     """Return a merged RAG config snapshot. Always returns a dict.
 
@@ -42,7 +43,11 @@ async def capture_run_config(
             return_exceptions=True,
         )
 
-    out: dict = {"captured_at": captured_at}
+    out: dict = {
+        "captured_at": captured_at,
+        "effective_collection": collection,
+        "requested_rerank": requested_rerank,
+    }
     errors: list[str] = []
 
     if isinstance(chat_res, Exception):

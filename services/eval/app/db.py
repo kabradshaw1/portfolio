@@ -38,6 +38,31 @@ class EvalDB:
                 created_at TEXT NOT NULL,
                 completed_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS experiments (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                hypothesis TEXT NOT NULL,
+                dataset_id TEXT NOT NULL REFERENCES datasets(id),
+                collection TEXT NOT NULL,
+                baseline_eval_id TEXT REFERENCES evaluations(id),
+                focus_metric TEXT NOT NULL DEFAULT 'context_precision',
+                status TEXT NOT NULL,
+                decision TEXT,
+                conclusion TEXT,
+                evidence TEXT,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS experiment_runs (
+                experiment_id TEXT NOT NULL REFERENCES experiments(id),
+                evaluation_id TEXT NOT NULL REFERENCES evaluations(id),
+                label TEXT NOT NULL,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (experiment_id, evaluation_id),
+                UNIQUE (experiment_id, label)
+            );
             """
         )
 
@@ -49,6 +74,10 @@ class EvalDB:
             "ALTER TABLE evaluations ADD COLUMN config TEXT",
             "ALTER TABLE evaluations "
             "ADD COLUMN baseline_eval_id TEXT REFERENCES evaluations(id)",
+            "ALTER TABLE experiments "
+            "ADD COLUMN focus_metric TEXT NOT NULL DEFAULT 'context_precision'",
+            "ALTER TABLE experiments ADD COLUMN conclusion TEXT",
+            "ALTER TABLE experiments ADD COLUMN evidence TEXT",
         ):
             try:
                 await self._db.execute(column_ddl)
@@ -195,6 +224,217 @@ class EvalDB:
         )
         rows = await cursor.fetchall()
         return [self._row_to_dict(r) for r in rows]
+
+    async def get_completed_evaluations_for_dashboard(
+        self, dataset_id: str, collection: str
+    ) -> list[dict]:
+        """Completed compact runs for dashboard summaries, ordered ASC."""
+        cursor = await self._db.execute(
+            "SELECT * FROM evaluations "
+            "WHERE dataset_id = ? AND collection = ? AND status = 'completed' "
+            "ORDER BY created_at ASC",
+            (dataset_id, collection),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_dict(r, include_results=False) for r in rows]
+
+    def _experiment_row_to_dict(self, row, *, runs: list[dict] | None = None) -> dict:
+        out = {
+            "id": row["id"],
+            "name": row["name"],
+            "hypothesis": row["hypothesis"],
+            "dataset_id": row["dataset_id"],
+            "collection": row["collection"],
+            "baseline_eval_id": row["baseline_eval_id"],
+            "focus_metric": row["focus_metric"],
+            "status": row["status"],
+            "decision": row["decision"],
+            "conclusion": row["conclusion"],
+            "evidence": json.loads(row["evidence"]) if row["evidence"] else None,
+            "notes": row["notes"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+        if runs is not None:
+            out["runs"] = runs
+        return out
+
+    async def create_experiment(
+        self,
+        name: str,
+        hypothesis: str,
+        dataset_id: str,
+        collection: str,
+        baseline_eval_id: str | None = None,
+        focus_metric: str = "context_precision",
+        status: str = "planned",
+        notes: str | None = None,
+    ) -> str:
+        exp_id = str(uuid.uuid4())
+        now = datetime.now(_UTC).isoformat()
+        await self._db.execute(
+            "INSERT INTO experiments "
+            "(id, name, hypothesis, dataset_id, collection, baseline_eval_id, "
+            "focus_metric, status, decision, notes, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)",
+            (
+                exp_id,
+                name,
+                hypothesis,
+                dataset_id,
+                collection,
+                baseline_eval_id,
+                focus_metric,
+                status,
+                notes,
+                now,
+                now,
+            ),
+        )
+        await self._db.commit()
+        return exp_id
+
+    async def get_experiment(self, experiment_id: str) -> dict | None:
+        cursor = await self._db.execute(
+            "SELECT * FROM experiments WHERE id = ?", (experiment_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        runs = await self.list_experiment_runs(experiment_id)
+        return self._experiment_row_to_dict(row, runs=runs)
+
+    async def list_experiments(
+        self,
+        dataset_id: str | None = None,
+        collection: str | None = None,
+        status: str | None = None,
+    ) -> list[dict]:
+        clauses = []
+        params: list[str] = []
+        if dataset_id is not None:
+            clauses.append("dataset_id = ?")
+            params.append(dataset_id)
+        if collection is not None:
+            clauses.append("collection = ?")
+            params.append(collection)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        cursor = await self._db.execute(
+            f"SELECT * FROM experiments {where} ORDER BY created_at DESC",  # nosec B608
+            tuple(params),
+        )
+        rows = await cursor.fetchall()
+        return [self._experiment_row_to_dict(r) for r in rows]
+
+    async def update_experiment(
+        self,
+        experiment_id: str,
+        *,
+        hypothesis: str | None = None,
+        baseline_eval_id: str | None = None,
+        focus_metric: str | None = None,
+        status: str | None = None,
+        decision: str | None = None,
+        conclusion: str | None = None,
+        evidence: dict | None = None,
+        notes: str | None = None,
+    ) -> None:
+        now = datetime.now(_UTC).isoformat()
+        await self._db.execute(
+            "UPDATE experiments "
+            "SET hypothesis = COALESCE(?, hypothesis), "
+            "baseline_eval_id = ?, "
+            "focus_metric = COALESCE(?, focus_metric), "
+            "status = COALESCE(?, status), "
+            "decision = ?, "
+            "conclusion = ?, "
+            "evidence = ?, "
+            "notes = COALESCE(?, notes), "
+            "updated_at = ? "
+            "WHERE id = ?",
+            (
+                hypothesis,
+                baseline_eval_id,
+                focus_metric,
+                status,
+                decision,
+                conclusion,
+                json.dumps(evidence) if evidence is not None else None,
+                notes,
+                now,
+                experiment_id,
+            ),
+        )
+        await self._db.commit()
+
+    def _experiment_run_row_to_dict(self, row) -> dict:
+        evaluation = self._row_to_dict(row, include_results=False)
+        return {
+            "evaluation_id": row["evaluation_id"],
+            "label": row["label"],
+            "notes": row["run_notes"],
+            "attached_at": row["attached_at"],
+            "evaluation": evaluation,
+        }
+
+    async def attach_experiment_run(
+        self,
+        experiment_id: str,
+        evaluation_id: str,
+        label: str,
+        notes: str | None = None,
+    ) -> dict | None:
+        experiment_cursor = await self._db.execute(
+            "SELECT * FROM experiments WHERE id = ?", (experiment_id,)
+        )
+        experiment = await experiment_cursor.fetchone()
+        if not experiment:
+            return None
+
+        evaluation = await self.get_evaluation(evaluation_id)
+        if not evaluation:
+            return None
+
+        if experiment["status"] == "completed":
+            raise ValueError("completed experiments cannot accept runs")
+        if experiment["dataset_id"] != evaluation["dataset_id"]:
+            raise ValueError("experiment run must use the same dataset")
+        if experiment["collection"] != evaluation["collection"]:
+            raise ValueError("experiment run must use the same collection")
+
+        now = datetime.now(_UTC).isoformat()
+        try:
+            await self._db.execute(
+                "INSERT INTO experiment_runs "
+                "(experiment_id, evaluation_id, label, notes, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (experiment_id, evaluation_id, label, notes, now),
+            )
+        except aiosqlite.IntegrityError as exc:
+            if "experiment_runs.experiment_id, experiment_runs.label" in str(exc):
+                raise ValueError("duplicate experiment run label") from exc
+            raise
+        await self._db.commit()
+        return await self.get_experiment(experiment_id)
+
+    async def list_experiment_runs(self, experiment_id: str) -> list[dict]:
+        cursor = await self._db.execute(
+            "SELECT "
+            "er.evaluation_id, er.label, er.notes AS run_notes, "
+            "er.created_at AS attached_at, "
+            "e.* "
+            "FROM experiment_runs er "
+            "JOIN evaluations e ON e.id = er.evaluation_id "
+            "WHERE er.experiment_id = ? "
+            "ORDER BY er.created_at ASC",
+            (experiment_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._experiment_run_row_to_dict(r) for r in rows]
 
     async def complete_evaluation(
         self, eval_id: str, aggregate_scores: dict, results: list[dict]

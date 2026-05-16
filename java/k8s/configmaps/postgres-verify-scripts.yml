@@ -19,11 +19,24 @@ data:
     mkdir -p "$SOCKET_DIR"
     chmod 700 "$SOCKET_DIR"
 
+    push_metrics() {
+      url="$1"
+      payload="$(mktemp)"
+      cat > "$payload"
+      if wget -qO- --post-file "$payload" "$url" >/dev/null; then
+        rm -f "$payload"
+      else
+        status="$?"
+        rm -f "$payload"
+        return "$status"
+      fi
+    }
+
     push_success() {
       db="$1"; rows="$2"; dump="$3"
       now="$(date +%s)"
       dump_age_sec="$(( now - $(stat -c %Y "$dump") ))"
-      cat <<EOF | curl -fsS --data-binary @- "$PUSHGATEWAY/metrics/job/postgres_backup_verify/instance/$db"
+      push_metrics "$PUSHGATEWAY/metrics/job/postgres_backup_verify/instance/$db" <<EOF
     # TYPE backup_verification_last_success_timestamp gauge
     backup_verification_last_success_timestamp $now
     # TYPE backup_verification_restored_rows gauge
@@ -36,7 +49,7 @@ data:
     push_failure() {
       db="$1"; reason="$2"
       now="$(date +%s)"
-      cat <<EOF | curl -fsS --data-binary @- "$PUSHGATEWAY/metrics/job/postgres_backup_verify/instance/$db"
+      push_metrics "$PUSHGATEWAY/metrics/job/postgres_backup_verify/instance/$db" <<EOF
     # TYPE backup_verification_last_failure_timestamp gauge
     backup_verification_last_failure_timestamp $now
     # TYPE backup_verification_last_failure_reason gauge
@@ -46,7 +59,7 @@ data:
 
     push_overall() {
       ok="$1"
-      cat <<EOF | curl -fsS --data-binary @- "$PUSHGATEWAY/metrics/job/postgres_backup_verify"
+      push_metrics "$PUSHGATEWAY/metrics/job/postgres_backup_verify" <<EOF
     # TYPE backup_verification_run_success gauge
     backup_verification_run_success $ok
     # TYPE backup_verification_run_timestamp gauge

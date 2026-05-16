@@ -128,7 +128,9 @@ check_url() {
 check_external_routes() {
   echo "Checking representative external routes..."
   check_url "prod go auth" "https://api.kylebradshaw.dev/go-auth/health" "200"
+  check_url "prod go auth readiness" "https://api.kylebradshaw.dev/go-auth/ready" "200"
   check_url "qa go auth" "https://qa-api.kylebradshaw.dev/go-auth/health" "200"
+  check_url "qa go auth readiness" "https://qa-api.kylebradshaw.dev/go-auth/ready" "200"
   check_url "prod java gateway" "https://api.kylebradshaw.dev/actuator/health" "200"
   check_url "qa java gateway" "https://qa-api.kylebradshaw.dev/actuator/health" "200"
   check_url "prod ai ingestion" "https://api.kylebradshaw.dev/ingestion/health" "200"

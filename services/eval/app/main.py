@@ -15,6 +15,7 @@ from slowapi.util import get_remote_address
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from app.collection_validation import validate_collection_exists
 from app.config import settings
 from app.config_capture import capture_run_config
 from app.db import EvalDB
@@ -24,7 +25,19 @@ from app.metrics import (
     eval_queries_total,
     eval_run_duration_seconds,
 )
-from app.models import CreateDatasetRequest, StartEvaluationRequest
+from app.models import (
+    AttachExperimentRunRequest,
+    CreateDatasetRequest,
+    CreateExperimentRequest,
+    DashboardBaselineDeltas,
+    DashboardDatasetSummary,
+    DashboardRunSummary,
+    EvaluationDashboard,
+    MetricTrendPoint,
+    QueryScore,
+    StartEvaluationRequest,
+    UpdateExperimentRequest,
+)
 from app.rag_client import RAGClient
 
 logger = logging.getLogger(__name__)
@@ -81,11 +94,12 @@ async def health():
     except Exception:
         chat_ok = False
 
-    status = "healthy" if chat_ok else "degraded"
-    code = 200 if chat_ok else 503
     return JSONResponse(
-        status_code=code,
-        content={"status": status, "chat_service": "ok" if chat_ok else "unreachable"},
+        status_code=200,
+        content={
+            "status": "healthy",
+            "chat_service": "ok" if chat_ok else "unreachable",
+        },
     )
 
 
@@ -136,6 +150,7 @@ async def _run_evaluation_task(
             chat_url=settings.chat_service_url,
             ingestion_url=settings.ingestion_service_url,
             collection=coll_name,
+            requested_rerank=rerank,
         )
         await db.set_evaluation_config(eval_id, config)
 
@@ -190,6 +205,44 @@ async def _validate_baseline(
         )
 
 
+async def _validate_experiment_baseline(
+    db: EvalDB, baseline_eval_id: str, dataset_id: str, collection: str
+) -> None:
+    baseline = await db.get_evaluation(baseline_eval_id)
+    if not baseline:
+        raise HTTPException(status_code=404, detail="Baseline evaluation not found")
+    if baseline["dataset_id"] != dataset_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Baseline evaluation must use the same dataset",
+        )
+    if baseline["collection"] != collection:
+        raise HTTPException(
+            status_code=400,
+            detail="Baseline evaluation must use the same collection",
+        )
+
+
+async def _validate_experiment_for_run(
+    db: EvalDB, experiment_id: str, dataset_id: str, collection: str
+) -> None:
+    experiment = await db.get_experiment(experiment_id)
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if experiment["dataset_id"] != dataset_id:
+        raise HTTPException(
+            status_code=400, detail="Experiment must use the same dataset"
+        )
+    if experiment["collection"] != collection:
+        raise HTTPException(
+            status_code=400, detail="Experiment must use the same collection"
+        )
+    if experiment["status"] == "completed":
+        raise HTTPException(
+            status_code=400, detail="completed experiments cannot accept runs"
+        )
+
+
 @app.post("/evaluations", status_code=202)
 @limiter.limit("5/minute")
 async def start_evaluation(
@@ -206,6 +259,17 @@ async def start_evaluation(
     collection = body.collection or "documents"
     if body.baseline_eval_id is not None:
         await _validate_baseline(db, body.baseline_eval_id, body.dataset_id, collection)
+    if body.experiment_id is not None:
+        if body.experiment_label is None:
+            raise HTTPException(
+                status_code=400,
+                detail="experiment_label is required with experiment_id",
+            )
+        await _validate_experiment_for_run(
+            db, body.experiment_id, body.dataset_id, collection
+        )
+
+    await validate_collection_exists(settings.ingestion_service_url, collection)
 
     eval_id = await db.create_evaluation(
         dataset_id=body.dataset_id,
@@ -213,12 +277,185 @@ async def start_evaluation(
         notes=body.notes,
         baseline_eval_id=body.baseline_eval_id,
     )
+    if body.experiment_id is not None and body.experiment_label is not None:
+        try:
+            await db.attach_experiment_run(
+                body.experiment_id,
+                eval_id,
+                label=body.experiment_label,
+                notes=body.notes,
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            status_code = 409 if "duplicate" in detail else 400
+            raise HTTPException(status_code=status_code, detail=detail) from exc
 
     background_tasks.add_task(
-        _run_evaluation_task, eval_id, dataset["items"], body.collection, body.rerank
+        _run_evaluation_task, eval_id, dataset["items"], collection, body.rerank
     )
 
     return {"id": eval_id, "status": "running"}
+
+
+@app.post("/experiments", status_code=201)
+@limiter.limit("10/minute")
+async def create_experiment(
+    request: Request,
+    body: CreateExperimentRequest,
+    user_id: str = Depends(require_auth),
+):
+    db = await get_db()
+    dataset = await db.get_dataset(body.dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if body.baseline_eval_id is not None:
+        await _validate_experiment_baseline(
+            db, body.baseline_eval_id, body.dataset_id, body.collection
+        )
+
+    exp_id = await db.create_experiment(
+        name=body.name,
+        hypothesis=body.hypothesis,
+        dataset_id=body.dataset_id,
+        collection=body.collection,
+        baseline_eval_id=body.baseline_eval_id,
+        focus_metric=body.focus_metric,
+        status=body.status,
+        notes=body.notes,
+    )
+    if body.baseline_eval_id is not None:
+        await db.attach_experiment_run(
+            exp_id, body.baseline_eval_id, label="baseline", notes="baseline"
+        )
+    experiment = await db.get_experiment(exp_id)
+    return experiment
+
+
+@app.get("/experiments")
+@limiter.limit("30/minute")
+async def list_experiments(
+    request: Request,
+    dataset_id: str | None = None,
+    collection: str | None = None,
+    status: str | None = None,
+    user_id: str = Depends(require_auth),
+):
+    db = await get_db()
+    experiments = await db.list_experiments(
+        dataset_id=dataset_id, collection=collection, status=status
+    )
+    return {"experiments": experiments}
+
+
+@app.get("/experiments/{experiment_id}")
+@limiter.limit("30/minute")
+async def get_experiment(
+    request: Request, experiment_id: str, user_id: str = Depends(require_auth)
+):
+    db = await get_db()
+    experiment = await db.get_experiment(experiment_id)
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return experiment
+
+
+@app.patch("/experiments/{experiment_id}")
+@limiter.limit("10/minute")
+async def update_experiment(
+    request: Request,
+    experiment_id: str,
+    body: UpdateExperimentRequest,
+    user_id: str = Depends(require_auth),
+):
+    db = await get_db()
+    experiment = await db.get_experiment(experiment_id)
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    final_status = body.status or experiment["status"]
+    if body.decision is not None and final_status != "completed":
+        raise HTTPException(
+            status_code=400, detail="decision requires completed status"
+        )
+    final_decision = (
+        body.decision if body.decision is not None else experiment["decision"]
+    )
+    final_conclusion = (
+        body.conclusion if body.conclusion is not None else experiment["conclusion"]
+    )
+    final_evidence = (
+        body.evidence if body.evidence is not None else experiment["evidence"]
+    )
+    if final_status == "completed" and final_decision is None:
+        raise HTTPException(
+            status_code=400, detail="completed experiments require a decision"
+        )
+    if final_status == "completed" and final_conclusion is None:
+        raise HTTPException(
+            status_code=400, detail="completed experiments require a conclusion"
+        )
+    if final_status == "completed" and final_evidence is None:
+        raise HTTPException(
+            status_code=400, detail="completed experiments require evidence"
+        )
+    baseline_eval_id = body.baseline_eval_id
+    if baseline_eval_id is not None:
+        await _validate_experiment_baseline(
+            db,
+            baseline_eval_id,
+            experiment["dataset_id"],
+            experiment["collection"],
+        )
+
+    await db.update_experiment(
+        experiment_id,
+        hypothesis=body.hypothesis,
+        baseline_eval_id=baseline_eval_id,
+        focus_metric=body.focus_metric,
+        status=body.status,
+        decision=body.decision,
+        conclusion=body.conclusion,
+        evidence=body.evidence,
+        notes=body.notes,
+    )
+    updated = await db.get_experiment(experiment_id)
+    return updated
+
+
+@app.get("/experiments/{experiment_id}/runs")
+@limiter.limit("30/minute")
+async def list_experiment_runs(
+    request: Request, experiment_id: str, user_id: str = Depends(require_auth)
+):
+    db = await get_db()
+    experiment = await db.get_experiment(experiment_id)
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return {"runs": experiment["runs"]}
+
+
+@app.post("/experiments/{experiment_id}/runs")
+@limiter.limit("10/minute")
+async def attach_experiment_run(
+    request: Request,
+    experiment_id: str,
+    body: AttachExperimentRunRequest,
+    user_id: str = Depends(require_auth),
+):
+    db = await get_db()
+    try:
+        experiment = await db.attach_experiment_run(
+            experiment_id, body.evaluation_id, label=body.label, notes=body.notes
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 409 if "duplicate" in detail else 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    if not experiment:
+        raise HTTPException(
+            status_code=404, detail="Experiment or evaluation not found"
+        )
+    return experiment
 
 
 @app.get("/evaluations")
@@ -242,9 +479,63 @@ _EVAL_METRICS = (
 )
 
 
+def _dashboard_run_summary(run: dict) -> DashboardRunSummary:
+    return DashboardRunSummary(
+        id=run["id"],
+        created_at=run["created_at"],
+        completed_at=run["completed_at"],
+        notes=run.get("notes"),
+        config_captured=run.get("config") is not None,
+        aggregate_scores=run.get("aggregate_scores"),
+        baseline_eval_id=run.get("baseline_eval_id"),
+    )
+
+
+def _metric_trends(runs: list[dict]) -> dict[str, list[MetricTrendPoint]]:
+    trends: dict[str, list[MetricTrendPoint]] = {}
+    for metric in _EVAL_METRICS:
+        trends[metric] = [
+            MetricTrendPoint(
+                evaluation_id=run["id"],
+                completed_at=run.get("completed_at"),
+                score=(run.get("aggregate_scores") or {}).get(metric),
+            )
+            for run in runs
+        ]
+    return trends
+
+
+def _baseline_to_latest_deltas(runs: list[dict]) -> DashboardBaselineDeltas | None:
+    if len(runs) < 2:
+        return None
+
+    baseline = runs[0]
+    latest = runs[-1]
+    baseline_scores = baseline.get("aggregate_scores") or {}
+    latest_scores = latest.get("aggregate_scores") or {}
+    deltas: dict[str, float | None] = {}
+    for metric in _EVAL_METRICS:
+        baseline_score = baseline_scores.get(metric)
+        latest_score = latest_scores.get(metric)
+        if baseline_score is None or latest_score is None:
+            deltas[metric] = None
+        else:
+            deltas[metric] = round(latest_score - baseline_score, 6)
+
+    return DashboardBaselineDeltas(
+        baseline_eval_id=baseline["id"],
+        latest_eval_id=latest["id"],
+        deltas=QueryScore(**deltas),
+    )
+
+
+def _empty_metric_trends() -> dict[str, list[MetricTrendPoint]]:
+    return {metric: [] for metric in _EVAL_METRICS}
+
+
 # NOTE: /evaluations/compare and /evaluations/history must be defined BEFORE
 # /evaluations/{eval_id} so FastAPI matches the literal paths first instead
-# of treating "compare"/"history" as an eval_id.
+# of treating "compare"/"history"/"dashboard" as an eval_id.
 
 
 @app.get("/evaluations/compare")
@@ -277,6 +568,18 @@ async def compare_evaluations(
     if len(datasets) > 1:
         raise HTTPException(
             status_code=400, detail="all runs must belong to the same dataset"
+        )
+
+    invalid_statuses = [
+        f"{r['id']}={r.get('status')}" for r in runs if r.get("status") != "completed"
+    ]
+    if invalid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "compare requires completed runs; invalid statuses: "
+                + ", ".join(invalid_statuses)
+            ),
         )
 
     deltas: dict[str, list[float]] = {}
@@ -315,6 +618,55 @@ async def get_history(
     db = await get_db()
     runs = await db.get_history(dataset_id=dataset_id, collection=collection)
     return {"runs": runs}
+
+
+@app.get("/evaluations/dashboard", response_model=EvaluationDashboard)
+@limiter.limit("30/minute")
+async def get_dashboard(
+    request: Request,
+    dataset_id: str | None = None,
+    collection: str | None = None,
+    recent_limit: int = 10,
+    user_id: str = Depends(require_auth),
+):
+    """Compact dashboard summary for completed runs on one dataset+collection."""
+    if not dataset_id or not collection:
+        raise HTTPException(
+            status_code=400,
+            detail="dataset_id and collection are both required",
+        )
+    if not (1 <= recent_limit <= 100):
+        raise HTTPException(
+            status_code=400,
+            detail="recent_limit must be between 1 and 100",
+        )
+
+    db = await get_db()
+    dataset = await db.get_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    runs = await db.get_completed_evaluations_for_dashboard(
+        dataset_id=dataset_id,
+        collection=collection,
+    )
+    run_summaries = [_dashboard_run_summary(run) for run in runs]
+    recent_runs = list(reversed(run_summaries))[:recent_limit]
+
+    return EvaluationDashboard(
+        dataset=DashboardDatasetSummary(
+            id=dataset["id"],
+            name=dataset["name"],
+            item_count=len(dataset["items"]),
+        ),
+        collection=collection,
+        completed_run_count=len(runs),
+        first_completed_run=run_summaries[0] if run_summaries else None,
+        latest_completed_run=run_summaries[-1] if run_summaries else None,
+        metric_trends=_metric_trends(runs) if runs else _empty_metric_trends(),
+        recent_runs=recent_runs,
+        baseline_to_latest_deltas=_baseline_to_latest_deltas(runs),
+    )
 
 
 @app.get("/evaluations/{eval_id}")

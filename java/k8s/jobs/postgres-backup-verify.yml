@@ -22,7 +22,6 @@ spec:
               args:
                 - |
                   set -eu
-                  apk add --no-cache curl >/dev/null
                   chown -R postgres:postgres /var/lib/postgresql/data
                   exec gosu postgres /scripts/pg-verify-backups.sh
               env:

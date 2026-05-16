@@ -8,6 +8,7 @@ resources:
   - configmaps/eval-config.yml
   - configmaps/ingestion-config.yml
   - pvc/ingestion-data.yml
+  - pvc/eval-data.yml
   - deployments/chat.yml
   - deployments/debug.yml
   - deployments/eval.yml

@@ -37,9 +37,12 @@ export default function ResultsTab({ selectedEvaluation }: ResultsTabProps) {
   const [selectedId, setSelectedId] = useState<string>("");
   const [detail, setDetail] = useState<EvaluationDetail | null>(null);
   const [expandedQuery, setExpandedQuery] = useState<number | null>(null);
+  const [listError, setListError] = useState<string>("");
+  const [detailError, setDetailError] = useState<string>("");
 
   // On mount: load list, and if a freshly-completed evaluation is passed in, use it
   useEffect(() => {
+    setListError("");
     listEvaluations()
       .then((list) => {
         setEvaluations(list);
@@ -51,12 +54,17 @@ export default function ResultsTab({ selectedEvaluation }: ResultsTabProps) {
           }
           setSelectedId(selectedEvaluation.id);
           setDetail(selectedEvaluation);
+          setDetailError("");
         } else if (list.length > 0) {
           setSelectedId(list[0].id);
         }
       })
       .catch(() => {
-        // silently ignore load failure
+        setEvaluations([]);
+        setSelectedId("");
+        setDetail(null);
+        setDetailError("");
+        setListError("Could not load saved evaluations. Refresh or sign in again.");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -70,6 +78,8 @@ export default function ResultsTab({ selectedEvaluation }: ResultsTabProps) {
       });
       setSelectedId(selectedEvaluation.id);
       setDetail(selectedEvaluation);
+      setListError("");
+      setDetailError("");
       setExpandedQuery(null);
     }
   }, [selectedEvaluation]);
@@ -77,6 +87,7 @@ export default function ResultsTab({ selectedEvaluation }: ResultsTabProps) {
   // When selectedId changes, load the full detail (unless we already have it from the prop)
   useEffect(() => {
     if (!selectedId) return;
+    setDetailError("");
     if (selectedEvaluation && selectedEvaluation.id === selectedId) {
       setDetail(selectedEvaluation);
       return;
@@ -87,7 +98,11 @@ export default function ResultsTab({ selectedEvaluation }: ResultsTabProps) {
         setExpandedQuery(null);
       })
       .catch(() => {
-        // silently ignore — stale detail stays visible
+        setDetail(null);
+        setExpandedQuery(null);
+        setDetailError(
+          "Could not load the selected evaluation. Try selecting it again or refresh.",
+        );
       });
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -114,7 +129,7 @@ export default function ResultsTab({ selectedEvaluation }: ResultsTabProps) {
           id="eval-select"
           value={selectedId}
           onChange={handleSelectChange}
-          className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
         >
           {evaluations.length === 0 && (
             <option value="">No evaluations yet</option>
@@ -127,8 +142,11 @@ export default function ResultsTab({ selectedEvaluation }: ResultsTabProps) {
         </select>
       </div>
 
+      {listError && <p className="text-sm text-red-600">{listError}</p>}
+      {detailError && <p className="text-sm text-red-600">{detailError}</p>}
+
       {/* Empty state */}
-      {!detail && evaluations.length === 0 && (
+      {!listError && !detailError && !detail && evaluations.length === 0 && (
         <p className="text-sm text-gray-500">
           No evaluation results yet. Go to the Evaluate tab to run one.
         </p>

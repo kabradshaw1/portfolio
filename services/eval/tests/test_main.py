@@ -1,7 +1,10 @@
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
+from app.config import settings
 from app.main import app
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -111,8 +114,9 @@ def test_list_datasets(mock_get_db):
 # --- Evaluation endpoints ---
 
 
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_start_evaluation(mock_get_db):
+def test_start_evaluation(mock_get_db, mock_validate_collection):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-123",
@@ -228,8 +232,11 @@ def test_list_evaluations(mock_get_db):
     assert len(response.json()["evaluations"]) == 1
 
 
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_start_evaluation_persists_notes_and_baseline(mock_get_db):
+def test_start_evaluation_persists_notes_and_baseline(
+    mock_get_db, mock_validate_collection
+):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-123",
@@ -377,8 +384,11 @@ def test_start_evaluation_rejects_baseline_for_different_collection(mock_get_db)
     mock_db.create_evaluation.assert_not_awaited()
 
 
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_start_evaluation_accepts_valid_baseline_for_custom_collection(mock_get_db):
+def test_start_evaluation_accepts_valid_baseline_for_custom_collection(
+    mock_get_db, mock_validate_collection
+):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-123",
@@ -408,10 +418,222 @@ def test_start_evaluation_accepts_valid_baseline_for_custom_collection(mock_get_
     )
 
 
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_missing_collection_before_create(
+    mock_get_db, mock_validate_collection
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_get_db.return_value = mock_db
+    mock_validate_collection.side_effect = HTTPException(
+        status_code=422,
+        detail='retrieval collection "missing" does not exist',
+    )
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "collection": "missing"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == 'retrieval collection "missing" does not exist'
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_create_experiment_persists_focus_metric(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_experiment.return_value = "exp-1"
+    mock_db.get_experiment.return_value = {
+        "id": "exp-1",
+        "name": "precision tuning",
+        "hypothesis": "Reranking improves context precision",
+        "dataset_id": "ds-123",
+        "collection": "documents",
+        "baseline_eval_id": None,
+        "focus_metric": "context_precision",
+        "status": "running",
+        "decision": None,
+        "conclusion": None,
+        "evidence": None,
+        "notes": None,
+        "created_at": "2026-05-15T00:00:00Z",
+        "updated_at": "2026-05-15T00:00:00Z",
+        "runs": [],
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments",
+        json={
+            "name": "precision tuning",
+            "hypothesis": "Reranking improves context precision",
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "focus_metric": "context_precision",
+            "status": "running",
+        },
+    )
+
+    assert response.status_code == 201
+    mock_db.create_experiment.assert_awaited_once_with(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id="ds-123",
+        collection="documents",
+        baseline_eval_id=None,
+        focus_metric="context_precision",
+        status="running",
+        notes=None,
+    )
+    assert response.json()["focus_metric"] == "context_precision"
+
+
+@patch("app.main.get_db")
+def test_update_experiment_can_complete_with_evidence(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.side_effect = [
+        {
+            "id": "exp-1",
+            "name": "precision tuning",
+            "hypothesis": "Reranking improves context precision",
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "baseline_eval_id": None,
+            "focus_metric": "context_precision",
+            "status": "running",
+            "decision": None,
+            "conclusion": None,
+            "evidence": None,
+            "notes": None,
+            "created_at": "2026-05-15T00:00:00Z",
+            "updated_at": "2026-05-15T00:00:00Z",
+            "runs": [],
+        },
+        {
+            "id": "exp-1",
+            "name": "precision tuning",
+            "hypothesis": "Reranking improves context precision",
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "baseline_eval_id": None,
+            "focus_metric": "context_precision",
+            "status": "completed",
+            "decision": "keep",
+            "conclusion": "Keep reranking.",
+            "evidence": {
+                "baseline_eval_id": "eval-base",
+                "candidate_eval_ids": ["eval-candidate"],
+            },
+            "notes": None,
+            "created_at": "2026-05-15T00:00:00Z",
+            "updated_at": "2026-05-15T00:05:00Z",
+            "runs": [],
+        },
+    ]
+    mock_get_db.return_value = mock_db
+
+    evidence = {
+        "baseline_eval_id": "eval-base",
+        "candidate_eval_ids": ["eval-candidate"],
+    }
+    response = client.patch(
+        "/experiments/exp-1",
+        json={
+            "status": "completed",
+            "decision": "keep",
+            "conclusion": "Keep reranking.",
+            "evidence": evidence,
+        },
+    )
+
+    assert response.status_code == 200
+    mock_db.update_experiment.assert_awaited_once_with(
+        "exp-1",
+        hypothesis=None,
+        baseline_eval_id=None,
+        focus_metric=None,
+        status="completed",
+        decision="keep",
+        conclusion="Keep reranking.",
+        evidence=evidence,
+        notes=None,
+    )
+    assert response.json()["evidence"] == evidence
+
+
+@patch("app.main.get_db")
+def test_update_experiment_rejects_completed_without_decision_conclusion_or_evidence(
+    mock_get_db,
+):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.return_value = {
+        "id": "exp-1",
+        "name": "precision tuning",
+        "hypothesis": "Reranking improves context precision",
+        "dataset_id": "ds-123",
+        "collection": "documents",
+        "baseline_eval_id": None,
+        "focus_metric": "context_precision",
+        "status": "running",
+        "decision": None,
+        "conclusion": None,
+        "evidence": None,
+        "notes": None,
+        "created_at": "2026-05-15T00:00:00Z",
+        "updated_at": "2026-05-15T00:00:00Z",
+        "runs": [],
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.patch("/experiments/exp-1", json={"status": "completed"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "completed experiments require a decision"
+    mock_db.update_experiment.assert_not_awaited()
+
+    response = client.patch(
+        "/experiments/exp-1",
+        json={"status": "completed", "decision": "keep"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "completed experiments require a conclusion"
+    mock_db.update_experiment.assert_not_awaited()
+
+    response = client.patch(
+        "/experiments/exp-1",
+        json={
+            "status": "completed",
+            "decision": "keep",
+            "conclusion": "Keep reranking.",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "completed experiments require evidence"
+    mock_db.update_experiment.assert_not_awaited()
+
+
 @patch("app.main.run_evaluation", new_callable=AsyncMock)
 @patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_run_persists_config_snapshot(mock_get_db, mock_capture, mock_run_evaluation):
+def test_run_persists_config_snapshot(
+    mock_get_db, mock_validate_collection, mock_capture, mock_run_evaluation
+):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-cfg",
@@ -446,9 +668,10 @@ def test_run_persists_config_snapshot(mock_get_db, mock_capture, mock_run_evalua
 
 @patch("app.main.run_evaluation", new_callable=AsyncMock)
 @patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
 def test_run_uses_default_collection_when_none_provided(
-    mock_get_db, mock_capture, mock_run_evaluation
+    mock_get_db, mock_validate_collection, mock_capture, mock_run_evaluation
 ):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
@@ -469,9 +692,10 @@ def test_run_uses_default_collection_when_none_provided(
 
 @patch("app.main.run_evaluation", new_callable=AsyncMock)
 @patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
 def test_start_evaluation_passes_rerank_to_background_run(
-    mock_get_db, mock_capture, mock_run_evaluation
+    mock_get_db, mock_validate_collection, mock_capture, mock_run_evaluation
 ):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
@@ -492,10 +716,41 @@ def test_start_evaluation_passes_rerank_to_background_run(
 
     assert response.status_code == 202
     assert mock_run_evaluation.await_args.kwargs["rerank"] is True
+    assert mock_capture.await_args.kwargs["requested_rerank"] is True
+    assert mock_capture.await_args.kwargs["collection"] == "documents"
 
 
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
 @patch("app.main.get_db")
-def test_start_evaluation_omits_optional_fields(mock_get_db):
+def test_start_evaluation_records_baseline_rerank_metadata(
+    mock_get_db, mock_capture, mock_run_evaluation, mock_validate_collection
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-base",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-base"
+    mock_get_db.return_value = mock_db
+    mock_capture.return_value = {"captured_at": "x", "requested_rerank": False}
+    mock_run_evaluation.return_value = ({"faithfulness": 0.7}, [])
+
+    response = client.post("/evaluations", json={"dataset_id": "ds-base"})
+
+    assert response.status_code == 202
+    assert mock_capture.await_args.kwargs["requested_rerank"] is False
+    mock_db.set_evaluation_config.assert_awaited_once_with(
+        "eval-base", mock_capture.return_value
+    )
+
+
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_omits_optional_fields(mock_get_db, mock_validate_collection):
     mock_db = AsyncMock()
     mock_db.get_dataset.return_value = {
         "id": "ds-123",
@@ -514,6 +769,153 @@ def test_start_evaluation_omits_optional_fields(mock_get_db):
         notes=None,
         baseline_eval_id=None,
     )
+    mock_validate_collection.assert_awaited_once_with(
+        settings.ingestion_service_url, "documents"
+    )
+
+
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_attaches_run_to_experiment(
+    mock_get_db, mock_validate_collection
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_experiment.return_value = {
+        **_stub_experiment(status="running"),
+        "dataset_id": "ds-123",
+    }
+    mock_db.create_evaluation.return_value = "eval-candidate"
+    mock_db.attach_experiment_run.return_value = _stub_experiment()
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "experiment_id": "exp-1",
+            "experiment_label": "rerank_on",
+        },
+    )
+
+    assert response.status_code == 202
+    mock_db.attach_experiment_run.assert_awaited_once_with(
+        "exp-1", "eval-candidate", label="rerank_on", notes=None
+    )
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_experiment_attachment_without_label(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "experiment_id": "exp-1"},
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail == "experiment_label is required with experiment_id"
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_missing_experiment(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_experiment.return_value = None
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "experiment_id": "missing-exp",
+            "experiment_label": "candidate",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Experiment not found"
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_experiment_dataset_mismatch(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_experiment.return_value = {
+        **_stub_experiment(status="running"),
+        "dataset_id": "other-ds",
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "experiment_id": "exp-1",
+            "experiment_label": "candidate",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Experiment must use the same dataset"
+    mock_db.create_evaluation.assert_not_awaited()
+
+
+@patch("app.main.get_db")
+def test_start_evaluation_rejects_experiment_collection_mismatch(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_experiment.return_value = {
+        **_stub_experiment(status="running"),
+        "dataset_id": "ds-123",
+        "collection": "release-notes",
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-123",
+            "collection": "documents",
+            "experiment_id": "exp-1",
+            "experiment_label": "candidate",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Experiment must use the same collection"
+    mock_db.create_evaluation.assert_not_awaited()
 
 
 # --- Compare endpoint ---
@@ -625,6 +1027,36 @@ def test_compare_400_on_mixed_datasets(mock_get_db):
 
 
 @patch("app.main.get_db")
+def test_compare_rejects_running_runs(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_evaluations_by_ids.return_value = [
+        _stub_run("base", "ds-1", {"faithfulness": 0.8}) | {"status": "completed"},
+        _stub_run("candidate", "ds-1", None) | {"status": "running"},
+    ]
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/evaluations/compare?ids=base,candidate")
+
+    assert response.status_code == 400
+    assert "candidate=running" in response.json()["detail"]
+
+
+@patch("app.main.get_db")
+def test_compare_rejects_failed_runs(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_evaluations_by_ids.return_value = [
+        _stub_run("base", "ds-1", {"faithfulness": 0.8}) | {"status": "completed"},
+        _stub_run("candidate", "ds-1", None) | {"status": "failed"},
+    ]
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/evaluations/compare?ids=base,candidate")
+
+    assert response.status_code == 400
+    assert "candidate=failed" in response.json()["detail"]
+
+
+@patch("app.main.get_db")
 def test_compare_404_on_unknown_id(mock_get_db):
     mock_db = AsyncMock()
     mock_db.get_evaluations_by_ids.return_value = []
@@ -699,17 +1131,441 @@ def test_history_empty_returns_200(mock_get_db):
     assert response.json() == {"runs": []}
 
 
+# --- Dashboard endpoint ---
+
+
+def _dashboard_dataset():
+    return {
+        "id": "ds-1",
+        "name": "rag-golden",
+        "items": [
+            {"query": "q1", "expected_answer": "a1", "expected_sources": []},
+            {"query": "q2", "expected_answer": "a2", "expected_sources": []},
+        ],
+        "created_at": "2026-05-01T00:00:00+00:00",
+    }
+
+
+def _dashboard_run(run_id, scores, *, notes=None, config=None, baseline_eval_id=None):
+    return {
+        "id": run_id,
+        "dataset_id": "ds-1",
+        "status": "completed",
+        "collection": "documents",
+        "aggregate_scores": scores,
+        "created_at": f"2026-05-0{run_id[-1]}T00:00:00+00:00",
+        "completed_at": f"2026-05-0{run_id[-1]}T00:01:00+00:00",
+        "notes": notes,
+        "config": config,
+        "baseline_eval_id": baseline_eval_id,
+    }
+
+
+@patch("app.main.get_db")
+def test_dashboard_happy_path_uses_all_trends_and_capped_recent_runs(mock_get_db):
+    runs = [
+        _dashboard_run(
+            "eval-1",
+            {
+                "faithfulness": 0.8,
+                "answer_relevancy": 0.7,
+                "context_precision": 0.6,
+                "context_recall": 0.5,
+            },
+            notes="baseline",
+            config={"chat": {"llm_model": "qwen"}},
+        ),
+        _dashboard_run(
+            "eval-2",
+            {
+                "faithfulness": 0.85,
+                "answer_relevancy": 0.72,
+                "context_precision": 0.66,
+                "context_recall": 0.51,
+            },
+            notes="middle",
+            baseline_eval_id="eval-1",
+        ),
+        _dashboard_run(
+            "eval-3",
+            {
+                "faithfulness": 0.9,
+                "answer_relevancy": 0.75,
+                "context_precision": 0.7,
+                "context_recall": 0.55,
+            },
+            notes="latest",
+            baseline_eval_id="eval-1",
+        ),
+    ]
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = _dashboard_dataset()
+    mock_db.get_completed_evaluations_for_dashboard.return_value = runs
+    mock_get_db.return_value = mock_db
+
+    response = client.get(
+        "/evaluations/dashboard?dataset_id=ds-1&collection=documents&recent_limit=2"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["dataset"] == {
+        "id": "ds-1",
+        "name": "rag-golden",
+        "item_count": 2,
+    }
+    assert body["collection"] == "documents"
+    assert body["completed_run_count"] == 3
+    assert body["first_completed_run"]["id"] == "eval-1"
+    assert body["first_completed_run"]["config_captured"] is True
+    assert body["latest_completed_run"]["id"] == "eval-3"
+    assert [run["id"] for run in body["recent_runs"]] == ["eval-3", "eval-2"]
+    assert len(body["metric_trends"]["faithfulness"]) == 3
+    assert body["metric_trends"]["faithfulness"][0] == {
+        "evaluation_id": "eval-1",
+        "completed_at": "2026-05-01T00:01:00+00:00",
+        "score": 0.8,
+    }
+    assert body["baseline_to_latest_deltas"]["baseline_eval_id"] == "eval-1"
+    assert body["baseline_to_latest_deltas"]["latest_eval_id"] == "eval-3"
+    assert body["baseline_to_latest_deltas"]["deltas"]["faithfulness"] == pytest.approx(
+        0.1,
+        abs=1e-6,
+    )
+    assert "results" not in body["recent_runs"][0]
+    assert "error" not in body["recent_runs"][0]
+    mock_db.get_completed_evaluations_for_dashboard.assert_awaited_once_with(
+        dataset_id="ds-1",
+        collection="documents",
+    )
+
+
+def test_dashboard_400_when_dataset_id_missing():
+    response = client.get("/evaluations/dashboard?collection=documents")
+
+    assert response.status_code == 400
+    assert "dataset_id and collection" in response.json()["detail"]
+
+
+def test_dashboard_400_when_collection_missing():
+    response = client.get("/evaluations/dashboard?dataset_id=ds-1")
+
+    assert response.status_code == 400
+    assert "dataset_id and collection" in response.json()["detail"]
+
+
+def test_dashboard_400_when_recent_limit_too_low():
+    response = client.get(
+        "/evaluations/dashboard?dataset_id=ds-1&collection=documents&recent_limit=0"
+    )
+
+    assert response.status_code == 400
+    assert "recent_limit must be between 1 and 100" in response.json()["detail"]
+
+
+def test_dashboard_400_when_recent_limit_too_high():
+    response = client.get(
+        "/evaluations/dashboard?dataset_id=ds-1&collection=documents&recent_limit=101"
+    )
+
+    assert response.status_code == 400
+    assert "recent_limit must be between 1 and 100" in response.json()["detail"]
+
+
+@patch("app.main.get_db")
+def test_dashboard_404_when_dataset_missing(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = None
+    mock_get_db.return_value = mock_db
+
+    response = client.get(
+        "/evaluations/dashboard?dataset_id=missing&collection=documents"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Dataset not found"
+
+
+@patch("app.main.get_db")
+def test_dashboard_empty_existing_dataset_returns_200(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = _dashboard_dataset()
+    mock_db.get_completed_evaluations_for_dashboard.return_value = []
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/evaluations/dashboard?dataset_id=ds-1&collection=documents")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["completed_run_count"] == 0
+    assert body["first_completed_run"] is None
+    assert body["latest_completed_run"] is None
+    assert body["baseline_to_latest_deltas"] is None
+    assert body["recent_runs"] == []
+    assert body["metric_trends"] == {
+        "faithfulness": [],
+        "answer_relevancy": [],
+        "context_precision": [],
+        "context_recall": [],
+    }
+
+
+@patch("app.main.get_db")
+def test_dashboard_missing_metric_scores_return_null_values(mock_get_db):
+    runs = [
+        _dashboard_run("eval-1", {"faithfulness": 0.8}),
+        _dashboard_run("eval-2", {"faithfulness": 0.9}, baseline_eval_id="eval-1"),
+    ]
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = _dashboard_dataset()
+    mock_db.get_completed_evaluations_for_dashboard.return_value = runs
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/evaluations/dashboard?dataset_id=ds-1&collection=documents")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["metric_trends"]["answer_relevancy"] == [
+        {
+            "evaluation_id": "eval-1",
+            "completed_at": "2026-05-01T00:01:00+00:00",
+            "score": None,
+        },
+        {
+            "evaluation_id": "eval-2",
+            "completed_at": "2026-05-02T00:01:00+00:00",
+            "score": None,
+        },
+    ]
+    assert body["baseline_to_latest_deltas"]["deltas"]["faithfulness"] == pytest.approx(
+        0.1,
+        abs=1e-6,
+    )
+    assert body["baseline_to_latest_deltas"]["deltas"]["answer_relevancy"] is None
+
+
+# --- Experiment endpoints ---
+
+
+def _stub_experiment(exp_id="exp-1", status="running", runs=None):
+    return {
+        "id": exp_id,
+        "name": "precision tuning",
+        "hypothesis": "Reranking improves context precision",
+        "dataset_id": "ds-1",
+        "collection": "documents",
+        "baseline_eval_id": None,
+        "focus_metric": "context_precision",
+        "status": status,
+        "decision": None,
+        "conclusion": None,
+        "evidence": None,
+        "notes": "first pass",
+        "created_at": "2026-05-13T10:00:00+00:00",
+        "updated_at": "2026-05-13T10:00:00+00:00",
+        "runs": runs or [],
+    }
+
+
+@patch("app.main.get_db")
+def test_create_experiment(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {"id": "ds-1", "name": "ds", "items": []}
+    mock_db.create_experiment.return_value = "exp-1"
+    mock_db.get_experiment.return_value = _stub_experiment()
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments",
+        json={
+            "name": "precision tuning",
+            "hypothesis": "Reranking improves context precision",
+            "dataset_id": "ds-1",
+            "collection": "documents",
+            "status": "running",
+            "notes": "first pass",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["id"] == "exp-1"
+    mock_db.create_experiment.assert_awaited_once_with(
+        name="precision tuning",
+        hypothesis="Reranking improves context precision",
+        dataset_id="ds-1",
+        collection="documents",
+        baseline_eval_id=None,
+        focus_metric="context_precision",
+        status="running",
+        notes="first pass",
+    )
+
+
+@patch("app.main.get_db")
+def test_create_experiment_rejects_unknown_dataset(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = None
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments",
+        json={
+            "name": "precision tuning",
+            "hypothesis": "Reranking improves context precision",
+            "dataset_id": "missing",
+            "collection": "documents",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Dataset not found"
+
+
+@patch("app.main.get_db")
+def test_list_experiments(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.list_experiments.return_value = [_stub_experiment(runs=None)]
+    mock_get_db.return_value = mock_db
+
+    response = client.get(
+        "/experiments?dataset_id=ds-1&collection=documents&status=running"
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["experiments"]) == 1
+    mock_db.list_experiments.assert_awaited_once_with(
+        dataset_id="ds-1", collection="documents", status="running"
+    )
+
+
+@patch("app.main.get_db")
+def test_get_experiment(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.return_value = _stub_experiment()
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/experiments/exp-1")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "exp-1"
+
+
+@patch("app.main.get_db")
+def test_get_experiment_not_found(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.return_value = None
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/experiments/missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Experiment not found"
+
+
+@patch("app.main.get_db")
+def test_patch_experiment_records_decision_when_completed(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.side_effect = [
+        _stub_experiment(status="running"),
+        _stub_experiment(status="completed"),
+    ]
+    mock_get_db.return_value = mock_db
+
+    response = client.patch(
+        "/experiments/exp-1",
+        json={
+            "status": "completed",
+            "decision": "keep",
+            "conclusion": "Keep reranking.",
+            "evidence": {"baseline_eval_id": "eval-base"},
+            "notes": "rerank won",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_db.update_experiment.assert_awaited_once_with(
+        "exp-1",
+        hypothesis=None,
+        baseline_eval_id=None,
+        focus_metric=None,
+        status="completed",
+        decision="keep",
+        conclusion="Keep reranking.",
+        evidence={"baseline_eval_id": "eval-base"},
+        notes="rerank won",
+    )
+
+
+@patch("app.main.get_db")
+def test_patch_experiment_rejects_decision_without_completed_status(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_experiment.return_value = _stub_experiment(status="running")
+    mock_get_db.return_value = mock_db
+
+    response = client.patch("/experiments/exp-1", json={"decision": "keep"})
+
+    assert response.status_code == 400
+    assert "decision requires completed status" in response.json()["detail"]
+
+
+@patch("app.main.get_db")
+def test_attach_experiment_run_endpoint(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.attach_experiment_run.return_value = _stub_experiment(
+        runs=[
+            {
+                "evaluation_id": "eval-1",
+                "label": "candidate",
+                "notes": None,
+                "attached_at": "2026-05-13T10:01:00+00:00",
+                "evaluation": _stub_run("eval-1", "ds-1", {"context_precision": 0.42}),
+            }
+        ]
+    )
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments/exp-1/runs",
+        json={"evaluation_id": "eval-1", "label": "candidate"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["runs"][0]["label"] == "candidate"
+    mock_db.attach_experiment_run.assert_awaited_once_with(
+        "exp-1", "eval-1", label="candidate", notes=None
+    )
+
+
+@patch("app.main.get_db")
+def test_attach_experiment_run_duplicate_label_returns_409(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.attach_experiment_run.side_effect = ValueError(
+        "duplicate experiment run label"
+    )
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/experiments/exp-1/runs",
+        json={"evaluation_id": "eval-1", "label": "candidate"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "duplicate experiment run label"
+
+
 # --- Health check ---
 
 
 @patch("app.main.httpx.AsyncClient")
-def test_health_degraded_when_chat_unreachable(mock_client_cls):
+def test_health_returns_200_when_chat_degraded(mock_client_cls):
     mock_client = AsyncMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.get.side_effect = Exception("connection refused")
+    mock_client.get.side_effect = httpx.ConnectError("boom")
     mock_client_cls.return_value = mock_client
 
     response = client.get("/health")
-    assert response.status_code == 503
-    assert response.json()["status"] == "degraded"
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "healthy"
+    assert body["chat_service"] == "unreachable"
