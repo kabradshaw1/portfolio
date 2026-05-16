@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/fixturecatalog"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/ingestionapi"
 )
 
 func TestStartExperimentDefaultsCollectionAndFocusMetric(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{}
-	svc := New(api, time.Millisecond, time.Second)
+	svc := newTestService(api)
 
 	got, err := svc.StartExperiment(ctx, StartExperimentInput{
 		Name:      "rerank trial",
@@ -38,7 +40,7 @@ func TestStartExperimentDefaultsCollectionAndFocusMetric(t *testing.T) {
 func TestStartRunSendsExperimentAttachmentToEvalAPI(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-123", Status: "queued"}}
-	svc := New(api, time.Millisecond, time.Second)
+	svc := newTestService(api)
 
 	got, err := svc.StartRun(ctx, StartRunInput{
 		DatasetID:      "dataset-1",
@@ -64,10 +66,54 @@ func TestStartRunSendsExperimentAttachmentToEvalAPI(t *testing.T) {
 	}
 }
 
+func TestCreateDatasetFromFixture(t *testing.T) {
+	api := &fakeAPI{}
+	fixture := fixturecatalog.Fixture{
+		Name: "product-docs-rag-v1",
+		Items: []fixturecatalog.GoldenItem{{
+			Query: "q", ExpectedAnswer: "a", ExpectedSources: []string{"doc.pdf"},
+		}},
+		Valid: true,
+	}
+	service := New(api, fakeIngestion{}, fakeFixtures{fixture: fixture}, time.Second, time.Minute)
+
+	got, err := service.CreateDatasetFromFixture(context.Background(), "rag-eval-dataset-product-docs.json")
+	if err != nil {
+		t.Fatalf("CreateDatasetFromFixture returned error: %v", err)
+	}
+	if got.ID != "ds-created" || got.Name != "product-docs-rag-v1" {
+		t.Fatalf("unexpected result: %#v", got)
+	}
+	if api.createDatasetRequest.Name != "product-docs-rag-v1" || len(api.createDatasetRequest.Items) != 1 {
+		t.Fatalf("unexpected request: %#v", api.createDatasetRequest)
+	}
+}
+
+func TestStartRunRejectsMissingCollection(t *testing.T) {
+	api := &fakeAPI{}
+	service := New(api, fakeIngestion{collections: []ingestionapi.Collection{{Name: "documents"}}}, fakeFixtures{}, time.Second, time.Minute)
+	_, err := service.StartRun(context.Background(), StartRunInput{DatasetID: "ds-1", Collection: "missing"})
+	if err == nil || !strings.Contains(err.Error(), `retrieval collection "missing" does not exist`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestCompareRejectsNonCompletedRuns(t *testing.T) {
+	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
+		"base": {{ID: "base", Status: "completed"}},
+		"bad":  {{ID: "bad", Status: "failed"}},
+	}}
+	service := New(api, fakeIngestion{}, fakeFixtures{}, time.Second, time.Minute)
+	_, err := service.Compare(context.Background(), CompareInput{EvalIDs: []string{"base", "bad"}})
+	if err == nil || !strings.Contains(err.Error(), `bad=failed`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestRecordConclusionCompletesExperimentWithEvidence(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{}
-	svc := New(api, time.Millisecond, time.Second)
+	svc := newTestService(api)
 	evidence := map[string]any{"baseline_eval_id": "eval-base"}
 
 	if err := svc.RecordConclusion(ctx, RecordConclusionInput{
@@ -94,7 +140,7 @@ func TestWaitForRunReturnsCompletedRun(t *testing.T) {
 			{ID: "eval-1", Status: "completed"},
 		},
 	}}
-	svc := New(api, time.Millisecond, time.Second)
+	svc := newTestService(api)
 
 	got, err := svc.WaitForRun(ctx, "eval-1")
 	if err != nil {
@@ -113,7 +159,7 @@ func TestWaitForRunTimesOutWithLatestStatus(t *testing.T) {
 			{ID: "eval-1", Status: "running"},
 		},
 	}}
-	svc := New(api, time.Millisecond, 3*time.Millisecond)
+	svc := newTestServiceWithTiming(api, time.Millisecond, 3*time.Millisecond)
 
 	got, err := svc.WaitForRun(ctx, "eval-1")
 	if err == nil {
@@ -129,7 +175,7 @@ func TestWaitForRunCancelsGetEvaluationWithWaitTimeout(t *testing.T) {
 	defer cancelParent()
 
 	api := &blockingGetEvaluationAPI{entered: make(chan struct{})}
-	svc := New(api, time.Hour, 5*time.Millisecond)
+	svc := newTestServiceWithTiming(api, time.Hour, 5*time.Millisecond)
 
 	type waitOutcome struct {
 		result WaitResult
@@ -175,7 +221,7 @@ func TestWaitForRunParentDeadlineIsNotServiceTimeout(t *testing.T) {
 	defer cancelParent()
 
 	api := &blockingGetEvaluationAPI{entered: make(chan struct{})}
-	svc := New(api, time.Hour, time.Minute)
+	svc := newTestServiceWithTiming(api, time.Hour, time.Minute)
 
 	type waitOutcome struct {
 		result WaitResult
@@ -222,7 +268,7 @@ func TestWorstCasesSortsAscendingByMetric(t *testing.T) {
 			},
 		}},
 	}}
-	svc := New(api, time.Millisecond, time.Second)
+	svc := newTestService(api)
 
 	got, err := svc.WorstCases(ctx, WorstCasesInput{
 		EvalID: "eval-1",
@@ -253,7 +299,11 @@ func TestCompareResolvesExperimentLabels(t *testing.T) {
 			},
 		},
 	}
-	svc := New(api, time.Millisecond, time.Second)
+	api.detailsByID = map[string][]evalapi.EvaluationDetail{
+		"eval-base":      {{ID: "eval-base", Status: "completed"}},
+		"eval-candidate": {{ID: "eval-candidate", Status: "completed"}},
+	}
+	svc := newTestService(api)
 
 	if _, err := svc.Compare(ctx, CompareInput{ExperimentID: "exp-9", Labels: []string{"baseline", "missing"}}); err == nil || !strings.Contains(err.Error(), "known labels: baseline, candidate") {
 		t.Fatalf("Compare missing label error = %v", err)
@@ -270,7 +320,7 @@ func TestCompareResolvesExperimentLabels(t *testing.T) {
 func TestCompareRequiresTwoToFiveIDs(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{}
-	svc := New(api, time.Millisecond, time.Second)
+	svc := newTestService(api)
 
 	if _, err := svc.Compare(ctx, CompareInput{EvalIDs: []string{"eval-1"}}); err == nil || !strings.Contains(err.Error(), "requires 2 to 5 eval IDs") {
 		t.Fatalf("Compare one ID error = %v", err)
@@ -313,7 +363,7 @@ func TestSummarizeExperimentReturnsBaselineCandidateAndWorstCases(t *testing.T) 
 			},
 		},
 	}
-	svc := New(api, time.Millisecond, time.Second)
+	svc := newTestService(api)
 
 	got, err := svc.SummarizeExperiment(ctx, "exp-3")
 	if err != nil {
@@ -354,7 +404,7 @@ func TestSummarizeExperimentComparesFirstFiveRuns(t *testing.T) {
 		}}
 	}
 	api.experiments = map[string]evalapi.Experiment{"exp-4": exp}
-	svc := New(api, time.Millisecond, time.Second)
+	svc := newTestService(api)
 
 	got, err := svc.SummarizeExperiment(ctx, "exp-4")
 	if err != nil {
@@ -379,6 +429,8 @@ func queryResult(query string, contextPrecision float64) evalapi.QueryResult {
 
 type fakeAPI struct {
 	datasets                 []evalapi.Dataset
+	createDatasetRequest     evalapi.CreateDatasetRequest
+	createdDatasetID         string
 	startResponse            evalapi.StartEvaluationResponse
 	startRequests            []evalapi.StartEvaluationRequest
 	detailsByID              map[string][]evalapi.EvaluationDetail
@@ -392,6 +444,15 @@ type fakeAPI struct {
 
 func (f *fakeAPI) ListDatasets(context.Context) ([]evalapi.Dataset, error) {
 	return f.datasets, nil
+}
+
+func (f *fakeAPI) CreateDataset(_ context.Context, req evalapi.CreateDatasetRequest) (evalapi.CreateDatasetResponse, error) {
+	f.createDatasetRequest = req
+	id := f.createdDatasetID
+	if id == "" {
+		id = "ds-created"
+	}
+	return evalapi.CreateDatasetResponse{ID: id}, nil
 }
 
 func (f *fakeAPI) StartEvaluation(_ context.Context, in evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error) {
@@ -474,12 +535,48 @@ func (f *fakeAPI) UpdateExperiment(_ context.Context, id string, in evalapi.Upda
 	return exp, nil
 }
 
+type fakeIngestion struct {
+	collections []ingestionapi.Collection
+	configs     map[string]map[string]any
+}
+
+func (f fakeIngestion) ListCollections(context.Context) ([]ingestionapi.Collection, error) {
+	if f.collections != nil {
+		return f.collections, nil
+	}
+	return []ingestionapi.Collection{{Name: "documents"}, {Name: "kb"}}, nil
+}
+
+func (f fakeIngestion) GetCollectionConfig(_ context.Context, name string) (map[string]any, error) {
+	return f.configs[name], nil
+}
+
+type fakeFixtures struct {
+	fixtures []fixturecatalog.Fixture
+	fixture  fixturecatalog.Fixture
+}
+
+func (f fakeFixtures) List() ([]fixturecatalog.Fixture, error)     { return f.fixtures, nil }
+func (f fakeFixtures) Load(string) (fixturecatalog.Fixture, error) { return f.fixture, nil }
+
+func newTestService(api API) *Service {
+	return newTestServiceWithTiming(api, time.Millisecond, time.Second)
+}
+
+func newTestServiceWithTiming(api API, pollInterval, waitTimeout time.Duration) *Service {
+	return New(api, fakeIngestion{}, fakeFixtures{}, pollInterval, waitTimeout)
+}
+
 type blockingGetEvaluationAPI struct {
 	entered chan struct{}
 }
 
 func (b *blockingGetEvaluationAPI) ListDatasets(context.Context) ([]evalapi.Dataset, error) {
 	return nil, nil
+}
+
+func (b *blockingGetEvaluationAPI) CreateDataset(context.Context, evalapi.CreateDatasetRequest) (evalapi.CreateDatasetResponse, error) {
+	return evalapi.CreateDatasetResponse{}, nil
 }
 
 func (b *blockingGetEvaluationAPI) StartEvaluation(context.Context, evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error) {

@@ -11,6 +11,8 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalworkflow"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/fixturecatalog"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/ingestionapi"
 )
 
 const workflowResourceURI = "eval://workflow"
@@ -25,6 +27,10 @@ type EvalService interface {
 	ListExperiments(context.Context) ([]evalapi.Experiment, error)
 	GetExperiment(context.Context, string) (evalapi.Experiment, error)
 	ListDatasets(context.Context) ([]evalapi.Dataset, error)
+	ListDatasetFixtures(context.Context) ([]fixturecatalog.Fixture, error)
+	CreateDatasetFromFixture(context.Context, string) (evalworkflow.CreateDatasetResult, error)
+	ListRAGCollections(context.Context) ([]ingestionapi.Collection, error)
+	GetRAGCollectionConfig(context.Context, string) (map[string]any, error)
 	StartRun(context.Context, evalworkflow.StartRunInput) (evalworkflow.StartRunResult, error)
 	WaitForRun(context.Context, string) (evalworkflow.WaitResult, error)
 	AttachRun(context.Context, string, string, string, string) error
@@ -43,6 +49,10 @@ func New(service EvalService) *sdkmcp.Server {
 	addTool(srv, "list_eval_experiments", "List local eval experiment sessions.", emptySchema(), listEvalExperimentsHandler(service))
 	addTool(srv, "get_eval_experiment", "Get one local eval experiment with run labels.", experimentIDSchema(), getEvalExperimentHandler(service))
 	addTool(srv, "list_eval_datasets", "List datasets from the eval API.", emptySchema(), listEvalDatasetsHandler(service))
+	addTool(srv, "list_eval_dataset_fixtures", "List curated eval dataset fixtures available in the repo.", emptySchema(), listEvalDatasetFixturesHandler(service))
+	addTool(srv, "create_eval_dataset", "Create an eval API dataset from a curated repo fixture.", createEvalDatasetSchema(), createEvalDatasetHandler(service))
+	addTool(srv, "list_rag_collections", "List Qdrant retrieval collections from ingestion.", emptySchema(), listRAGCollectionsHandler(service))
+	addTool(srv, "get_rag_collection_config", "Fetch ingestion metadata for one RAG collection.", ragCollectionConfigSchema(), getRAGCollectionConfigHandler(service))
 	addTool(srv, "start_eval_run", "Start an eval API run and optionally attach it to an experiment label.", startEvalRunSchema(), startEvalRunHandler(service))
 	addTool(srv, "wait_for_eval_run", "Poll one eval run until completion, failure, or timeout.", waitEvalRunSchema(), waitForEvalRunHandler(service))
 	addTool(srv, "attach_eval_run", "Attach an existing eval run ID to a local experiment label.", attachEvalRunSchema(), attachEvalRunHandler(service))
@@ -126,6 +136,52 @@ func getEvalExperimentHandler(service EvalService) sdkmcp.ToolHandler {
 func listEvalDatasetsHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, _ *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		result, err := service.ListDatasets(ctx)
+		return resultOrError(result, err), nil
+	}
+}
+
+func listEvalDatasetFixturesHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, _ *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		result, err := service.ListDatasetFixtures(ctx)
+		return resultOrError(result, err), nil
+	}
+}
+
+func createEvalDatasetHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var args struct {
+			Fixture string `json:"fixture"`
+		}
+		if err := decodeArgs(req, &args); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if strings.TrimSpace(args.Fixture) == "" {
+			return toolError("fixture is required"), nil
+		}
+		result, err := service.CreateDatasetFromFixture(ctx, args.Fixture)
+		return resultOrError(result, err), nil
+	}
+}
+
+func listRAGCollectionsHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, _ *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		result, err := service.ListRAGCollections(ctx)
+		return resultOrError(result, err), nil
+	}
+}
+
+func getRAGCollectionConfigHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var args struct {
+			Name string `json:"name"`
+		}
+		if err := decodeArgs(req, &args); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if strings.TrimSpace(args.Name) == "" {
+			return toolError("name is required"), nil
+		}
+		result, err := service.GetRAGCollectionConfig(ctx, args.Name)
 		return resultOrError(result, err), nil
 	}
 }
@@ -339,7 +395,7 @@ func evalPromptHandler() sdkmcp.PromptHandler {
 			Description: "Start an agent-led RAG eval experiment.",
 			Messages: []*sdkmcp.PromptMessage{{
 				Role:    sdkmcp.Role("user"),
-				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Use start_eval_experiment for local experiment state, list_eval_datasets to choose data, start_eval_run and wait_for_eval_run for baseline and candidate runs, compare_eval_runs to measure deltas, get_worst_eval_cases to inspect failures, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion."},
+				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. Compare only completed runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion."},
 			}},
 		}, nil
 	}
@@ -364,12 +420,15 @@ func evalWorkflowInstructions() string {
 Use this local MCP server to keep RAG eval experiments explicit and reproducible.
 
 1. Start or resume local experiment state with start_eval_experiment, list_eval_experiments, or get_eval_experiment.
-2. Call list_eval_datasets before choosing a dataset unless the user already named a dataset ID.
-3. Start baseline and candidate runs with start_eval_run, then call wait_for_eval_run until each run completes or fails.
-4. Attach externally created runs with attach_eval_run when needed.
-5. Use get_eval_run for individual run inspection, compare_eval_runs for metric deltas, and get_worst_eval_cases for the lowest-scoring per-query cases.
-6. Call summarize_eval_experiment before presenting a recommendation.
-7. Only call record_eval_experiment_conclusion after the user approves the conclusion.
+2. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name.
+3. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, or call list_eval_datasets before choosing an existing dataset unless the user already named a dataset ID.
+4. Use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run.
+5. Start baseline with start_eval_run and wait_for_eval_run. Run baseline to completion before starting rerank while runtime hardening is pending.
+6. Start candidate runs with start_eval_run, then call wait_for_eval_run until each run completes or fails.
+7. Attach externally created runs with attach_eval_run when needed.
+8. Use get_eval_run for individual run inspection, compare_eval_runs for metric deltas, and get_worst_eval_cases for the lowest-scoring per-query cases. Compare only completed runs.
+9. Call summarize_eval_experiment before presenting a recommendation.
+10. Only call record_eval_experiment_conclusion after the user approves the conclusion.
 `)
 }
 
@@ -447,6 +506,14 @@ func attachEvalRunSchema() json.RawMessage {
 
 func evalIDSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"eval_id":{"type":"string"}},"required":["eval_id"],"additionalProperties":false}`)
+}
+
+func createEvalDatasetSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"fixture":{"type":"string","minLength":1}},"required":["fixture"],"additionalProperties":false}`)
+}
+
+func ragCollectionConfigSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","minLength":1}},"required":["name"],"additionalProperties":false}`)
 }
 
 func compareEvalRunsSchema() json.RawMessage {
