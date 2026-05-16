@@ -7,45 +7,45 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalworkflow"
-	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/store"
 )
 
 type fakeEvalService struct {
-	startExperimentInput evalworkflow.StartExperimentInput
-	startRunInput        evalworkflow.StartRunInput
-	worstCasesInput      evalworkflow.WorstCasesInput
-	startRunCalls        int
-	compareCalls         int
-	compareInput         evalworkflow.CompareInput
+	startExperimentInput  evalworkflow.StartExperimentInput
+	startRunInput         evalworkflow.StartRunInput
+	worstCasesInput       evalworkflow.WorstCasesInput
+	startRunCalls         int
+	compareCalls          int
+	compareInput          evalworkflow.CompareInput
+	recordConclusionInput evalworkflow.RecordConclusionInput
 }
 
-func (f *fakeEvalService) StartExperiment(_ context.Context, in evalworkflow.StartExperimentInput) (store.Experiment, error) {
+func (f *fakeEvalService) StartExperiment(_ context.Context, in evalworkflow.StartExperimentInput) (evalapi.Experiment, error) {
 	f.startExperimentInput = in
-	return store.Experiment{
-		ID:          11,
+	notes := in.Notes
+	return evalapi.Experiment{
+		ID:          "exp-11",
 		Name:        in.Name,
 		DatasetID:   in.DatasetID,
 		Collection:  in.Collection,
 		FocusMetric: in.FocusMetric,
 		Hypothesis:  in.Hypothesis,
-		Notes:       in.Notes,
-		CreatedAt:   time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC),
-		UpdatedAt:   time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC),
+		Notes:       &notes,
+		CreatedAt:   "2026-05-13T12:00:00Z",
+		UpdatedAt:   "2026-05-13T12:00:00Z",
 	}, nil
 }
 
-func (f *fakeEvalService) ListExperiments(context.Context) ([]store.Experiment, error) {
-	return []store.Experiment{{ID: 11, Name: "baseline-vs-rerank", DatasetID: "ds-1"}}, nil
+func (f *fakeEvalService) ListExperiments(context.Context) ([]evalapi.Experiment, error) {
+	return []evalapi.Experiment{{ID: "exp-11", Name: "baseline-vs-rerank", DatasetID: "ds-1"}}, nil
 }
 
-func (f *fakeEvalService) GetExperiment(context.Context, int64) (store.Experiment, error) {
-	return store.Experiment{ID: 11, Name: "baseline-vs-rerank", DatasetID: "ds-1"}, nil
+func (f *fakeEvalService) GetExperiment(context.Context, string) (evalapi.Experiment, error) {
+	return evalapi.Experiment{ID: "exp-11", Name: "baseline-vs-rerank", DatasetID: "ds-1"}, nil
 }
 
 func (f *fakeEvalService) ListDatasets(context.Context) ([]evalapi.Dataset, error) {
@@ -62,7 +62,7 @@ func (f *fakeEvalService) WaitForRun(context.Context, string) (evalworkflow.Wait
 	return evalworkflow.WaitResult{Run: evalapi.EvaluationDetail{ID: "eval-123", Status: "completed"}}, nil
 }
 
-func (f *fakeEvalService) AttachRun(context.Context, int64, string, string, string) error {
+func (f *fakeEvalService) AttachRun(context.Context, string, string, string, string) error {
 	return nil
 }
 
@@ -89,11 +89,12 @@ func (f *fakeEvalService) WorstCases(_ context.Context, in evalworkflow.WorstCas
 	}, nil
 }
 
-func (f *fakeEvalService) SummarizeExperiment(context.Context, int64) (evalworkflow.ExperimentSummary, error) {
-	return evalworkflow.ExperimentSummary{Experiment: store.Experiment{ID: 11, Name: "baseline-vs-rerank"}}, nil
+func (f *fakeEvalService) SummarizeExperiment(context.Context, string) (evalworkflow.ExperimentSummary, error) {
+	return evalworkflow.ExperimentSummary{Experiment: evalapi.Experiment{ID: "exp-11", Name: "baseline-vs-rerank"}}, nil
 }
 
-func (f *fakeEvalService) RecordConclusion(context.Context, int64, string) error {
+func (f *fakeEvalService) RecordConclusion(_ context.Context, in evalworkflow.RecordConclusionInput) error {
+	f.recordConclusionInput = in
 	return nil
 }
 
@@ -145,9 +146,9 @@ func TestStartEvalExperimentHandler(t *testing.T) {
 		t.Fatalf("unexpected start experiment input: %#v", fake.startExperimentInput)
 	}
 
-	var payload store.Experiment
+	var payload evalapi.Experiment
 	unmarshalTextResult(t, result, &payload)
-	if payload.ID != 11 || payload.Name != "baseline-vs-rerank" {
+	if payload.ID != "exp-11" || payload.Name != "baseline-vs-rerank" {
 		t.Fatalf("unexpected experiment payload: %#v", payload)
 	}
 }
@@ -215,7 +216,7 @@ func TestWorstCasesHandlerReturnsJSON(t *testing.T) {
 func TestCompareEvalRunsRejectsSingleLabelWithoutCallingService(t *testing.T) {
 	fake := &fakeEvalService{}
 	result, err := compareEvalRunsHandler(fake)(context.Background(), callReq(map[string]any{
-		"experiment_id": float64(11),
+		"experiment_id": "exp-11",
 		"labels":        []any{"candidate"},
 	}))
 	if err != nil {
@@ -233,7 +234,7 @@ func TestCompareEvalRunsRejectsSixTotalIDsAndLabels(t *testing.T) {
 	fake := &fakeEvalService{}
 	result, err := compareEvalRunsHandler(fake)(context.Background(), callReq(map[string]any{
 		"eval_ids":      []any{"eval-a", "eval-b", "eval-c"},
-		"experiment_id": float64(11),
+		"experiment_id": "exp-11",
 		"labels":        []any{"baseline", "candidate-a", "candidate-b"},
 	}))
 	if err != nil {
@@ -278,6 +279,27 @@ func TestGetEvalRunMalformedArgsReturnsDecodeError(t *testing.T) {
 	}
 	if strings.Contains(text, "eval_id is required") {
 		t.Fatalf("malformed args should not collapse to required-field error, got %q", text)
+	}
+}
+
+func TestRecordConclusionHandlerSendsDecisionAndEvidence(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := recordConclusionHandler(fake)(context.Background(), callReq(map[string]any{
+		"experiment_id": "exp-1",
+		"decision":      "keep",
+		"conclusion":    "Keep reranking.",
+		"evidence": map[string]any{
+			"baseline_eval_id": "eval-base",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	if fake.recordConclusionInput.ExperimentID != "exp-1" || fake.recordConclusionInput.Decision != "keep" {
+		t.Fatalf("record input = %#v", fake.recordConclusionInput)
 	}
 }
 

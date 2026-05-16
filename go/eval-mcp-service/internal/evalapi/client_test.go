@@ -38,7 +38,7 @@ func TestStartEvaluationSendsOptionalFields(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if body.DatasetID != "ds-1" || body.Collection != "documents" || body.Notes != "candidate" || body.BaselineEvalID != "eval-base" || !body.Rerank {
+		if body.DatasetID != "ds-1" || body.Collection != "documents" || body.Notes != "candidate" || body.BaselineEvalID != "eval-base" || body.ExperimentID != "exp-1" || body.ExperimentLabel != "candidate" || !body.Rerank {
 			t.Fatalf("body = %#v", body)
 		}
 		w.WriteHeader(http.StatusAccepted)
@@ -48,17 +48,99 @@ func TestStartEvaluationSendsOptionalFields(t *testing.T) {
 
 	client := New(server.URL, "", server.Client())
 	got, err := client.StartEvaluation(context.Background(), StartEvaluationRequest{
-		DatasetID:      "ds-1",
-		Collection:     "documents",
-		Notes:          "candidate",
-		BaselineEvalID: "eval-base",
-		Rerank:         true,
+		DatasetID:       "ds-1",
+		Collection:      "documents",
+		Notes:           "candidate",
+		BaselineEvalID:  "eval-base",
+		ExperimentID:    "exp-1",
+		ExperimentLabel: "candidate",
+		Rerank:          true,
 	})
 	if err != nil {
 		t.Fatalf("StartEvaluation error: %v", err)
 	}
 	if got.ID != "eval-2" || got.Status != "running" {
 		t.Fatalf("response = %#v", got)
+	}
+}
+
+func TestExperimentAPIMethods(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/experiments":
+			switch r.Method {
+			case http.MethodPost:
+				var body CreateExperimentRequest
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatalf("decode create experiment: %v", err)
+				}
+				if body.Name != "precision tuning" || body.FocusMetric != "context_precision" {
+					t.Fatalf("create body = %#v", body)
+				}
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(Experiment{ID: "exp-1", Name: body.Name, DatasetID: body.DatasetID, Collection: body.Collection, FocusMetric: body.FocusMetric, Status: "running"})
+			case http.MethodGet:
+				_ = json.NewEncoder(w).Encode(map[string]any{"experiments": []Experiment{{ID: "exp-1", Name: "precision tuning", DatasetID: "ds-1", Collection: "documents", FocusMetric: "context_precision", Status: "running"}}})
+			default:
+				t.Fatalf("unexpected method %s", r.Method)
+			}
+		case "/experiments/exp-1":
+			switch r.Method {
+			case http.MethodGet:
+				_ = json.NewEncoder(w).Encode(Experiment{ID: "exp-1", Name: "precision tuning", DatasetID: "ds-1", Collection: "documents", FocusMetric: "context_precision", Status: "running"})
+			case http.MethodPatch:
+				var body UpdateExperimentRequest
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatalf("decode update experiment: %v", err)
+				}
+				if body.Status != "completed" || body.Decision != "keep" || body.Conclusion != "Keep reranking." {
+					t.Fatalf("update body = %#v", body)
+				}
+				_ = json.NewEncoder(w).Encode(Experiment{ID: "exp-1", Name: "precision tuning", DatasetID: "ds-1", Collection: "documents", FocusMetric: "context_precision", Status: "completed", Decision: "keep", Conclusion: "Keep reranking.", Evidence: body.Evidence})
+			default:
+				t.Fatalf("unexpected method %s", r.Method)
+			}
+		case "/experiments/exp-1/runs":
+			var body AttachExperimentRunRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode attach run: %v", err)
+			}
+			if body.EvaluationID != "eval-candidate" || body.Label != "candidate" {
+				t.Fatalf("attach body = %#v", body)
+			}
+			_ = json.NewEncoder(w).Encode(Experiment{ID: "exp-1", Name: "precision tuning", DatasetID: "ds-1", Collection: "documents", FocusMetric: "context_precision", Status: "running"})
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "", server.Client())
+	ctx := context.Background()
+	exp, err := client.CreateExperiment(ctx, CreateExperimentRequest{Name: "precision tuning", Hypothesis: "rerank improves precision", DatasetID: "ds-1", Collection: "documents", FocusMetric: "context_precision", Status: "running"})
+	if err != nil {
+		t.Fatalf("CreateExperiment error: %v", err)
+	}
+	if exp.ID != "exp-1" {
+		t.Fatalf("created experiment = %#v", exp)
+	}
+	experiments, err := client.ListExperiments(ctx)
+	if err != nil || len(experiments) != 1 {
+		t.Fatalf("ListExperiments = %#v, %v", experiments, err)
+	}
+	got, err := client.GetExperiment(ctx, "exp-1")
+	if err != nil || got.FocusMetric != "context_precision" {
+		t.Fatalf("GetExperiment = %#v, %v", got, err)
+	}
+	if _, err := client.AttachExperimentRun(ctx, "exp-1", AttachExperimentRunRequest{EvaluationID: "eval-candidate", Label: "candidate"}); err != nil {
+		t.Fatalf("AttachExperimentRun error: %v", err)
+	}
+	updated, err := client.UpdateExperiment(ctx, "exp-1", UpdateExperimentRequest{Status: "completed", Decision: "keep", Conclusion: "Keep reranking.", Evidence: map[string]any{"baseline_eval_id": "eval-base"}})
+	if err != nil {
+		t.Fatalf("UpdateExperiment error: %v", err)
+	}
+	if updated.Status != "completed" || updated.Evidence["baseline_eval_id"] != "eval-base" {
+		t.Fatalf("updated experiment = %#v", updated)
 	}
 }
 
@@ -131,6 +213,152 @@ func TestHTTPErrorIncludesStatusAndExcerpt(t *testing.T) {
 	}
 }
 
+func TestListDatasetsStaticTokenDoesNotRetryUnauthorized(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if got := r.Header.Get("Authorization"); got != "Bearer static-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		http.Error(w, "expired", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "static-token", server.Client())
+	_, err := client.ListDatasets(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d", requests)
+	}
+	if !strings.Contains(err.Error(), "status 401") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestListDatasetsRetriesOnceAfterUnauthorized(t *testing.T) {
+	provider := &sequenceTokenProvider{tokens: []string{"expired-token", "fresh-token"}}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch requests {
+		case 1:
+			if got := r.Header.Get("Authorization"); got != "Bearer expired-token" {
+				t.Fatalf("first Authorization = %q", got)
+			}
+			http.Error(w, "expired", http.StatusUnauthorized)
+		case 2:
+			if got := r.Header.Get("Authorization"); got != "Bearer fresh-token" {
+				t.Fatalf("retry Authorization = %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"datasets": []Dataset{{ID: "ds-retry", Name: "rag"}}})
+		default:
+			t.Fatalf("unexpected request %d", requests)
+		}
+	}))
+	defer server.Close()
+
+	client := NewWithTokenProvider(server.URL, provider, server.Client())
+	got, err := client.ListDatasets(context.Background())
+	if err != nil {
+		t.Fatalf("ListDatasets error: %v", err)
+	}
+	if provider.invalidations != 1 {
+		t.Fatalf("invalidations = %d", provider.invalidations)
+	}
+	if provider.calls != 2 {
+		t.Fatalf("token calls = %d", provider.calls)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d", requests)
+	}
+	if len(got) != 1 || got[0].ID != "ds-retry" {
+		t.Fatalf("datasets = %#v", got)
+	}
+}
+
+func TestStartEvaluationRetriesUnauthorizedWithOriginalBody(t *testing.T) {
+	provider := &sequenceTokenProvider{tokens: []string{"expired-token", "fresh-token"}}
+	wantBody := StartEvaluationRequest{
+		DatasetID:      "ds-1",
+		Collection:     "documents",
+		Notes:          "candidate",
+		BaselineEvalID: "eval-base",
+		Rerank:         true,
+	}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/evaluations" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		var gotBody StartEvaluationRequest
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode body request %d: %v", requests, err)
+		}
+		if gotBody != wantBody {
+			t.Fatalf("body request %d = %#v", requests, gotBody)
+		}
+		switch requests {
+		case 1:
+			if got := r.Header.Get("Authorization"); got != "Bearer expired-token" {
+				t.Fatalf("first Authorization = %q", got)
+			}
+			http.Error(w, "expired", http.StatusUnauthorized)
+		case 2:
+			if got := r.Header.Get("Authorization"); got != "Bearer fresh-token" {
+				t.Fatalf("retry Authorization = %q", got)
+			}
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(StartEvaluationResponse{ID: "eval-2", Status: "running"})
+		default:
+			t.Fatalf("unexpected request %d", requests)
+		}
+	}))
+	defer server.Close()
+
+	client := NewWithTokenProvider(server.URL, provider, server.Client())
+	got, err := client.StartEvaluation(context.Background(), wantBody)
+	if err != nil {
+		t.Fatalf("StartEvaluation error: %v", err)
+	}
+	if provider.invalidations != 1 {
+		t.Fatalf("invalidations = %d", provider.invalidations)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d", requests)
+	}
+	if got.ID != "eval-2" || got.Status != "running" {
+		t.Fatalf("response = %#v", got)
+	}
+}
+
+func TestListDatasetsDoesNotRetryNonUnauthorizedError(t *testing.T) {
+	provider := &sequenceTokenProvider{tokens: []string{"token-1"}}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Error(w, "broken", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := NewWithTokenProvider(server.URL, provider, server.Client())
+	_, err := client.ListDatasets(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d", requests)
+	}
+	if provider.invalidations != 0 {
+		t.Fatalf("invalidations = %d", provider.invalidations)
+	}
+	if !strings.Contains(err.Error(), "status 502") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestNewUsesDefaultHTTPClient(t *testing.T) {
 	client := New("http://example.test/eval", "", nil)
 	if client.httpClient == nil {
@@ -139,4 +367,23 @@ func TestNewUsesDefaultHTTPClient(t *testing.T) {
 	if client.httpClient.Timeout != 30*time.Second {
 		t.Fatalf("timeout = %s", client.httpClient.Timeout)
 	}
+}
+
+type sequenceTokenProvider struct {
+	tokens        []string
+	calls         int
+	invalidations int
+}
+
+func (p *sequenceTokenProvider) Token(context.Context) (string, error) {
+	if p.calls >= len(p.tokens) {
+		return "", nil
+	}
+	token := p.tokens[p.calls]
+	p.calls++
+	return token, nil
+}
+
+func (p *sequenceTokenProvider) Invalidate() {
+	p.invalidations++
 }
