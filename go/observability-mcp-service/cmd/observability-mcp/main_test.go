@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"log"
 	"strings"
 	"testing"
@@ -54,5 +55,24 @@ func TestRunRejectsInvalidConfigBeforeServerStartup(t *testing.T) {
 	}
 	if called {
 		t.Fatal("runner should not be called")
+	}
+}
+
+func TestRunUsesGrafanaGatewayMode(t *testing.T) {
+	t.Setenv("OBS_GRAFANA_URL", "https://observability-api.kylebradshaw.dev")
+	t.Setenv("OBS_GRAFANA_TOKEN", "token")
+	var got *app
+	err := run(context.Background(), log.New(io.Discard, "", 0), func(_ context.Context, application *app) error {
+		got = application
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if got == nil || got.service == nil {
+		t.Fatal("expected app service")
+	}
+	if !got.cfg.UseGrafanaGateway() {
+		t.Fatal("expected Grafana gateway mode")
 	}
 }
