@@ -67,6 +67,40 @@ func TestFromEnvOverrides(t *testing.T) {
 	}
 }
 
+func TestFromEnvGrafanaMode(t *testing.T) {
+	t.Setenv("OBS_GRAFANA_URL", "https://observability-api.kylebradshaw.dev")
+	t.Setenv("OBS_GRAFANA_TOKEN", "grafana-token")
+	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_ID", "cf-id")
+	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET", "cf-secret")
+
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+	if !cfg.UseGrafanaGateway() {
+		t.Fatal("expected Grafana gateway mode")
+	}
+	if cfg.GrafanaURL != "https://observability-api.kylebradshaw.dev" {
+		t.Fatalf("GrafanaURL = %q", cfg.GrafanaURL)
+	}
+	if cfg.GrafanaToken != "grafana-token" {
+		t.Fatal("GrafanaToken not loaded")
+	}
+	if cfg.GrafanaAccessClientID != "cf-id" || cfg.GrafanaAccessClientSecret != "cf-secret" {
+		t.Fatalf("Cloudflare token config not loaded: %+v", cfg)
+	}
+}
+
+func TestFromEnvRejectsPartialGrafanaAccessToken(t *testing.T) {
+	t.Setenv("OBS_GRAFANA_URL", "https://observability-api.kylebradshaw.dev")
+	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_ID", "cf-id")
+	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET", "")
+
+	if _, err := FromEnv(); err == nil {
+		t.Fatal("expected partial Cloudflare access token error")
+	}
+}
+
 func TestFromEnvRejectsInvalidValues(t *testing.T) {
 	t.Setenv("OBS_QUERY_TIMEOUT", "nope")
 	if _, err := FromEnv(); err == nil {

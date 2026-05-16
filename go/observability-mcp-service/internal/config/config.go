@@ -14,14 +14,18 @@ const (
 )
 
 type Config struct {
-	PrometheusURL string
-	LokiURL       string
-	JaegerURL     string
-	QueryTimeout  time.Duration
-	DefaultWindow time.Duration
-	MaxWindow     time.Duration
-	MaxLogLines   int
-	MaxTraceSpans int
+	PrometheusURL             string
+	LokiURL                   string
+	JaegerURL                 string
+	GrafanaURL                string
+	GrafanaToken              string
+	GrafanaAccessClientID     string
+	GrafanaAccessClientSecret string
+	QueryTimeout              time.Duration
+	DefaultWindow             time.Duration
+	MaxWindow                 time.Duration
+	MaxLogLines               int
+	MaxTraceSpans             int
 }
 
 func FromEnv() (Config, error) {
@@ -47,14 +51,18 @@ func FromEnv() (Config, error) {
 	}
 
 	cfg := Config{
-		PrometheusURL: getenv("OBS_PROMETHEUS_URL", defaultPrometheusURL),
-		LokiURL:       getenv("OBS_LOKI_URL", defaultLokiURL),
-		JaegerURL:     getenv("OBS_JAEGER_URL", defaultJaegerURL),
-		QueryTimeout:  queryTimeout,
-		DefaultWindow: defaultWindow,
-		MaxWindow:     maxWindow,
-		MaxLogLines:   maxLogLines,
-		MaxTraceSpans: maxTraceSpans,
+		PrometheusURL:             getenv("OBS_PROMETHEUS_URL", defaultPrometheusURL),
+		LokiURL:                   getenv("OBS_LOKI_URL", defaultLokiURL),
+		JaegerURL:                 getenv("OBS_JAEGER_URL", defaultJaegerURL),
+		GrafanaURL:                getenv("OBS_GRAFANA_URL", ""),
+		GrafanaToken:              os.Getenv("OBS_GRAFANA_TOKEN"),
+		GrafanaAccessClientID:     os.Getenv("OBS_GRAFANA_ACCESS_CLIENT_ID"),
+		GrafanaAccessClientSecret: os.Getenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET"),
+		QueryTimeout:              queryTimeout,
+		DefaultWindow:             defaultWindow,
+		MaxWindow:                 maxWindow,
+		MaxLogLines:               maxLogLines,
+		MaxTraceSpans:             maxTraceSpans,
 	}
 	if cfg.QueryTimeout <= 0 {
 		return Config{}, fmt.Errorf("OBS_QUERY_TIMEOUT must be positive")
@@ -74,7 +82,14 @@ func FromEnv() (Config, error) {
 	if cfg.MaxTraceSpans <= 0 {
 		return Config{}, fmt.Errorf("OBS_MAX_TRACE_SPANS must be positive")
 	}
+	if (cfg.GrafanaAccessClientID == "") != (cfg.GrafanaAccessClientSecret == "") {
+		return Config{}, fmt.Errorf("OBS_GRAFANA_ACCESS_CLIENT_ID and OBS_GRAFANA_ACCESS_CLIENT_SECRET must be set together")
+	}
 	return cfg, nil
+}
+
+func (c Config) UseGrafanaGateway() bool {
+	return c.GrafanaURL != ""
 }
 
 func (c Config) WindowOrDefault(raw string) (time.Duration, error) {
