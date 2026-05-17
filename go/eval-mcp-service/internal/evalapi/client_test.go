@@ -67,6 +67,7 @@ func TestClientCreateDataset(t *testing.T) {
 }
 
 func TestStartEvaluationSendsOptionalFields(t *testing.T) {
+	topK := 3
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body StartEvaluationRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -74,6 +75,9 @@ func TestStartEvaluationSendsOptionalFields(t *testing.T) {
 		}
 		if body.DatasetID != "ds-1" || body.Collection != "documents" || body.Notes != "candidate" || body.BaselineEvalID != "eval-base" || body.ExperimentID != "exp-1" || body.ExperimentLabel != "candidate" || !body.Rerank {
 			t.Fatalf("body = %#v", body)
+		}
+		if body.RetrievalConfig == nil || body.RetrievalConfig.TopK == nil || *body.RetrievalConfig.TopK != 3 {
+			t.Fatalf("retrieval_config = %#v", body.RetrievalConfig)
 		}
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(StartEvaluationResponse{ID: "eval-2", Status: "running"})
@@ -89,6 +93,7 @@ func TestStartEvaluationSendsOptionalFields(t *testing.T) {
 		ExperimentID:    "exp-1",
 		ExperimentLabel: "candidate",
 		Rerank:          true,
+		RetrievalConfig: &RetrievalConfig{TopK: &topK},
 	})
 	if err != nil {
 		t.Fatalf("StartEvaluation error: %v", err)
@@ -333,12 +338,14 @@ func TestListDatasetsRetriesOnceAfterUnauthorized(t *testing.T) {
 
 func TestStartEvaluationRetriesUnauthorizedWithOriginalBody(t *testing.T) {
 	provider := &sequenceTokenProvider{tokens: []string{"expired-token", "fresh-token"}}
+	topK := 3
 	wantBody := StartEvaluationRequest{
-		DatasetID:      "ds-1",
-		Collection:     "documents",
-		Notes:          "candidate",
-		BaselineEvalID: "eval-base",
-		Rerank:         true,
+		DatasetID:       "ds-1",
+		Collection:      "documents",
+		Notes:           "candidate",
+		BaselineEvalID:  "eval-base",
+		Rerank:          true,
+		RetrievalConfig: &RetrievalConfig{TopK: &topK},
 	}
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -350,8 +357,11 @@ func TestStartEvaluationRetriesUnauthorizedWithOriginalBody(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 			t.Fatalf("decode body request %d: %v", requests, err)
 		}
-		if gotBody != wantBody {
+		if gotBody.DatasetID != wantBody.DatasetID || gotBody.Collection != wantBody.Collection || gotBody.Notes != wantBody.Notes || gotBody.BaselineEvalID != wantBody.BaselineEvalID || gotBody.Rerank != wantBody.Rerank {
 			t.Fatalf("body request %d = %#v", requests, gotBody)
+		}
+		if gotBody.RetrievalConfig == nil || gotBody.RetrievalConfig.TopK == nil || *gotBody.RetrievalConfig.TopK != topK {
+			t.Fatalf("retrieval_config request %d = %#v", requests, gotBody.RetrievalConfig)
 		}
 		switch requests {
 		case 1:

@@ -74,14 +74,19 @@ type CreateDatasetResponse struct {
 	ID string `json:"id"`
 }
 
+type RetrievalConfig struct {
+	TopK *int `json:"top_k,omitempty"`
+}
+
 type StartEvaluationRequest struct {
-	DatasetID       string `json:"dataset_id"`
-	Collection      string `json:"collection,omitempty"`
-	Notes           string `json:"notes,omitempty"`
-	BaselineEvalID  string `json:"baseline_eval_id,omitempty"`
-	ExperimentID    string `json:"experiment_id,omitempty"`
-	ExperimentLabel string `json:"experiment_label,omitempty"`
-	Rerank          bool   `json:"rerank"`
+	DatasetID       string           `json:"dataset_id"`
+	Collection      string           `json:"collection,omitempty"`
+	Notes           string           `json:"notes,omitempty"`
+	BaselineEvalID  string           `json:"baseline_eval_id,omitempty"`
+	ExperimentID    string           `json:"experiment_id,omitempty"`
+	ExperimentLabel string           `json:"experiment_label,omitempty"`
+	Rerank          bool             `json:"rerank"`
+	RetrievalConfig *RetrievalConfig `json:"retrieval_config,omitempty"`
 }
 
 type StartEvaluationResponse struct {

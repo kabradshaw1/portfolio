@@ -67,13 +67,14 @@ type StartExperimentInput struct {
 }
 
 type StartRunInput struct {
-	DatasetID      string
-	Collection     string
-	Notes          string
-	BaselineEvalID string
-	Rerank         bool
-	ExperimentID   string
-	Label          string
+	DatasetID       string
+	Collection      string
+	Notes           string
+	BaselineEvalID  string
+	Rerank          bool
+	ExperimentID    string
+	Label           string
+	RetrievalConfig *evalapi.RetrievalConfig
 }
 
 type StartRunResult struct {
@@ -253,6 +254,7 @@ func (s *Service) StartRun(ctx context.Context, in StartRunInput) (StartRunResul
 		Rerank:          in.Rerank,
 		ExperimentID:    in.ExperimentID,
 		ExperimentLabel: in.Label,
+		RetrievalConfig: in.RetrievalConfig,
 	})
 	if err != nil {
 		return StartRunResult{}, err
