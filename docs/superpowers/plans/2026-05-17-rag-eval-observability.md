@@ -1,6 +1,6 @@
 # RAG Eval Observability Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build local, agent-facing observability for RAG eval experiments so eval runs can be explained with metadata, lifecycle logs, upstream failures, and performance signals.
 
@@ -36,7 +36,7 @@
 - Modify: `services/eval/app/metrics.py`
 - Test: `services/eval/tests/test_main.py`
 
-- [ ] **Step 1: Write the failing metrics exposure test**
+- [x] **Step 1: Write the failing metrics exposure test**
 
 Add a test near the existing metrics tests in `services/eval/tests/test_main.py`:
 
@@ -55,7 +55,7 @@ def test_metrics_contains_eval_observability_metrics(client):
     assert "eval_stale_running_runs" in body
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -66,7 +66,7 @@ PYTHONPATH=services:services/eval pytest services/eval/tests/test_main.py::test_
 
 Expected: FAIL because the new metric names are not registered.
 
-- [ ] **Step 3: Add metric families**
+- [x] **Step 3: Add metric families**
 
 In `services/eval/app/metrics.py`, keep the existing metrics and add:
 
@@ -121,7 +121,7 @@ eval_run_duration_seconds = Histogram(
 )
 ```
 
-- [ ] **Step 4: Run the metrics test**
+- [x] **Step 4: Run the metrics test**
 
 Run:
 
@@ -131,7 +131,7 @@ PYTHONPATH=services:services/eval pytest services/eval/tests/test_main.py::test_
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
@@ -148,7 +148,7 @@ git commit -m "feat: add eval observability metrics"
 - Test: `services/eval/tests/test_main.py`
 - Test: `services/eval/tests/test_evaluator.py`
 
-- [ ] **Step 1: Write failing log-context tests**
+- [x] **Step 1: Write failing log-context tests**
 
 In `services/eval/tests/test_evaluator.py`, add a unit test around a one-item successful run with `MagicMock`, `AsyncMock`, and the existing `JudgeScores` type:
 
@@ -200,7 +200,7 @@ async def test_run_evaluation_logs_item_lifecycle(caplog, mock_search_results, m
 
 In `services/eval/tests/test_main.py`, add a background task success test that asserts `eval_run_started` and `eval_run_completed` appear when `_run_evaluation_task` is invoked with fake dependencies already used by the file.
 
-- [ ] **Step 2: Run the failing tests**
+- [x] **Step 2: Run the failing tests**
 
 Run:
 
@@ -210,7 +210,7 @@ PYTHONPATH=services:services/eval pytest services/eval/tests/test_evaluator.py::
 
 Expected: FAIL because eval does not yet accept run context or emit structured lifecycle logs.
 
-- [ ] **Step 3: Configure shared logging in eval**
+- [x] **Step 3: Configure shared logging in eval**
 
 In `services/eval/app/main.py`, import and call shared logging/tracing like chat:
 
@@ -234,7 +234,7 @@ instrument_app(app)
 
 Remove the old `logging.getLogger(__name__)` logger.
 
-- [ ] **Step 4: Pass run context into the background task**
+- [x] **Step 4: Pass run context into the background task**
 
 Change `_run_evaluation_task` in `services/eval/app/main.py` to accept:
 
@@ -277,7 +277,7 @@ Pass `run_context=run_context` into `run_evaluation`.
 When adding the background task in `start_evaluation`, pass `body.dataset_id`,
 `body.experiment_id`, `body.experiment_label`, and `body.baseline_eval_id`.
 
-- [ ] **Step 5: Add item lifecycle logging**
+- [x] **Step 5: Add item lifecycle logging**
 
 In `services/eval/app/evaluator.py`, add `run_context: dict | None = None` to
 `run_evaluation` and `build_evaluation_dataset`.
@@ -307,7 +307,7 @@ logger.info("eval_item_started", **item_context)
 logger.info("eval_item_completed", **item_context)
 ```
 
-- [ ] **Step 6: Run the log tests**
+- [x] **Step 6: Run the log tests**
 
 Run:
 
@@ -317,7 +317,7 @@ PYTHONPATH=services:services/eval pytest services/eval/tests/test_evaluator.py::
 
 Expected: PASS for the new tests and existing eval main tests.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run:
 
@@ -336,7 +336,7 @@ git commit -m "feat: add structured eval lifecycle logs"
 - Test: `services/eval/tests/test_evaluator.py`
 - Test: `services/eval/tests/test_main.py`
 
-- [ ] **Step 1: Write failing upstream failure test**
+- [x] **Step 1: Write failing upstream failure test**
 
 In `services/eval/tests/test_rag_client.py`, add a test with `httpx.MockTransport` returning 503 for `/search`:
 
@@ -356,7 +356,7 @@ async def test_search_records_upstream_failure_metric():
 Use the test file's existing import style. If it already uses isolated
 registries, follow that pattern instead of the global `REGISTRY`.
 
-- [ ] **Step 2: Run the failing upstream test**
+- [x] **Step 2: Run the failing upstream test**
 
 Run:
 
@@ -366,7 +366,7 @@ PYTHONPATH=services:services/eval pytest services/eval/tests/test_rag_client.py:
 
 Expected: FAIL because `RAGClient` does not record upstream metrics.
 
-- [ ] **Step 3: Add upstream telemetry to `RAGClient`**
+- [x] **Step 3: Add upstream telemetry to `RAGClient`**
 
 In `services/eval/app/rag_client.py`, accept optional context:
 
@@ -400,7 +400,7 @@ def _classify_failure(exc: Exception) -> str:
 Wrap `/search` and `/chat` calls with timing, success metric, failure metric,
 and `logger.warning("eval_upstream_call_failed", ...)`.
 
-- [ ] **Step 4: Record item stage durations**
+- [x] **Step 4: Record item stage durations**
 
 In `services/eval/app/evaluator.py`, observe `eval_item_duration_seconds` for:
 
@@ -412,7 +412,7 @@ In `services/eval/app/evaluator.py`, observe `eval_item_duration_seconds` for:
 
 Use `requested_rerank` string labels `"true"` or `"false"`.
 
-- [ ] **Step 5: Update run-level metrics**
+- [x] **Step 5: Update run-level metrics**
 
 In `services/eval/app/main.py`, update existing duration observation:
 
@@ -427,7 +427,7 @@ eval_runs_total.labels(status="completed", requested_rerank=str(rerank).lower())
 In the exception path, observe failed duration and increment `eval_runs_total`
 with `status="failed"` after `db.fail_evaluation`.
 
-- [ ] **Step 6: Run eval telemetry tests**
+- [x] **Step 6: Run eval telemetry tests**
 
 Run:
 
@@ -437,7 +437,7 @@ PYTHONPATH=services:services/eval pytest services/eval/tests/test_rag_client.py 
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run:
 
@@ -454,7 +454,7 @@ git commit -m "feat: instrument eval upstream calls"
 - Test: `services/eval/tests/test_db.py`
 - Test: `services/eval/tests/test_main.py`
 
-- [ ] **Step 1: Write failing DB stale-count test**
+- [x] **Step 1: Write failing DB stale-count test**
 
 In `services/eval/tests/test_db.py`, add:
 
@@ -474,7 +474,7 @@ async def test_count_running_evaluations_older_than(tmp_path):
     await db.close()
 ```
 
-- [ ] **Step 2: Run the failing DB test**
+- [x] **Step 2: Run the failing DB test**
 
 Run:
 
@@ -484,7 +484,7 @@ PYTHONPATH=services:services/eval pytest services/eval/tests/test_db.py::test_co
 
 Expected: FAIL because the helper does not exist.
 
-- [ ] **Step 3: Implement stale-running DB helper**
+- [x] **Step 3: Implement stale-running DB helper**
 
 In `services/eval/app/db.py`, add:
 
@@ -503,7 +503,7 @@ async def count_running_evaluations_older_than(self, stale_after_seconds: int) -
     return count
 ```
 
-- [ ] **Step 4: Add metric refresh helper**
+- [x] **Step 4: Add metric refresh helper**
 
 In `services/eval/app/main.py`, add:
 
@@ -529,7 +529,7 @@ async def refresh_stale_running_metric(db: EvalDB) -> int:
 
 Call this helper in `list_evaluations` and `get_evaluation` before returning.
 
-- [ ] **Step 5: Run stale-running tests**
+- [x] **Step 5: Run stale-running tests**
 
 Run:
 
@@ -539,7 +539,7 @@ PYTHONPATH=services:services/eval pytest services/eval/tests/test_db.py services
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -557,7 +557,7 @@ git commit -m "feat: surface stale eval runs"
 - Modify: `go/eval-mcp-service/internal/mcpserver/server_test.go`
 - Modify: `go/eval-mcp-service/internal/evalapi/client.go`
 
-- [ ] **Step 1: Write failing service test**
+- [x] **Step 1: Write failing service test**
 
 In `go/eval-mcp-service/internal/evalworkflow/service_test.go`, add:
 
@@ -592,7 +592,7 @@ func TestGetRunEvidenceSummarizesRunningRun(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the failing Go test**
+- [x] **Step 2: Run the failing Go test**
 
 Run:
 
@@ -603,7 +603,7 @@ go test ./internal/evalworkflow -run TestGetRunEvidenceSummarizesRunningRun -cou
 
 Expected: FAIL because `GetRunEvidence` does not exist.
 
-- [ ] **Step 3: Implement evidence types and method**
+- [x] **Step 3: Implement evidence types and method**
 
 In `service.go`, add:
 
@@ -641,7 +641,7 @@ returns next steps:
 }
 ```
 
-- [ ] **Step 4: Add MCP tool**
+- [x] **Step 4: Add MCP tool**
 
 In `go/eval-mcp-service/internal/mcpserver/server.go`, extend `EvalService`
 with:
@@ -659,12 +659,12 @@ Register `get_eval_run_evidence` with input schema:
 The handler should parse `stale_after` with `time.ParseDuration`, default to
 `30m`, and call `service.GetRunEvidence`.
 
-- [ ] **Step 5: Update wait timeout guidance**
+- [x] **Step 5: Update wait timeout guidance**
 
 Change `WaitResult` to include optional `EvidenceHint string` or `NextSteps []string`.
 On timeout, populate guidance with `get_eval_run_evidence`.
 
-- [ ] **Step 6: Run eval MCP tests**
+- [x] **Step 6: Run eval MCP tests**
 
 Run:
 
@@ -675,7 +675,7 @@ go test ./...
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run:
 
@@ -693,7 +693,7 @@ git commit -m "feat: add eval run evidence MCP tool"
 - Modify: `go/observability-mcp-service/internal/mcpserver/server.go`
 - Modify: `go/observability-mcp-service/internal/mcpserver/server_test.go`
 
-- [ ] **Step 1: Write failing allowlist and workflow tests**
+- [x] **Step 1: Write failing allowlist and workflow tests**
 
 In `go/observability-mcp-service/internal/workflows/service_test.go`, add:
 
@@ -722,7 +722,7 @@ func TestInvestigateEvalRunFiltersLogsByEvalID(t *testing.T) {
 
 Adapt fake names to the existing test fakes.
 
-- [ ] **Step 2: Run failing observability workflow tests**
+- [x] **Step 2: Run failing observability workflow tests**
 
 Run:
 
@@ -733,7 +733,7 @@ go test ./internal/workflows -run 'TestEvalIsAllowlisted|TestInvestigateEvalRunF
 
 Expected: FAIL because eval is not allowlisted and the workflow does not exist.
 
-- [ ] **Step 3: Add eval allowlist and metric queries**
+- [x] **Step 3: Add eval allowlist and metric queries**
 
 In `catalog.go`, add:
 
@@ -755,7 +755,7 @@ evalRunQueries = []querySpec{
 }
 ```
 
-- [ ] **Step 4: Implement `InvestigateEvalRun`**
+- [x] **Step 4: Implement `InvestigateEvalRun`**
 
 In `service.go`, add:
 
@@ -782,7 +782,7 @@ s.addPrometheusSignals(ctx, &b, evalRunQueries)
 s.addLogs(ctx, &b, []string{"go-ai-service", "chat", "ingestion", "debug", "eval"}, "")
 ```
 
-- [ ] **Step 5: Add MCP tool wiring**
+- [x] **Step 5: Add MCP tool wiring**
 
 In `mcpserver/server.go`, extend `WorkflowService` with:
 
@@ -807,7 +807,7 @@ func evalRunSchema() json.RawMessage {
 Add handler that parses `window` with `cfg.WindowOrDefault` and calls
 `service.InvestigateEvalRun`.
 
-- [ ] **Step 6: Run observability MCP tests**
+- [x] **Step 6: Run observability MCP tests**
 
 Run:
 
@@ -818,7 +818,7 @@ go test ./...
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run:
 
@@ -833,7 +833,7 @@ git commit -m "feat: add eval observability MCP evidence"
 - Modify: `monitoring/prometheus.yml`
 - Test: add or modify an existing monitoring config test under `tests/`
 
-- [ ] **Step 1: Write failing config test**
+- [x] **Step 1: Write failing config test**
 
 Create or update `tests/test_local_prometheus_config.py`:
 
@@ -851,7 +851,7 @@ def test_local_prometheus_scrapes_python_service_metrics():
         assert jobs[name]["metrics_path"] == "/metrics"
 ```
 
-- [ ] **Step 2: Run the failing config test**
+- [x] **Step 2: Run the failing config test**
 
 Run:
 
@@ -861,7 +861,7 @@ pytest tests/test_local_prometheus_config.py -q
 
 Expected: FAIL because local config does not include all services on `/metrics`.
 
-- [ ] **Step 3: Update local Prometheus config**
+- [x] **Step 3: Update local Prometheus config**
 
 In `monitoring/prometheus.yml`, make these jobs use `/metrics`:
 
@@ -887,7 +887,7 @@ In `monitoring/prometheus.yml`, make these jobs use `/metrics`:
       - targets: ["eval:8000"]
 ```
 
-- [ ] **Step 4: Run the config test**
+- [x] **Step 4: Run the config test**
 
 Run:
 
@@ -897,7 +897,7 @@ pytest tests/test_local_prometheus_config.py -q
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
@@ -913,7 +913,7 @@ git commit -m "fix: scrape local AI service metrics"
 - Modify: `go/observability-mcp-service/README.md`
 - Test: none beyond markdown review
 
-- [ ] **Step 1: Update eval MCP README**
+- [x] **Step 1: Update eval MCP README**
 
 Add a short section to `go/eval-mcp-service/README.md`:
 
@@ -929,7 +929,7 @@ For logs and metrics, call the observability MCP `investigate_eval_run` tool
 with the same `eval_id`.
 ```
 
-- [ ] **Step 2: Update observability MCP README**
+- [x] **Step 2: Update observability MCP README**
 
 Add a local fallback note to `go/observability-mcp-service/README.md`:
 
@@ -946,7 +946,7 @@ source is unreachable, the tool returns partial evidence with an explicit
 source error instead of hiding the failure.
 ```
 
-- [ ] **Step 3: Review markdown diff**
+- [x] **Step 3: Review markdown diff**
 
 Run:
 
@@ -957,7 +957,7 @@ git diff -- go/eval-mcp-service/README.md go/observability-mcp-service/README.md
 Expected: README changes describe local evidence workflow and do not mention
 production dashboards or alerts.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 
@@ -971,7 +971,7 @@ git commit -m "docs: document eval evidence workflow"
 **Files:**
 - All files changed by previous tasks.
 
-- [ ] **Step 1: Run Python preflight**
+- [x] **Step 1: Run Python preflight**
 
 Run:
 
@@ -981,7 +981,7 @@ make preflight-python
 
 Expected: PASS.
 
-- [ ] **Step 2: Run security preflight**
+- [x] **Step 2: Run security preflight**
 
 Run:
 
@@ -991,7 +991,7 @@ make preflight-security
 
 Expected: PASS.
 
-- [ ] **Step 3: Run targeted Go tests**
+- [x] **Step 3: Run targeted Go tests**
 
 Run:
 
@@ -1002,7 +1002,7 @@ Run:
 
 Expected: PASS.
 
-- [ ] **Step 4: Run local smoke when services are available**
+- [x] **Step 4: Run local smoke when services are available**
 
 Run only when local Docker Compose services and MCP env vars are configured:
 
@@ -1023,7 +1023,7 @@ Expected: `get_eval_run_evidence` returns durable run state, and
 `investigate_eval_run` returns either logs/metrics or explicit partial source
 errors.
 
-- [ ] **Step 5: Check final diff**
+- [x] **Step 5: Check final diff**
 
 Run:
 
@@ -1035,7 +1035,7 @@ git diff --stat main...HEAD
 Expected: only scoped eval observability, MCP, local monitoring, tests, and
 README files changed.
 
-- [ ] **Step 6: Push branch and open PR to `qa`**
+- [x] **Step 6: Push branch and open PR to `qa`**
 
 Run:
 

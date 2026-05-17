@@ -259,6 +259,38 @@ func TestWaitForRunTimeoutIncludesLatestRunMetadata(t *testing.T) {
 	}
 }
 
+func TestRunEvidenceSummarizesStaleRunningRun(t *testing.T) {
+	ctx := context.Background()
+	collection := "documents"
+	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
+		"eval-1": {{
+			ID:         "eval-1",
+			Status:     "running",
+			Collection: &collection,
+			CreatedAt:  time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
+			Config: map[string]any{
+				"chat":       map[string]any{"llm_model": "qwen"},
+				"collection": map[string]any{"name": "documents"},
+			},
+		}},
+	}}
+	svc := New(api, fakeIngestion{}, fakeFixtures{}, time.Millisecond, time.Hour)
+
+	got, err := svc.RunEvidence(ctx, "eval-1")
+	if err != nil {
+		t.Fatalf("RunEvidence error: %v", err)
+	}
+	if got.EvalID != "eval-1" || got.Status != "running" || !got.StaleRunning {
+		t.Fatalf("RunEvidence = %#v", got)
+	}
+	if len(got.NextSteps) == 0 || !strings.Contains(got.NextSteps[0], "investigate_eval_run") {
+		t.Fatalf("NextSteps = %#v", got.NextSteps)
+	}
+	if got.Config["chat"] == nil {
+		t.Fatalf("Config = %#v", got.Config)
+	}
+}
+
 func TestWaitForRunCancelsGetEvaluationWithWaitTimeout(t *testing.T) {
 	parentCtx, cancelParent := context.WithCancel(context.Background())
 	defer cancelParent()

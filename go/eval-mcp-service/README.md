@@ -109,6 +109,15 @@ When eval API polling receives `429`, the client respects `Retry-After` before
 falling back to deterministic exponential backoff capped by
 `EVAL_MCP_MAX_BACKOFF`.
 
+## Eval Run Evidence
+
+Use `get_eval_run_evidence` when a run is still running, failed, or timed out
+from `wait_for_eval_run`. It returns the durable eval API state, captured RAG
+configuration, result counts, stale-running detection, and next-step guidance.
+For runtime evidence, follow its guidance with the observability MCP
+`investigate_eval_run` tool, which queries eval metrics and eval-id-scoped
+logs.
+
 ## Auth Notes
 
 For the production portfolio API, the external Go auth route is
@@ -139,6 +148,7 @@ before changing CORS.
 - `wait_for_eval_run`
 - `attach_eval_run`
 - `get_eval_run`
+- `get_eval_run_evidence`
 - `compare_eval_runs`
 - `get_worst_eval_cases`
 - `summarize_eval_experiment`

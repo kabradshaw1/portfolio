@@ -88,6 +88,10 @@ func (f *fakeEvalService) GetRun(context.Context, string) (evalapi.EvaluationDet
 	return evalapi.EvaluationDetail{ID: "eval-123", DatasetID: "ds-1", Status: "completed"}, nil
 }
 
+func (f *fakeEvalService) RunEvidence(context.Context, string) (evalworkflow.RunEvidence, error) {
+	return evalworkflow.RunEvidence{EvalID: "eval-123", Status: "running", NextSteps: []string{"investigate_eval_run"}}, nil
+}
+
 func (f *fakeEvalService) Compare(_ context.Context, in evalworkflow.CompareInput) (evalapi.Comparison, error) {
 	f.compareCalls++
 	f.compareInput = in
@@ -131,6 +135,7 @@ func TestServerRegistersPromptResourceAndTools(t *testing.T) {
 		"create_eval_dataset",
 		"get_eval_experiment",
 		"get_eval_run",
+		"get_eval_run_evidence",
 		"get_rag_collection_config",
 		"get_worst_eval_cases",
 		"list_eval_dataset_fixtures",
@@ -323,6 +328,23 @@ func TestGetEvalRunMalformedArgsReturnsDecodeError(t *testing.T) {
 	}
 	if strings.Contains(text, "eval_id is required") {
 		t.Fatalf("malformed args should not collapse to required-field error, got %q", text)
+	}
+}
+
+func TestGetEvalRunEvidenceHandlerReturnsJSON(t *testing.T) {
+	result, err := runEvidenceHandler(&fakeEvalService{})(context.Background(), callReq(map[string]any{
+		"eval_id": "eval-123",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	var payload evalworkflow.RunEvidence
+	unmarshalTextResult(t, result, &payload)
+	if payload.EvalID != "eval-123" || len(payload.NextSteps) == 0 {
+		t.Fatalf("payload = %#v", payload)
 	}
 }
 

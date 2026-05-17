@@ -10,6 +10,7 @@ var allowedServices = map[string]struct{}{
 	"chat":                 {},
 	"ingestion":            {},
 	"debug":                {},
+	"eval":                 {},
 }
 
 func AllowedService(name string) bool {
@@ -57,6 +58,9 @@ var (
 		{Name: "rag_errors", Query: `sum(rate(rag_errors_total[5m]))`, Unit: "errors/s"},
 		{Name: "ollama_latency_p95", Query: `histogram_quantile(0.95, sum by (le) (rate(ollama_request_duration_seconds_bucket[5m])))`, Unit: "seconds"},
 		{Name: "qdrant_errors", Query: `sum(rate(qdrant_errors_total[5m]))`, Unit: "errors/s"},
+		{Name: "eval_runs_total", Query: `sum by (status) (rate(eval_runs_total[5m]))`, Unit: "runs/s"},
+		{Name: "eval_upstream_failures", Query: `sum by (endpoint, failure_type) (rate(eval_upstream_failures_total[5m]))`, Unit: "failures/s"},
+		{Name: "eval_stale_running_runs", Query: `max(eval_stale_running_runs)`, Unit: "runs"},
 	}
 
 	streamingAnalyticsQueries = []querySpec{
@@ -67,6 +71,16 @@ var (
 		{Name: "analytics_red_error_rate", Query: `sum(rate(http_requests_total{service="go-analytics-service",status=~"5.."}[5m]))`, Unit: "errors/s"},
 	}
 )
+
+func evalRunQueries(evalID string) []querySpec {
+	return []querySpec{
+		{Name: "eval_runs_total", Query: `sum by (status, requested_rerank) (rate(eval_runs_total[5m]))`, Unit: "runs/s"},
+		{Name: "eval_item_duration_p95", Query: `histogram_quantile(0.95, sum by (le, stage, requested_rerank) (rate(eval_item_duration_seconds_bucket[5m])))`, Unit: "seconds"},
+		{Name: "eval_upstream_failures", Query: `sum by (endpoint, failure_type, requested_rerank) (rate(eval_upstream_failures_total[5m]))`, Unit: "failures/s"},
+		{Name: "eval_upstream_duration_p95", Query: `histogram_quantile(0.95, sum by (le, endpoint, requested_rerank) (rate(eval_upstream_request_duration_seconds_bucket[5m])))`, Unit: "seconds"},
+		{Name: "eval_stale_running_runs", Query: `max(eval_stale_running_runs)`, Unit: "runs", Description: "Correlate these aggregate signals with eval_id-scoped logs."},
+	}
+}
 
 func serviceQueries(service string) []querySpec {
 	return []querySpec{

@@ -469,3 +469,13 @@ class EvalDB:
         )
         await self._db.commit()
         return cursor.rowcount
+
+    async def count_stale_running_evaluations(self, max_age_seconds: float) -> int:
+        cutoff = (datetime.now(_UTC) - timedelta(seconds=max_age_seconds)).isoformat()
+        cursor = await self._db.execute(
+            "SELECT COUNT(*) AS count FROM evaluations "
+            "WHERE status = 'running' AND created_at < ?",
+            (cutoff,),
+        )
+        row = await cursor.fetchone()
+        return int(row["count"])

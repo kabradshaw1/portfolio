@@ -53,7 +53,15 @@ func (s *Service) InvestigateCheckout(ctx context.Context, window time.Duration)
 func (s *Service) InvestigateAIPipeline(ctx context.Context, window time.Duration) EvidenceBundle {
 	b := s.bundle("investigate_ai_pipeline", window)
 	s.addPrometheusSignals(ctx, &b, aiPipelineQueries)
-	s.addLogs(ctx, &b, []string{"go-ai-service", "chat", "ingestion", "debug"}, "")
+	s.addLogs(ctx, &b, []string{"go-ai-service", "chat", "ingestion", "debug", "eval"}, "")
+	s.finalize(&b)
+	return b
+}
+
+func (s *Service) InvestigateEvalRun(ctx context.Context, window time.Duration, evalID string) EvidenceBundle {
+	b := s.bundle("investigate_eval_run", window)
+	s.addPrometheusSignals(ctx, &b, evalRunQueries(evalID))
+	s.addLogs(ctx, &b, []string{"eval"}, evalID)
 	s.finalize(&b)
 	return b
 }
