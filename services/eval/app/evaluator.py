@@ -109,6 +109,7 @@ async def build_evaluation_dataset(
     rag_client: RAGClient,
     collection: str | None,
     rerank: bool = False,
+    top_k: int = 5,
     run_context: EvalRunContext | None = None,
 ) -> list[dict]:
     """Run each golden item through the RAG pipeline and build evaluation rows."""
@@ -127,10 +128,13 @@ async def build_evaluation_dataset(
             )
         try:
             search_results = await rag_client.search(
-                query, collection=collection, limit=5, rerank=rerank
+                query, collection=collection, limit=top_k, rerank=rerank
             )
             chat_response = await rag_client.ask(
-                query, collection=collection, rerank=rerank
+                query,
+                collection=collection,
+                rerank=rerank,
+                retrieval_config={"top_k": top_k},
             )
         except Exception:
             eval_items_total.labels(
@@ -291,12 +295,18 @@ async def run_evaluation(
     llm_model: str,
     llm_api_key: str,
     rerank: bool = False,
+    top_k: int = 5,
     judge: JudgeFn | None = None,
     run_context: EvalRunContext | None = None,
 ) -> tuple[dict, list[dict]]:
     """Run a full first-party RAG evaluation."""
     raw_dataset = await build_evaluation_dataset(
-        items, rag_client, collection, rerank=rerank, run_context=run_context
+        items,
+        rag_client,
+        collection,
+        rerank=rerank,
+        top_k=top_k,
+        run_context=run_context,
     )
     if not raw_dataset:
         return {name: None for name in METRIC_NAMES}, []

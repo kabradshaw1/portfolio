@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GoldenItem(BaseModel):
@@ -28,12 +28,19 @@ class DatasetDetail(BaseModel):
     created_at: str
 
 
+class RetrievalConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    top_k: int | None = Field(default=None, ge=1, le=20, strict=True)
+
+
 class StartEvaluationRequest(BaseModel):
     dataset_id: str
     collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
     notes: str | None = Field(default=None, max_length=500)
     baseline_eval_id: str | None = None
     rerank: bool = False
+    retrieval_config: RetrievalConfig | None = None
     experiment_id: str | None = None
     experiment_label: str | None = Field(
         default=None, min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$"

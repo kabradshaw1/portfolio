@@ -39,6 +39,7 @@ from app.models import (
     EvaluationDashboard,
     MetricTrendPoint,
     QueryScore,
+    RetrievalConfig,
     StartEvaluationRequest,
     UpdateExperimentRequest,
 )
@@ -223,8 +224,30 @@ def _failure_message(
     )
 
 
+def _requested_retrieval_config(config: RetrievalConfig | None) -> dict:
+    return config.model_dump(exclude_none=True) if config else {}
+
+
+def _effective_top_k(
+    config: RetrievalConfig | None, captured_config: dict | None
+) -> int:
+    if config and config.top_k is not None:
+        return config.top_k
+
+    effective_config = (captured_config or {}).get("effective_retrieval_config", {})
+    effective_top_k = effective_config.get("top_k")
+    if type(effective_top_k) is int:
+        return effective_top_k
+
+    return 5
+
+
 async def _run_evaluation_task(
-    eval_id: str, items: list[dict], collection: str | None, rerank: bool = False
+    eval_id: str,
+    items: list[dict],
+    collection: str | None,
+    rerank: bool = False,
+    retrieval_config: RetrievalConfig | None = None,
 ):
     """Background task that runs the RAG quality evaluation."""
     db = await get_db()
@@ -257,8 +280,10 @@ async def _run_evaluation_task(
             ingestion_url=settings.ingestion_service_url,
             collection=coll_name,
             requested_rerank=rerank,
+            requested_retrieval_config=_requested_retrieval_config(retrieval_config),
         )
         await db.set_evaluation_config(eval_id, config)
+        effective_top_k = _effective_top_k(retrieval_config, config)
 
         aggregate, results = await asyncio.wait_for(
             run_evaluation(
@@ -270,6 +295,7 @@ async def _run_evaluation_task(
                 llm_model=settings.llm_model,
                 llm_api_key=settings.llm_api_key,
                 rerank=rerank,
+                top_k=effective_top_k,
                 run_context=run_context,
             ),
             timeout=settings.eval_run_max_seconds,
@@ -447,7 +473,12 @@ async def start_evaluation(
     )
 
     background_tasks.add_task(
-        _run_evaluation_task, eval_id, dataset["items"], collection, body.rerank
+        _run_evaluation_task,
+        eval_id,
+        dataset["items"],
+        collection,
+        body.rerank,
+        body.retrieval_config,
     )
 
     return {"id": eval_id, "status": "running"}
