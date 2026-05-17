@@ -9,7 +9,8 @@ import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
-from shared.auth import create_auth_dependency
+from shared.auth import AuthContext, create_auth_context_dependency
+from shared.rate_limits import FixedWindowRateLimiter, policies_from_settings
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -60,9 +61,67 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-require_auth = create_auth_dependency(settings.jwt_secret)
-
 _db: EvalDB | None = None
+
+
+def build_eval_rate_limiter() -> FixedWindowRateLimiter:
+    limiter = FixedWindowRateLimiter(
+        policies_from_settings(
+            {
+                "eval_run_create": {
+                    "operator": settings.eval_rate_limit_run_create_operator,
+                    "user": settings.eval_rate_limit_run_create_user,
+                    "anonymous": settings.eval_rate_limit_run_create_anonymous,
+                },
+                "eval_read": {
+                    "operator": settings.eval_rate_limit_read_operator,
+                    "user": settings.eval_rate_limit_read_user,
+                    "anonymous": settings.eval_rate_limit_read_anonymous,
+                },
+                "eval_write": {
+                    "operator": settings.eval_rate_limit_write_operator,
+                    "user": settings.eval_rate_limit_write_user,
+                    "anonymous": settings.eval_rate_limit_write_anonymous,
+                },
+            }
+        )
+    )
+    limiter.enabled = True
+    return limiter
+
+
+eval_rate_limiter = build_eval_rate_limiter()
+
+
+async def _resolve_auth_context(request: Request) -> AuthContext:
+    dependency = create_auth_context_dependency(settings.jwt_secret)
+    return await dependency(request, None)
+
+
+async def _enforce_eval_rate_limit(group: str, request: Request) -> AuthContext:
+    context = await _resolve_auth_context(request)
+    if not getattr(eval_rate_limiter, "enabled", True):
+        return context
+    decision = eval_rate_limiter.check(group, context)
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
+    return context
+
+
+async def enforce_eval_run_create(request: Request) -> AuthContext:
+    return await _enforce_eval_rate_limit("eval_run_create", request)
+
+
+async def enforce_eval_read(request: Request) -> AuthContext:
+    return await _enforce_eval_rate_limit("eval_read", request)
+
+
+async def enforce_eval_write(request: Request) -> AuthContext:
+    return await _enforce_eval_rate_limit("eval_write", request)
 
 
 async def get_db() -> EvalDB:
@@ -116,10 +175,14 @@ async def health():
 # --- Datasets ---
 
 
-@app.post("/datasets", status_code=201)
-@limiter.limit("10/minute")
+@app.post(
+    "/datasets",
+    status_code=201,
+    dependencies=[Depends(enforce_eval_write)],
+)
 async def create_dataset(
-    request: Request, body: CreateDatasetRequest, user_id: str = Depends(require_auth)
+    request: Request,
+    body: CreateDatasetRequest,
 ):
     db = await get_db()
     try:
@@ -132,9 +195,8 @@ async def create_dataset(
     return {"id": ds_id}
 
 
-@app.get("/datasets")
-@limiter.limit("30/minute")
-async def list_datasets(request: Request, user_id: str = Depends(require_auth)):
+@app.get("/datasets", dependencies=[Depends(enforce_eval_read)])
+async def list_datasets(request: Request):
     db = await get_db()
     datasets = await db.list_datasets()
     return {"datasets": datasets}
@@ -161,7 +223,10 @@ async def _run_evaluation_task(
 ):
     """Background task that runs the RAG quality evaluation."""
     db = await get_db()
-    rag_client = RAGClient(base_url=settings.chat_service_url)
+    rag_client = RAGClient(
+        base_url=settings.chat_service_url,
+        internal_token=settings.rag_internal_eval_token,
+    )
     start = time.perf_counter()
     coll_name = collection or "documents"
 
@@ -293,13 +358,15 @@ async def _validate_experiment_for_run(
         )
 
 
-@app.post("/evaluations", status_code=202)
-@limiter.limit("5/minute")
+@app.post(
+    "/evaluations",
+    status_code=202,
+    dependencies=[Depends(enforce_eval_run_create)],
+)
 async def start_evaluation(
     request: Request,
     body: StartEvaluationRequest,
     background_tasks: BackgroundTasks,
-    user_id: str = Depends(require_auth),
 ):
     db = await get_db()
     dataset = await db.get_dataset(body.dataset_id)
@@ -347,12 +414,14 @@ async def start_evaluation(
     return {"id": eval_id, "status": "running"}
 
 
-@app.post("/experiments", status_code=201)
-@limiter.limit("10/minute")
+@app.post(
+    "/experiments",
+    status_code=201,
+    dependencies=[Depends(enforce_eval_write)],
+)
 async def create_experiment(
     request: Request,
     body: CreateExperimentRequest,
-    user_id: str = Depends(require_auth),
 ):
     db = await get_db()
     dataset = await db.get_dataset(body.dataset_id)
@@ -381,14 +450,12 @@ async def create_experiment(
     return experiment
 
 
-@app.get("/experiments")
-@limiter.limit("30/minute")
+@app.get("/experiments", dependencies=[Depends(enforce_eval_read)])
 async def list_experiments(
     request: Request,
     dataset_id: str | None = None,
     collection: str | None = None,
     status: str | None = None,
-    user_id: str = Depends(require_auth),
 ):
     db = await get_db()
     experiments = await db.list_experiments(
@@ -397,11 +464,8 @@ async def list_experiments(
     return {"experiments": experiments}
 
 
-@app.get("/experiments/{experiment_id}")
-@limiter.limit("30/minute")
-async def get_experiment(
-    request: Request, experiment_id: str, user_id: str = Depends(require_auth)
-):
+@app.get("/experiments/{experiment_id}", dependencies=[Depends(enforce_eval_read)])
+async def get_experiment(request: Request, experiment_id: str):
     db = await get_db()
     experiment = await db.get_experiment(experiment_id)
     if not experiment:
@@ -409,13 +473,14 @@ async def get_experiment(
     return experiment
 
 
-@app.patch("/experiments/{experiment_id}")
-@limiter.limit("10/minute")
+@app.patch(
+    "/experiments/{experiment_id}",
+    dependencies=[Depends(enforce_eval_write)],
+)
 async def update_experiment(
     request: Request,
     experiment_id: str,
     body: UpdateExperimentRequest,
-    user_id: str = Depends(require_auth),
 ):
     db = await get_db()
     experiment = await db.get_experiment(experiment_id)
@@ -472,11 +537,11 @@ async def update_experiment(
     return updated
 
 
-@app.get("/experiments/{experiment_id}/runs")
-@limiter.limit("30/minute")
-async def list_experiment_runs(
-    request: Request, experiment_id: str, user_id: str = Depends(require_auth)
-):
+@app.get(
+    "/experiments/{experiment_id}/runs",
+    dependencies=[Depends(enforce_eval_read)],
+)
+async def list_experiment_runs(request: Request, experiment_id: str):
     db = await get_db()
     experiment = await db.get_experiment(experiment_id)
     if not experiment:
@@ -484,13 +549,14 @@ async def list_experiment_runs(
     return {"runs": experiment["runs"]}
 
 
-@app.post("/experiments/{experiment_id}/runs")
-@limiter.limit("10/minute")
+@app.post(
+    "/experiments/{experiment_id}/runs",
+    dependencies=[Depends(enforce_eval_write)],
+)
 async def attach_experiment_run(
     request: Request,
     experiment_id: str,
     body: AttachExperimentRunRequest,
-    user_id: str = Depends(require_auth),
 ):
     db = await get_db()
     try:
@@ -508,13 +574,11 @@ async def attach_experiment_run(
     return experiment
 
 
-@app.get("/evaluations")
-@limiter.limit("30/minute")
+@app.get("/evaluations", dependencies=[Depends(enforce_eval_read)])
 async def list_evaluations(
     request: Request,
     limit: int = 20,
     offset: int = 0,
-    user_id: str = Depends(require_auth),
 ):
     db = await get_db()
     evaluations = await db.list_evaluations(limit=limit, offset=offset)
@@ -588,12 +652,10 @@ def _empty_metric_trends() -> dict[str, list[MetricTrendPoint]]:
 # of treating "compare"/"history"/"dashboard" as an eval_id.
 
 
-@app.get("/evaluations/compare")
-@limiter.limit("30/minute")
+@app.get("/evaluations/compare", dependencies=[Depends(enforce_eval_read)])
 async def compare_evaluations(
     request: Request,
     ids: str,
-    user_id: str = Depends(require_auth),
 ):
     """Side-by-side comparison of 2-5 runs with deltas vs the first run.
 
@@ -646,13 +708,11 @@ async def compare_evaluations(
     return {"runs": runs, "deltas": deltas}
 
 
-@app.get("/evaluations/history")
-@limiter.limit("30/minute")
+@app.get("/evaluations/history", dependencies=[Depends(enforce_eval_read)])
 async def get_history(
     request: Request,
     dataset_id: str | None = None,
     collection: str | None = None,
-    user_id: str = Depends(require_auth),
 ):
     """Time-series of completed runs for a dataset+collection pair.
 
@@ -670,14 +730,16 @@ async def get_history(
     return {"runs": runs}
 
 
-@app.get("/evaluations/dashboard", response_model=EvaluationDashboard)
-@limiter.limit("30/minute")
+@app.get(
+    "/evaluations/dashboard",
+    response_model=EvaluationDashboard,
+    dependencies=[Depends(enforce_eval_read)],
+)
 async def get_dashboard(
     request: Request,
     dataset_id: str | None = None,
     collection: str | None = None,
     recent_limit: int = 10,
-    user_id: str = Depends(require_auth),
 ):
     """Compact dashboard summary for completed runs on one dataset+collection."""
     if not dataset_id or not collection:
@@ -719,11 +781,8 @@ async def get_dashboard(
     )
 
 
-@app.get("/evaluations/{eval_id}")
-@limiter.limit("30/minute")
-async def get_evaluation(
-    request: Request, eval_id: str, user_id: str = Depends(require_auth)
-):
+@app.get("/evaluations/{eval_id}", dependencies=[Depends(enforce_eval_read)])
+async def get_evaluation(request: Request, eval_id: str):
     db = await get_db()
     evaluation = await db.get_evaluation(eval_id)
     if not evaluation:

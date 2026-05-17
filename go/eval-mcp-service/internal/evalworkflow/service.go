@@ -2,8 +2,10 @@ package evalworkflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -51,6 +53,7 @@ type Service struct {
 	fixtures     Fixtures
 	pollInterval time.Duration
 	waitTimeout  time.Duration
+	maxBackoff   time.Duration
 }
 
 type StartExperimentInput struct {
@@ -136,13 +139,18 @@ type RecordConclusionInput struct {
 	Evidence     map[string]any
 }
 
-func New(api API, ingestion Ingestion, fixtures Fixtures, pollInterval, waitTimeout time.Duration) *Service {
+func New(api API, ingestion Ingestion, fixtures Fixtures, pollInterval, waitTimeout time.Duration, maxBackoff ...time.Duration) *Service {
+	backoff := 30 * time.Second
+	if len(maxBackoff) > 0 {
+		backoff = maxBackoff[0]
+	}
 	return &Service{
 		api:          api,
 		ingestion:    ingestion,
 		fixtures:     fixtures,
 		pollInterval: pollInterval,
 		waitTimeout:  waitTimeout,
+		maxBackoff:   backoff,
 	}
 }
 
@@ -246,6 +254,10 @@ func (s *Service) WaitForRun(ctx context.Context, evalID string) (WaitResult, er
 	if pollInterval <= 0 {
 		pollInterval = time.Second
 	}
+	maxBackoff := s.maxBackoff
+	if maxBackoff <= 0 {
+		maxBackoff = 30 * time.Second
+	}
 
 	timeoutTimer := time.NewTimer(timeout)
 	defer timeoutTimer.Stop()
@@ -261,6 +273,7 @@ func (s *Service) WaitForRun(ctx context.Context, evalID string) (WaitResult, er
 	}()
 
 	var latest evalapi.EvaluationDetail
+	backoff := pollInterval
 	for {
 		callCtx, cancelCall := context.WithCancel(ctx)
 		go func() {
@@ -278,8 +291,24 @@ func (s *Service) WaitForRun(ctx context.Context, evalID string) (WaitResult, er
 				return WaitResult{Run: latest, TimedOut: true}, waitTimeoutError(evalID, timeout, latest)
 			default:
 			}
+			var httpErr *evalapi.HTTPError
+			if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests {
+				delay := httpErr.RetryAfter
+				if delay <= 0 {
+					delay = minDuration(backoff, maxBackoff)
+					backoff = minDuration(backoff*2, maxBackoff)
+				}
+				if err := waitForDelay(ctx, timeoutFired, delay); err != nil {
+					if errors.Is(err, context.DeadlineExceeded) {
+						return WaitResult{Run: latest, TimedOut: true}, waitTimeoutError(evalID, timeout, latest)
+					}
+					return WaitResult{Run: latest}, err
+				}
+				continue
+			}
 			return WaitResult{Run: latest}, err
 		}
+		backoff = pollInterval
 		latest = run
 		if run.Status == "completed" || run.Status == "failed" {
 			return WaitResult{Run: run}, nil
@@ -292,6 +321,26 @@ func (s *Service) WaitForRun(ctx context.Context, evalID string) (WaitResult, er
 			return WaitResult{Run: latest, TimedOut: true}, waitTimeoutError(evalID, timeout, latest)
 		case <-time.After(pollInterval):
 		}
+	}
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func waitForDelay(ctx context.Context, timeoutFired <-chan struct{}, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timeoutFired:
+		return context.DeadlineExceeded
+	case <-timer.C:
+		return nil
 	}
 }
 

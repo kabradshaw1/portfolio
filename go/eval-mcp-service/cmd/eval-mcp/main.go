@@ -56,7 +56,7 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 	}
 	ingestion := ingestionapi.New(cfg.IngestionURL, cfg.APIToken, httpClient)
 	fixtures := fixturecatalog.New(cfg.DatasetFixtureRoots)
-	service := evalworkflow.New(api, ingestion, fixtures, cfg.PollInterval, cfg.WaitTimeout)
+	service := evalworkflow.New(api, ingestion, fixtures, cfg.PollInterval, cfg.WaitTimeout, cfg.MaxBackoff)
 	logger.Printf("eval MCP server running on stdio eval_api_url=%s ingestion_url=%s", cfg.EvalAPIURL, cfg.IngestionURL)
 	return runServer(ctx, &app{service: service, cfg: cfg})
 }

@@ -10,11 +10,19 @@ class RAGClient:
         self,
         base_url: str,
         transport: httpx.AsyncBaseTransport | None = None,
+        internal_token: str = "",
     ):
         client_kwargs = {"base_url": base_url, "timeout": 60.0}
         if transport:
             client_kwargs["transport"] = transport
         self._client = httpx.AsyncClient(**client_kwargs)
+        self._internal_token = internal_token
+
+    def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
+        headers = dict(extra or {})
+        if self._internal_token:
+            headers["X-RAG-Internal-Token"] = self._internal_token
+        return headers
 
     async def search(
         self,
@@ -28,7 +36,7 @@ class RAGClient:
         if collection:
             body["collection"] = collection
 
-        resp = await self._client.post("/search", json=body)
+        resp = await self._client.post("/search", json=body, headers=self._headers())
         resp.raise_for_status()
         return resp.json()["results"]
 
@@ -41,7 +49,9 @@ class RAGClient:
             body["collection"] = collection
 
         resp = await self._client.post(
-            "/chat", json=body, headers={"Accept": "application/json"}
+            "/chat",
+            json=body,
+            headers=self._headers({"Accept": "application/json"}),
         )
         resp.raise_for_status()
         return resp.json()

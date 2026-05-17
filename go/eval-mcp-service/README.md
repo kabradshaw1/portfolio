@@ -100,8 +100,14 @@ Restart Codex after adding the MCP server or changing the env file.
   defaults to `1m`.
 - `EVAL_MCP_POLL_INTERVAL`: polling interval, defaults to `1s`.
 - `EVAL_MCP_WAIT_TIMEOUT`: wait timeout, defaults to `5m`.
+- `EVAL_MCP_MAX_BACKOFF`: maximum delay after repeated eval API `429`
+  responses, defaults to `30s`.
 - `EVAL_MCP_DATASET_FIXTURE_ROOTS`: path-list of curated eval fixture roots,
   defaults to the repo `docs/product-catalog` directory.
+
+When eval API polling receives `429`, the client respects `Retry-After` before
+falling back to deterministic exponential backoff capped by
+`EVAL_MCP_MAX_BACKOFF`.
 
 ## Auth Notes
 

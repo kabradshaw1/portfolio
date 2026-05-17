@@ -45,6 +45,7 @@ type HTTPError struct {
 	Path       string
 	StatusCode int
 	Excerpt    string
+	RetryAfter time.Duration
 }
 
 func (e *HTTPError) Error() string {
@@ -353,6 +354,7 @@ func (c *Client) doOnce(ctx context.Context, method, path string, payload []byte
 			Path:       path,
 			StatusCode: resp.StatusCode,
 			Excerpt:    strings.TrimSpace(string(excerpt)),
+			RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After")),
 		}
 	}
 
@@ -363,4 +365,15 @@ func (c *Client) doOnce(ctx context.Context, method, path string, payload []byte
 		return fmt.Errorf("%s %s: decode response: %w", method, path, err)
 	}
 	return nil
+}
+
+func parseRetryAfter(value string) time.Duration {
+	if value == "" {
+		return 0
+	}
+	seconds, err := time.ParseDuration(value + "s")
+	if err != nil {
+		return 0
+	}
+	return seconds
 }
