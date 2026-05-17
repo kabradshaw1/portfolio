@@ -3,6 +3,7 @@ package evalapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -243,6 +244,25 @@ func TestHTTPErrorIncludesStatusAndExcerpt(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "status 401") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestHTTPErrorIncludesRetryAfter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		http.Error(w, "slow down", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "", server.Client())
+	_, err := client.GetEvaluation(context.Background(), "eval-1")
+
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("err = %T, want *HTTPError", err)
+	}
+	if httpErr.RetryAfter != 7*time.Second {
+		t.Fatalf("RetryAfter = %s", httpErr.RetryAfter)
 	}
 }
 

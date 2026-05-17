@@ -17,6 +17,7 @@ func TestFromEnvDefaults(t *testing.T) {
 	t.Setenv("EVAL_MCP_TOKEN_CACHE_PATH", "")
 	t.Setenv("EVAL_MCP_POLL_INTERVAL", "")
 	t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "")
+	t.Setenv("EVAL_MCP_MAX_BACKOFF", "")
 	t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "")
 	t.Setenv("EVAL_MCP_INGESTION_URL", "")
 	t.Setenv("EVAL_MCP_DATASET_FIXTURE_ROOTS", "")
@@ -52,6 +53,9 @@ func TestFromEnvDefaults(t *testing.T) {
 	if cfg.WaitTimeout != 5*time.Minute {
 		t.Fatalf("WaitTimeout = %s", cfg.WaitTimeout)
 	}
+	if cfg.MaxBackoff != 30*time.Second {
+		t.Fatalf("MaxBackoff = %s", cfg.MaxBackoff)
+	}
 	if cfg.TokenRefreshSkew != time.Minute {
 		t.Fatalf("TokenRefreshSkew = %s", cfg.TokenRefreshSkew)
 	}
@@ -69,6 +73,7 @@ func TestFromEnvOverrides(t *testing.T) {
 	t.Setenv("EVAL_MCP_TOKEN_CACHE_PATH", "/tmp/tokens.json")
 	t.Setenv("EVAL_MCP_POLL_INTERVAL", "250ms")
 	t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "30s")
+	t.Setenv("EVAL_MCP_MAX_BACKOFF", "2s")
 	t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "2m")
 	t.Setenv("EVAL_MCP_INGESTION_URL", "http://127.0.0.1:8000/ingestion")
 	t.Setenv("EVAL_MCP_DATASET_FIXTURE_ROOTS", "/tmp/a"+string(os.PathListSeparator)+"/tmp/b")
@@ -80,7 +85,7 @@ func TestFromEnvOverrides(t *testing.T) {
 	if cfg.EvalAPIURL != "http://127.0.0.1:9000/eval" || cfg.APIToken != "token-123" || cfg.AuthServiceURL != "http://127.0.0.1:8091/auth" || cfg.AuthEmail != "user@example.test" || cfg.AuthPassword != "secret" || cfg.TokenCachePath != "/tmp/tokens.json" {
 		t.Fatalf("unexpected config: %#v", cfg)
 	}
-	if cfg.PollInterval != 250*time.Millisecond || cfg.WaitTimeout != 30*time.Second || cfg.TokenRefreshSkew != 2*time.Minute {
+	if cfg.PollInterval != 250*time.Millisecond || cfg.WaitTimeout != 30*time.Second || cfg.MaxBackoff != 2*time.Second || cfg.TokenRefreshSkew != 2*time.Minute {
 		t.Fatalf("unexpected durations: %#v", cfg)
 	}
 	if cfg.IngestionURL != "http://127.0.0.1:8000/ingestion" {
@@ -97,6 +102,7 @@ func TestFromEnvStaticTokenBypassesAuthCredentials(t *testing.T) {
 	t.Setenv("EVAL_MCP_AUTH_PASSWORD", "")
 	t.Setenv("EVAL_MCP_POLL_INTERVAL", "")
 	t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "")
+	t.Setenv("EVAL_MCP_MAX_BACKOFF", "")
 	t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "")
 
 	cfg, err := FromEnv()
@@ -137,6 +143,7 @@ func TestFromEnvRequiresAuthConfigWithoutStaticToken(t *testing.T) {
 			t.Setenv("EVAL_MCP_AUTH_PASSWORD", tt.password)
 			t.Setenv("EVAL_MCP_POLL_INTERVAL", "")
 			t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "")
+			t.Setenv("EVAL_MCP_MAX_BACKOFF", "")
 			t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "")
 
 			_, err := FromEnv()
@@ -164,6 +171,10 @@ func TestFromEnvRejectsBadDuration(t *testing.T) {
 			key:  "EVAL_MCP_WAIT_TIMEOUT",
 		},
 		{
+			name: "max backoff",
+			key:  "EVAL_MCP_MAX_BACKOFF",
+		},
+		{
 			name: "token refresh skew",
 			key:  "EVAL_MCP_TOKEN_REFRESH_SKEW",
 		},
@@ -174,6 +185,7 @@ func TestFromEnvRejectsBadDuration(t *testing.T) {
 			t.Setenv("EVAL_API_TOKEN", "token-123")
 			t.Setenv("EVAL_MCP_POLL_INTERVAL", "")
 			t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "")
+			t.Setenv("EVAL_MCP_MAX_BACKOFF", "")
 			t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "")
 			t.Setenv(tt.key, "not-a-duration")
 
@@ -199,6 +211,10 @@ func TestFromEnvRejectsNonPositiveDurations(t *testing.T) {
 			key:  "EVAL_MCP_WAIT_TIMEOUT",
 		},
 		{
+			name: "max backoff",
+			key:  "EVAL_MCP_MAX_BACKOFF",
+		},
+		{
 			name: "token refresh skew",
 			key:  "EVAL_MCP_TOKEN_REFRESH_SKEW",
 		},
@@ -209,6 +225,7 @@ func TestFromEnvRejectsNonPositiveDurations(t *testing.T) {
 			t.Setenv("EVAL_API_TOKEN", "token-123")
 			t.Setenv("EVAL_MCP_POLL_INTERVAL", "")
 			t.Setenv("EVAL_MCP_WAIT_TIMEOUT", "")
+			t.Setenv("EVAL_MCP_MAX_BACKOFF", "")
 			t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "")
 			t.Setenv(tt.key, "0s")
 
