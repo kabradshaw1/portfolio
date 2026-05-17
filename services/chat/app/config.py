@@ -27,11 +27,11 @@ class Settings(BaseSettings):
     # Tiered route quotas.
     chat_rate_limit_ask_operator: str = "60/minute"
     chat_rate_limit_ask_user: str = "20/minute"
-    chat_rate_limit_ask_anonymous: str = "0/minute"
+    chat_rate_limit_ask_anonymous: str = "5/minute"
     chat_rate_limit_ask_internal_eval: str = "60/minute"
     chat_rate_limit_search_operator: str = "120/minute"
     chat_rate_limit_search_user: str = "30/minute"
-    chat_rate_limit_search_anonymous: str = "0/minute"
+    chat_rate_limit_search_anonymous: str = "10/minute"
     chat_rate_limit_search_internal_eval: str = "120/minute"
     rag_internal_eval_token: str = ""
 
