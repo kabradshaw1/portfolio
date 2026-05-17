@@ -16,6 +16,16 @@ spec:
                 name: grafana
                 port:
                   number: 3000
+    - host: observability-api.kylebradshaw.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
     - host: jaeger.kylebradshaw.dev
       http:
         paths:
