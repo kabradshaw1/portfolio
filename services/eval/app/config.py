@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     # SQLite database path
     db_path: str = "data/eval.db"
 
+    # Evaluation runtime guardrails
+    eval_run_max_seconds: float = 900.0
+    eval_stale_grace_seconds: float = 300.0
+
     # Auth
     jwt_secret: str = ""
 

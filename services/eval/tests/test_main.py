@@ -1,3 +1,4 @@
+import asyncio
 import time
 from unittest.mock import AsyncMock, patch
 
@@ -5,7 +6,7 @@ import httpx
 import jwt
 import pytest
 from app.config import settings
-from app.main import app
+from app.main import _run_evaluation_task, app, recover_stale_evaluations
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
@@ -822,6 +823,116 @@ def test_start_evaluation_records_baseline_rerank_metadata(
     mock_db.set_evaluation_config.assert_awaited_once_with(
         "eval-base", mock_capture.return_value
     )
+
+
+@pytest.mark.asyncio
+@patch("app.main.RAGClient")
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.get_db")
+async def test_run_evaluation_task_marks_http_timeout_failed(
+    mock_get_db, mock_capture, mock_run_evaluation, mock_rag_client
+):
+    mock_db = AsyncMock()
+    mock_get_db.return_value = mock_db
+    mock_capture.return_value = {"captured_at": "x"}
+    mock_run_evaluation.side_effect = httpx.ReadTimeout("rerank request timed out")
+    mock_rag_client.return_value.close = AsyncMock()
+
+    await _run_evaluation_task(
+        "eval-timeout",
+        [{"query": "q", "expected_answer": "a"}],
+        "documents",
+        rerank=True,
+    )
+
+    mock_db.fail_evaluation.assert_awaited_once()
+    eval_id, error = mock_db.fail_evaluation.await_args.args
+    assert eval_id == "eval-timeout"
+    assert "eval-timeout" in error
+    assert "documents" in error
+    assert "rerank=true" in error
+    assert "rerank request timed out" in error
+
+
+@pytest.mark.asyncio
+@patch("app.main.RAGClient")
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.get_db")
+async def test_run_evaluation_task_marks_overall_timeout_failed(
+    mock_get_db, mock_capture, mock_run_evaluation, mock_rag_client, monkeypatch
+):
+    mock_db = AsyncMock()
+    mock_get_db.return_value = mock_db
+    mock_capture.return_value = {"captured_at": "x"}
+    mock_rag_client.return_value.close = AsyncMock()
+
+    async def slow_evaluation(**_kwargs):
+        await asyncio.sleep(1)
+        return {"faithfulness": 1.0}, []
+
+    mock_run_evaluation.side_effect = slow_evaluation
+    monkeypatch.setattr(settings, "eval_run_max_seconds", 0.001)
+
+    await _run_evaluation_task(
+        "eval-max-runtime",
+        [{"query": "q", "expected_answer": "a"}],
+        "documents",
+        rerank=True,
+    )
+
+    mock_db.fail_evaluation.assert_awaited_once()
+    eval_id, error = mock_db.fail_evaluation.await_args.args
+    assert eval_id == "eval-max-runtime"
+    assert "timed out" in error
+    assert "eval-max-runtime" in error
+    assert "documents" in error
+    assert "rerank=true" in error
+
+
+@pytest.mark.asyncio
+@patch("app.main.RAGClient")
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.get_db")
+async def test_run_evaluation_task_marks_cancellation_failed(
+    mock_get_db, mock_capture, mock_run_evaluation, mock_rag_client
+):
+    mock_db = AsyncMock()
+    mock_get_db.return_value = mock_db
+    mock_capture.return_value = {"captured_at": "x"}
+    mock_run_evaluation.side_effect = asyncio.CancelledError
+    mock_rag_client.return_value.close = AsyncMock()
+
+    with pytest.raises(asyncio.CancelledError):
+        await _run_evaluation_task(
+            "eval-cancelled",
+            [{"query": "q", "expected_answer": "a"}],
+            "documents",
+            rerank=True,
+        )
+
+    mock_db.fail_evaluation.assert_awaited_once()
+    eval_id, error = mock_db.fail_evaluation.await_args.args
+    assert eval_id == "eval-cancelled"
+    assert "cancelled" in error
+    assert "eval-cancelled" in error
+    assert "documents" in error
+    assert "rerank=true" in error
+
+
+@pytest.mark.asyncio
+@patch("app.main.get_db")
+async def test_recover_stale_evaluations_uses_max_runtime_plus_grace(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.fail_stale_running_evaluations.return_value = 2
+    mock_get_db.return_value = mock_db
+
+    await recover_stale_evaluations()
+
+    expected_age = settings.eval_run_max_seconds + settings.eval_stale_grace_seconds
+    mock_db.fail_stale_running_evaluations.assert_awaited_once_with(expected_age)
 
 
 @patch("app.main.validate_collection_exists", new_callable=AsyncMock)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -132,6 +133,15 @@ async def get_db() -> EvalDB:
     return _db
 
 
+@app.on_event("startup")
+async def recover_stale_evaluations():
+    db = await get_db()
+    max_age = settings.eval_run_max_seconds + settings.eval_stale_grace_seconds
+    recovered = await db.fail_stale_running_evaluations(max_age)
+    if recovered:
+        logger.warning("Recovered %s stale running evaluation(s)", recovered)
+
+
 @app.on_event("shutdown")
 async def shutdown():
     if _db:
@@ -195,6 +205,19 @@ async def list_datasets(request: Request):
 # --- Evaluations ---
 
 
+def _failure_message(
+    eval_id: str,
+    collection: str,
+    rerank: bool,
+    elapsed_seconds: float,
+    reason: str,
+) -> str:
+    return (
+        f"evaluation {eval_id} failed for collection={collection} "
+        f"rerank={str(rerank).lower()} after {elapsed_seconds:.2f}s: {reason}"
+    )
+
+
 async def _run_evaluation_task(
     eval_id: str, items: list[dict], collection: str | None, rerank: bool = False
 ):
@@ -219,15 +242,18 @@ async def _run_evaluation_task(
         )
         await db.set_evaluation_config(eval_id, config)
 
-        aggregate, results = await run_evaluation(
-            items=items,
-            rag_client=rag_client,
-            collection=collection,
-            llm_provider=settings.llm_provider,
-            llm_base_url=settings.llm_base_url,
-            llm_model=settings.llm_model,
-            llm_api_key=settings.llm_api_key,
-            rerank=rerank,
+        aggregate, results = await asyncio.wait_for(
+            run_evaluation(
+                items=items,
+                rag_client=rag_client,
+                collection=collection,
+                llm_provider=settings.llm_provider,
+                llm_base_url=settings.llm_base_url,
+                llm_model=settings.llm_model,
+                llm_api_key=settings.llm_api_key,
+                rerank=rerank,
+            ),
+            timeout=settings.eval_run_max_seconds,
         )
         await db.complete_evaluation(
             eval_id, aggregate_scores=aggregate, results=results
@@ -241,9 +267,33 @@ async def _run_evaluation_task(
                 eval_quality_score.labels(metric=metric_name).set(score)
 
         logger.info("Evaluation %s completed: %s", eval_id, aggregate)
+    except TimeoutError:
+        elapsed = time.perf_counter() - start
+        error = _failure_message(
+            eval_id,
+            coll_name,
+            rerank,
+            elapsed,
+            f"timed out after {settings.eval_run_max_seconds:.2f}s max runtime",
+        )
+        logger.error("%s", error)
+        await db.fail_evaluation(eval_id, error)
+    except asyncio.CancelledError:
+        elapsed = time.perf_counter() - start
+        error = _failure_message(eval_id, coll_name, rerank, elapsed, "cancelled")
+        logger.error("%s", error)
+        await db.fail_evaluation(eval_id, error)
+        raise
     except Exception as e:
         logger.error("Evaluation %s failed: %s", eval_id, e, exc_info=True)
-        await db.fail_evaluation(eval_id, error=str(e))
+        error = _failure_message(
+            eval_id,
+            coll_name,
+            rerank,
+            time.perf_counter() - start,
+            str(e),
+        )
+        await db.fail_evaluation(eval_id, error)
     finally:
         await rag_client.close()
 
