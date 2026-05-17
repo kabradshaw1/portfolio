@@ -93,6 +93,15 @@ async def embed_texts(
     return embeddings
 
 
+async def get_embedding(
+    text: str,
+    provider: EmbeddingProvider,
+    model: str,
+) -> list[float]:
+    embeddings = await embed_texts(texts=[text], provider=provider, model=model)
+    return embeddings[0]
+
+
 async def stream_response(
     prompt: str,
     model: str,
@@ -141,12 +150,11 @@ async def retrieve_chunks(
 ) -> RetrievalResult:
     """Embed question and retrieve ranked chunks from Qdrant."""
     retrieve_start = time.perf_counter()
-    vectors = await embed_texts(
-        texts=[question],
+    query_vector = await get_embedding(
+        text=question,
         provider=embedding_provider,
         model=embedding_model,
     )
-    query_vector = vectors[0]
 
     retriever = QdrantRetriever(
         host=qdrant_host, port=qdrant_port, collection_name=collection_name
@@ -199,6 +207,8 @@ async def retrieve_chunks(
                 collection_name=collection_name,
                 error=semantic_error,
             )
+
+    result = _with_rerank_metadata(result, {"top_k": top_k})
 
     if rerank and not settings.rerank_enabled:
         result = _with_rerank_metadata(

@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider, get_llm_provider
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from qdrant_client import QdrantClient
 from shared.auth import AuthContext, create_auth_context_dependency
 from shared.llm.admission import AdmissionRejected
@@ -124,9 +124,16 @@ _embedding_provider = get_embedding_provider(
 )
 
 
+class RetrievalConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    top_k: int | None = Field(default=None, ge=1, le=20, strict=True)
+
+
 class ChatRequest(BaseModel):
     question: str = Field(max_length=2000)
     collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
+    retrieval_config: RetrievalConfig | None = None
     rerank: bool = False
 
 
@@ -135,6 +142,12 @@ class SearchRequest(BaseModel):
     collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
     limit: int = Field(default=5, ge=1, le=20)
     rerank: bool = False
+
+
+def _effective_top_k(config: RetrievalConfig | None) -> int:
+    if config is not None and config.top_k is not None:
+        return config.top_k
+    return settings.top_k
 
 
 @app.get("/config")
@@ -201,6 +214,7 @@ async def chat(
     auth_context: AuthContext = Depends(enforce_chat_ask),
 ):
     wants_json = request.headers.get("accept", "").startswith("application/json")
+    effective_top_k = _effective_top_k(body.retrieval_config)
 
     if wants_json:
         try:
@@ -216,7 +230,7 @@ async def chat(
                 qdrant_host=settings.qdrant_host,
                 qdrant_port=settings.qdrant_port,
                 collection_name=body.collection or settings.collection_name,
-                top_k=settings.top_k,
+                top_k=effective_top_k,
                 rerank=body.rerank,
             ):
                 if "token" in event:
@@ -253,7 +267,7 @@ async def chat(
                 qdrant_host=settings.qdrant_host,
                 qdrant_port=settings.qdrant_port,
                 collection_name=body.collection or settings.collection_name,
-                top_k=settings.top_k,
+                top_k=effective_top_k,
                 rerank=body.rerank,
             ):
                 yield {"data": json.dumps(event)}

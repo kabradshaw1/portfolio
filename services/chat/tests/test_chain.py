@@ -371,6 +371,39 @@ async def test_retrieve_chunks_returns_hybrid_metadata(
     assert result.chunks[0]["text"] == "RFC 7231"
 
 
+@pytest.mark.asyncio
+@patch("app.chain.QdrantRetriever")
+@patch("app.chain.get_sparse_encoder")
+@patch("app.chain.get_embedding")
+async def test_retrieve_chunks_metadata_includes_final_top_k(
+    mock_get_embedding, mock_get_sparse_encoder, mock_retriever_cls
+):
+    mock_get_embedding.return_value = [0.1] * 768
+    mock_get_sparse_encoder.return_value.embed.return_value = [[0.2] * 10]
+    retriever = mock_retriever_cls.return_value
+    retriever.search_hybrid.return_value = RetrievalResult(
+        chunks=[],
+        metadata={
+            "retrieval_mode": "hybrid",
+            "retrieval_fallback": False,
+            "fusion": "rrf",
+        },
+    )
+
+    result = await retrieve_chunks(
+        question="hi",
+        embedding_provider=AsyncMock(),
+        embedding_model="nomic-embed-text",
+        qdrant_host="qdrant",
+        qdrant_port=6333,
+        collection_name="documents",
+        top_k=3,
+        rerank=False,
+    )
+
+    assert result.metadata["top_k"] == 3
+
+
 @patch("app.chain.logger", create=True)
 @patch("app.chain.get_sparse_encoder", create=True)
 @patch("app.chain.QdrantRetriever")
