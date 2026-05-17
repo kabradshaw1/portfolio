@@ -35,10 +35,10 @@ def test_settings_include_rate_limit_and_internal_eval_defaults():
 
     assert settings.chat_rate_limit_ask_operator == "60/minute"
     assert settings.chat_rate_limit_ask_user == "20/minute"
-    assert settings.chat_rate_limit_ask_anonymous == "0/minute"
+    assert settings.chat_rate_limit_ask_anonymous == "5/minute"
     assert settings.chat_rate_limit_ask_internal_eval == "60/minute"
     assert settings.chat_rate_limit_search_operator == "120/minute"
     assert settings.chat_rate_limit_search_user == "30/minute"
-    assert settings.chat_rate_limit_search_anonymous == "0/minute"
+    assert settings.chat_rate_limit_search_anonymous == "10/minute"
     assert settings.chat_rate_limit_search_internal_eval == "120/minute"
     assert settings.rag_internal_eval_token == ""
