@@ -1326,6 +1326,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-images, e2e-mocked]
     if: github.event_name == 'push' && github.ref == 'refs/heads/qa'
+    concurrency:
+      group: shared-runtime-deploy
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -1345,6 +1348,16 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           SSH="ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key kyle@100.82.52.82"
+
+          dump_migration_debug() {
+            local namespace="$1"
+            local job="$2"
+            echo "::group::Debug ${namespace}/${job}"
+            $SSH "kubectl describe job $job -n $namespace" || true
+            $SSH "kubectl describe pod -n $namespace -l job-name=$job" || true
+            $SSH "kubectl get events -n $namespace --sort-by=.lastTimestamp | tail -80" || true
+            echo "::endgroup::"
+          }
 
           # Create QA databases if not exists
           $SSH "kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"SELECT 1 FROM pg_database WHERE datname='ecommercedb_qa'\" | grep -q 1 || kubectl exec deployment/postgres -n java-tasks -- psql -U taskuser -d taskdb -c \"CREATE DATABASE ecommercedb_qa;\""
@@ -1415,13 +1428,15 @@ jobs:
           done
 
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/auth-service-migrate.yml | $SSH "kubectl apply -f -"
-          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce-qa"; then
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-auth-migrate -n go-ecommerce-qa"; then
+            dump_migration_debug go-ecommerce-qa go-auth-migrate
             $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/order-service-migrate.yml | $SSH "kubectl apply -f -"
-          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-order-migrate -n go-ecommerce-qa"; then
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-order-migrate -n go-ecommerce-qa"; then
+            dump_migration_debug go-ecommerce-qa go-order-migrate
             $SSH "kubectl logs job/go-order-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
@@ -1433,25 +1448,29 @@ jobs:
           $SSH "kubectl rollout status deployment/go-order-service -n go-ecommerce-qa --timeout=60s"
 
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/product-service-migrate.yml | $SSH "kubectl apply -f -"
-          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-product-migrate -n go-ecommerce-qa"; then
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-product-migrate -n go-ecommerce-qa"; then
+            dump_migration_debug go-ecommerce-qa go-product-migrate
             $SSH "kubectl logs job/go-product-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/cart-service-migrate.yml | $SSH "kubectl apply -f -"
-          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-cart-migrate -n go-ecommerce-qa"; then
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-cart-migrate -n go-ecommerce-qa"; then
+            dump_migration_debug go-ecommerce-qa go-cart-migrate
             $SSH "kubectl logs job/go-cart-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/payment-service-migrate.yml | $SSH "kubectl apply -f -"
-          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-payment-migrate -n go-ecommerce-qa"; then
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-payment-migrate -n go-ecommerce-qa"; then
+            dump_migration_debug go-ecommerce-qa go-payment-migrate
             $SSH "kubectl logs job/go-payment-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
 
           sed 's/namespace: go-ecommerce$/namespace: go-ecommerce-qa/' go/k8s/jobs/order-projector-migrate.yml | $SSH "kubectl apply -f -"
-          if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-projector-migrate -n go-ecommerce-qa"; then
+          if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-projector-migrate -n go-ecommerce-qa"; then
+            dump_migration_debug go-ecommerce-qa go-projector-migrate
             $SSH "kubectl logs job/go-projector-migrate -n go-ecommerce-qa --tail=200" || true
             exit 1
           fi
@@ -1552,6 +1571,9 @@ jobs:
       always() &&
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       !contains(needs.*.result, 'failure')
+    concurrency:
+      group: shared-runtime-deploy
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -1578,8 +1600,20 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           SSH="ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key kyle@100.82.52.82"
 
+          dump_migration_debug() {
+            local namespace="$1"
+            local job="$2"
+            echo "::group::Debug ${namespace}/${job}"
+            $SSH "kubectl describe job $job -n $namespace" || true
+            $SSH "kubectl describe pod -n $namespace -l job-name=$job" || true
+            $SSH "kubectl get events -n $namespace --sort-by=.lastTimestamp | tail -80" || true
+            echo "::endgroup::"
+          }
+
           # Always apply namespaces and manifests (cheap, idempotent)
+          # shellcheck disable=SC2044
           for f in $(find k8s go/k8s java/k8s -name 'namespace.yml' 2>/dev/null); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          # shellcheck disable=SC2044
           for f in $(find k8s/ai-services -name '*.yml' -not -name 'namespace.yml' -not -path '*/jobs/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
           $SSH "minikube ssh 'sudo mkdir -p /backups/postgres && sudo chmod 777 /backups/postgres'"
           # Bootstrap Jobs have immutable spec.template — a stale Job from a
@@ -1587,7 +1621,9 @@ jobs:
           # with `field is immutable`. Delete first; mirrors the pattern used
           # for Go migrate Jobs further down.
           $SSH "kubectl delete job -n java-tasks pgbouncer-auth-bootstrap postgres-replicator-bootstrap postgres-grafana-reader postgres-extensions-bootstrap --ignore-not-found --wait=true"
+          # shellcheck disable=SC2044
           for f in $(find java/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
+          # shellcheck disable=SC2044
           for f in $(find k8s/monitoring -name '*.yml' -not -name 'namespace.yml'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 
           # Seed Stripe secrets for payment-service in prod.
@@ -1615,6 +1651,7 @@ jobs:
           # each one into a regular Secret in the same namespace.
           kubectl kustomize k8s/secrets | $SSH "kubectl apply -f -"
 
+          # shellcheck disable=SC2044
           for f in $(find go/k8s -name '*.yml' -not -name 'namespace.yml' -not -path '*/secrets/*' -not -path '*/jobs/*'); do echo '---'; cat "$f"; done | $SSH "kubectl apply -f -"
 
           # Only restart deployments that have new images
@@ -1666,15 +1703,17 @@ jobs:
             # ecommercedb, and the order-service seed inserts into the users table
             # which is created by auth-service's migrations.
             $SSH "kubectl apply -f -" < go/k8s/jobs/auth-service-migrate.yml
-            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-auth-migrate -n go-ecommerce"; then
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-auth-migrate -n go-ecommerce"; then
               echo "go-auth-migrate failed. Logs follow:"
+              dump_migration_debug go-ecommerce go-auth-migrate
               $SSH "kubectl logs job/go-auth-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
 
             $SSH "kubectl apply -f -" < go/k8s/jobs/order-service-migrate.yml
-            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-order-migrate -n go-ecommerce"; then
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-order-migrate -n go-ecommerce"; then
               echo "go-order-migrate failed. Logs follow:"
+              dump_migration_debug go-ecommerce go-order-migrate
               $SSH "kubectl logs job/go-order-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
@@ -1686,29 +1725,33 @@ jobs:
             $SSH "kubectl rollout status deployment/go-order-service -n go-ecommerce --timeout=60s"
 
             $SSH "kubectl apply -f -" < go/k8s/jobs/product-service-migrate.yml
-            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-product-migrate -n go-ecommerce"; then
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-product-migrate -n go-ecommerce"; then
               echo "go-product-migrate failed. Logs follow:"
+              dump_migration_debug go-ecommerce go-product-migrate
               $SSH "kubectl logs job/go-product-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
 
             $SSH "kubectl apply -f -" < go/k8s/jobs/cart-service-migrate.yml
-            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-cart-migrate -n go-ecommerce"; then
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-cart-migrate -n go-ecommerce"; then
               echo "go-cart-migrate failed. Logs follow:"
+              dump_migration_debug go-ecommerce go-cart-migrate
               $SSH "kubectl logs job/go-cart-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
 
             $SSH "kubectl apply -f -" < go/k8s/jobs/payment-service-migrate.yml
-            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-payment-migrate -n go-ecommerce"; then
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-payment-migrate -n go-ecommerce"; then
               echo "go-payment-migrate failed. Logs follow:"
+              dump_migration_debug go-ecommerce go-payment-migrate
               $SSH "kubectl logs job/go-payment-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
 
             $SSH "kubectl apply -f -" < go/k8s/jobs/order-projector-migrate.yml
-            if ! $SSH "kubectl wait --for=condition=complete --timeout=180s job/go-projector-migrate -n go-ecommerce"; then
+            if ! $SSH "kubectl wait --for=condition=complete --timeout=600s job/go-projector-migrate -n go-ecommerce"; then
               echo "go-projector-migrate failed. Logs follow:"
+              dump_migration_debug go-ecommerce go-projector-migrate
               $SSH "kubectl logs job/go-projector-migrate -n go-ecommerce --tail=200" || true
               exit 1
             fi
