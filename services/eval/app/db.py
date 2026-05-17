@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 
@@ -456,3 +456,16 @@ class EvalDB:
             (error, now, eval_id),
         )
         await self._db.commit()
+
+    async def fail_stale_running_evaluations(self, max_age_seconds: float) -> int:
+        now = datetime.now(_UTC)
+        cutoff = (now - timedelta(seconds=max_age_seconds)).isoformat()
+        error = "evaluation exceeded max runtime and was recovered as stale"
+        cursor = await self._db.execute(
+            "UPDATE evaluations "
+            "SET status = 'failed', error = ?, completed_at = ? "
+            "WHERE status = 'running' AND created_at < ?",
+            (error, now.isoformat(), cutoff),
+        )
+        await self._db.commit()
+        return cursor.rowcount

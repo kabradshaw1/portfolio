@@ -275,7 +275,7 @@ func (s *Service) WaitForRun(ctx context.Context, evalID string) (WaitResult, er
 		if err != nil {
 			select {
 			case <-timeoutFired:
-				return WaitResult{Run: latest, TimedOut: true}, waitTimeoutError(evalID, timeout, latest.Status)
+				return WaitResult{Run: latest, TimedOut: true}, waitTimeoutError(evalID, timeout, latest)
 			default:
 			}
 			return WaitResult{Run: latest}, err
@@ -289,7 +289,7 @@ func (s *Service) WaitForRun(ctx context.Context, evalID string) (WaitResult, er
 		case <-ctx.Done():
 			return WaitResult{Run: latest}, ctx.Err()
 		case <-timeoutFired:
-			return WaitResult{Run: latest, TimedOut: true}, waitTimeoutError(evalID, timeout, latest.Status)
+			return WaitResult{Run: latest, TimedOut: true}, waitTimeoutError(evalID, timeout, latest)
 		case <-time.After(pollInterval):
 		}
 	}
@@ -421,8 +421,26 @@ func (s *Service) RecordConclusion(ctx context.Context, in RecordConclusionInput
 	return err
 }
 
-func waitTimeoutError(evalID string, timeout time.Duration, latestStatus string) error {
-	return fmt.Errorf("wait for evaluation %q timed out after %s with latest status %q", evalID, timeout, latestStatus)
+func waitTimeoutError(evalID string, timeout time.Duration, latest evalapi.EvaluationDetail) error {
+	parts := []string{fmt.Sprintf("latest status %q", latest.Status)}
+	if latest.CreatedAt != "" {
+		parts = append(parts, fmt.Sprintf("created_at %q", latest.CreatedAt))
+	}
+	if latest.CompletedAt != nil {
+		parts = append(parts, fmt.Sprintf("completed_at %q", *latest.CompletedAt))
+	}
+	if latest.Collection != nil {
+		parts = append(parts, fmt.Sprintf("collection %q", *latest.Collection))
+	}
+	if latest.Error != nil {
+		parts = append(parts, fmt.Sprintf("error %q", *latest.Error))
+	}
+	return fmt.Errorf(
+		"wait for evaluation %q timed out after %s with %s; eval API run may still finish after the MCP wait timeout",
+		evalID,
+		timeout,
+		strings.Join(parts, ", "),
+	)
 }
 
 func validateCompareIDs(ids []string) error {

@@ -113,4 +113,3 @@ needed to document returned retrieval metadata.
 
 This changes persisted eval result shape and production behavior. Implement it
 in a feature worktree targeting `qa`, not directly on `qa`.
-

@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 import pytest_asyncio
 from app.db import EvalDB
@@ -108,6 +110,43 @@ async def test_fail_evaluation(db):
     evaluation = await db.get_evaluation(eval_id)
     assert evaluation["status"] == "failed"
     assert evaluation["error"] == "LLM timeout"
+
+
+@pytest.mark.asyncio
+async def test_fail_stale_running_evaluations_only_marks_old_running_rows(db):
+    ds_id = await db.create_dataset(name="ds-stale", items=SIMPLE_ITEM)
+    old_running_id = await db.create_evaluation(
+        dataset_id=ds_id, collection="documents"
+    )
+    fresh_running_id = await db.create_evaluation(
+        dataset_id=ds_id, collection="documents"
+    )
+    completed_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+    failed_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+
+    old_time = (datetime.now(UTC) - timedelta(minutes=30)).isoformat()
+    await db._db.execute(  # noqa: SLF001 - test sets up precise stale timestamps
+        "UPDATE evaluations SET created_at = ? WHERE id = ?",
+        (old_time, old_running_id),
+    )
+    await db._db.commit()  # noqa: SLF001
+    await db.complete_evaluation(completed_id, aggregate_scores={}, results=[])
+    await db.fail_evaluation(failed_id, error="already failed")
+
+    recovered = await db.fail_stale_running_evaluations(max_age_seconds=600)
+
+    assert recovered == 1
+    old_running = await db.get_evaluation(old_running_id)
+    fresh_running = await db.get_evaluation(fresh_running_id)
+    completed = await db.get_evaluation(completed_id)
+    failed = await db.get_evaluation(failed_id)
+
+    assert old_running["status"] == "failed"
+    assert "exceeded max runtime" in old_running["error"]
+    assert fresh_running["status"] == "running"
+    assert completed["status"] == "completed"
+    assert failed["status"] == "failed"
+    assert failed["error"] == "already failed"
 
 
 @pytest.mark.asyncio
