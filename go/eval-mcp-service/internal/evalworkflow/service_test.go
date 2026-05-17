@@ -170,6 +170,39 @@ func TestWaitForRunTimesOutWithLatestStatus(t *testing.T) {
 	}
 }
 
+func TestWaitForRunTimeoutIncludesLatestRunMetadata(t *testing.T) {
+	ctx := context.Background()
+	collection := "documents"
+	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
+		"eval-1": {{
+			ID:         "eval-1",
+			Status:     "running",
+			Collection: &collection,
+			CreatedAt:  "2026-05-17T01:10:15Z",
+		}},
+	}}
+	svc := newTestServiceWithTiming(api, time.Millisecond, 3*time.Millisecond)
+
+	got, err := svc.WaitForRun(ctx, "eval-1")
+	if err == nil {
+		t.Fatal("WaitForRun error = nil, want timeout")
+	}
+	if !got.TimedOut || got.Run.Status != "running" {
+		t.Fatalf("WaitResult = %#v", got)
+	}
+	for _, want := range []string{
+		`evaluation "eval-1"`,
+		`latest status "running"`,
+		`created_at "2026-05-17T01:10:15Z"`,
+		`collection "documents"`,
+		"eval API run may still finish after the MCP wait timeout",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("WaitForRun error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
 func TestWaitForRunCancelsGetEvaluationWithWaitTimeout(t *testing.T) {
 	parentCtx, cancelParent := context.WithCancel(context.Background())
 	defer cancelParent()
