@@ -162,3 +162,43 @@ async def test_ask_timeout():
 
     with pytest.raises(httpx.ConnectTimeout):
         await client.ask("test", collection=None)
+
+
+@pytest.mark.asyncio
+async def test_internal_token_sent_to_search_and_chat_when_configured(
+    mock_search_response, mock_chat_response
+):
+    seen = []
+
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, request.headers.get("x-rag-internal-token")))
+        if request.url.path == "/search":
+            return httpx.Response(200, json=mock_search_response)
+        return httpx.Response(200, json=mock_chat_response)
+
+    transport = httpx.MockTransport(mock_handler)
+    client = RAGClient(
+        base_url="http://chat:8000",
+        transport=transport,
+        internal_token="test-internal-token",
+    )
+
+    await client.search("test", collection=None, limit=5)
+    await client.ask("test", collection=None)
+
+    assert seen == [
+        ("/search", "test-internal-token"),
+        ("/chat", "test-internal-token"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_internal_token_omitted_when_not_configured(mock_search_response):
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        assert "x-rag-internal-token" not in request.headers
+        return httpx.Response(200, json=mock_search_response)
+
+    transport = httpx.MockTransport(mock_handler)
+    client = RAGClient(base_url="http://chat:8000", transport=transport)
+
+    await client.search("test", collection=None, limit=5)

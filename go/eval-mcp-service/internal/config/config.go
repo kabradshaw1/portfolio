@@ -15,6 +15,7 @@ const (
 	defaultTokenCachePath   = "data/eval-mcp-auth.json"
 	defaultPollInterval     = time.Second
 	defaultWaitTimeout      = 5 * time.Minute
+	defaultMaxBackoff       = 30 * time.Second
 	defaultTokenRefreshSkew = time.Minute
 )
 
@@ -28,6 +29,7 @@ type Config struct {
 	TokenCachePath      string
 	PollInterval        time.Duration
 	WaitTimeout         time.Duration
+	MaxBackoff          time.Duration
 	TokenRefreshSkew    time.Duration
 	DatasetFixtureRoots []string
 }
@@ -41,6 +43,10 @@ func FromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	maxBackoff, err := durationEnv("EVAL_MCP_MAX_BACKOFF", defaultMaxBackoff)
+	if err != nil {
+		return Config{}, err
+	}
 	tokenRefreshSkew, err := durationEnv("EVAL_MCP_TOKEN_REFRESH_SKEW", defaultTokenRefreshSkew)
 	if err != nil {
 		return Config{}, err
@@ -50,6 +56,9 @@ func FromEnv() (Config, error) {
 	}
 	if waitTimeout <= 0 {
 		return Config{}, fmt.Errorf("EVAL_MCP_WAIT_TIMEOUT must be positive")
+	}
+	if maxBackoff <= 0 {
+		return Config{}, fmt.Errorf("EVAL_MCP_MAX_BACKOFF must be positive")
 	}
 	if tokenRefreshSkew <= 0 {
 		return Config{}, fmt.Errorf("EVAL_MCP_TOKEN_REFRESH_SKEW must be positive")
@@ -77,6 +86,7 @@ func FromEnv() (Config, error) {
 		TokenCachePath:      getenv("EVAL_MCP_TOKEN_CACHE_PATH", defaultTokenCachePath),
 		PollInterval:        pollInterval,
 		WaitTimeout:         waitTimeout,
+		MaxBackoff:          maxBackoff,
 		TokenRefreshSkew:    tokenRefreshSkew,
 		DatasetFixtureRoots: datasetFixtureRoots(),
 	}, nil

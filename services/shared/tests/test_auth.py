@@ -2,11 +2,13 @@
 
 import time
 
+import anyio
 import jwt
 from fastapi import Depends, FastAPI
+from starlette.requests import Request
 from starlette.testclient import TestClient
 
-from shared.auth import create_auth_dependency
+from shared.auth import create_auth_context_dependency, create_auth_dependency
 
 SECRET = "test-secret"
 ALGORITHM = "HS256"
@@ -20,6 +22,36 @@ def _make_token(secret: str, sub: str = "user-123", exp_offset: int = 3600) -> s
         "exp": int(time.time()) + exp_offset,
     }
     return jwt.encode(payload, secret, algorithm=ALGORITHM)
+
+
+def _token(
+    secret: str,
+    sub: str = "user-123",
+    email: str | None = "test@example.com",
+    exp_offset: int = 3600,
+) -> str:
+    payload = {
+        "sub": sub,
+        "exp": int(time.time()) + exp_offset,
+    }
+    if email is not None:
+        payload["email"] = email
+    return jwt.encode(payload, secret, algorithm=ALGORITHM)
+
+
+def _request(headers: dict[str, str] | None = None) -> Request:
+    raw_headers = [
+        (key.lower().encode("latin-1"), value.encode("latin-1"))
+        for key, value in (headers or {}).items()
+    ]
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/protected",
+            "headers": raw_headers,
+        }
+    )
 
 
 def _make_app(secret: str) -> FastAPI:
@@ -138,3 +170,52 @@ def test_bearer_takes_precedence_over_cookie():
     )
     assert resp.status_code == 200
     assert resp.json() == {"user_id": "bearer-user"}
+
+
+def test_auth_context_classifies_operator_by_email(monkeypatch):
+    monkeypatch.setenv("RAG_OPERATOR_EMAILS", "kyle@example.test")
+    dependency = create_auth_context_dependency("secret")
+    token = _token("secret", sub="user-1", email="kyle@example.test")
+    request = _request(headers={"Authorization": f"Bearer {token}"})
+
+    context = anyio.run(dependency, request, None)
+
+    assert context.subject == "user-1"
+    assert context.email == "kyle@example.test"
+    assert context.tier == "operator"
+
+
+def test_auth_context_classifies_normal_user(monkeypatch):
+    monkeypatch.setenv("RAG_OPERATOR_EMAILS", "kyle@example.test")
+    dependency = create_auth_context_dependency("secret")
+    token = _token("secret", sub="user-2", email="other@example.test")
+    request = _request(headers={"Authorization": f"Bearer {token}"})
+
+    context = anyio.run(dependency, request, None)
+
+    assert context.subject == "user-2"
+    assert context.email == "other@example.test"
+    assert context.tier == "user"
+
+
+def test_auth_context_preserves_anonymous_when_secret_empty():
+    dependency = create_auth_context_dependency("")
+    request = _request()
+
+    context = anyio.run(dependency, request, None)
+
+    assert context.subject == "anonymous"
+    assert context.email is None
+    assert context.tier == "anonymous"
+
+
+def test_auth_context_rejects_malformed_token():
+    dependency = create_auth_context_dependency("secret")
+    request = _request(headers={"Authorization": "Bearer not-a-jwt"})
+
+    try:
+        anyio.run(dependency, request, None)
+    except Exception as exc:
+        assert getattr(exc, "status_code") == 401
+    else:
+        raise AssertionError("malformed token should be rejected")

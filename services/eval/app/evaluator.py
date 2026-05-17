@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from llm.factory import get_llm_provider
+from shared.llm.admission import generate_limiter
 
 if TYPE_CHECKING:
     from app.rag_client import RAGClient
@@ -202,17 +203,21 @@ async def judge_generation_scores(
         api_key=api_key,
         model=model,
     )
-    response = await llm.chat(
-        [
-            {
-                "role": "system",
-                "content": (
-                    "You are a strict RAG evaluation judge. Return only valid JSON."
-                ),
-            },
-            {"role": "user", "content": _judge_prompt(row)},
-        ]
-    )
+    permit = await generate_limiter.acquire()
+    try:
+        response = await llm.chat(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a strict RAG evaluation judge. Return only valid JSON."
+                    ),
+                },
+                {"role": "user", "content": _judge_prompt(row)},
+            ]
+        )
+    finally:
+        permit.release()
     raw = response.get("message", {}).get("content", "")
     return parse_judge_scores(raw)
 

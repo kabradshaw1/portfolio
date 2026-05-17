@@ -151,6 +151,62 @@ func TestWaitForRunReturnsCompletedRun(t *testing.T) {
 	}
 }
 
+func TestWaitForRunBacksOffAfterRateLimit(t *testing.T) {
+	ctx := context.Background()
+	api := &fakeAPI{
+		getEvaluationErrorsByID: map[string][]error{
+			"eval-1": {
+				&evalapi.HTTPError{
+					Method:     "GET",
+					Path:       "/evaluations/eval-1",
+					StatusCode: 429,
+					RetryAfter: 10 * time.Millisecond,
+				},
+			},
+		},
+		detailsByID: map[string][]evalapi.EvaluationDetail{
+			"eval-1": {{ID: "eval-1", Status: "completed"}},
+		},
+	}
+	svc := New(api, fakeIngestion{}, fakeFixtures{}, time.Hour, time.Second, 20*time.Millisecond)
+
+	start := time.Now()
+	got, err := svc.WaitForRun(ctx, "eval-1")
+	if err != nil {
+		t.Fatalf("WaitForRun error: %v", err)
+	}
+	if got.Run.Status != "completed" || got.TimedOut {
+		t.Fatalf("WaitResult = %#v", got)
+	}
+	if elapsed := time.Since(start); elapsed < 10*time.Millisecond {
+		t.Fatalf("WaitForRun returned before retry-after elapsed: %s", elapsed)
+	}
+}
+
+func TestWaitForRunUsesCappedBackoffWhenRetryAfterMissing(t *testing.T) {
+	ctx := context.Background()
+	api := &fakeAPI{
+		getEvaluationErrorsByID: map[string][]error{
+			"eval-1": {
+				&evalapi.HTTPError{StatusCode: 429},
+				&evalapi.HTTPError{StatusCode: 429},
+			},
+		},
+		detailsByID: map[string][]evalapi.EvaluationDetail{
+			"eval-1": {{ID: "eval-1", Status: "completed"}},
+		},
+	}
+	svc := New(api, fakeIngestion{}, fakeFixtures{}, time.Hour, time.Second, time.Millisecond)
+
+	got, err := svc.WaitForRun(ctx, "eval-1")
+	if err != nil {
+		t.Fatalf("WaitForRun error: %v", err)
+	}
+	if got.Run.Status != "completed" {
+		t.Fatalf("WaitResult = %#v", got)
+	}
+}
+
 func TestWaitForRunTimesOutWithLatestStatus(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
@@ -167,6 +223,39 @@ func TestWaitForRunTimesOutWithLatestStatus(t *testing.T) {
 	}
 	if !got.TimedOut || got.Run.Status != "running" {
 		t.Fatalf("WaitResult = %#v", got)
+	}
+}
+
+func TestWaitForRunTimeoutIncludesLatestRunMetadata(t *testing.T) {
+	ctx := context.Background()
+	collection := "documents"
+	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
+		"eval-1": {{
+			ID:         "eval-1",
+			Status:     "running",
+			Collection: &collection,
+			CreatedAt:  "2026-05-17T01:10:15Z",
+		}},
+	}}
+	svc := newTestServiceWithTiming(api, time.Millisecond, 3*time.Millisecond)
+
+	got, err := svc.WaitForRun(ctx, "eval-1")
+	if err == nil {
+		t.Fatal("WaitForRun error = nil, want timeout")
+	}
+	if !got.TimedOut || got.Run.Status != "running" {
+		t.Fatalf("WaitResult = %#v", got)
+	}
+	for _, want := range []string{
+		`evaluation "eval-1"`,
+		`latest status "running"`,
+		`created_at "2026-05-17T01:10:15Z"`,
+		`collection "documents"`,
+		"eval API run may still finish after the MCP wait timeout",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("WaitForRun error = %q, want substring %q", err.Error(), want)
+		}
 	}
 }
 
@@ -434,6 +523,7 @@ type fakeAPI struct {
 	startResponse            evalapi.StartEvaluationResponse
 	startRequests            []evalapi.StartEvaluationRequest
 	detailsByID              map[string][]evalapi.EvaluationDetail
+	getEvaluationErrorsByID  map[string][]error
 	compareIDs               []string
 	comparison               evalapi.Comparison
 	experiments              map[string]evalapi.Experiment
@@ -461,6 +551,12 @@ func (f *fakeAPI) StartEvaluation(_ context.Context, in evalapi.StartEvaluationR
 }
 
 func (f *fakeAPI) GetEvaluation(_ context.Context, id string) (evalapi.EvaluationDetail, error) {
+	errs := f.getEvaluationErrorsByID[id]
+	if len(errs) > 0 {
+		err := errs[0]
+		f.getEvaluationErrorsByID[id] = errs[1:]
+		return evalapi.EvaluationDetail{}, err
+	}
 	details := f.detailsByID[id]
 	if len(details) == 0 {
 		return evalapi.EvaluationDetail{}, errors.New("missing eval detail")
