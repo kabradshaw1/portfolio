@@ -17,3 +17,11 @@ def test_metrics_contains_custom_metrics():
     assert "embedding_duration_seconds" in body
     assert "qdrant_search_duration_seconds" in body
     assert "rag_pipeline_duration_seconds" in body
+
+
+def test_metrics_contains_rerank_metrics():
+    response = client.get("/metrics")
+    body = response.text
+    assert "rag_rerank_duration_seconds" in body
+    assert "rag_rerank_candidates" in body
+    assert "rag_rerank_fallbacks_total" in body

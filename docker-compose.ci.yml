@@ -20,6 +20,7 @@ services:
   ingestion:
     environment:
       OLLAMA_BASE_URL: http://mock-ollama:11434
+      COLLECTION_META_DB_PATH: /tmp/collection_meta.db
     depends_on:
       mock-ollama:
         condition: service_healthy
@@ -29,6 +30,8 @@ services:
   chat:
     environment:
       OLLAMA_BASE_URL: http://mock-ollama:11434
+      CHAT_RATE_LIMIT_ASK_ANONYMOUS: 5/minute
+      CHAT_RATE_LIMIT_SEARCH_ANONYMOUS: 10/minute
     depends_on:
       mock-ollama:
         condition: service_healthy
@@ -43,3 +46,13 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+
+  eval:
+    environment:
+      OLLAMA_BASE_URL: http://mock-ollama:11434
+      DB_PATH: /tmp/eval.db
+    depends_on:
+      mock-ollama:
+        condition: service_healthy
+      chat:
+        condition: service_started

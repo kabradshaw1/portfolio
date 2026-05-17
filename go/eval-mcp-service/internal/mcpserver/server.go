@@ -35,6 +35,7 @@ type EvalService interface {
 	WaitForRun(context.Context, string) (evalworkflow.WaitResult, error)
 	AttachRun(context.Context, string, string, string, string) error
 	GetRun(context.Context, string) (evalapi.EvaluationDetail, error)
+	RunEvidence(context.Context, string) (evalworkflow.RunEvidence, error)
 	Compare(context.Context, evalworkflow.CompareInput) (evalapi.Comparison, error)
 	WorstCases(context.Context, evalworkflow.WorstCasesInput) (evalworkflow.WorstCasesResult, error)
 	SummarizeExperiment(context.Context, string) (evalworkflow.ExperimentSummary, error)
@@ -57,6 +58,7 @@ func New(service EvalService) *sdkmcp.Server {
 	addTool(srv, "wait_for_eval_run", "Poll one eval run until completion, failure, or timeout.", waitEvalRunSchema(), waitForEvalRunHandler(service))
 	addTool(srv, "attach_eval_run", "Attach an existing eval run ID to a local experiment label.", attachEvalRunSchema(), attachEvalRunHandler(service))
 	addTool(srv, "get_eval_run", "Fetch one eval run from the eval API.", evalIDSchema(), getEvalRunHandler(service))
+	addTool(srv, "get_eval_run_evidence", "Summarize one eval run with configuration, status, and next-step guidance.", evalIDSchema(), runEvidenceHandler(service))
 	addTool(srv, "compare_eval_runs", "Compare eval runs by explicit IDs or experiment labels.", compareEvalRunsSchema(), compareEvalRunsHandler(service))
 	addTool(srv, "get_worst_eval_cases", "Return the lowest-scoring per-query cases for a metric.", worstCasesSchema(), worstCasesHandler(service))
 	addTool(srv, "summarize_eval_experiment", "Summarize baseline, candidates, and worst cases for an experiment.", experimentIDSchema(), summarizeExperimentHandler(service))
@@ -271,6 +273,17 @@ func getEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 			return toolError(err.Error()), nil
 		}
 		result, err := service.GetRun(ctx, evalID)
+		return resultOrError(result, err), nil
+	}
+}
+
+func runEvidenceHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		evalID, err := evalIDFromRequest(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		result, err := service.RunEvidence(ctx, evalID)
 		return resultOrError(result, err), nil
 	}
 }

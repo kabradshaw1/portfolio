@@ -150,6 +150,28 @@ async def test_fail_stale_running_evaluations_only_marks_old_running_rows(db):
 
 
 @pytest.mark.asyncio
+async def test_count_stale_running_evaluations_only_counts_old_running_rows(db):
+    ds_id = await db.create_dataset(name="ds-stale-count", items=SIMPLE_ITEM)
+    old_running_id = await db.create_evaluation(
+        dataset_id=ds_id, collection="documents"
+    )
+    await db.create_evaluation(dataset_id=ds_id, collection="documents")
+    completed_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")
+
+    old_time = (datetime.now(UTC) - timedelta(minutes=30)).isoformat()
+    await db._db.execute(  # noqa: SLF001 - test sets up precise stale timestamps
+        "UPDATE evaluations SET created_at = ? WHERE id = ?",
+        (old_time, old_running_id),
+    )
+    await db._db.commit()  # noqa: SLF001
+    await db.complete_evaluation(completed_id, aggregate_scores={}, results=[])
+
+    stale_count = await db.count_stale_running_evaluations(max_age_seconds=600)
+
+    assert stale_count == 1
+
+
+@pytest.mark.asyncio
 async def test_list_evaluations(db):
     ds_id = await db.create_dataset(name="ds", items=SIMPLE_ITEM)
     await db.create_evaluation(dataset_id=ds_id, collection="documents")

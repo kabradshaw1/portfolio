@@ -3,12 +3,15 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from llm.factory import get_llm_provider
 from shared.llm.admission import generate_limiter
+
+from app.metrics import eval_item_duration_seconds, eval_items_total
 
 if TYPE_CHECKING:
     from app.rag_client import RAGClient
@@ -45,6 +48,13 @@ STOPWORDS = {
 
 class EvaluationError(RuntimeError):
     """Raised when an evaluation run cannot produce trustworthy scores."""
+
+
+@dataclass(frozen=True)
+class EvalRunContext:
+    eval_id: str
+    collection: str
+    requested_rerank: bool
 
 
 @dataclass(frozen=True)
@@ -99,17 +109,45 @@ async def build_evaluation_dataset(
     rag_client: RAGClient,
     collection: str | None,
     rerank: bool = False,
+    run_context: EvalRunContext | None = None,
 ) -> list[dict]:
     """Run each golden item through the RAG pipeline and build evaluation rows."""
     dataset = []
-    for item in items:
+    for index, item in enumerate(items):
+        started_at = time.perf_counter()
         query = item["query"]
-        search_results = await rag_client.search(
-            query, collection=collection, limit=5, rerank=rerank
-        )
-        chat_response = await rag_client.ask(
-            query, collection=collection, rerank=rerank
-        )
+        requested_rerank = str(rerank).lower()
+        if run_context:
+            logger.info(
+                "eval_item_start eval_id=%s item_index=%s collection=%s rerank=%s",
+                run_context.eval_id,
+                index,
+                run_context.collection,
+                str(run_context.requested_rerank).lower(),
+            )
+        try:
+            search_results = await rag_client.search(
+                query, collection=collection, limit=5, rerank=rerank
+            )
+            chat_response = await rag_client.ask(
+                query, collection=collection, rerank=rerank
+            )
+        except Exception:
+            eval_items_total.labels(
+                status="failed", requested_rerank=requested_rerank
+            ).inc()
+            eval_item_duration_seconds.labels(
+                stage="rag", requested_rerank=requested_rerank
+            ).observe(time.perf_counter() - started_at)
+            if run_context:
+                logger.exception(
+                    "eval_item_failed eval_id=%s item_index=%s collection=%s rerank=%s",
+                    run_context.eval_id,
+                    index,
+                    run_context.collection,
+                    str(run_context.requested_rerank).lower(),
+                )
+            raise
 
         row = {
             "user_input": query,
@@ -121,6 +159,20 @@ async def build_evaluation_dataset(
         if "retrieval" in chat_response:
             row["retrieval"] = chat_response["retrieval"]
         dataset.append(row)
+        eval_items_total.labels(
+            status="completed", requested_rerank=requested_rerank
+        ).inc()
+        eval_item_duration_seconds.labels(
+            stage="rag", requested_rerank=requested_rerank
+        ).observe(time.perf_counter() - started_at)
+        if run_context:
+            logger.info(
+                "eval_item_completed eval_id=%s item_index=%s collection=%s rerank=%s",
+                run_context.eval_id,
+                index,
+                run_context.collection,
+                str(run_context.requested_rerank).lower(),
+            )
     return dataset
 
 
@@ -240,10 +292,11 @@ async def run_evaluation(
     llm_api_key: str,
     rerank: bool = False,
     judge: JudgeFn | None = None,
+    run_context: EvalRunContext | None = None,
 ) -> tuple[dict, list[dict]]:
     """Run a full first-party RAG evaluation."""
     raw_dataset = await build_evaluation_dataset(
-        items, rag_client, collection, rerank=rerank
+        items, rag_client, collection, rerank=rerank, run_context=run_context
     )
     if not raw_dataset:
         return {name: None for name in METRIC_NAMES}, []

@@ -9,6 +9,7 @@ import fnmatch
 import os
 import re
 import subprocess
+import sys
 
 from llm.base import EmbeddingProvider
 from qdrant_client import QdrantClient
@@ -325,7 +326,15 @@ def tool_run_tests(
     if test_name:
         pytest_target = f"{target}::{test_name}"
 
-    cmd = ["python", "-m", "pytest", pytest_target, "-v", "--tb=short", "--no-header"]
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        pytest_target,
+        "-v",
+        "--tb=short",
+        "--no-header",
+    ]
 
     try:
         result = subprocess.run(
