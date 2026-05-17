@@ -153,6 +153,33 @@ async def test_search_server_error():
 
 
 @pytest.mark.asyncio
+async def test_search_records_upstream_failure_metric():
+    from app.metrics import eval_upstream_failures_total
+
+    before = eval_upstream_failures_total.labels(
+        endpoint="search",
+        failure_type="http_5xx",
+        requested_rerank="true",
+    )._value.get()
+
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"detail": "unavailable"})
+
+    transport = httpx.MockTransport(mock_handler)
+    client = RAGClient(base_url="http://chat:8000", transport=transport)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await client.search("test", collection=None, limit=5, rerank=True)
+
+    after = eval_upstream_failures_total.labels(
+        endpoint="search",
+        failure_type="http_5xx",
+        requested_rerank="true",
+    )._value.get()
+    assert after == before + 1
+
+
+@pytest.mark.asyncio
 async def test_ask_timeout():
     async def mock_handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectTimeout("connection timed out")

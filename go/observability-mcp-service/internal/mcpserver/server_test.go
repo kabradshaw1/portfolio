@@ -71,8 +71,33 @@ func TestTraceHandlerRequiresTraceID(t *testing.T) {
 	}
 }
 
+func TestInvestigateEvalRunHandlerRequiresEvalID(t *testing.T) {
+	result, err := investigateEvalRunHandler(testConfig(), &fakeWorkflow{})(context.Background(), callReq(map[string]any{}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected tool error")
+	}
+}
+
+func TestInvestigateEvalRunHandlerReturnsBundle(t *testing.T) {
+	fake := &fakeWorkflow{}
+	result, err := investigateEvalRunHandler(testConfig(), fake)(context.Background(), callReq(map[string]any{
+		"eval_id": "eval-123",
+		"window":  "5m",
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("handler failed: result=%#v err=%v", result, err)
+	}
+	if fake.evalID != "eval-123" || fake.window != 5*time.Minute {
+		t.Fatalf("fake state: evalID=%q window=%s", fake.evalID, fake.window)
+	}
+}
+
 type fakeWorkflow struct {
 	window time.Duration
+	evalID string
 }
 
 func (f *fakeWorkflow) GetSystemHealth(_ context.Context, window time.Duration) workflows.EvidenceBundle {
@@ -86,6 +111,12 @@ func (f *fakeWorkflow) InvestigateCheckout(context.Context, time.Duration) workf
 
 func (f *fakeWorkflow) InvestigateAIPipeline(context.Context, time.Duration) workflows.EvidenceBundle {
 	return workflows.NewBundle("investigate_ai_pipeline", "15m")
+}
+
+func (f *fakeWorkflow) InvestigateEvalRun(_ context.Context, window time.Duration, evalID string) workflows.EvidenceBundle {
+	f.window = window
+	f.evalID = evalID
+	return workflows.NewBundle("investigate_eval_run", window.String())
 }
 
 func (f *fakeWorkflow) InvestigateStreamingAnalytics(context.Context, time.Duration) workflows.EvidenceBundle {

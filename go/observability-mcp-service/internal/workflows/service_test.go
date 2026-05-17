@@ -15,6 +15,9 @@ func TestAllowedService(t *testing.T) {
 	if !AllowedService("go-ai-service") {
 		t.Fatal("go-ai-service should be allowed")
 	}
+	if !AllowedService("eval") {
+		t.Fatal("eval should be allowed")
+	}
 	if AllowedService(".*") {
 		t.Fatal("regex-like service should not be allowed")
 	}
@@ -69,10 +72,31 @@ func TestInvestigateAIPipelineIncludesExpectedQueryNames(t *testing.T) {
 	service := NewService(&fakePrometheus{}, nil, nil, 10)
 	got := service.InvestigateAIPipeline(context.Background(), time.Minute)
 	names := signalNames(got.Signals)
-	for _, want := range []string{"ai_agent_turns_by_outcome", "rag_stage_latency_p95", "ollama_latency_p95"} {
+	for _, want := range []string{"ai_agent_turns_by_outcome", "rag_stage_latency_p95", "ollama_latency_p95", "eval_runs_total"} {
 		if !slices.Contains(names, want) {
 			t.Fatalf("signal names missing %s: %v", want, names)
 		}
+	}
+}
+
+func TestInvestigateEvalRunQueriesEvalSignalsAndLogs(t *testing.T) {
+	prom := &fakePrometheus{}
+	loki := &fakeLoki{}
+	service := NewService(prom, loki, nil, 10)
+
+	got := service.InvestigateEvalRun(context.Background(), time.Minute, "eval-123")
+
+	names := signalNames(got.Signals)
+	for _, want := range []string{"eval_runs_total", "eval_item_duration_p95", "eval_upstream_failures"} {
+		if !slices.Contains(names, want) {
+			t.Fatalf("signal names missing %s: %v", want, names)
+		}
+	}
+	if len(loki.services) != 1 || loki.services[0] != "eval" {
+		t.Fatalf("loki services = %#v", loki.services)
+	}
+	if len(loki.patterns) != 1 || loki.patterns[0] != "eval-123" {
+		t.Fatalf("loki patterns = %#v", loki.patterns)
 	}
 }
 
@@ -121,11 +145,13 @@ func (f *fakePrometheus) Query(_ context.Context, query string) ([]observability
 
 type fakeLoki struct {
 	services []string
+	patterns []string
 	err      error
 }
 
 func (f *fakeLoki) QueryLogs(_ context.Context, q observability.LogQuery) ([]observability.LogLine, bool, error) {
 	f.services = append(f.services, q.Service)
+	f.patterns = append(f.patterns, q.Pattern)
 	if f.err != nil {
 		return nil, false, f.err
 	}

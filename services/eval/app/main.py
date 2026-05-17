@@ -21,11 +21,13 @@ from app.collection_validation import validate_collection_exists
 from app.config import settings
 from app.config_capture import capture_run_config
 from app.db import EvalDB
-from app.evaluator import run_evaluation
+from app.evaluator import EvalRunContext, run_evaluation
 from app.metrics import (
     eval_quality_score,
     eval_queries_total,
     eval_run_duration_seconds,
+    eval_runs_total,
+    eval_stale_running_runs,
 )
 from app.models import (
     AttachExperimentRunRequest,
@@ -137,8 +139,11 @@ async def get_db() -> EvalDB:
 async def recover_stale_evaluations():
     db = await get_db()
     max_age = settings.eval_run_max_seconds + settings.eval_stale_grace_seconds
+    stale_count = await db.count_stale_running_evaluations(max_age)
+    eval_stale_running_runs.set(stale_count)
     recovered = await db.fail_stale_running_evaluations(max_age)
     if recovered:
+        eval_stale_running_runs.set(max(stale_count - recovered, 0))
         logger.warning("Recovered %s stale running evaluation(s)", recovered)
 
 
@@ -229,8 +234,21 @@ async def _run_evaluation_task(
     )
     start = time.perf_counter()
     coll_name = collection or "documents"
+    run_context = EvalRunContext(
+        eval_id=eval_id,
+        collection=coll_name,
+        requested_rerank=rerank,
+    )
+    requested_rerank = str(rerank).lower()
 
     try:
+        logger.info(
+            "evaluation_task_started eval_id=%s collection=%s rerank=%s item_count=%s",
+            eval_id,
+            coll_name,
+            requested_rerank,
+            len(items),
+        )
         # Snapshot the RAG configuration that produced this run before we
         # invoke retrieval. capture_run_config never raises; failures are
         # recorded under _capture_error so the eval still completes.
@@ -252,6 +270,7 @@ async def _run_evaluation_task(
                 llm_model=settings.llm_model,
                 llm_api_key=settings.llm_api_key,
                 rerank=rerank,
+                run_context=run_context,
             ),
             timeout=settings.eval_run_max_seconds,
         )
@@ -261,12 +280,21 @@ async def _run_evaluation_task(
 
         # Update metrics
         eval_run_duration_seconds.observe(time.perf_counter() - start)
+        eval_runs_total.labels(
+            status="completed", requested_rerank=requested_rerank
+        ).inc()
         eval_queries_total.inc(len(items))
         for metric_name, score in aggregate.items():
             if score is not None:
                 eval_quality_score.labels(metric=metric_name).set(score)
 
-        logger.info("Evaluation %s completed: %s", eval_id, aggregate)
+        logger.info(
+            "evaluation_completed eval_id=%s collection=%s rerank=%s aggregate=%s",
+            eval_id,
+            coll_name,
+            requested_rerank,
+            aggregate,
+        )
     except TimeoutError:
         elapsed = time.perf_counter() - start
         error = _failure_message(
@@ -277,11 +305,13 @@ async def _run_evaluation_task(
             f"timed out after {settings.eval_run_max_seconds:.2f}s max runtime",
         )
         logger.error("%s", error)
+        eval_runs_total.labels(status="failed", requested_rerank=requested_rerank).inc()
         await db.fail_evaluation(eval_id, error)
     except asyncio.CancelledError:
         elapsed = time.perf_counter() - start
         error = _failure_message(eval_id, coll_name, rerank, elapsed, "cancelled")
         logger.error("%s", error)
+        eval_runs_total.labels(status="failed", requested_rerank=requested_rerank).inc()
         await db.fail_evaluation(eval_id, error)
         raise
     except Exception as e:
@@ -293,6 +323,7 @@ async def _run_evaluation_task(
             time.perf_counter() - start,
             str(e),
         )
+        eval_runs_total.labels(status="failed", requested_rerank=requested_rerank).inc()
         await db.fail_evaluation(eval_id, error)
     finally:
         await rag_client.close()
@@ -406,6 +437,14 @@ async def start_evaluation(
             detail = str(exc)
             status_code = 409 if "duplicate" in detail else 400
             raise HTTPException(status_code=status_code, detail=detail) from exc
+
+    logger.info(
+        "evaluation_start_accepted eval_id=%s dataset_id=%s collection=%s rerank=%s",
+        eval_id,
+        body.dataset_id,
+        collection,
+        str(body.rerank).lower(),
+    )
 
     background_tasks.add_task(
         _run_evaluation_task, eval_id, dataset["items"], collection, body.rerank

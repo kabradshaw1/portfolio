@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from app.evaluator import (
+    EvalRunContext,
     EvaluationError,
     JudgeScores,
     build_evaluation_dataset,
@@ -178,6 +179,33 @@ async def test_build_evaluation_dataset_preserves_retrieval_metadata(
     )
 
     assert dataset[0]["retrieval"] == mock_chat_answer_with_retrieval["retrieval"]
+
+
+@pytest.mark.asyncio
+async def test_build_evaluation_dataset_logs_item_lifecycle(
+    golden_items, mock_search_results, mock_chat_answer, caplog
+):
+    rag_client = AsyncMock()
+    rag_client.search.return_value = mock_search_results
+    rag_client.ask.return_value = mock_chat_answer
+
+    with caplog.at_level("INFO", logger="app.evaluator"):
+        await build_evaluation_dataset(
+            items=golden_items[:1],
+            rag_client=rag_client,
+            collection="documents",
+            rerank=True,
+            run_context=EvalRunContext(
+                eval_id="eval-123",
+                collection="documents",
+                requested_rerank=True,
+            ),
+        )
+
+    assert "eval_item_start" in caplog.text
+    assert "eval_item_completed" in caplog.text
+    assert "eval-123" in caplog.text
+    assert "documents" in caplog.text
 
 
 def test_score_context_recall_counts_reference_terms_in_contexts():
