@@ -35,11 +35,30 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 		return fmt.Errorf("config: %w", err)
 	}
 	httpClient := &http.Client{Timeout: cfg.QueryTimeout}
-	prom := observability.NewPrometheus(cfg.PrometheusURL, httpClient)
-	loki := observability.NewLoki(cfg.LokiURL, httpClient)
+	var prom workflows.Prometheus
+	var loki workflows.Loki
 	jaeger := observability.NewJaeger(cfg.JaegerURL, httpClient, cfg.MaxTraceSpans)
+	if cfg.UseGrafanaGateway() {
+		grafana := observability.NewGrafana(observability.GrafanaConfig{
+			BaseURL:                 cfg.GrafanaURL,
+			Token:                   cfg.GrafanaToken,
+			AccessClientID:          cfg.GrafanaAccessClientID,
+			AccessClientSecret:      cfg.GrafanaAccessClientSecret,
+			PrometheusDatasourceUID: cfg.GrafanaPrometheusDatasourceUID,
+			LokiDatasourceUID:       cfg.GrafanaLokiDatasourceUID,
+		}, httpClient)
+		prom = grafana
+		loki = grafana
+		logger.Printf("observability MCP server running on stdio grafana=%s jaeger=%s", cfg.GrafanaURL, cfg.JaegerURL)
+		if cfg.UsesDefaultJaegerURL() {
+			logger.Printf("observability MCP grafana mode leaves jaeger on default direct URL; set OBS_JAEGER_URL if trace lookup should use a reachable endpoint")
+		}
+	} else {
+		prom = observability.NewPrometheus(cfg.PrometheusURL, httpClient)
+		loki = observability.NewLoki(cfg.LokiURL, httpClient)
+		logger.Printf("observability MCP server running on stdio prometheus=%s loki=%s jaeger=%s", cfg.PrometheusURL, cfg.LokiURL, cfg.JaegerURL)
+	}
 	service := workflows.NewService(prom, loki, jaeger, cfg.MaxLogLines)
-	logger.Printf("observability MCP server running on stdio prometheus=%s loki=%s jaeger=%s", cfg.PrometheusURL, cfg.LokiURL, cfg.JaegerURL)
 	return runServer(ctx, &app{service: service, cfg: cfg})
 }
 
