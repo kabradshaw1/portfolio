@@ -1,12 +1,44 @@
 import json
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import jwt
+import pytest
 from app.main import app
 from app.retriever import RetrievalResult
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
+SECRET = "chat-test-secret"
+
+
+def _token(sub: str, email: str) -> str:
+    return jwt.encode(
+        {"sub": sub, "email": email, "exp": int(time.time()) + 3600},
+        SECRET,
+        algorithm="HS256",
+    )
+
+
+@pytest.fixture
+def configured_chat_limits(monkeypatch):
+    import app.main as main
+
+    monkeypatch.setenv("RAG_OPERATOR_EMAILS", "operator@example.test")
+    monkeypatch.setattr(main.settings, "jwt_secret", SECRET)
+    monkeypatch.setattr(main.settings, "chat_rate_limit_ask_operator", "3/minute")
+    monkeypatch.setattr(main.settings, "chat_rate_limit_ask_user", "1/minute")
+    monkeypatch.setattr(main.settings, "chat_rate_limit_ask_anonymous", "0/minute")
+    monkeypatch.setattr(
+        main.settings, "chat_rate_limit_search_internal_eval", "3/minute"
+    )
+    monkeypatch.setattr(main.settings, "rag_internal_eval_token", "test-internal-token")
+    main.chat_rate_limiter = main.build_chat_rate_limiter()
+    main.chat_rate_limiter.enabled = True
+    yield
+    main.chat_rate_limiter = main.build_chat_rate_limiter()
+    main.chat_rate_limiter.enabled = False
 
 
 def retrieval_result(chunks: list[dict] | None = None) -> RetrievalResult:
@@ -324,3 +356,60 @@ def test_cors_rejects_unknown_origin():
     assert "evil.example.com" not in response.headers.get(
         "access-control-allow-origin", ""
     )
+
+
+@patch("app.main.rag_query")
+def test_chat_operator_has_higher_ask_limit(mock_rag_query, configured_chat_limits):
+    async def fake(**kwargs):
+        yield {"done": True, "sources": [], "retrieval": {}}
+
+    mock_rag_query.side_effect = fake
+    operator_token = _token("operator-1", "operator@example.test")
+    user_token = _token("user-1", "user@example.test")
+
+    operator_headers = {
+        "Authorization": f"Bearer {operator_token}",
+        "Accept": "application/json",
+    }
+    user_headers = {
+        "Authorization": f"Bearer {user_token}",
+        "Accept": "application/json",
+    }
+
+    for _ in range(3):
+        response = client.post(
+            "/chat", json={"question": "hi"}, headers=operator_headers
+        )
+        assert response.status_code == 200
+
+    first_user_response = client.post(
+        "/chat", json={"question": "hi"}, headers=user_headers
+    )
+    assert first_user_response.status_code == 200
+    denied = client.post("/chat", json={"question": "hi"}, headers=user_headers)
+
+    assert denied.status_code == 429
+    assert int(denied.headers["Retry-After"]) > 0
+
+
+@patch("app.main.retrieve_chunks", new_callable=AsyncMock)
+def test_search_internal_eval_token_uses_internal_eval_limit(
+    mock_retrieve, configured_chat_limits
+):
+    mock_retrieve.return_value = retrieval_result()
+
+    for _ in range(3):
+        response = client.post(
+            "/search",
+            json={"query": "hello", "limit": 5},
+            headers={"X-RAG-Internal-Token": "test-internal-token"},
+        )
+        assert response.status_code == 200
+
+    wrong = client.post(
+        "/search",
+        json={"query": "hello", "limit": 5},
+        headers={"X-RAG-Internal-Token": "wrong"},
+    )
+
+    assert wrong.status_code == 401

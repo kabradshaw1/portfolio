@@ -17,8 +17,24 @@ class Settings(BaseSettings):
     # SQLite database path
     db_path: str = "data/eval.db"
 
+    # Evaluation runtime guardrails
+    eval_run_max_seconds: float = 900.0
+    eval_stale_grace_seconds: float = 300.0
+
     # Auth
     jwt_secret: str = ""
+
+    # Tiered route quotas.
+    eval_rate_limit_run_create_operator: str = "20/minute"
+    eval_rate_limit_run_create_user: str = "5/minute"
+    eval_rate_limit_run_create_anonymous: str = "0/minute"
+    eval_rate_limit_read_operator: str = "240/minute"
+    eval_rate_limit_read_user: str = "30/minute"
+    eval_rate_limit_read_anonymous: str = "10/minute"
+    eval_rate_limit_write_operator: str = "30/minute"
+    eval_rate_limit_write_user: str = "10/minute"
+    eval_rate_limit_write_anonymous: str = "0/minute"
+    rag_internal_eval_token: str = ""
 
     # CORS
     allowed_origins: str = "https://kylebradshaw.dev"

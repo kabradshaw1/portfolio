@@ -1,16 +1,35 @@
-from unittest.mock import AsyncMock, MagicMock
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from app.evaluator import (
     EvaluationError,
     JudgeScores,
     build_evaluation_dataset,
+    judge_generation_scores,
     parse_judge_scores,
     run_evaluation,
     score_context_precision,
     score_context_recall,
 )
 from app.rag_client import RAGClient
+
+
+class FakePermit:
+    def __init__(self, events: list[str]):
+        self._events = events
+
+    def release(self):
+        self._events.append("release")
+
+
+def _judge_row():
+    return {
+        "user_input": "What is chunking?",
+        "reference": "Splitting text into smaller pieces.",
+        "retrieved_contexts": ["Chunking splits documents."],
+        "response": "Chunking splits documents into smaller pieces.",
+    }
 
 
 @pytest.fixture
@@ -219,6 +238,43 @@ def test_parse_judge_scores_rejects_malformed_json():
 def test_parse_judge_scores_rejects_missing_metric():
     with pytest.raises(EvaluationError, match="missing answer_relevancy"):
         parse_judge_scores('{"faithfulness": {"score": 0.5, "reason": "partial"}}')
+
+
+@pytest.mark.asyncio
+@patch("app.evaluator.get_llm_provider")
+async def test_judge_generation_scores_acquires_generation_admission(
+    mock_get_provider, monkeypatch
+):
+    events = []
+
+    async def acquire():
+        events.append("acquire")
+        return FakePermit(events)
+
+    monkeypatch.setattr("app.evaluator.generate_limiter.acquire", acquire)
+    provider = AsyncMock()
+    provider.chat.return_value = {
+        "message": {
+            "content": json.dumps(
+                {
+                    "faithfulness": {"score": 0.9, "reason": "grounded"},
+                    "answer_relevancy": {"score": 0.8, "reason": "answers"},
+                }
+            )
+        }
+    }
+    mock_get_provider.return_value = provider
+
+    scores = await judge_generation_scores(
+        row=_judge_row(),
+        provider="ollama",
+        base_url="http://ollama",
+        model="qwen",
+        api_key="",
+    )
+
+    assert scores.faithfulness == 0.9
+    assert events == ["acquire", "release"]
 
 
 @pytest.mark.asyncio
