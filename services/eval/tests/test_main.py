@@ -838,6 +838,39 @@ def test_start_evaluation_passes_rerank_to_background_run(
     assert mock_capture.await_args.kwargs["collection"] == "documents"
 
 
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_passes_retrieval_config_to_background_run(
+    mock_get_db, mock_validate_collection, mock_capture, mock_run_evaluation
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-top-k",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-top-k"
+    mock_get_db.return_value = mock_db
+    mock_capture.return_value = {
+        "captured_at": "x",
+        "chat": {"top_k": 5},
+        "effective_retrieval_config": {"top_k": 3},
+    }
+    mock_run_evaluation.return_value = ({"faithfulness": 0.8}, [])
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-top-k", "retrieval_config": {"top_k": 3}},
+    )
+
+    assert response.status_code == 202
+    assert mock_capture.await_args.kwargs["requested_retrieval_config"] == {"top_k": 3}
+    assert mock_run_evaluation.await_args.kwargs["top_k"] == 3
+
+
 @patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.run_evaluation", new_callable=AsyncMock)
 @patch("app.main.capture_run_config", new_callable=AsyncMock)

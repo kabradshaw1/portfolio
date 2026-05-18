@@ -196,6 +196,80 @@ func TestStartEvalRunValidationError(t *testing.T) {
 	}
 }
 
+func TestStartEvalRunForwardsRetrievalConfig(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":       "ds-1",
+		"collection":       "documents",
+		"rerank":           true,
+		"retrieval_config": map[string]any{"top_k": float64(3)},
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	if fake.startRunInput.RetrievalConfig == nil || fake.startRunInput.RetrievalConfig.TopK == nil || *fake.startRunInput.RetrievalConfig.TopK != 3 {
+		t.Fatalf("retrieval config = %#v", fake.startRunInput.RetrievalConfig)
+	}
+}
+
+func TestStartEvalRunRejectsInvalidRetrievalConfig(t *testing.T) {
+	for _, topK := range []float64{0, 21} {
+		t.Run("top_k_range", func(t *testing.T) {
+			fake := &fakeEvalService{}
+			result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+				"dataset_id":       "ds-1",
+				"collection":       "documents",
+				"retrieval_config": map[string]any{"top_k": topK},
+			}))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.startRunCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+			}
+			if got := textResult(t, result); !strings.Contains(got, "retrieval_config.top_k must be between 1 and 20") {
+				t.Fatalf("error = %q", got)
+			}
+		})
+	}
+}
+
+func TestStartEvalRunRejectsUnknownRetrievalConfigField(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":       "ds-1",
+		"collection":       "documents",
+		"retrieval_config": map[string]any{"limit": float64(3)},
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected MCP tool error")
+	}
+	if fake.startRunCalls != 0 {
+		t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+	}
+	if got := textResult(t, result); !strings.Contains(got, "retrieval_config.limit is not supported") {
+		t.Fatalf("error = %q", got)
+	}
+}
+
+func TestStartEvalRunSchemaIncludesRetrievalConfig(t *testing.T) {
+	schema := string(startEvalRunSchema())
+	for _, want := range []string{"retrieval_config", "top_k"} {
+		if !strings.Contains(schema, want) {
+			t.Fatalf("schema missing %q: %s", want, schema)
+		}
+	}
+}
+
 func TestCreateEvalDatasetHandlerRequiresFixture(t *testing.T) {
 	result, err := createEvalDatasetHandler(&fakeEvalService{})(context.Background(), callReq(map[string]any{}))
 	if err != nil {

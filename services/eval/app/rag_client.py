@@ -94,12 +94,18 @@ class RAGClient:
         return resp.json()["results"]
 
     async def ask(
-        self, question: str, collection: str | None, rerank: bool = False
+        self,
+        question: str,
+        collection: str | None,
+        rerank: bool = False,
+        retrieval_config: dict | None = None,
     ) -> dict:
         """Call POST /chat with Accept: application/json for a full RAG response."""
         body: dict = {"question": question, "rerank": rerank}
         if collection:
             body["collection"] = collection
+        if retrieval_config:
+            body["retrieval_config"] = retrieval_config
 
         started_at = time.perf_counter()
         try:
