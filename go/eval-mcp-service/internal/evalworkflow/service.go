@@ -67,13 +67,14 @@ type StartExperimentInput struct {
 }
 
 type StartRunInput struct {
-	DatasetID      string
-	Collection     string
-	Notes          string
-	BaselineEvalID string
-	Rerank         bool
-	ExperimentID   string
-	Label          string
+	DatasetID       string
+	Collection      string
+	Notes           string
+	BaselineEvalID  string
+	Rerank          bool
+	ExperimentID    string
+	Label           string
+	RetrievalConfig *evalapi.RetrievalConfig
 }
 
 type StartRunResult struct {
@@ -89,6 +90,21 @@ type CreateDatasetResult struct {
 type WaitResult struct {
 	Run      evalapi.EvaluationDetail
 	TimedOut bool
+}
+
+type RunEvidence struct {
+	EvalID          string          `json:"eval_id"`
+	Status          string          `json:"status"`
+	Collection      *string         `json:"collection,omitempty"`
+	CreatedAt       string          `json:"created_at,omitempty"`
+	CompletedAt     *string         `json:"completed_at,omitempty"`
+	Error           *string         `json:"error,omitempty"`
+	Config          map[string]any  `json:"config,omitempty"`
+	StaleRunning    bool            `json:"stale_running"`
+	AgeSeconds      int64           `json:"age_seconds,omitempty"`
+	ResultCount     int             `json:"result_count"`
+	AggregateScores *evalapi.Scores `json:"aggregate_scores,omitempty"`
+	NextSteps       []string        `json:"next_steps"`
 }
 
 type CompareInput struct {
@@ -238,6 +254,7 @@ func (s *Service) StartRun(ctx context.Context, in StartRunInput) (StartRunResul
 		Rerank:          in.Rerank,
 		ExperimentID:    in.ExperimentID,
 		ExperimentLabel: in.Label,
+		RetrievalConfig: in.RetrievalConfig,
 	})
 	if err != nil {
 		return StartRunResult{}, err
@@ -355,6 +372,62 @@ func (s *Service) AttachRun(ctx context.Context, experimentID, label, evalID, no
 
 func (s *Service) GetRun(ctx context.Context, evalID string) (evalapi.EvaluationDetail, error) {
 	return s.api.GetEvaluation(ctx, evalID)
+}
+
+func (s *Service) RunEvidence(ctx context.Context, evalID string) (RunEvidence, error) {
+	run, err := s.api.GetEvaluation(ctx, evalID)
+	if err != nil {
+		return RunEvidence{}, err
+	}
+	evidence := RunEvidence{
+		EvalID:          run.ID,
+		Status:          run.Status,
+		Collection:      run.Collection,
+		CreatedAt:       run.CreatedAt,
+		CompletedAt:     run.CompletedAt,
+		Error:           run.Error,
+		Config:          run.Config,
+		ResultCount:     len(run.Results),
+		AggregateScores: run.AggregateScores,
+	}
+	if run.Status == "running" {
+		if createdAt, err := time.Parse(time.RFC3339, run.CreatedAt); err == nil {
+			age := time.Since(createdAt)
+			evidence.AgeSeconds = int64(age.Seconds())
+			timeout := s.waitTimeout
+			if timeout <= 0 {
+				timeout = time.Minute
+			}
+			evidence.StaleRunning = age > timeout
+		}
+	}
+	evidence.NextSteps = runEvidenceNextSteps(evidence)
+	return evidence, nil
+}
+
+func runEvidenceNextSteps(evidence RunEvidence) []string {
+	switch evidence.Status {
+	case "completed":
+		return []string{
+			"Use get_worst_eval_cases to inspect the lowest-scoring queries.",
+			"Use compare_eval_runs or summarize_eval_experiment before deciding on a candidate.",
+		}
+	case "failed":
+		return []string{
+			"Use investigate_eval_run in observability-mcp-service with this eval_id.",
+			"Inspect the run error and upstream failure metrics before retrying.",
+		}
+	case "running":
+		if evidence.StaleRunning {
+			return []string{
+				"Use investigate_eval_run in observability-mcp-service with this eval_id.",
+				"Check eval service logs for eval_item_start without eval_item_completed.",
+			}
+		}
+		return []string{"Call wait_for_eval_run again or inspect live evidence with investigate_eval_run."}
+	default:
+		return []string{"Use get_eval_run and investigate_eval_run to inspect current state."}
+	}
 }
 
 func (s *Service) Compare(ctx context.Context, in CompareInput) (evalapi.Comparison, error) {

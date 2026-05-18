@@ -97,6 +97,81 @@ def test_chat_threads_settings_top_k_into_rag_query(mock_rag_query):
     assert captured["top_k"] == 9
 
 
+@patch("app.main.rag_query")
+def test_chat_threads_retrieval_config_top_k_into_rag_query(mock_rag_query):
+    captured = {}
+
+    async def fake(**kwargs):
+        captured.update(kwargs)
+        yield {"done": True, "sources": [], "retrieval": {}}
+
+    mock_rag_query.side_effect = fake
+
+    response = client.post(
+        "/chat",
+        json={"question": "hi", "retrieval_config": {"top_k": 3}},
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 200
+    assert captured["top_k"] == 3
+
+
+@patch("app.main.rag_query")
+def test_chat_stream_threads_retrieval_config_top_k_into_rag_query(mock_rag_query):
+    from sse_starlette.sse import AppStatus
+
+    captured = {}
+
+    async def fake(**kwargs):
+        captured.update(kwargs)
+        yield {"done": True, "sources": [], "retrieval": {}}
+
+    mock_rag_query.side_effect = fake
+
+    try:
+        response = client.post(
+            "/chat",
+            json={"question": "hi", "retrieval_config": {"top_k": 4}},
+        )
+    finally:
+        AppStatus.should_exit_event = None
+
+    assert response.status_code == 200
+    assert captured["top_k"] == 4
+
+
+def test_chat_rejects_invalid_retrieval_config_top_k():
+    response = client.post(
+        "/chat",
+        json={"question": "hi", "retrieval_config": {"top_k": 0}},
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("top_k", [True, 3.0, "3"])
+def test_chat_rejects_non_integer_retrieval_config_top_k(top_k):
+    response = client.post(
+        "/chat",
+        json={"question": "hi", "retrieval_config": {"top_k": top_k}},
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_chat_rejects_unknown_retrieval_config_fields():
+    response = client.post(
+        "/chat",
+        json={"question": "hi", "retrieval_config": {"top_k": 3, "score": 0.8}},
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 422
+
+
 def test_config_endpoint_omits_secrets():
     response = client.get("/config")
     body = response.json()

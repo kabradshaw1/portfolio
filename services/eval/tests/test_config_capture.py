@@ -77,6 +77,50 @@ async def test_capture_records_baseline_rerank_intent():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_capture_records_requested_and_effective_retrieval_config():
+    respx.get("http://chat/config").mock(
+        return_value=httpx.Response(200, json={"top_k": 5})
+    )
+    respx.get("http://ingestion/collections/documents/config").mock(
+        return_value=httpx.Response(200, json={"chunk_size": 1000})
+    )
+
+    cfg = await capture_run_config(
+        chat_url="http://chat",
+        ingestion_url="http://ingestion",
+        collection="documents",
+        requested_rerank=False,
+        requested_retrieval_config={"top_k": 3},
+    )
+
+    assert cfg["requested_retrieval_config"] == {"top_k": 3}
+    assert cfg["effective_retrieval_config"] == {"top_k": 3}
+    assert cfg["chat"]["top_k"] == 5
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_capture_records_empty_requested_retrieval_config_for_default_run():
+    respx.get("http://chat/config").mock(
+        return_value=httpx.Response(200, json={"top_k": 5})
+    )
+    respx.get("http://ingestion/collections/documents/config").mock(
+        return_value=httpx.Response(200, json={"chunk_size": 1000})
+    )
+
+    cfg = await capture_run_config(
+        chat_url="http://chat",
+        ingestion_url="http://ingestion",
+        collection="documents",
+        requested_rerank=False,
+    )
+
+    assert cfg["requested_retrieval_config"] == {}
+    assert cfg["effective_retrieval_config"] == {"top_k": 5}
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_capture_records_error_when_chat_fails():
     respx.get("http://chat/config").mock(side_effect=httpx.ConnectError("boom"))
     respx.get("http://ingestion/collections/documents/config").mock(

@@ -17,6 +17,7 @@ type WorkflowService interface {
 	GetSystemHealth(context.Context, time.Duration) workflows.EvidenceBundle
 	InvestigateCheckout(context.Context, time.Duration) workflows.EvidenceBundle
 	InvestigateAIPipeline(context.Context, time.Duration) workflows.EvidenceBundle
+	InvestigateEvalRun(context.Context, time.Duration, string) workflows.EvidenceBundle
 	InvestigateStreamingAnalytics(context.Context, time.Duration) workflows.EvidenceBundle
 	GetServiceEvidence(context.Context, string, time.Duration, string) workflows.EvidenceBundle
 	SearchLogs(context.Context, string, time.Duration, string) workflows.EvidenceBundle
@@ -28,6 +29,7 @@ func New(service WorkflowService, cfg config.Config) *sdkmcp.Server {
 	addTool(srv, "get_system_health", "Return a compact system-wide observability evidence bundle.", windowSchema(), windowHandler(cfg, service.GetSystemHealth))
 	addTool(srv, "investigate_checkout", "Build checkout and saga failure evidence.", windowSchema(), windowHandler(cfg, service.InvestigateCheckout))
 	addTool(srv, "investigate_ai_pipeline", "Build AI/RAG pipeline evidence.", windowSchema(), windowHandler(cfg, service.InvestigateAIPipeline))
+	addTool(srv, "investigate_eval_run", "Build eval-run-specific RAG evidence from metrics and logs.", evalRunSchema(), investigateEvalRunHandler(cfg, service))
 	addTool(srv, "investigate_streaming_analytics", "Build Kafka and analytics evidence.", windowSchema(), windowHandler(cfg, service.InvestigateStreamingAnalytics))
 	addTool(srv, "get_service_evidence", "Return bounded evidence for one allowlisted service.", serviceEvidenceSchema(), serviceEvidenceHandler(cfg, service))
 	addTool(srv, "search_logs", "Search recent logs for one allowlisted service.", searchLogsSchema(), searchLogsHandler(cfg, service))
@@ -84,6 +86,27 @@ func serviceEvidenceHandler(cfg config.Config, service WorkflowService) sdkmcp.T
 			return toolError(fmt.Sprintf("service %q is not allowlisted", in.Service)), nil
 		}
 		return jsonResult(service.GetServiceEvidence(ctx, in.Service, window, in.TraceID)), nil
+	}
+}
+
+func investigateEvalRunHandler(cfg config.Config, service WorkflowService) sdkmcp.ToolHandler {
+	type input struct {
+		Window string `json:"window,omitempty"`
+		EvalID string `json:"eval_id"`
+	}
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var in input
+		if err := decodeArgs(req, &in); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if in.EvalID == "" {
+			return toolError("eval_id is required"), nil
+		}
+		window, err := cfg.WindowOrDefault(in.Window)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(service.InvestigateEvalRun(ctx, window, in.EvalID)), nil
 	}
 }
 
@@ -170,6 +193,10 @@ func windowSchema() json.RawMessage {
 
 func serviceEvidenceSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"window":{"type":"string"},"service":{"type":"string"},"trace_id":{"type":"string"}},"required":["service"],"additionalProperties":false}`)
+}
+
+func evalRunSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"window":{"type":"string"},"eval_id":{"type":"string"}},"required":["eval_id"],"additionalProperties":false}`)
 }
 
 func searchLogsSchema() json.RawMessage {

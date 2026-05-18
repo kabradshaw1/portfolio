@@ -70,11 +70,20 @@ The MCP remains read-only. SSH-based diagnostics remain available through the
 `debug-observability` skill for break-glass cases and when the observability
 gateway is unavailable.
 
+## Eval Evidence Workflow
+
+For RAG eval investigations, start with the eval MCP `get_eval_run_evidence`
+tool to read durable run state and captured config from the eval API. Then use
+`investigate_eval_run` here with the same `eval_id` to collect bounded runtime
+signals: eval run counters, item-stage latency, upstream chat/search failures,
+stale-running gauges, and eval service logs filtered by that run ID.
+
 ## Tools
 
 - `get_system_health`
 - `investigate_checkout`
 - `investigate_ai_pipeline`
+- `investigate_eval_run`
 - `investigate_streaming_analytics`
 - `get_service_evidence`
 - `search_logs`

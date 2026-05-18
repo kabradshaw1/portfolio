@@ -47,6 +47,28 @@ def test_start_request_accepts_rerank_flag():
     assert req.rerank is True
 
 
+def test_start_request_accepts_retrieval_config_top_k():
+    req = StartEvaluationRequest(dataset_id="ds-1", retrieval_config={"top_k": 3})
+
+    assert req.retrieval_config.top_k == 3
+
+
+def test_start_request_rejects_invalid_retrieval_config_top_k():
+    with pytest.raises(ValidationError):
+        StartEvaluationRequest(dataset_id="ds-1", retrieval_config={"top_k": 0})
+
+
+@pytest.mark.parametrize("top_k", [True, 3.0, "3"])
+def test_start_request_rejects_non_integer_retrieval_config_top_k(top_k):
+    with pytest.raises(ValidationError):
+        StartEvaluationRequest(dataset_id="ds-1", retrieval_config={"top_k": top_k})
+
+
+def test_start_request_rejects_unknown_retrieval_config_fields():
+    with pytest.raises(ValidationError):
+        StartEvaluationRequest(dataset_id="ds-1", retrieval_config={"limit": 3})
+
+
 def test_evaluation_detail_includes_new_fields():
     detail = EvaluationDetail(
         id="e1",

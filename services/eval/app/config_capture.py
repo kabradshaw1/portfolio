@@ -28,6 +28,7 @@ async def capture_run_config(
     ingestion_url: str,
     collection: str,
     requested_rerank: bool,
+    requested_retrieval_config: dict | None = None,
 ) -> dict:
     """Return a merged RAG config snapshot. Always returns a dict.
 
@@ -47,6 +48,7 @@ async def capture_run_config(
         "captured_at": captured_at,
         "effective_collection": collection,
         "requested_rerank": requested_rerank,
+        "requested_retrieval_config": requested_retrieval_config or {},
     }
     errors: list[str] = []
 
@@ -60,6 +62,25 @@ async def capture_run_config(
     else:
         out["collection"] = coll_res
 
+    chat_config = out.get("chat") if isinstance(out.get("chat"), dict) else {}
+    out["effective_retrieval_config"] = _effective_retrieval_config(
+        requested_retrieval_config, chat_config
+    )
+
     if errors:
         out["_capture_error"] = "; ".join(errors)
     return out
+
+
+def _effective_retrieval_config(
+    requested_retrieval_config: dict | None, chat_config: dict
+) -> dict:
+    requested_top_k = (requested_retrieval_config or {}).get("top_k")
+    if type(requested_top_k) is int:
+        return {"top_k": requested_top_k}
+
+    chat_top_k = chat_config.get("top_k")
+    if type(chat_top_k) is int:
+        return {"top_k": chat_top_k}
+
+    return {"top_k": 5}

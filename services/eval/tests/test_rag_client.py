@@ -141,6 +141,26 @@ async def test_ask_sends_rerank_false_for_baseline(mock_chat_response):
 
 
 @pytest.mark.asyncio
+async def test_ask_forwards_retrieval_config(mock_chat_response):
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/chat"
+        body = json.loads(request.content)
+        assert body["retrieval_config"] == {"top_k": 3}
+        return httpx.Response(200, json=mock_chat_response)
+
+    transport = httpx.MockTransport(mock_handler)
+    client = RAGClient(base_url="http://chat:8000", transport=transport)
+
+    response = await client.ask(
+        "what is kubernetes",
+        collection=None,
+        rerank=False,
+        retrieval_config={"top_k": 3},
+    )
+    assert response["answer"] == mock_chat_response["answer"]
+
+
+@pytest.mark.asyncio
 async def test_search_server_error():
     async def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"detail": "internal error"})
@@ -150,6 +170,33 @@ async def test_search_server_error():
 
     with pytest.raises(httpx.HTTPStatusError):
         await client.search("test", collection=None, limit=5)
+
+
+@pytest.mark.asyncio
+async def test_search_records_upstream_failure_metric():
+    from app.metrics import eval_upstream_failures_total
+
+    before = eval_upstream_failures_total.labels(
+        endpoint="search",
+        failure_type="http_5xx",
+        requested_rerank="true",
+    )._value.get()
+
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"detail": "unavailable"})
+
+    transport = httpx.MockTransport(mock_handler)
+    client = RAGClient(base_url="http://chat:8000", transport=transport)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await client.search("test", collection=None, limit=5, rerank=True)
+
+    after = eval_upstream_failures_total.labels(
+        endpoint="search",
+        failure_type="http_5xx",
+        requested_rerank="true",
+    )._value.get()
+    assert after == before + 1
 
 
 @pytest.mark.asyncio

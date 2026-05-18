@@ -38,6 +38,20 @@ def configured_eval_limits(monkeypatch):
     main.eval_rate_limiter.enabled = False
 
 
+def test_metrics_contains_eval_observability_metrics():
+    response = client.get("/metrics")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "eval_run_duration_seconds" in body
+    assert "eval_item_duration_seconds" in body
+    assert "eval_upstream_request_duration_seconds" in body
+    assert "eval_upstream_failures_total" in body
+    assert "eval_runs_total" in body
+    assert "eval_items_total" in body
+    assert "eval_stale_running_runs" in body
+
+
 # --- Dataset endpoints ---
 
 
@@ -161,6 +175,33 @@ def test_start_evaluation(mock_get_db, mock_validate_collection):
     )
     assert response.status_code == 202
     assert response.json()["id"] == "eval-456"
+
+
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_logs_run_context(
+    mock_get_db, mock_validate_collection, caplog
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-456"
+    mock_get_db.return_value = mock_db
+
+    with caplog.at_level("INFO", logger="app.main"):
+        response = client.post(
+            "/evaluations",
+            json={"dataset_id": "ds-123", "collection": "documents", "rerank": True},
+        )
+
+    assert response.status_code == 202
+    assert "evaluation_start_accepted" in caplog.text
+    assert "eval-456" in caplog.text
+    assert "documents" in caplog.text
 
 
 @patch("app.main.get_db")
@@ -797,6 +838,39 @@ def test_start_evaluation_passes_rerank_to_background_run(
     assert mock_capture.await_args.kwargs["collection"] == "documents"
 
 
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_passes_retrieval_config_to_background_run(
+    mock_get_db, mock_validate_collection, mock_capture, mock_run_evaluation
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-top-k",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-top-k"
+    mock_get_db.return_value = mock_db
+    mock_capture.return_value = {
+        "captured_at": "x",
+        "chat": {"top_k": 5},
+        "effective_retrieval_config": {"top_k": 3},
+    }
+    mock_run_evaluation.return_value = ({"faithfulness": 0.8}, [])
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-top-k", "retrieval_config": {"top_k": 3}},
+    )
+
+    assert response.status_code == 202
+    assert mock_capture.await_args.kwargs["requested_retrieval_config"] == {"top_k": 3}
+    assert mock_run_evaluation.await_args.kwargs["top_k"] == 3
+
+
 @patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.run_evaluation", new_callable=AsyncMock)
 @patch("app.main.capture_run_config", new_callable=AsyncMock)
@@ -926,12 +1000,14 @@ async def test_run_evaluation_task_marks_cancellation_failed(
 @patch("app.main.get_db")
 async def test_recover_stale_evaluations_uses_max_runtime_plus_grace(mock_get_db):
     mock_db = AsyncMock()
+    mock_db.count_stale_running_evaluations.return_value = 2
     mock_db.fail_stale_running_evaluations.return_value = 2
     mock_get_db.return_value = mock_db
 
     await recover_stale_evaluations()
 
     expected_age = settings.eval_run_max_seconds + settings.eval_stale_grace_seconds
+    mock_db.count_stale_running_evaluations.assert_awaited_once_with(expected_age)
     mock_db.fail_stale_running_evaluations.assert_awaited_once_with(expected_age)
 
 

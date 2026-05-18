@@ -25,14 +25,24 @@ scrape_configs:
       - targets: ["qdrant:6333"]
 
   - job_name: "ingestion"
-    metrics_path: /health
+    metrics_path: /metrics
     static_configs:
       - targets: ["ingestion:8000"]
 
   - job_name: "chat"
-    metrics_path: /health
+    metrics_path: /metrics
     static_configs:
       - targets: ["chat:8000"]
+
+  - job_name: "debug"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["debug:8000"]
+
+  - job_name: "eval"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["eval:8000"]
 
   - job_name: "grafana"
     metrics_path: /api/health

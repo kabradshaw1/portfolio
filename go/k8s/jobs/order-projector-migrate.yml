@@ -5,7 +5,7 @@ metadata:
   namespace: go-ecommerce
 spec:
   backoffLimit: 2
-  activeDeadlineSeconds: 120
+  activeDeadlineSeconds: 600
   ttlSecondsAfterFinished: 600
   template:
     spec:

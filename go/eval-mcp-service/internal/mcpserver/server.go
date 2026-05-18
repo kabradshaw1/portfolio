@@ -20,6 +20,8 @@ const workflowResourceURI = "eval://workflow"
 const (
 	minCompareInputs = 2
 	maxCompareInputs = 5
+	minRetrievalTopK = 1
+	maxRetrievalTopK = 20
 )
 
 type EvalService interface {
@@ -35,6 +37,7 @@ type EvalService interface {
 	WaitForRun(context.Context, string) (evalworkflow.WaitResult, error)
 	AttachRun(context.Context, string, string, string, string) error
 	GetRun(context.Context, string) (evalapi.EvaluationDetail, error)
+	RunEvidence(context.Context, string) (evalworkflow.RunEvidence, error)
 	Compare(context.Context, evalworkflow.CompareInput) (evalapi.Comparison, error)
 	WorstCases(context.Context, evalworkflow.WorstCasesInput) (evalworkflow.WorstCasesResult, error)
 	SummarizeExperiment(context.Context, string) (evalworkflow.ExperimentSummary, error)
@@ -57,6 +60,7 @@ func New(service EvalService) *sdkmcp.Server {
 	addTool(srv, "wait_for_eval_run", "Poll one eval run until completion, failure, or timeout.", waitEvalRunSchema(), waitForEvalRunHandler(service))
 	addTool(srv, "attach_eval_run", "Attach an existing eval run ID to a local experiment label.", attachEvalRunSchema(), attachEvalRunHandler(service))
 	addTool(srv, "get_eval_run", "Fetch one eval run from the eval API.", evalIDSchema(), getEvalRunHandler(service))
+	addTool(srv, "get_eval_run_evidence", "Summarize one eval run with configuration, status, and next-step guidance.", evalIDSchema(), runEvidenceHandler(service))
 	addTool(srv, "compare_eval_runs", "Compare eval runs by explicit IDs or experiment labels.", compareEvalRunsSchema(), compareEvalRunsHandler(service))
 	addTool(srv, "get_worst_eval_cases", "Return the lowest-scoring per-query cases for a metric.", worstCasesSchema(), worstCasesHandler(service))
 	addTool(srv, "summarize_eval_experiment", "Summarize baseline, candidates, and worst cases for an experiment.", experimentIDSchema(), summarizeExperimentHandler(service))
@@ -189,13 +193,14 @@ func getRAGCollectionConfigHandler(service EvalService) sdkmcp.ToolHandler {
 func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var args struct {
-			DatasetID      string `json:"dataset_id"`
-			Collection     string `json:"collection"`
-			Notes          string `json:"notes,omitempty"`
-			BaselineEvalID string `json:"baseline_eval_id,omitempty"`
-			Rerank         bool   `json:"rerank,omitempty"`
-			ExperimentID   string `json:"experiment_id,omitempty"`
-			Label          string `json:"label,omitempty"`
+			DatasetID       string          `json:"dataset_id"`
+			Collection      string          `json:"collection"`
+			Notes           string          `json:"notes,omitempty"`
+			BaselineEvalID  string          `json:"baseline_eval_id,omitempty"`
+			Rerank          bool            `json:"rerank,omitempty"`
+			ExperimentID    string          `json:"experiment_id,omitempty"`
+			Label           string          `json:"label,omitempty"`
+			RetrievalConfig json.RawMessage `json:"retrieval_config,omitempty"`
 		}
 		if err := decodeArgs(req, &args); err != nil {
 			return toolError(err.Error()), nil
@@ -212,18 +217,51 @@ func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 		if strings.TrimSpace(args.ExperimentID) != "" && strings.TrimSpace(args.Label) == "" {
 			return toolError("label is required when experiment_id is set"), nil
 		}
+		retrievalConfig, err := parseRetrievalConfig(args.RetrievalConfig)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
 		in := evalworkflow.StartRunInput{
-			DatasetID:      args.DatasetID,
-			Collection:     args.Collection,
-			Notes:          args.Notes,
-			BaselineEvalID: args.BaselineEvalID,
-			Rerank:         args.Rerank,
-			ExperimentID:   args.ExperimentID,
-			Label:          args.Label,
+			DatasetID:       args.DatasetID,
+			Collection:      args.Collection,
+			Notes:           args.Notes,
+			BaselineEvalID:  args.BaselineEvalID,
+			Rerank:          args.Rerank,
+			ExperimentID:    args.ExperimentID,
+			Label:           args.Label,
+			RetrievalConfig: retrievalConfig,
 		}
 		result, err := service.StartRun(ctx, in)
 		return resultOrError(result, err), nil
 	}
+}
+
+func parseRetrievalConfig(raw json.RawMessage) (*evalapi.RetrievalConfig, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, fmt.Errorf("retrieval_config must be an object")
+	}
+	for field := range fields {
+		if field != "top_k" {
+			return nil, fmt.Errorf("retrieval_config.%s is not supported", field)
+		}
+	}
+
+	var config evalapi.RetrievalConfig
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return nil, fmt.Errorf("invalid retrieval_config: %w", err)
+	}
+	if config.TopK != nil {
+		topK := *config.TopK
+		if topK < minRetrievalTopK || topK > maxRetrievalTopK {
+			return nil, fmt.Errorf("retrieval_config.top_k must be between 1 and 20")
+		}
+	}
+	return &config, nil
 }
 
 func waitForEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
@@ -271,6 +309,17 @@ func getEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 			return toolError(err.Error()), nil
 		}
 		result, err := service.GetRun(ctx, evalID)
+		return resultOrError(result, err), nil
+	}
+}
+
+func runEvidenceHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		evalID, err := evalIDFromRequest(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		result, err := service.RunEvidence(ctx, evalID)
 		return resultOrError(result, err), nil
 	}
 }
@@ -493,7 +542,7 @@ func experimentIDSchema() json.RawMessage {
 }
 
 func startEvalRunSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"}},"required":["dataset_id","collection"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"},"retrieval_config":{"type":"object","properties":{"top_k":{"type":"integer","minimum":1,"maximum":20}},"additionalProperties":false}},"required":["dataset_id","collection"],"additionalProperties":false}`)
 }
 
 func waitEvalRunSchema() json.RawMessage {

@@ -88,6 +88,10 @@ func (f *fakeEvalService) GetRun(context.Context, string) (evalapi.EvaluationDet
 	return evalapi.EvaluationDetail{ID: "eval-123", DatasetID: "ds-1", Status: "completed"}, nil
 }
 
+func (f *fakeEvalService) RunEvidence(context.Context, string) (evalworkflow.RunEvidence, error) {
+	return evalworkflow.RunEvidence{EvalID: "eval-123", Status: "running", NextSteps: []string{"investigate_eval_run"}}, nil
+}
+
 func (f *fakeEvalService) Compare(_ context.Context, in evalworkflow.CompareInput) (evalapi.Comparison, error) {
 	f.compareCalls++
 	f.compareInput = in
@@ -131,6 +135,7 @@ func TestServerRegistersPromptResourceAndTools(t *testing.T) {
 		"create_eval_dataset",
 		"get_eval_experiment",
 		"get_eval_run",
+		"get_eval_run_evidence",
 		"get_rag_collection_config",
 		"get_worst_eval_cases",
 		"list_eval_dataset_fixtures",
@@ -188,6 +193,80 @@ func TestStartEvalRunValidationError(t *testing.T) {
 	}
 	if fake.startRunCalls != 0 {
 		t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+	}
+}
+
+func TestStartEvalRunForwardsRetrievalConfig(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":       "ds-1",
+		"collection":       "documents",
+		"rerank":           true,
+		"retrieval_config": map[string]any{"top_k": float64(3)},
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	if fake.startRunInput.RetrievalConfig == nil || fake.startRunInput.RetrievalConfig.TopK == nil || *fake.startRunInput.RetrievalConfig.TopK != 3 {
+		t.Fatalf("retrieval config = %#v", fake.startRunInput.RetrievalConfig)
+	}
+}
+
+func TestStartEvalRunRejectsInvalidRetrievalConfig(t *testing.T) {
+	for _, topK := range []float64{0, 21} {
+		t.Run("top_k_range", func(t *testing.T) {
+			fake := &fakeEvalService{}
+			result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+				"dataset_id":       "ds-1",
+				"collection":       "documents",
+				"retrieval_config": map[string]any{"top_k": topK},
+			}))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.startRunCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+			}
+			if got := textResult(t, result); !strings.Contains(got, "retrieval_config.top_k must be between 1 and 20") {
+				t.Fatalf("error = %q", got)
+			}
+		})
+	}
+}
+
+func TestStartEvalRunRejectsUnknownRetrievalConfigField(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":       "ds-1",
+		"collection":       "documents",
+		"retrieval_config": map[string]any{"limit": float64(3)},
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected MCP tool error")
+	}
+	if fake.startRunCalls != 0 {
+		t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+	}
+	if got := textResult(t, result); !strings.Contains(got, "retrieval_config.limit is not supported") {
+		t.Fatalf("error = %q", got)
+	}
+}
+
+func TestStartEvalRunSchemaIncludesRetrievalConfig(t *testing.T) {
+	schema := string(startEvalRunSchema())
+	for _, want := range []string{"retrieval_config", "top_k"} {
+		if !strings.Contains(schema, want) {
+			t.Fatalf("schema missing %q: %s", want, schema)
+		}
 	}
 }
 
@@ -323,6 +402,23 @@ func TestGetEvalRunMalformedArgsReturnsDecodeError(t *testing.T) {
 	}
 	if strings.Contains(text, "eval_id is required") {
 		t.Fatalf("malformed args should not collapse to required-field error, got %q", text)
+	}
+}
+
+func TestGetEvalRunEvidenceHandlerReturnsJSON(t *testing.T) {
+	result, err := runEvidenceHandler(&fakeEvalService{})(context.Background(), callReq(map[string]any{
+		"eval_id": "eval-123",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	var payload evalworkflow.RunEvidence
+	unmarshalTextResult(t, result, &payload)
+	if payload.EvalID != "eval-123" || len(payload.NextSteps) == 0 {
+		t.Fatalf("payload = %#v", payload)
 	}
 }
 

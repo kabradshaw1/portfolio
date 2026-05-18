@@ -41,15 +41,17 @@ func TestStartRunSendsExperimentAttachmentToEvalAPI(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{startResponse: evalapi.StartEvaluationResponse{ID: "eval-123", Status: "queued"}}
 	svc := newTestService(api)
+	topK := 3
 
 	got, err := svc.StartRun(ctx, StartRunInput{
-		DatasetID:      "dataset-1",
-		Collection:     "kb",
-		Notes:          "candidate notes",
-		ExperimentID:   "exp-7",
-		Label:          "candidate",
-		BaselineEvalID: "eval-base",
-		Rerank:         true,
+		DatasetID:       "dataset-1",
+		Collection:      "kb",
+		Notes:           "candidate notes",
+		ExperimentID:    "exp-7",
+		Label:           "candidate",
+		BaselineEvalID:  "eval-base",
+		Rerank:          true,
+		RetrievalConfig: &evalapi.RetrievalConfig{TopK: &topK},
 	})
 	if err != nil {
 		t.Fatalf("StartRun error: %v", err)
@@ -63,6 +65,9 @@ func TestStartRunSendsExperimentAttachmentToEvalAPI(t *testing.T) {
 	req := api.startRequests[0]
 	if req.ExperimentID != "exp-7" || req.ExperimentLabel != "candidate" {
 		t.Fatalf("StartEvaluation request = %#v", req)
+	}
+	if req.RetrievalConfig == nil || req.RetrievalConfig.TopK == nil || *req.RetrievalConfig.TopK != 3 {
+		t.Fatalf("retrieval config = %#v", req.RetrievalConfig)
 	}
 }
 
@@ -256,6 +261,38 @@ func TestWaitForRunTimeoutIncludesLatestRunMetadata(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("WaitForRun error = %q, want substring %q", err.Error(), want)
 		}
+	}
+}
+
+func TestRunEvidenceSummarizesStaleRunningRun(t *testing.T) {
+	ctx := context.Background()
+	collection := "documents"
+	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
+		"eval-1": {{
+			ID:         "eval-1",
+			Status:     "running",
+			Collection: &collection,
+			CreatedAt:  time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
+			Config: map[string]any{
+				"chat":       map[string]any{"llm_model": "qwen"},
+				"collection": map[string]any{"name": "documents"},
+			},
+		}},
+	}}
+	svc := New(api, fakeIngestion{}, fakeFixtures{}, time.Millisecond, time.Hour)
+
+	got, err := svc.RunEvidence(ctx, "eval-1")
+	if err != nil {
+		t.Fatalf("RunEvidence error: %v", err)
+	}
+	if got.EvalID != "eval-1" || got.Status != "running" || !got.StaleRunning {
+		t.Fatalf("RunEvidence = %#v", got)
+	}
+	if len(got.NextSteps) == 0 || !strings.Contains(got.NextSteps[0], "investigate_eval_run") {
+		t.Fatalf("NextSteps = %#v", got.NextSteps)
+	}
+	if got.Config["chat"] == nil {
+		t.Fatalf("Config = %#v", got.Config)
 	}
 }
 
