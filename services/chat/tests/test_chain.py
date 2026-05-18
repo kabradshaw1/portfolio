@@ -5,6 +5,15 @@ from app.chain import rag_query, retrieve_chunks
 from app.retriever import RetrievalResult
 
 
+class FakePermit:
+    def __init__(self, events: list[str], name: str):
+        self._events = events
+        self._name = name
+
+    def release(self):
+        self._events.append(f"{self._name}:release")
+
+
 def hybrid_result(chunks: list[dict] | None = None) -> RetrievalResult:
     return RetrievalResult(
         chunks=chunks or [],
@@ -99,6 +108,123 @@ async def test_retrieve_chunks_rerank_true_uses_larger_candidate_pool(
     assert result.metadata["rerank_requested"] is True
     assert result.metadata["rerank_applied"] is True
     assert result.metadata["rerank_fallback"] is False
+
+
+@patch("app.chain.QdrantRetriever")
+@pytest.mark.asyncio
+async def test_retrieve_acquires_embedding_admission(mock_retriever_cls, monkeypatch):
+    monkeypatch.setattr("app.chain.settings.retrieval_mode", "semantic")
+    events = []
+
+    async def acquire():
+        events.append("embed:acquire")
+        return FakePermit(events, "embed")
+
+    monkeypatch.setattr("app.chain.embed_limiter.acquire", acquire)
+    embedding_provider = AsyncMock()
+    embedding_provider.embed.return_value = [[0.1] * 768]
+    retriever = MagicMock()
+    retriever.search_semantic.return_value = semantic_fallback_result()
+    mock_retriever_cls.return_value = retriever
+
+    await retrieve_chunks(
+        question="q",
+        embedding_provider=embedding_provider,
+        embedding_model="nomic-embed-text",
+        qdrant_host="localhost",
+        qdrant_port=6333,
+        collection_name="documents",
+    )
+
+    assert events == ["embed:acquire", "embed:release"]
+
+
+@patch("app.chain.retrieve_chunks", new_callable=AsyncMock)
+@pytest.mark.asyncio
+async def test_rag_query_acquires_generation_admission(mock_retrieve, monkeypatch):
+    events = []
+
+    async def acquire():
+        events.append("generate:acquire")
+        return FakePermit(events, "generate")
+
+    async def generate(**kwargs):
+        yield {"token": "ok"}
+        yield {"done": True}
+
+    monkeypatch.setattr("app.chain.generate_limiter.acquire", acquire)
+    mock_retrieve.return_value = hybrid_result()
+
+    class FakeLLMProvider:
+        def generate(self, **kwargs):
+            return generate(**kwargs)
+
+    result = [
+        event
+        async for event in rag_query(
+            question="q",
+            llm_provider=FakeLLMProvider(),
+            embedding_provider=AsyncMock(),
+            chat_model="mistral",
+            embedding_model="nomic-embed-text",
+            qdrant_host="localhost",
+            qdrant_port=6333,
+            collection_name="documents",
+        )
+    ]
+
+    assert result[0] == {"token": "ok"}
+    assert events == ["generate:acquire", "generate:release"]
+
+
+@patch("app.chain.rerank_chunks")
+@patch("app.chain.get_sparse_encoder", create=True)
+@patch("app.chain.QdrantRetriever")
+@pytest.mark.asyncio
+async def test_rerank_acquires_rerank_admission_when_requested(
+    mock_retriever_cls,
+    mock_sparse_encoder,
+    mock_rerank,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.chain.settings.retrieval_mode", "hybrid")
+    monkeypatch.setattr("app.chain.settings.rerank_enabled", True)
+    events = []
+
+    async def acquire():
+        events.append("rerank:acquire")
+        return FakePermit(events, "rerank")
+
+    monkeypatch.setattr("app.chain.rerank_limiter.acquire", acquire)
+    embedding_provider = AsyncMock()
+    embedding_provider.embed.return_value = [[0.1] * 768]
+    mock_sparse_encoder.return_value.embed.return_value = [MagicMock()]
+    retriever = MagicMock()
+    chunks = [
+        {
+            "text": "chunk",
+            "page_number": 1,
+            "filename": "doc.pdf",
+            "document_id": "doc",
+            "score": 1.0,
+        }
+    ]
+    retriever.search_hybrid.return_value = hybrid_result(chunks)
+    mock_retriever_cls.return_value = retriever
+    mock_rerank.return_value.chunks = chunks
+    mock_rerank.return_value.metadata = {"rerank_applied": True}
+
+    await retrieve_chunks(
+        question="q",
+        embedding_provider=embedding_provider,
+        embedding_model="nomic-embed-text",
+        qdrant_host="localhost",
+        qdrant_port=6333,
+        collection_name="documents",
+        rerank=True,
+    )
+
+    assert events == ["rerank:acquire", "rerank:release"]
 
 
 @patch("app.chain.rerank_chunks")

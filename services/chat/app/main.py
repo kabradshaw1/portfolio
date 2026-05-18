@@ -8,8 +8,10 @@ from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider, get_llm_provider
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
-from shared.auth import create_auth_dependency
+from shared.auth import AuthContext, create_auth_context_dependency
+from shared.llm.admission import AdmissionRejected
 from shared.logging import RequestLoggingMiddleware, configure_logging
+from shared.rate_limits import FixedWindowRateLimiter, policies_from_settings
 from shared.tracing import configure_tracing, instrument_app
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -32,7 +34,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
     allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-RAG-Internal-Token"],
 )
 app.add_middleware(RequestLoggingMiddleware)
 
@@ -42,12 +44,69 @@ instrument_app(app)
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 
-require_auth = create_auth_dependency(settings.jwt_secret)
-
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
+
+
+def build_chat_rate_limiter() -> FixedWindowRateLimiter:
+    limiter = FixedWindowRateLimiter(
+        policies_from_settings(
+            {
+                "chat_ask": {
+                    "operator": settings.chat_rate_limit_ask_operator,
+                    "user": settings.chat_rate_limit_ask_user,
+                    "anonymous": settings.chat_rate_limit_ask_anonymous,
+                    "internal_eval": settings.chat_rate_limit_ask_internal_eval,
+                },
+                "chat_search": {
+                    "operator": settings.chat_rate_limit_search_operator,
+                    "user": settings.chat_rate_limit_search_user,
+                    "anonymous": settings.chat_rate_limit_search_anonymous,
+                    "internal_eval": settings.chat_rate_limit_search_internal_eval,
+                },
+            }
+        )
+    )
+    limiter.enabled = True
+    return limiter
+
+
+chat_rate_limiter = build_chat_rate_limiter()
+
+
+async def _resolve_auth_context(request: Request) -> AuthContext:
+    internal_token = request.headers.get("x-rag-internal-token")
+    if (
+        settings.rag_internal_eval_token
+        and internal_token == settings.rag_internal_eval_token
+    ):
+        return AuthContext(subject="internal_eval", email=None, tier="internal_eval")
+    dependency = create_auth_context_dependency(settings.jwt_secret)
+    return await dependency(request, None)
+
+
+async def _enforce_rate_limit(group: str, request: Request) -> AuthContext:
+    context = await _resolve_auth_context(request)
+    if not getattr(chat_rate_limiter, "enabled", True):
+        return context
+    decision = chat_rate_limiter.check(group, context)
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
+    return context
+
+
+async def enforce_chat_ask(request: Request) -> AuthContext:
+    return await _enforce_rate_limit("chat_ask", request)
+
+
+async def enforce_chat_search(request: Request) -> AuthContext:
+    return await _enforce_rate_limit("chat_search", request)
 
 
 _llm_provider = get_llm_provider(
@@ -136,9 +195,10 @@ async def health():
 
 
 @app.post("/chat")
-@limiter.limit("20/minute")
 async def chat(
-    request: Request, body: ChatRequest, user_id: str = Depends(require_auth)
+    request: Request,
+    body: ChatRequest,
+    auth_context: AuthContext = Depends(enforce_chat_ask),
 ):
     wants_json = request.headers.get("accept", "").startswith("application/json")
 
@@ -172,6 +232,12 @@ async def chat(
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             logger.error("Backend service error: %s", e)
             raise HTTPException(status_code=503, detail="Service unavailable")
+        except AdmissionRejected as e:
+            raise HTTPException(
+                status_code=503,
+                detail="LLM service overloaded",
+                headers={"Retry-After": str(e.retry_after_seconds)},
+            ) from e
         except Exception as e:
             logger.error("Internal error: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Internal error")
@@ -194,6 +260,15 @@ async def chat(
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             logger.error("backend_service_error", error=str(e))
             yield {"data": json.dumps({"error": "Service unavailable"})}
+        except AdmissionRejected as e:
+            yield {
+                "data": json.dumps(
+                    {
+                        "error": "LLM service overloaded",
+                        "retry_after_seconds": e.retry_after_seconds,
+                    }
+                )
+            }
         except Exception as e:
             logger.error("internal_error", error=str(e), exc_info=True)
             yield {"data": json.dumps({"error": "Internal error"})}
@@ -202,9 +277,10 @@ async def chat(
 
 
 @app.post("/search")
-@limiter.limit("30/minute")
 async def search(
-    request: Request, body: SearchRequest, user_id: str = Depends(require_auth)
+    request: Request,
+    body: SearchRequest,
+    auth_context: AuthContext = Depends(enforce_chat_search),
 ):
     try:
         retrieval = await retrieve_chunks(
@@ -220,6 +296,12 @@ async def search(
     except (httpx.ConnectError, httpx.TimeoutException) as e:
         logger.error("Embedding service error: %s", e)
         raise HTTPException(status_code=503, detail="Embedding service unavailable")
+    except AdmissionRejected as e:
+        raise HTTPException(
+            status_code=503,
+            detail="LLM service overloaded",
+            headers={"Retry-After": str(e.retry_after_seconds)},
+        ) from e
 
     return {
         "results": [

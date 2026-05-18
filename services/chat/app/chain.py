@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 import structlog
 from llm.base import EmbeddingProvider, LLMProvider
 from rag.sparse import SparseVectorEncoder
+from shared.llm.admission import embed_limiter, generate_limiter, rerank_limiter
 
 from app.config import settings
 from app.metrics import (
@@ -80,7 +81,11 @@ async def embed_texts(
         return []
 
     start = time.perf_counter()
-    embeddings = await provider.embed(texts)
+    permit = await embed_limiter.acquire()
+    try:
+        embeddings = await provider.embed(texts)
+    finally:
+        permit.release()
     EMBEDDING_DURATION.labels(service="chat", model=model).observe(
         time.perf_counter() - start
     )
@@ -94,30 +99,34 @@ async def stream_response(
     provider: LLMProvider,
 ) -> AsyncGenerator[dict, None]:
     start = time.perf_counter()
-    async for event in provider.generate(prompt=prompt, system=SYSTEM_PROMPT):
-        if "token" in event:
-            yield {"token": event["token"]}
-        if event.get("done"):
-            duration = time.perf_counter() - start
-            OLLAMA_REQUEST_DURATION.labels(
-                service="chat", model=model, operation="generate"
-            ).observe(duration)
-            prompt_tokens = event.get("prompt_eval_count", 0)
-            completion_tokens = event.get("eval_count", 0)
-            if prompt_tokens:
-                OLLAMA_TOKENS.labels(service="chat", model=model, kind="prompt").inc(
-                    prompt_tokens
-                )
-            if completion_tokens:
-                OLLAMA_TOKENS.labels(
-                    service="chat", model=model, kind="completion"
-                ).inc(completion_tokens)
-            eval_ns = event.get("eval_duration", 0)
-            if eval_ns:
-                OLLAMA_EVAL_DURATION.labels(service="chat", model=model).observe(
-                    eval_ns / 1e9
-                )
-            break
+    permit = await generate_limiter.acquire()
+    try:
+        async for event in provider.generate(prompt=prompt, system=SYSTEM_PROMPT):
+            if "token" in event:
+                yield {"token": event["token"]}
+            if event.get("done"):
+                duration = time.perf_counter() - start
+                OLLAMA_REQUEST_DURATION.labels(
+                    service="chat", model=model, operation="generate"
+                ).observe(duration)
+                prompt_tokens = event.get("prompt_eval_count", 0)
+                completion_tokens = event.get("eval_count", 0)
+                if prompt_tokens:
+                    OLLAMA_TOKENS.labels(
+                        service="chat", model=model, kind="prompt"
+                    ).inc(prompt_tokens)
+                if completion_tokens:
+                    OLLAMA_TOKENS.labels(
+                        service="chat", model=model, kind="completion"
+                    ).inc(completion_tokens)
+                eval_ns = event.get("eval_duration", 0)
+                if eval_ns:
+                    OLLAMA_EVAL_DURATION.labels(service="chat", model=model).observe(
+                        eval_ns / 1e9
+                    )
+                break
+    finally:
+        permit.release()
 
 
 async def retrieve_chunks(
@@ -207,13 +216,17 @@ async def retrieve_chunks(
         result = RetrievalResult(chunks=result.chunks[:top_k], metadata=result.metadata)
     elif rerank:
         try:
-            rerank_result = rerank_chunks(
-                query=question,
-                chunks=result.chunks,
-                top_k=top_k,
-                model_name=settings.rerank_model,
-                device=settings.rerank_device,
-            )
+            permit = await rerank_limiter.acquire()
+            try:
+                rerank_result = rerank_chunks(
+                    query=question,
+                    chunks=result.chunks,
+                    top_k=top_k,
+                    model_name=settings.rerank_model,
+                    device=settings.rerank_device,
+                )
+            finally:
+                permit.release()
             metadata = {
                 "rerank_requested": True,
                 "rerank_enabled": True,
