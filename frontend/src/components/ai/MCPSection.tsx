@@ -56,6 +56,34 @@ export function MCPSection() {
 
       <MCPToolCatalog />
 
+      <h3 className="mt-10 text-xl font-semibold">
+        Internal MCPs for Engineering Operations
+      </h3>
+      <p className="mt-4 text-muted-foreground leading-relaxed">
+        The public MCP server is the user-facing showcase. Behind it, three
+        internal MCPs give Codex bounded, purpose-built access to the systems
+        that keep this portfolio operable: production evidence, structured
+        practice feedback, and repeatable RAG quality measurement.
+      </p>
+      <ul className="mt-4 list-disc space-y-2 pl-6 text-muted-foreground">
+        <li>
+          <strong className="text-foreground">Observability MCP:</strong>{" "}
+          gathers service health, logs, metrics, and traces into bounded
+          evidence bundles for incident triage and recovery verification.
+        </li>
+        <li>
+          <strong className="text-foreground">QA MCP:</strong> manages
+          structured interview-practice sessions, weak-topic tracking, answer
+          attempts, and feedback against expected answers.
+        </li>
+        <li>
+          <strong className="text-foreground">Eval MCP service:</strong>{" "}
+          manages RAG datasets and evaluation runs, compares candidate changes,
+          surfaces worst cases, and helps decide whether retrieval work improved
+          quality.
+        </li>
+      </ul>
+
       <h3 className="mt-10 text-xl font-semibold">Try it interactively</h3>
       <p className="mt-4 text-muted-foreground leading-relaxed">
         The same tool registry powers an in-browser agent loop on the Go

@@ -72,6 +72,19 @@ test.describe("/ai MCP Server section", () => {
     ).toBeVisible();
   });
 
+  test("MCP section describes the internal engineering MCPs", async ({ page }) => {
+    await page.goto("/ai");
+
+    await expect(
+      page.getByRole("heading", {
+        name: "Internal MCPs for Engineering Operations",
+      }),
+    ).toBeVisible();
+    await expect(page.getByText("Observability MCP", { exact: false })).toBeVisible();
+    await expect(page.getByText("QA MCP", { exact: false })).toBeVisible();
+    await expect(page.getByText("Eval MCP service", { exact: false })).toBeVisible();
+  });
+
   test("Tool catalog renders on /go AI Assistant tab", async ({ page }) => {
     await page.goto("/go");
     await page.getByRole("button", { name: "AI Assistant" }).click();
