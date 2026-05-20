@@ -26,6 +26,15 @@ const (
 )
 
 var answerAPIKeySecretPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,100}$`)
+var answerTierPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,50}$`)
+
+type answerModelArgs struct {
+	Tier         string
+	Provider     string
+	BaseURL      string
+	Model        string
+	APIKeySecret string
+}
 
 type EvalService interface {
 	StartExperiment(context.Context, evalworkflow.StartExperimentInput) (evalapi.Experiment, error)
@@ -204,11 +213,11 @@ func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 			ExperimentID       string          `json:"experiment_id,omitempty"`
 			Label              string          `json:"label,omitempty"`
 			RetrievalConfig    json.RawMessage `json:"retrieval_config,omitempty"`
-			AnswerTier         string          `json:"answer_tier,omitempty"`
-			AnswerProvider     string          `json:"answer_provider,omitempty"`
-			AnswerBaseURL      string          `json:"answer_base_url,omitempty"`
-			AnswerModel        string          `json:"answer_model,omitempty"`
-			AnswerAPIKeySecret string          `json:"answer_api_key_secret,omitempty"`
+			AnswerTier         *string         `json:"answer_tier,omitempty"`
+			AnswerProvider     *string         `json:"answer_provider,omitempty"`
+			AnswerBaseURL      *string         `json:"answer_base_url,omitempty"`
+			AnswerModel        *string         `json:"answer_model,omitempty"`
+			AnswerAPIKeySecret *string         `json:"answer_api_key_secret,omitempty"`
 		}
 		if err := decodeArgs(req, &args); err != nil {
 			return toolError(err.Error()), nil
@@ -229,7 +238,8 @@ func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
-		if err := validateAnswerModelArgs(args.AnswerTier, args.AnswerProvider, args.AnswerBaseURL, args.AnswerModel, args.AnswerAPIKeySecret); err != nil {
+		answerOverride, err := validateAnswerModelArgs(args.AnswerTier, args.AnswerProvider, args.AnswerBaseURL, args.AnswerModel, args.AnswerAPIKeySecret)
+		if err != nil {
 			return toolError(err.Error()), nil
 		}
 		in := evalworkflow.StartRunInput{
@@ -241,46 +251,85 @@ func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 			ExperimentID:       args.ExperimentID,
 			Label:              args.Label,
 			RetrievalConfig:    retrievalConfig,
-			AnswerTier:         args.AnswerTier,
-			AnswerProvider:     args.AnswerProvider,
-			AnswerBaseURL:      args.AnswerBaseURL,
-			AnswerModel:        args.AnswerModel,
-			AnswerAPIKeySecret: args.AnswerAPIKeySecret,
+			AnswerTier:         answerOverride.Tier,
+			AnswerProvider:     answerOverride.Provider,
+			AnswerBaseURL:      answerOverride.BaseURL,
+			AnswerModel:        answerOverride.Model,
+			AnswerAPIKeySecret: answerOverride.APIKeySecret,
 		}
 		result, err := service.StartRun(ctx, in)
 		return resultOrError(result, err), nil
 	}
 }
 
-func validateAnswerModelArgs(tier, provider, baseURL, model, secret string) error {
-	tier = strings.TrimSpace(tier)
-	provider = strings.TrimSpace(provider)
-	baseURL = strings.TrimSpace(baseURL)
-	model = strings.TrimSpace(model)
-	secret = strings.TrimSpace(secret)
-	if tier == "" && provider == "" && baseURL == "" && model == "" && secret == "" {
-		return nil
+func validateAnswerModelArgs(tier, provider, baseURL, model, secret *string) (answerModelArgs, error) {
+	if tier == nil && provider == nil && baseURL == nil && model == nil && secret == nil {
+		return answerModelArgs{}, nil
 	}
-	if provider == "" {
-		return fmt.Errorf("answer_provider is required with answer override")
+	for _, field := range []struct {
+		name  string
+		value *string
+	}{
+		{name: "answer_tier", value: tier},
+		{name: "answer_provider", value: provider},
+		{name: "answer_base_url", value: baseURL},
+		{name: "answer_model", value: model},
+		{name: "answer_api_key_secret", value: secret},
+	} {
+		if hasPadding(field.value) {
+			return answerModelArgs{}, fmt.Errorf("%s must not include leading or trailing whitespace", field.name)
+		}
 	}
-	if provider != "ollama" && provider != "openai" && provider != "anthropic" {
-		return fmt.Errorf("answer_provider must be ollama, openai, or anthropic")
+	normalized := answerModelArgs{
+		Tier:         trimStringPtr(tier),
+		Provider:     trimStringPtr(provider),
+		BaseURL:      trimStringPtr(baseURL),
+		Model:        trimStringPtr(model),
+		APIKeySecret: trimStringPtr(secret),
 	}
-	if model == "" {
-		return fmt.Errorf("answer_model is required with answer override")
+	if normalized.Provider == "" {
+		return answerModelArgs{}, fmt.Errorf("answer_provider is required with answer override")
 	}
-	if (provider == "openai" || provider == "anthropic") && secret == "" {
-		return fmt.Errorf("answer_api_key_secret is required when answer_provider is %s", provider)
+	if normalized.Provider != "ollama" && normalized.Provider != "openai" && normalized.Provider != "anthropic" {
+		return answerModelArgs{}, fmt.Errorf("answer_provider must be ollama, openai, or anthropic")
 	}
-	lowered := strings.ToLower(secret)
+	if normalized.Model == "" {
+		return answerModelArgs{}, fmt.Errorf("answer_model is required with answer override")
+	}
+	if normalized.Tier != "" && !answerTierPattern.MatchString(normalized.Tier) {
+		return answerModelArgs{}, fmt.Errorf("answer_tier must match ^[a-zA-Z0-9_-]{1,50}$")
+	}
+	if baseURL != nil && normalized.BaseURL == "" {
+		return answerModelArgs{}, fmt.Errorf("answer_base_url must not be empty when provided")
+	}
+	if len(normalized.Model) > 100 {
+		return answerModelArgs{}, fmt.Errorf("answer_model must be at most 100 characters")
+	}
+	if len(normalized.BaseURL) > 300 {
+		return answerModelArgs{}, fmt.Errorf("answer_base_url must be at most 300 characters")
+	}
+	if (normalized.Provider == "openai" || normalized.Provider == "anthropic") && normalized.APIKeySecret == "" {
+		return answerModelArgs{}, fmt.Errorf("answer_api_key_secret is required when answer_provider is %s", normalized.Provider)
+	}
+	lowered := strings.ToLower(normalized.APIKeySecret)
 	if strings.HasPrefix(lowered, "sk-") || strings.HasPrefix(lowered, "sk_") || strings.HasPrefix(lowered, "bearer ") || strings.HasPrefix(lowered, "api-") {
-		return fmt.Errorf("answer_api_key_secret must be an environment variable name")
+		return answerModelArgs{}, fmt.Errorf("answer_api_key_secret must be an environment variable name")
 	}
-	if secret != "" && !answerAPIKeySecretPattern.MatchString(secret) {
-		return fmt.Errorf("answer_api_key_secret must be an environment variable name matching ^[A-Z][A-Z0-9_]{1,100}$")
+	if secret != nil && !answerAPIKeySecretPattern.MatchString(normalized.APIKeySecret) {
+		return answerModelArgs{}, fmt.Errorf("answer_api_key_secret must be an environment variable name matching ^[A-Z][A-Z0-9_]{1,100}$")
 	}
-	return nil
+	return normalized, nil
+}
+
+func trimStringPtr(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func hasPadding(value *string) bool {
+	return value != nil && *value != strings.TrimSpace(*value)
 }
 
 func parseRetrievalConfig(raw json.RawMessage) (*evalapi.RetrievalConfig, error) {
@@ -589,7 +638,7 @@ func experimentIDSchema() json.RawMessage {
 }
 
 func startEvalRunSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"},"retrieval_config":{"type":"object","properties":{"top_k":{"type":"integer","minimum":1,"maximum":20}},"additionalProperties":false},"answer_tier":{"type":"string","pattern":"^[a-zA-Z0-9_-]{1,50}$","maxLength":50},"answer_provider":{"type":"string","enum":["ollama","openai","anthropic"]},"answer_base_url":{"type":"string","maxLength":300},"answer_model":{"type":"string","minLength":1,"maxLength":100},"answer_api_key_secret":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{1,100}$","maxLength":101}},"required":["dataset_id","collection"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"},"retrieval_config":{"type":"object","properties":{"top_k":{"type":"integer","minimum":1,"maximum":20}},"additionalProperties":false},"answer_tier":{"type":"string","pattern":"^[a-zA-Z0-9_-]{1,50}$","maxLength":50},"answer_provider":{"type":"string","enum":["ollama","openai","anthropic"]},"answer_base_url":{"type":"string","pattern":"^\\S(?:.*\\S)?$","minLength":1,"maxLength":300},"answer_model":{"type":"string","pattern":"^\\S(?:.*\\S)?$","minLength":1,"maxLength":100},"answer_api_key_secret":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{1,100}$","minLength":2,"maxLength":101}},"allOf":[{"if":{"anyOf":[{"required":["answer_tier"]},{"required":["answer_provider"]},{"required":["answer_base_url"]},{"required":["answer_model"]},{"required":["answer_api_key_secret"]}]},"then":{"required":["answer_provider","answer_model"]}},{"if":{"properties":{"answer_provider":{"const":"openai"}},"required":["answer_provider"]},"then":{"required":["answer_api_key_secret"]}},{"if":{"properties":{"answer_provider":{"const":"anthropic"}},"required":["answer_provider"]},"then":{"required":["answer_api_key_secret"]}}],"required":["dataset_id","collection"],"additionalProperties":false}`)
 }
 
 func waitEvalRunSchema() json.RawMessage {

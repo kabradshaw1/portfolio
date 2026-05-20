@@ -254,6 +254,14 @@ func TestStartEvalRunRejectsPartialAnswerModelOverride(t *testing.T) {
 			name: "answer_base_url_only",
 			args: map[string]any{"answer_base_url": "https://api.openai.com/v1"},
 		},
+		{
+			name: "empty_answer_base_url_only",
+			args: map[string]any{"answer_base_url": ""},
+		},
+		{
+			name: "empty_answer_secret_only",
+			args: map[string]any{"answer_api_key_secret": ""},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeEvalService{}
@@ -335,6 +343,51 @@ func TestStartEvalRunRejectsInvalidAnswerSecretReference(t *testing.T) {
 			}
 			if strings.Contains(got, tc.secret) {
 				t.Fatalf("error echoed secret value: %q", got)
+			}
+		})
+	}
+}
+
+func TestStartEvalRunRejectsWhitespacePaddedAnswerFields(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		field string
+		value string
+	}{
+		{name: "tier", field: "answer_tier", value: " efficient "},
+		{name: "provider", field: "answer_provider", value: " openai "},
+		{name: "base_url", field: "answer_base_url", value: " https://api.openai.com/v1 "},
+		{name: "model", field: "answer_model", value: " gpt-5.4-mini "},
+		{name: "secret", field: "answer_api_key_secret", value: " OPENAI_API_KEY "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeEvalService{}
+			args := map[string]any{
+				"dataset_id":            "ds-1",
+				"collection":            "documents",
+				"answer_tier":           "efficient",
+				"answer_provider":       "openai",
+				"answer_base_url":       "https://api.openai.com/v1",
+				"answer_model":          "gpt-5.4-mini",
+				"answer_api_key_secret": "OPENAI_API_KEY",
+			}
+			args[tc.field] = tc.value
+			result, err := startEvalRunHandler(fake)(context.Background(), callReq(args))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.startRunCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+			}
+			got := textResult(t, result)
+			if !strings.Contains(got, "must not include leading or trailing whitespace") {
+				t.Fatalf("error = %q", got)
+			}
+			if strings.Contains(got, tc.value) {
+				t.Fatalf("error echoed raw field value: %q", got)
 			}
 		})
 	}
@@ -437,6 +490,7 @@ func TestStartEvalRunRejectsUnknownRetrievalConfigField(t *testing.T) {
 func TestStartEvalRunSchemaIncludesRetrievalConfig(t *testing.T) {
 	var schema struct {
 		Properties map[string]map[string]any `json:"properties"`
+		AllOf      []map[string]any          `json:"allOf"`
 	}
 	if err := json.Unmarshal(startEvalRunSchema(), &schema); err != nil {
 		t.Fatalf("schema is invalid JSON: %v", err)
@@ -462,14 +516,49 @@ func TestStartEvalRunSchemaIncludesRetrievalConfig(t *testing.T) {
 	if got := schema.Properties["answer_base_url"]["maxLength"]; got != float64(300) {
 		t.Fatalf("answer_base_url maxLength = %#v", got)
 	}
+	if got := schema.Properties["answer_base_url"]["minLength"]; got != float64(1) {
+		t.Fatalf("answer_base_url minLength = %#v", got)
+	}
+	if got := schema.Properties["answer_base_url"]["pattern"]; got != `^\S(?:.*\S)?$` {
+		t.Fatalf("answer_base_url pattern = %#v", got)
+	}
 	answerModel := schema.Properties["answer_model"]
-	if answerModel["minLength"] != float64(1) || answerModel["maxLength"] != float64(100) {
+	if answerModel["minLength"] != float64(1) || answerModel["maxLength"] != float64(100) || answerModel["pattern"] != `^\S(?:.*\S)?$` {
 		t.Fatalf("answer_model schema = %#v", answerModel)
 	}
 	answerAPIKeySecret := schema.Properties["answer_api_key_secret"]
-	if answerAPIKeySecret["pattern"] != "^[A-Z][A-Z0-9_]{1,100}$" || answerAPIKeySecret["maxLength"] != float64(101) {
+	if answerAPIKeySecret["pattern"] != "^[A-Z][A-Z0-9_]{1,100}$" || answerAPIKeySecret["minLength"] != float64(2) || answerAPIKeySecret["maxLength"] != float64(101) {
 		t.Fatalf("answer_api_key_secret schema = %#v", answerAPIKeySecret)
 	}
+	if len(schema.AllOf) != 3 {
+		t.Fatalf("answer override dependency schema = %#v", schema.AllOf)
+	}
+	if !schemaRequiresFields(schema.AllOf[0], "answer_provider", "answer_model") {
+		t.Fatalf("answer override dependency schema = %#v", schema.AllOf[0])
+	}
+	if !schemaRequiresFields(schema.AllOf[1], "answer_api_key_secret") || !schemaRequiresFields(schema.AllOf[2], "answer_api_key_secret") {
+		t.Fatalf("remote provider secret dependency schema = %#v", schema.AllOf)
+	}
+}
+
+func schemaRequiresFields(rule map[string]any, fields ...string) bool {
+	thenRule, ok := rule["then"].(map[string]any)
+	if !ok {
+		return false
+	}
+	required, ok := thenRule["required"].([]any)
+	if !ok {
+		return false
+	}
+	for _, field := range fields {
+		if !slices.ContainsFunc(required, func(item any) bool {
+			got, ok := item.(string)
+			return ok && got == field
+		}) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestCreateEvalDatasetHandlerRequiresFixture(t *testing.T) {
