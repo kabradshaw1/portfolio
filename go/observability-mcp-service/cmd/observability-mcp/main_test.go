@@ -102,6 +102,28 @@ func TestRunSkipsHistoryStoreWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestRunContinuesWhenHistoryStoreFails(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("OBS_HISTORY_DB_PATH", t.TempDir())
+	t.Setenv("OBS_HISTORY_ENABLED", "true")
+
+	var logs bytes.Buffer
+	called := false
+	err := run(context.Background(), log.New(&logs, "", 0), func(context.Context, *app) error {
+		called = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected runner to be called")
+	}
+	if !strings.Contains(logs.String(), "history disabled") {
+		t.Fatalf("expected history disabled warning, got %q", logs.String())
+	}
+}
+
 func TestRunUsesGrafanaGatewayMode(t *testing.T) {
 	clearEnv(t)
 

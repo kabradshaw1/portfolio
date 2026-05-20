@@ -113,7 +113,7 @@ func (d *DB) RecordSnapshot(ctx context.Context, input SnapshotInput) (Snapshot,
 	incidentID, err := upsertIncident(ctx, tx, IncidentUpsert{
 		Key:      input.IncidentKey,
 		Title:    input.IncidentTitle,
-		Status:   NormalizeStatus(input.Status),
+		Status:   StatusInvestigating,
 		Severity: input.Severity,
 		Service:  input.Service,
 	}, now)
@@ -151,7 +151,7 @@ func (d *DB) RecordSnapshot(ctx context.Context, input SnapshotInput) (Snapshot,
 		formatTime(input.WindowFrom),
 		formatTime(input.WindowTo),
 		input.WindowDuration,
-		NormalizeStatus(input.Status),
+		snapshotStatus(input.Status),
 		boolInt(input.Partial),
 		input.CriticalCount,
 		input.WarningCount,
@@ -182,7 +182,7 @@ func (d *DB) RecordSnapshot(ctx context.Context, input SnapshotInput) (Snapshot,
 		WindowFrom:      input.WindowFrom,
 		WindowTo:        input.WindowTo,
 		WindowDuration:  input.WindowDuration,
-		Status:          NormalizeStatus(input.Status),
+		Status:          snapshotStatus(input.Status),
 		Partial:         input.Partial,
 		CriticalCount:   input.CriticalCount,
 		WarningCount:    input.WarningCount,
@@ -198,6 +198,9 @@ func (d *DB) RecordSnapshot(ctx context.Context, input SnapshotInput) (Snapshot,
 func (d *DB) ListIncidents(ctx context.Context, filter ListFilter) ([]IncidentSummary, error) {
 	limit := filter.Limit
 	if limit <= 0 {
+		limit = defaultListLimit
+	}
+	if limit > defaultListLimit {
 		limit = defaultListLimit
 	}
 
@@ -321,6 +324,9 @@ func (d *DB) AddIncidentNote(ctx context.Context, input AddNoteInput) (Event, er
 	if input.Note == "" {
 		return Event{}, errors.New("note is required")
 	}
+	if input.Status != "" && !ValidStatus(input.Status) {
+		return Event{}, fmt.Errorf("invalid incident status %q", input.Status)
+	}
 
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -391,7 +397,6 @@ func upsertIncident(ctx context.Context, tx *sql.Tx, incident IncidentUpsert, no
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(incident_key) DO UPDATE SET
 			title = excluded.title,
-			status = excluded.status,
 			severity = excluded.severity,
 			service = excluded.service,
 			updated_at = excluded.updated_at`,
@@ -627,6 +632,13 @@ func statusEventText(previous, next string) (string, string) {
 		return fmt.Sprintf("Status reaffirmed as %s", next), "Requested status matched the current incident status."
 	}
 	return fmt.Sprintf("Status changed from %s to %s", previous, next), ""
+}
+
+func snapshotStatus(status string) string {
+	if status == "" {
+		return "unknown"
+	}
+	return status
 }
 
 func rollback(tx *sql.Tx) {

@@ -124,6 +124,23 @@ func TestAddIncidentNoteHandlerRequiresIncidentKeyAndNote(t *testing.T) {
 	}
 }
 
+func TestAddIncidentNoteHandlerRejectsInvalidStatus(t *testing.T) {
+	result, err := addIncidentNoteHandler(&fakeWorkflow{})(context.Background(), callReq(map[string]any{
+		"incident_key": "inc-1",
+		"note":         "checked logs",
+		"status":       "warning",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected tool error")
+	}
+	if got := resultText(result); got != "status must be one of investigating, mitigated, resolved" {
+		t.Fatalf("error = %q", got)
+	}
+}
+
 func TestCompareEvidenceWindowsHandlerRequiresBaselineSnapshotID(t *testing.T) {
 	handler := compareEvidenceWindowsHandler(&fakeWorkflow{})
 	result, err := handler(context.Background(), callReq(map[string]any{"candidate_snapshot_id": 2}))

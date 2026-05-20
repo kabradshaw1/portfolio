@@ -235,6 +235,9 @@ func addIncidentNoteHandler(service WorkflowService) sdkmcp.ToolHandler {
 		if in.Note == "" {
 			return toolError("note is required"), nil
 		}
+		if in.Status != "" && !history.ValidStatus(in.Status) {
+			return toolError("status must be one of investigating, mitigated, resolved"), nil
+		}
 		result, err := service.AddIncidentNote(ctx, history.AddNoteInput{
 			IncidentKey: in.IncidentKey,
 			Note:        in.Note,
@@ -328,7 +331,7 @@ func traceSchema() json.RawMessage {
 }
 
 func listIncidentsSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"service":{"type":"string"},"severity":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["investigating","mitigated","resolved"]},"service":{"type":"string"},"severity":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":100}},"additionalProperties":false}`)
 }
 
 func incidentHistorySchema() json.RawMessage {
@@ -336,7 +339,7 @@ func incidentHistorySchema() json.RawMessage {
 }
 
 func addIncidentNoteSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"incident_key":{"type":"string"},"note":{"type":"string"},"status":{"type":"string"}},"required":["incident_key","note"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"incident_key":{"type":"string"},"note":{"type":"string"},"status":{"type":"string","enum":["investigating","mitigated","resolved"]}},"required":["incident_key","note"],"additionalProperties":false}`)
 }
 
 func compareEvidenceWindowsSchema() json.RawMessage {

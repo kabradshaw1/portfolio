@@ -142,6 +142,35 @@ func TestRecordSnapshotCreatesIncidentTimelineAndImmutableSnapshot(t *testing.T)
 	}
 }
 
+func TestRecordSnapshotDoesNotOverwriteIncidentLifecycleStatus(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.RecordSnapshot(ctx, sampleSnapshot("checkout-warning")); err != nil {
+		t.Fatalf("RecordSnapshot() error = %v", err)
+	}
+	if _, err := db.AddIncidentNote(ctx, AddNoteInput{
+		IncidentKey: "checkout-warning",
+		Note:        "Customer impact mitigated.",
+		Status:      StatusMitigated,
+	}); err != nil {
+		t.Fatalf("AddIncidentNote() error = %v", err)
+	}
+
+	input := sampleSnapshot("checkout-warning")
+	input.Status = "ok"
+	if _, err := db.RecordSnapshot(ctx, input); err != nil {
+		t.Fatalf("second RecordSnapshot() error = %v", err)
+	}
+
+	history, err := db.GetIncidentHistory(ctx, "checkout-warning")
+	if err != nil {
+		t.Fatalf("GetIncidentHistory() error = %v", err)
+	}
+	if history.Incident.Status != StatusMitigated {
+		t.Fatalf("incident status = %q, want %q after follow-up snapshot", history.Incident.Status, StatusMitigated)
+	}
+}
+
 func TestListIncidentsFiltersByStatusServiceSeverity(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
@@ -154,22 +183,25 @@ func TestListIncidentsFiltersByStatusServiceSeverity(t *testing.T) {
 	inputs[1].IncidentTitle = "Payment failures"
 	inputs[1].Severity = "critical"
 	inputs[1].Service = "go-payment-service"
-	inputs[1].Status = StatusInvestigating
+	inputs[1].Status = "critical"
 	inputs[2].IncidentTitle = "Cart failures"
 	inputs[2].Service = "go-cart-service"
-	inputs[2].Status = StatusMitigated
+	inputs[2].Status = "warning"
 
 	for _, input := range inputs {
 		if _, err := db.RecordSnapshot(ctx, input); err != nil {
 			t.Fatalf("RecordSnapshot(%q) error = %v", input.IncidentKey, err)
 		}
 	}
+	if _, err := db.AddIncidentNote(ctx, AddNoteInput{IncidentKey: "cart-warning", Note: "Mitigated.", Status: StatusMitigated}); err != nil {
+		t.Fatalf("AddIncidentNote(cart-warning) error = %v", err)
+	}
 	if _, err := db.RecordSnapshot(ctx, sampleSnapshot("checkout-warning")); err != nil {
 		t.Fatalf("second RecordSnapshot(checkout-warning) error = %v", err)
 	}
 
 	got, err := db.ListIncidents(ctx, ListFilter{
-		Status:   "warning",
+		Status:   StatusInvestigating,
 		Service:  "go-order-service",
 		Severity: "warning",
 	})
@@ -197,12 +229,39 @@ func TestListIncidentsFiltersByStatusServiceSeverity(t *testing.T) {
 		t.Fatalf("ListIncidents(payment critical) = %#v, want payment-critical only", got)
 	}
 
+	got, err = db.ListIncidents(ctx, ListFilter{Status: StatusMitigated})
+	if err != nil {
+		t.Fatalf("ListIncidents(mitigated) error = %v", err)
+	}
+	if len(got) != 1 || got[0].Incident.Key != "cart-warning" {
+		t.Fatalf("ListIncidents(mitigated) = %#v, want cart-warning only", got)
+	}
+
 	got, err = db.ListIncidents(ctx, ListFilter{Limit: -1})
 	if err != nil {
 		t.Fatalf("ListIncidents(default limit) error = %v", err)
 	}
 	if len(got) != 3 {
 		t.Fatalf("ListIncidents(default limit) returned %d incidents, want 3", len(got))
+	}
+}
+
+func TestListIncidentsCapsLimit(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	for i := range 105 {
+		input := sampleSnapshot("incident-" + time.Date(2026, 5, 20, 12, i, 0, 0, time.UTC).Format("150405"))
+		if _, err := db.RecordSnapshot(ctx, input); err != nil {
+			t.Fatalf("RecordSnapshot(%d) error = %v", i, err)
+		}
+	}
+
+	got, err := db.ListIncidents(ctx, ListFilter{Limit: 1000})
+	if err != nil {
+		t.Fatalf("ListIncidents() error = %v", err)
+	}
+	if len(got) != 100 {
+		t.Fatalf("ListIncidents() returned %d incidents, want capped 100", len(got))
 	}
 }
 
@@ -253,7 +312,7 @@ func TestAddIncidentNoteRecordsStatusChangedWhenStatusIsNonEmptyAndUnchanged(t *
 	if _, err := db.AddIncidentNote(ctx, AddNoteInput{
 		IncidentKey: "checkout-warning",
 		Note:        "Still investigating.",
-		Status:      "warning",
+		Status:      StatusInvestigating,
 	}); err != nil {
 		t.Fatalf("AddIncidentNote() error = %v", err)
 	}
@@ -262,8 +321,8 @@ func TestAddIncidentNoteRecordsStatusChangedWhenStatusIsNonEmptyAndUnchanged(t *
 	if err != nil {
 		t.Fatalf("GetIncidentHistory() error = %v", err)
 	}
-	if history.Incident.Status != "warning" {
-		t.Fatalf("incident status = %q, want warning", history.Incident.Status)
+	if history.Incident.Status != StatusInvestigating {
+		t.Fatalf("incident status = %q, want %q", history.Incident.Status, StatusInvestigating)
 	}
 	if len(history.Events) != 3 {
 		t.Fatalf("events = %d, want evidence_snapshot, note_added, status_changed", len(history.Events))
@@ -271,8 +330,24 @@ func TestAddIncidentNoteRecordsStatusChangedWhenStatusIsNonEmptyAndUnchanged(t *
 	if history.Events[2].Type != EventStatusChanged {
 		t.Fatalf("last event type = %q, want %q", history.Events[2].Type, EventStatusChanged)
 	}
-	if history.Events[2].Summary != "Status reaffirmed as warning" {
+	if history.Events[2].Summary != "Status reaffirmed as investigating" {
 		t.Fatalf("last event summary = %q, want reaffirmed status", history.Events[2].Summary)
+	}
+}
+
+func TestAddIncidentNoteRejectsInvalidStatus(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.RecordSnapshot(ctx, sampleSnapshot("checkout-warning")); err != nil {
+		t.Fatalf("RecordSnapshot() error = %v", err)
+	}
+
+	if _, err := db.AddIncidentNote(ctx, AddNoteInput{
+		IncidentKey: "checkout-warning",
+		Note:        "Bad status.",
+		Status:      "warning",
+	}); err == nil {
+		t.Fatal("AddIncidentNote() error = nil, want invalid status error")
 	}
 }
 

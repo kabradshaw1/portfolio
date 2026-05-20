@@ -63,13 +63,14 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 	if cfg.HistoryEnabled {
 		historyDB, err := history.Open(cfg.HistoryDBPath)
 		if err != nil {
-			return fmt.Errorf("history open: %w", err)
+			logger.Printf("observability MCP history disabled: open %s: %v", cfg.HistoryDBPath, err)
+		} else if err := historyDB.Migrate(ctx); err != nil {
+			_ = historyDB.Close()
+			logger.Printf("observability MCP history disabled: migrate %s: %v", cfg.HistoryDBPath, err)
+		} else {
+			defer historyDB.Close()
+			service.WithHistory(historyDB, cfg.HistoryAutoCapture)
 		}
-		defer historyDB.Close()
-		if err := historyDB.Migrate(ctx); err != nil {
-			return fmt.Errorf("history migrate: %w", err)
-		}
-		service.WithHistory(historyDB, cfg.HistoryAutoCapture)
 	}
 	return runServer(ctx, &app{service: service, cfg: cfg})
 }
