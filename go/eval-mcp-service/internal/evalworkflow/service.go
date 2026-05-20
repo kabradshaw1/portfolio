@@ -453,8 +453,26 @@ func runEvidenceNextSteps(evidence RunEvidence) []string {
 			"Use investigate_eval_run in observability-mcp-service with this eval_id.",
 			"Inspect the run error and upstream failure metrics before retrying.",
 		}
+	case "cancelled":
+		return []string{
+			"Run was cancelled; start a new eval run if evaluation is still needed.",
+		}
 	case "running":
 		if evidence.StaleRunning {
+			staleItems := evidence.ItemCounts["stale"]
+			retryableItems := evidence.ItemCounts["retryable"]
+			if staleItems > 0 && retryableItems > 0 {
+				return []string{
+					"Recovery should reset or republish retryable eval item work.",
+					"Inspect eval worker logs if stale or retryable item counts do not change.",
+				}
+			}
+			if staleItems > 0 {
+				return []string{
+					"Stale eval item work appears exhausted or terminal repair is needed.",
+					"Use investigate_eval_run in observability-mcp-service with this eval_id.",
+				}
+			}
 			return []string{
 				"Use investigate_eval_run in observability-mcp-service with this eval_id.",
 				"Check eval service logs for eval_item_start without eval_item_completed.",
@@ -660,7 +678,10 @@ func (s *Service) requireCompletedRuns(ctx context.Context, ids []string) error 
 }
 
 func isTerminalRunStatus(status string) bool {
-	return status == "completed" || status == "completed_with_failures" || status == "failed"
+	return status == "completed" ||
+		status == "completed_with_failures" ||
+		status == "failed" ||
+		status == "cancelled"
 }
 
 func isComparableRunStatus(status string) bool {
