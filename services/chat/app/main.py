@@ -162,9 +162,7 @@ def _effective_top_k(config: RetrievalConfig | None) -> int:
 
 
 def _is_internal_eval(auth_context: AuthContext) -> bool:
-    return (
-        auth_context.subject == "internal_eval" or auth_context.tier == "internal_eval"
-    )
+    return auth_context.tier == "internal_eval" and auth_context.email is None
 
 
 def _answer_provider_for_request(
@@ -186,6 +184,22 @@ def _answer_provider_for_request(
     )
     safe = body.answer_model.model_dump(exclude={"api_key"})
     return provider, body.answer_model.model, safe
+
+
+def _log_chat_exception(
+    event: str,
+    exc: Exception,
+    answer_model_metadata: dict | None,
+) -> None:
+    if answer_model_metadata is not None:
+        logger.error(
+            event,
+            error_type=exc.__class__.__name__,
+            answer_model_override=answer_model_metadata,
+        )
+        return
+
+    logger.error("%s: %s", event, exc, exc_info=True)
 
 
 @app.get("/config")
@@ -253,9 +267,20 @@ async def chat(
 ):
     wants_json = request.headers.get("accept", "").startswith("application/json")
     effective_top_k = _effective_top_k(body.retrieval_config)
-    llm_provider, chat_model, answer_model_metadata = _answer_provider_for_request(
-        body, auth_context
+    answer_model_metadata = (
+        body.answer_model.model_dump(exclude={"api_key"})
+        if body.answer_model is not None
+        else None
     )
+    try:
+        llm_provider, chat_model, answer_model_metadata = _answer_provider_for_request(
+            body, auth_context
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        _log_chat_exception("internal_error", e, answer_model_metadata)
+        raise HTTPException(status_code=500, detail="Internal error") from e
 
     if wants_json:
         try:
@@ -293,7 +318,7 @@ async def chat(
                 "usage": usage,
             }
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.error("Backend service error: %s", e)
+            _log_chat_exception("backend_service_error", e, answer_model_metadata)
             raise HTTPException(status_code=503, detail="Service unavailable")
         except AdmissionRejected as e:
             raise HTTPException(
@@ -302,7 +327,7 @@ async def chat(
                 headers={"Retry-After": str(e.retry_after_seconds)},
             ) from e
         except Exception as e:
-            logger.error("Internal error: %s", e, exc_info=True)
+            _log_chat_exception("internal_error", e, answer_model_metadata)
             raise HTTPException(status_code=500, detail="Internal error")
 
     async def event_generator():
@@ -321,7 +346,7 @@ async def chat(
             ):
                 yield {"data": json.dumps(event)}
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.error("backend_service_error", error=str(e))
+            _log_chat_exception("backend_service_error", e, answer_model_metadata)
             yield {"data": json.dumps({"error": "Service unavailable"})}
         except AdmissionRejected as e:
             yield {
@@ -333,7 +358,7 @@ async def chat(
                 )
             }
         except Exception as e:
-            logger.error("internal_error", error=str(e), exc_info=True)
+            _log_chat_exception("internal_error", e, answer_model_metadata)
             yield {"data": json.dumps({"error": "Internal error"})}
 
     return EventSourceResponse(event_generator())

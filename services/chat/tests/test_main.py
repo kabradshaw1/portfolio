@@ -206,6 +206,7 @@ def test_internal_eval_chat_can_override_answer_model(
     )
 
     assert response.status_code == 200
+    data = response.json()
     mock_get_llm_provider.assert_called_once_with(
         provider="openai",
         base_url="https://api.openai.com/v1",
@@ -214,6 +215,13 @@ def test_internal_eval_chat_can_override_answer_model(
     )
     assert captured["llm_provider"] is provider
     assert captured["chat_model"] == "gpt-5.4-mini"
+    assert data["usage"]["answer_model_override"] == {
+        "provider": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-5.4-mini",
+        "tier": "efficient",
+    }
+    assert "api_key" not in data["usage"]["answer_model_override"]
 
 
 @patch("app.main.rag_query")
@@ -232,6 +240,101 @@ def test_public_chat_rejects_answer_model_override(mock_rag_query):
     )
 
     assert response.status_code == 403
+    mock_rag_query.assert_not_called()
+
+
+@patch("app.main.get_llm_provider")
+@patch("app.main.rag_query")
+def test_public_jwt_subject_internal_eval_cannot_override_answer_model(
+    mock_rag_query, mock_get_llm_provider, configured_chat_limits
+):
+    token = _token("internal_eval", "user@example.test")
+
+    response = client.post(
+        "/chat",
+        json={
+            "question": "hi",
+            "answer_model": {
+                "provider": "openai",
+                "model": "gpt-5.4-mini",
+                "api_key": "test-key",
+            },
+        },
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert response.status_code == 403
+    mock_get_llm_provider.assert_not_called()
+    mock_rag_query.assert_not_called()
+
+
+@patch("app.main.logger")
+@patch("app.main.get_llm_provider")
+@patch("app.main.rag_query")
+def test_override_rag_failure_does_not_log_api_key(
+    mock_rag_query, mock_get_llm_provider, mock_logger, configured_chat_limits
+):
+    mock_get_llm_provider.return_value = object()
+
+    async def failing_rag_query(**kwargs):
+        raise RuntimeError("provider rejected api key test-key")
+        yield
+
+    mock_rag_query.side_effect = failing_rag_query
+
+    response = client.post(
+        "/chat",
+        json={
+            "question": "hi",
+            "answer_model": {
+                "provider": "openai",
+                "model": "gpt-5.4-mini",
+                "api_key": "test-key",
+            },
+        },
+        headers={
+            "Accept": "application/json",
+            "X-RAG-Internal-Token": "test-internal-token",
+        },
+    )
+
+    assert response.status_code == 500
+    assert "test-key" not in str(mock_logger.error.call_args_list)
+    assert "RuntimeError" in str(mock_logger.error.call_args_list)
+
+
+@patch("app.main.logger")
+@patch("app.main.get_llm_provider")
+@patch("app.main.rag_query")
+def test_override_provider_failure_does_not_log_api_key(
+    mock_rag_query, mock_get_llm_provider, mock_logger, configured_chat_limits
+):
+    mock_get_llm_provider.side_effect = RuntimeError(
+        "provider rejected api key test-key"
+    )
+
+    response = client.post(
+        "/chat",
+        json={
+            "question": "hi",
+            "answer_model": {
+                "provider": "openai",
+                "model": "gpt-5.4-mini",
+                "api_key": "test-key",
+            },
+        },
+        headers={
+            "Accept": "application/json",
+            "X-RAG-Internal-Token": "test-internal-token",
+        },
+    )
+
+    assert response.status_code == 500
+    assert "test-key" not in str(mock_logger.error.call_args_list)
+    assert "RuntimeError" in str(mock_logger.error.call_args_list)
     mock_rag_query.assert_not_called()
 
 
