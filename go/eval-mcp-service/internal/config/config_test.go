@@ -20,6 +20,7 @@ func TestFromEnvDefaults(t *testing.T) {
 	t.Setenv("EVAL_MCP_MAX_BACKOFF", "")
 	t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "")
 	t.Setenv("EVAL_MCP_INGESTION_URL", "")
+	t.Setenv("RAG_TRIAGE_API_URL", "")
 	t.Setenv("EVAL_MCP_DATASET_FIXTURE_ROOTS", "")
 
 	cfg, err := FromEnv()
@@ -31,6 +32,9 @@ func TestFromEnvDefaults(t *testing.T) {
 	}
 	if cfg.IngestionURL != "http://localhost:8000/ingestion" {
 		t.Fatalf("IngestionURL = %q", cfg.IngestionURL)
+	}
+	if cfg.TriageAPIURL != "http://localhost:8000/rag-triage" {
+		t.Fatalf("TriageAPIURL = %q", cfg.TriageAPIURL)
 	}
 	if cfg.APIToken != "" {
 		t.Fatalf("APIToken = %q", cfg.APIToken)
@@ -76,6 +80,7 @@ func TestFromEnvOverrides(t *testing.T) {
 	t.Setenv("EVAL_MCP_MAX_BACKOFF", "2s")
 	t.Setenv("EVAL_MCP_TOKEN_REFRESH_SKEW", "2m")
 	t.Setenv("EVAL_MCP_INGESTION_URL", "http://127.0.0.1:8000/ingestion")
+	t.Setenv("RAG_TRIAGE_API_URL", "http://127.0.0.1:8000/rag-triage")
 	t.Setenv("EVAL_MCP_DATASET_FIXTURE_ROOTS", "/tmp/a"+string(os.PathListSeparator)+"/tmp/b")
 
 	cfg, err := FromEnv()
@@ -90,6 +95,9 @@ func TestFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.IngestionURL != "http://127.0.0.1:8000/ingestion" {
 		t.Fatalf("IngestionURL = %q", cfg.IngestionURL)
+	}
+	if cfg.TriageAPIURL != "http://127.0.0.1:8000/rag-triage" {
+		t.Fatalf("TriageAPIURL = %q", cfg.TriageAPIURL)
 	}
 	if !slices.Equal(cfg.DatasetFixtureRoots, []string{"/tmp/a", "/tmp/b"}) {
 		t.Fatalf("DatasetFixtureRoots = %#v", cfg.DatasetFixtureRoots)

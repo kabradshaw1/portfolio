@@ -63,6 +63,8 @@ jobs:
             paths: services/debug services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
           - service: eval
             paths: services/eval services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: rag-triage
+            paths: services/rag-triage services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
     steps:
       - uses: actions/checkout@v4
         with:
@@ -666,15 +668,19 @@ jobs:
             return 1
           }
 
-          for svc in ingestion chat debug; do
+          for svc in ingestion chat debug eval; do
             pull_image "${REPO}/${svc}:latest"
           done
+
+          # rag-triage is new and may not have a published :latest image on
+          # first PRs, so build just that small service locally.
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml build rag-triage
 
           # Only start services needed for the Python RAG smoke path.
           # docker-compose.yml also defines nvidia-gpu-exporter and cadvisor,
           # which require a GPU / host access not available on GH runners.
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d \
-            qdrant gateway ingestion chat debug mock-ollama
+            qdrant gateway ingestion chat debug eval rag-triage mock-ollama
 
       - name: Wait for gateway to be reachable
         if: steps.changes.outputs.changed == 'true'
@@ -987,6 +993,9 @@ jobs:
           - service: eval
             paths: services/eval services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
             pip_audit_args: ""
+          - service: rag-triage
+            paths: services/rag-triage services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+            pip_audit_args: ""
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1075,6 +1084,8 @@ jobs:
             paths: services/debug/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
           - dockerfile: services/eval/Dockerfile
             paths: services/eval/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: services/rag-triage/Dockerfile
+            paths: services/rag-triage/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
           - dockerfile: java/task-service/Dockerfile
             paths: java/task-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
           - dockerfile: java/activity-service/Dockerfile
@@ -1171,6 +1182,11 @@ jobs:
             file: services/eval/Dockerfile
             image: eval
             paths: services/eval services/shared
+          - service: rag-triage
+            context: services
+            file: services/rag-triage/Dockerfile
+            image: rag-triage
+            paths: services/rag-triage services/shared
           - service: java-task-service
             context: java/task-service
             file: java/task-service/Dockerfile

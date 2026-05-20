@@ -47,10 +47,15 @@ type Fixtures interface {
 	Load(string) (fixturecatalog.Fixture, error)
 }
 
+type TriageAPI interface {
+	TriageRAGRegression(context.Context, TriageInput) (map[string]any, error)
+}
+
 type Service struct {
 	api          API
 	ingestion    Ingestion
 	fixtures     Fixtures
+	triage       TriageAPI
 	pollInterval time.Duration
 	waitTimeout  time.Duration
 	maxBackoff   time.Duration
@@ -119,6 +124,14 @@ type WorstCasesInput struct {
 	Limit  int
 }
 
+type TriageInput struct {
+	EvalID               string
+	BaselineEvalID       string
+	Metric               string
+	Limit                int
+	IncludeObservability bool
+}
+
 type WorstCasesResult struct {
 	EvalID string
 	Metric string
@@ -168,6 +181,11 @@ func New(api API, ingestion Ingestion, fixtures Fixtures, pollInterval, waitTime
 		waitTimeout:  waitTimeout,
 		maxBackoff:   backoff,
 	}
+}
+
+func (s *Service) WithTriageAPI(triage TriageAPI) *Service {
+	s.triage = triage
+	return s
 }
 
 func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) (evalapi.Experiment, error) {
@@ -463,6 +481,27 @@ func (s *Service) WorstCases(ctx context.Context, in WorstCasesInput) (WorstCase
 		return WorstCasesResult{}, err
 	}
 	return worstCasesFromResults(in.EvalID, metric, limit, run.Results), nil
+}
+
+func (s *Service) TriageRAGRegression(ctx context.Context, in TriageInput) (map[string]any, error) {
+	if strings.TrimSpace(in.EvalID) == "" {
+		return nil, errors.New("eval_id is required")
+	}
+	if s.triage == nil {
+		return nil, errors.New("triage API is not configured")
+	}
+	metric := in.Metric
+	if metric == "" {
+		metric = DefaultFocusMetric
+	}
+	if err := validateMetric(metric); err != nil {
+		return nil, err
+	}
+	if in.Limit < 0 || in.Limit > maxWorstLimit {
+		return nil, fmt.Errorf("limit must be between 1 and %d when provided", maxWorstLimit)
+	}
+	in.Metric = metric
+	return s.triage.TriageRAGRegression(ctx, in)
 }
 
 func worstCasesFromResults(evalID, metric string, limit int, results []evalapi.QueryResult) WorstCasesResult {

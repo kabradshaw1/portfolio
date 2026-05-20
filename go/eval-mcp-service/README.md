@@ -84,6 +84,8 @@ Restart Codex after adding the MCP server or changing the env file.
 ## Configuration
 
 - `EVAL_API_URL`: eval API base URL, defaults to `http://localhost:8000/eval`.
+- `RAG_TRIAGE_API_URL`: RAG triage API base URL, defaults to
+  `http://localhost:8000/rag-triage`.
 - `EVAL_MCP_INGESTION_URL`: ingestion API base URL for collection discovery,
   defaults to `http://localhost:8000/ingestion`.
 - `EVAL_API_TOKEN`: optional bearer token override for eval API calls. When set,
@@ -151,6 +153,7 @@ before changing CORS.
 - `get_eval_run_evidence`
 - `compare_eval_runs`
 - `get_worst_eval_cases`
+- `triage_rag_regression`
 - `summarize_eval_experiment`
 - `record_eval_experiment_conclusion`
 
@@ -158,3 +161,7 @@ Eval datasets and RAG collections are separate concepts. Datasets contain
 golden questions and expected answers. Collections are Qdrant retrieval corpora.
 Use curated fixture tools to create missing datasets, then validate the chosen
 RAG collection before starting baseline and rerank runs.
+
+Use `triage_rag_regression` after a completed eval run when worst cases need a
+single triage packet. Provide `baseline_eval_id` to compare a candidate against
+the baseline, and set `include_observability` when runtime evidence is needed.

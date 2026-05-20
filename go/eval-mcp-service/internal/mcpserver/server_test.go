@@ -20,8 +20,10 @@ type fakeEvalService struct {
 	startExperimentInput  evalworkflow.StartExperimentInput
 	startRunInput         evalworkflow.StartRunInput
 	worstCasesInput       evalworkflow.WorstCasesInput
+	triageInput           evalworkflow.TriageInput
 	startRunCalls         int
 	compareCalls          int
+	triageCalls           int
 	compareInput          evalworkflow.CompareInput
 	recordConclusionInput evalworkflow.RecordConclusionInput
 }
@@ -111,6 +113,12 @@ func (f *fakeEvalService) WorstCases(_ context.Context, in evalworkflow.WorstCas
 	}, nil
 }
 
+func (f *fakeEvalService) TriageRAGRegression(_ context.Context, in evalworkflow.TriageInput) (map[string]any, error) {
+	f.triageCalls++
+	f.triageInput = in
+	return map[string]any{"status": "completed"}, nil
+}
+
 func (f *fakeEvalService) SummarizeExperiment(context.Context, string) (evalworkflow.ExperimentSummary, error) {
 	return evalworkflow.ExperimentSummary{Experiment: evalapi.Experiment{ID: "exp-11", Name: "baseline-vs-rerank"}}, nil
 }
@@ -146,6 +154,7 @@ func TestServerRegistersPromptResourceAndTools(t *testing.T) {
 		"start_eval_experiment",
 		"start_eval_run",
 		"summarize_eval_experiment",
+		"triage_rag_regression",
 		"wait_for_eval_run",
 	}
 	if got := serverFeatureNames(t, srv, "tools"); !slices.Equal(got, wantTools) {
@@ -333,6 +342,63 @@ func TestWorstCasesHandlerReturnsJSON(t *testing.T) {
 	unmarshalTextResult(t, result, &payload)
 	if payload.EvalID != "eval-123" || len(payload.Cases) != 1 || payload.Cases[0].Score == nil {
 		t.Fatalf("unexpected worst cases payload: %#v", payload)
+	}
+}
+
+func TestTriageRAGRegressionHandlerForwardsInput(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := triageRAGRegressionHandler(fake)(context.Background(), callReq(map[string]any{
+		"eval_id":               "eval-candidate",
+		"baseline_eval_id":      "eval-base",
+		"metric":                "context_precision",
+		"limit":                 float64(5),
+		"include_observability": true,
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	if fake.triageCalls != 1 {
+		t.Fatalf("triage calls = %d, want 1", fake.triageCalls)
+	}
+	if fake.triageInput.EvalID != "eval-candidate" ||
+		fake.triageInput.BaselineEvalID != "eval-base" ||
+		fake.triageInput.Metric != "context_precision" ||
+		fake.triageInput.Limit != 5 ||
+		!fake.triageInput.IncludeObservability {
+		t.Fatalf("unexpected triage input: %#v", fake.triageInput)
+	}
+
+	var payload map[string]any
+	unmarshalTextResult(t, result, &payload)
+	if payload["status"] != "completed" {
+		t.Fatalf("unexpected triage payload: %#v", payload)
+	}
+}
+
+func TestTriageRAGRegressionHandlerRejectsInvalidLimit(t *testing.T) {
+	for _, limit := range []float64{0, 21} {
+		t.Run("limit_range", func(t *testing.T) {
+			fake := &fakeEvalService{}
+			result, err := triageRAGRegressionHandler(fake)(context.Background(), callReq(map[string]any{
+				"eval_id": "eval-123",
+				"limit":   limit,
+			}))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.triageCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.triageCalls)
+			}
+			if got := textResult(t, result); !strings.Contains(got, "limit must be between 1 and 20 when provided") {
+				t.Fatalf("error = %q", got)
+			}
+		})
 	}
 }
 

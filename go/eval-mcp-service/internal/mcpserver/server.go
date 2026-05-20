@@ -22,6 +22,7 @@ const (
 	maxCompareInputs = 5
 	minRetrievalTopK = 1
 	maxRetrievalTopK = 20
+	maxWorstLimit    = 20
 )
 
 type EvalService interface {
@@ -40,6 +41,7 @@ type EvalService interface {
 	RunEvidence(context.Context, string) (evalworkflow.RunEvidence, error)
 	Compare(context.Context, evalworkflow.CompareInput) (evalapi.Comparison, error)
 	WorstCases(context.Context, evalworkflow.WorstCasesInput) (evalworkflow.WorstCasesResult, error)
+	TriageRAGRegression(context.Context, evalworkflow.TriageInput) (map[string]any, error)
 	SummarizeExperiment(context.Context, string) (evalworkflow.ExperimentSummary, error)
 	RecordConclusion(context.Context, evalworkflow.RecordConclusionInput) error
 }
@@ -63,6 +65,7 @@ func New(service EvalService) *sdkmcp.Server {
 	addTool(srv, "get_eval_run_evidence", "Summarize one eval run with configuration, status, and next-step guidance.", evalIDSchema(), runEvidenceHandler(service))
 	addTool(srv, "compare_eval_runs", "Compare eval runs by explicit IDs or experiment labels.", compareEvalRunsSchema(), compareEvalRunsHandler(service))
 	addTool(srv, "get_worst_eval_cases", "Return the lowest-scoring per-query cases for a metric.", worstCasesSchema(), worstCasesHandler(service))
+	addTool(srv, "triage_rag_regression", "Run RAG regression triage for an eval run using eval results, worst cases, and optional observability evidence.", triageRAGRegressionSchema(), triageRAGRegressionHandler(service))
 	addTool(srv, "summarize_eval_experiment", "Summarize baseline, candidates, and worst cases for an experiment.", experimentIDSchema(), summarizeExperimentHandler(service))
 	addTool(srv, "record_eval_experiment_conclusion", "Record the approved conclusion for a local eval experiment.", recordConclusionSchema(), recordConclusionHandler(service))
 	return srv
@@ -387,6 +390,40 @@ func worstCasesHandler(service EvalService) sdkmcp.ToolHandler {
 	}
 }
 
+func triageRAGRegressionHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var args struct {
+			EvalID               string `json:"eval_id"`
+			BaselineEvalID       string `json:"baseline_eval_id,omitempty"`
+			Metric               string `json:"metric,omitempty"`
+			Limit                *int   `json:"limit,omitempty"`
+			IncludeObservability bool   `json:"include_observability,omitempty"`
+		}
+		if err := decodeArgs(req, &args); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if strings.TrimSpace(args.EvalID) == "" {
+			return toolError("eval_id is required"), nil
+		}
+		limit := 0
+		if args.Limit != nil {
+			limit = *args.Limit
+			if limit < 1 || limit > maxWorstLimit {
+				return toolError("limit must be between 1 and 20 when provided"), nil
+			}
+		}
+		in := evalworkflow.TriageInput{
+			EvalID:               args.EvalID,
+			BaselineEvalID:       args.BaselineEvalID,
+			Metric:               args.Metric,
+			Limit:                limit,
+			IncludeObservability: args.IncludeObservability,
+		}
+		result, err := service.TriageRAGRegression(ctx, in)
+		return resultOrError(result, err), nil
+	}
+}
+
 func summarizeExperimentHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var in struct {
@@ -571,6 +608,10 @@ func compareEvalRunsSchema() json.RawMessage {
 
 func worstCasesSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"eval_id":{"type":"string"},"metric":{"type":"string","enum":["faithfulness","answer_relevancy","context_precision","context_recall"]},"limit":{"type":"integer","description":"Number of worst cases to return; omitted or non-positive values default to 5, and values over 20 are capped."}},"required":["eval_id"],"additionalProperties":false}`)
+}
+
+func triageRAGRegressionSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"eval_id":{"type":"string"},"baseline_eval_id":{"type":"string"},"metric":{"type":"string","enum":["faithfulness","answer_relevancy","context_precision","context_recall"]},"limit":{"type":"integer","minimum":1,"maximum":20},"include_observability":{"type":"boolean"}},"required":["eval_id"],"additionalProperties":false}`)
 }
 
 func recordConclusionSchema() json.RawMessage {

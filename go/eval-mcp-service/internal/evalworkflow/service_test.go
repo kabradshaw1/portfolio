@@ -413,6 +413,81 @@ func TestWorstCasesSortsAscendingByMetric(t *testing.T) {
 	}
 }
 
+func TestTriageRAGRegressionCallsTriageAPI(t *testing.T) {
+	ctx := context.Background()
+	triage := &fakeTriageAPI{result: map[string]any{"status": "completed"}}
+	svc := New(nil, nil, nil, time.Second, time.Minute)
+	svc.triage = triage
+
+	got, err := svc.TriageRAGRegression(ctx, TriageInput{
+		EvalID: "eval-1",
+		Metric: "context_precision",
+		Limit:  5,
+	})
+	if err != nil {
+		t.Fatalf("TriageRAGRegression error: %v", err)
+	}
+	if triage.input.EvalID != "eval-1" {
+		t.Fatalf("triage eval id = %q, want eval-1", triage.input.EvalID)
+	}
+	if got["status"] != "completed" {
+		t.Fatalf("triage result = %#v", got)
+	}
+}
+
+func TestTriageRAGRegressionDefaultsMetricAndAllowsOmittedLimit(t *testing.T) {
+	triage := &fakeTriageAPI{result: map[string]any{"status": "completed"}}
+	svc := New(nil, nil, nil, time.Second, time.Minute).WithTriageAPI(triage)
+
+	_, err := svc.TriageRAGRegression(context.Background(), TriageInput{
+		EvalID: "eval-1",
+	})
+	if err != nil {
+		t.Fatalf("TriageRAGRegression error: %v", err)
+	}
+
+	if triage.input.Metric != DefaultFocusMetric {
+		t.Fatalf("metric = %q, want %q", triage.input.Metric, DefaultFocusMetric)
+	}
+	if triage.input.Limit != 0 {
+		t.Fatalf("limit = %d, want omitted zero value", triage.input.Limit)
+	}
+}
+
+func TestTriageRAGRegressionRejectsInvalidMetric(t *testing.T) {
+	triage := &fakeTriageAPI{result: map[string]any{"status": "completed"}}
+	svc := New(nil, nil, nil, time.Second, time.Minute).WithTriageAPI(triage)
+
+	_, err := svc.TriageRAGRegression(context.Background(), TriageInput{
+		EvalID: "eval-1",
+		Metric: "latency",
+	})
+
+	if err == nil || !strings.Contains(err.Error(), `unsupported metric "latency"`) {
+		t.Fatalf("error = %v", err)
+	}
+	if triage.input.EvalID != "" {
+		t.Fatalf("triage API was called: %#v", triage.input)
+	}
+}
+
+func TestTriageRAGRegressionRejectsInvalidLimit(t *testing.T) {
+	triage := &fakeTriageAPI{result: map[string]any{"status": "completed"}}
+	svc := New(nil, nil, nil, time.Second, time.Minute).WithTriageAPI(triage)
+
+	_, err := svc.TriageRAGRegression(context.Background(), TriageInput{
+		EvalID: "eval-1",
+		Limit: 21,
+	})
+
+	if err == nil || !strings.Contains(err.Error(), "limit must be between 1 and 20 when provided") {
+		t.Fatalf("error = %v", err)
+	}
+	if triage.input.EvalID != "" {
+		t.Fatalf("triage API was called: %#v", triage.input)
+	}
+}
+
 func TestCompareResolvesExperimentLabels(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{}
@@ -691,6 +766,16 @@ type fakeFixtures struct {
 
 func (f fakeFixtures) List() ([]fixturecatalog.Fixture, error)     { return f.fixtures, nil }
 func (f fakeFixtures) Load(string) (fixturecatalog.Fixture, error) { return f.fixture, nil }
+
+type fakeTriageAPI struct {
+	input  TriageInput
+	result map[string]any
+}
+
+func (f *fakeTriageAPI) TriageRAGRegression(_ context.Context, in TriageInput) (map[string]any, error) {
+	f.input = in
+	return f.result, nil
+}
 
 func newTestService(api API) *Service {
 	return newTestServiceWithTiming(api, time.Millisecond, time.Second)
