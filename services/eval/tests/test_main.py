@@ -347,6 +347,13 @@ def test_get_evaluation_includes_item_summary(mock_get_db):
     response = client.get("/evaluations/eval-456")
 
     assert response.status_code == 200
+    assert response.json()["item_counts"] == {
+        "queued": 1,
+        "running": 1,
+        "completed": 2,
+        "failed": 0,
+        "total": 4,
+    }
     assert response.json()["item_summary"] == {
         "queued": 1,
         "running": 1,
@@ -469,6 +476,33 @@ def test_start_evaluation_persists_notes_and_baseline(
         baseline_eval_id="eval-prev",
         status="queued",
     )
+
+
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_allows_completed_with_failures_baseline(
+    mock_get_db, mock_validate_collection
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_evaluation.return_value = _baseline_run(
+        status="completed_with_failures"
+    )
+    mock_db.create_evaluation.return_value = "eval-789"
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "baseline_eval_id": "eval-prev"},
+    )
+
+    assert response.status_code == 202
+    mock_db.create_evaluation.assert_awaited_once()
 
 
 @patch("app.main.get_db")
@@ -1469,6 +1503,22 @@ def test_compare_rejects_failed_runs(mock_get_db):
 
     assert response.status_code == 400
     assert "candidate=failed" in response.json()["detail"]
+
+
+@patch("app.main.get_db")
+def test_compare_allows_completed_with_failures_runs(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_evaluations_by_ids.return_value = [
+        _stub_run("base", "ds-1", {"faithfulness": 0.8}) | {"status": "completed"},
+        _stub_run("candidate", "ds-1", {"faithfulness": 0.7})
+        | {"status": "completed_with_failures"},
+    ]
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/evaluations/compare?ids=base,candidate")
+
+    assert response.status_code == 200
+    assert response.json()["runs"][1]["status"] == "completed_with_failures"
 
 
 @patch("app.main.get_db")

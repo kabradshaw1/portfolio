@@ -416,7 +416,7 @@ async def _validate_baseline(
     baseline = await db.get_evaluation(baseline_eval_id)
     if not baseline:
         raise HTTPException(status_code=404, detail="Baseline evaluation not found")
-    if baseline["status"] != "completed":
+    if baseline["status"] not in {"completed", "completed_with_failures"}:
         raise HTTPException(
             status_code=400, detail="Baseline evaluation must be completed"
         )
@@ -847,7 +847,9 @@ async def compare_evaluations(
         )
 
     invalid_statuses = [
-        f"{r['id']}={r.get('status')}" for r in runs if r.get("status") != "completed"
+        f"{r['id']}={r.get('status')}"
+        for r in runs
+        if r.get("status") not in {"completed", "completed_with_failures"}
     ]
     if invalid_statuses:
         raise HTTPException(
@@ -955,11 +957,13 @@ async def get_evaluation(request: Request, eval_id: str):
     if not isinstance(counts, dict):
         counts = {}
     if counts:
-        evaluation["item_summary"] = {
+        item_counts = {
             "queued": counts.get("queued", 0),
             "running": counts.get("running", 0),
             "completed": counts.get("completed", 0),
             "failed": counts.get("failed", 0),
             "total": sum(counts.values()),
         }
+        evaluation["item_counts"] = item_counts
+        evaluation["item_summary"] = item_counts
     return evaluation
