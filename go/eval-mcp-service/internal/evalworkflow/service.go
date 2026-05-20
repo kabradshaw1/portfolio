@@ -490,6 +490,17 @@ func (s *Service) TriageRAGRegression(ctx context.Context, in TriageInput) (map[
 	if s.triage == nil {
 		return nil, errors.New("triage API is not configured")
 	}
+	metric := in.Metric
+	if metric == "" {
+		metric = DefaultFocusMetric
+	}
+	if err := validateMetric(metric); err != nil {
+		return nil, err
+	}
+	if in.Limit < 0 || in.Limit > maxWorstLimit {
+		return nil, fmt.Errorf("limit must be between 1 and %d when provided", maxWorstLimit)
+	}
+	in.Metric = metric
 	return s.triage.TriageRAGRegression(ctx, in)
 }
 
