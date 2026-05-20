@@ -17,6 +17,7 @@ from slowapi.util import get_remote_address
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from app.answer_models import AnswerModelOverride, resolve_answer_model_override
 from app.collection_validation import validate_collection_exists
 from app.config import settings
 from app.config_capture import capture_run_config
@@ -248,6 +249,7 @@ async def _run_evaluation_task(
     collection: str | None,
     rerank: bool = False,
     retrieval_config: RetrievalConfig | None = None,
+    resolved_answer_model=None,
 ):
     """Background task that runs the RAG quality evaluation."""
     db = await get_db()
@@ -263,6 +265,17 @@ async def _run_evaluation_task(
         requested_rerank=rerank,
     )
     requested_rerank = str(rerank).lower()
+    answer_model_payload = None
+    requested_answer_model = None
+    if resolved_answer_model is not None:
+        requested_answer_model = resolved_answer_model.safe_dict()
+        answer_model_payload = {
+            "tier": resolved_answer_model.tier,
+            "provider": resolved_answer_model.provider,
+            "base_url": resolved_answer_model.base_url,
+            "model": resolved_answer_model.model,
+            "api_key": resolved_answer_model.api_key,
+        }
 
     try:
         logger.info(
@@ -281,6 +294,7 @@ async def _run_evaluation_task(
             collection=coll_name,
             requested_rerank=rerank,
             requested_retrieval_config=_requested_retrieval_config(retrieval_config),
+            requested_answer_model=requested_answer_model,
         )
         await db.set_evaluation_config(eval_id, config)
         effective_top_k = _effective_top_k(retrieval_config, config)
@@ -297,6 +311,7 @@ async def _run_evaluation_task(
                 rerank=rerank,
                 top_k=effective_top_k,
                 run_context=run_context,
+                answer_model=answer_model_payload,
             ),
             timeout=settings.eval_run_max_seconds,
         )
@@ -431,6 +446,22 @@ async def start_evaluation(
         raise HTTPException(status_code=404, detail="Dataset not found")
 
     collection = body.collection or "documents"
+    resolved_answer_model = None
+    if body.answer_provider or body.answer_model:
+        requested_answer_model = AnswerModelOverride(
+            tier=body.answer_tier,
+            provider=body.answer_provider or "",
+            base_url=body.answer_base_url,
+            model=body.answer_model or "",
+            api_key_secret=body.answer_api_key_secret,
+        )
+        try:
+            resolved_answer_model = resolve_answer_model_override(
+                requested_answer_model
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     if body.baseline_eval_id is not None:
         await _validate_baseline(db, body.baseline_eval_id, body.dataset_id, collection)
     if body.experiment_id is not None:
@@ -479,6 +510,7 @@ async def start_evaluation(
         collection,
         body.rerank,
         body.retrieval_config,
+        resolved_answer_model,
     )
 
     return {"id": eval_id, "status": "running"}

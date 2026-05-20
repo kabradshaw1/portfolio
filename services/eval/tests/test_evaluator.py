@@ -184,6 +184,32 @@ async def test_build_evaluation_dataset_uses_effective_top_k_for_search_and_chat
 
 
 @pytest.mark.asyncio
+async def test_build_evaluation_dataset_passes_answer_model_override(
+    golden_items, mock_search_results, mock_chat_answer
+):
+    rag_client = AsyncMock()
+    rag_client.search.return_value = mock_search_results
+    rag_client.ask.return_value = {**mock_chat_answer, "usage": {"prompt_tokens": 4}}
+    answer_model = {
+        "tier": "efficient",
+        "provider": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-5.4-mini",
+        "api_key": "test-key",
+    }
+
+    dataset = await build_evaluation_dataset(
+        golden_items,
+        rag_client,
+        collection="documents",
+        answer_model=answer_model,
+    )
+
+    assert rag_client.ask.call_args.kwargs["answer_model"] == answer_model
+    assert dataset[0]["usage"] == {"prompt_tokens": 4}
+
+
+@pytest.mark.asyncio
 async def test_build_evaluation_dataset_preserves_retrieval_metadata(
     golden_items, mock_search_results, mock_chat_answer_with_retrieval
 ):

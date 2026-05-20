@@ -111,6 +111,7 @@ async def build_evaluation_dataset(
     rerank: bool = False,
     top_k: int = 5,
     run_context: EvalRunContext | None = None,
+    answer_model: dict | None = None,
 ) -> list[dict]:
     """Run each golden item through the RAG pipeline and build evaluation rows."""
     dataset = []
@@ -135,6 +136,7 @@ async def build_evaluation_dataset(
                 collection=collection,
                 rerank=rerank,
                 retrieval_config={"top_k": top_k},
+                answer_model=answer_model,
             )
         except Exception:
             eval_items_total.labels(
@@ -162,6 +164,8 @@ async def build_evaluation_dataset(
         }
         if "retrieval" in chat_response:
             row["retrieval"] = chat_response["retrieval"]
+        if "usage" in chat_response:
+            row["usage"] = chat_response["usage"]
         dataset.append(row)
         eval_items_total.labels(
             status="completed", requested_rerank=requested_rerank
@@ -298,6 +302,7 @@ async def run_evaluation(
     top_k: int = 5,
     judge: JudgeFn | None = None,
     run_context: EvalRunContext | None = None,
+    answer_model: dict | None = None,
 ) -> tuple[dict, list[dict]]:
     """Run a full first-party RAG evaluation."""
     raw_dataset = await build_evaluation_dataset(
@@ -307,6 +312,7 @@ async def run_evaluation(
         rerank=rerank,
         top_k=top_k,
         run_context=run_context,
+        answer_model=answer_model,
     )
     if not raw_dataset:
         return {name: None for name in METRIC_NAMES}, []
@@ -353,6 +359,8 @@ async def run_evaluation(
         }
         if "retrieval" in row:
             result["retrieval"] = row["retrieval"]
+        if "usage" in row:
+            result["usage"] = row["usage"]
         per_query.append(result)
 
     return _aggregate(all_scores), per_query

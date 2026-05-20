@@ -99,6 +99,7 @@ class RAGClient:
         collection: str | None,
         rerank: bool = False,
         retrieval_config: dict | None = None,
+        answer_model: dict | None = None,
     ) -> dict:
         """Call POST /chat with Accept: application/json for a full RAG response."""
         body: dict = {"question": question, "rerank": rerank}
@@ -106,6 +107,8 @@ class RAGClient:
             body["collection"] = collection
         if retrieval_config:
             body["retrieval_config"] = retrieval_config
+        if answer_model is not None:
+            body["answer_model"] = answer_model
 
         started_at = time.perf_counter()
         try:
