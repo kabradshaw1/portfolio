@@ -145,7 +145,8 @@ func RegisterChatRoutes(r *gin.Engine, runner Runner, jwtSecret string, limiter 
 			ctx = ContextWithJWT(ctx, cookieToken)
 		}
 
-		turn := agent.Turn{UserID: userID, Messages: req.Messages}
+		messages := guardrails.WithServerSystemPrompt(req.Messages)
+		turn := agent.Turn{UserID: userID, Messages: messages}
 		if err := runner.Run(ctx, turn, emit); err != nil {
 			emit(agent.Event{Error: &agent.ErrorEvent{Reason: err.Error()}})
 		}
