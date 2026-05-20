@@ -28,7 +28,6 @@ spec:
                 secretKeyRef:
                   name: eval-rabbitmq
                   key: url
-                  optional: true
           volumeMounts:
             - name: eval-data
               mountPath: /app/data
