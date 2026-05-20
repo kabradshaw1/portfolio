@@ -616,7 +616,7 @@ func evalPromptHandler() sdkmcp.PromptHandler {
 			Description: "Start an agent-led RAG eval experiment.",
 			Messages: []*sdkmcp.PromptMessage{{
 				Role:    sdkmcp.Role("user"),
-				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it. Compare completed or partial runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion."},
+				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it. Compare completed or partial runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion. For eval item runtime failures, use list_eval_item_dlq to inspect safe DLQ metadata; call replay_eval_item_dlq only after operator approval because it is mutating and requires operator credentials."},
 			}},
 		}, nil
 	}
@@ -649,8 +649,9 @@ Use this local MCP server to keep RAG eval experiments explicit and reproducible
 7. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it.
 8. Attach externally created runs with attach_eval_run when needed.
 9. Use get_eval_run for individual run inspection, compare_eval_runs for metric deltas, and get_worst_eval_cases for the lowest-scoring per-query cases. Compare completed or completed_with_failures runs.
-10. Call summarize_eval_experiment before presenting a recommendation.
-11. Only call record_eval_experiment_conclusion after the user approves the conclusion.
+10. For eval item runtime failures, use list_eval_item_dlq to inspect safe DLQ metadata. Only call replay_eval_item_dlq after operator approval because it is mutating and requires operator credentials.
+11. Call summarize_eval_experiment before presenting a recommendation.
+12. Only call record_eval_experiment_conclusion after the user approves the conclusion.
 `)
 }
 

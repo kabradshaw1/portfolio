@@ -880,7 +880,7 @@ func TestEvalPromptHandler(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected text prompt content, got %T", result.Messages[0].Content)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(text.Text, want) {
 			t.Fatalf("expected prompt to mention %s, got %q", want, text.Text)
 		}
@@ -908,7 +908,7 @@ func TestWorkflowResourceHandler(t *testing.T) {
 	if content.MIMEType != "text/markdown" {
 		t.Fatalf("unexpected resource MIME type: %q", content.MIMEType)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(content.Text, want) {
 			t.Fatalf("expected workflow resource to mention %s, got %q", want, content.Text)
 		}
