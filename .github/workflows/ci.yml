@@ -981,18 +981,44 @@ jobs:
     strategy:
       matrix:
         include:
+          # PYSEC-2025-183/CVE-2025-45768 is disputed by PyJWT and has no
+          # fixed version; services/shared/auth.py enforces 32-byte HS256 secrets.
           - service: ingestion
             paths: services/ingestion services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: ""
+            pip_audit_args: "--ignore-vuln PYSEC-2025-183"
           - service: chat
             paths: services/chat services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: "--ignore-vuln CVE-2026-1839"
+            # No-fix transitive advisories in the reranker/model stack require
+            # malicious local model/cache artifacts; chat loads configured model names.
+            pip_audit_args: >-
+              --ignore-vuln PYSEC-2025-183
+              --ignore-vuln PYSEC-2024-277
+              --ignore-vuln PYSEC-2025-210
+              --ignore-vuln PYSEC-2025-194
+              --ignore-vuln PYSEC-2025-196
+              --ignore-vuln PYSEC-2025-195
+              --ignore-vuln PYSEC-2025-193
+              --ignore-vuln PYSEC-2025-192
+              --ignore-vuln PYSEC-2026-139
+              --ignore-vuln PYSEC-2025-191
+              --ignore-vuln PYSEC-2025-197
+              --ignore-vuln PYSEC-2025-189
+              --ignore-vuln PYSEC-2025-190
+              --ignore-vuln PYSEC-2025-217
+              --ignore-vuln PYSEC-2025-214
+              --ignore-vuln PYSEC-2025-218
+              --ignore-vuln PYSEC-2025-211
+              --ignore-vuln PYSEC-2025-212
+              --ignore-vuln PYSEC-2025-213
+              --ignore-vuln PYSEC-2025-215
+              --ignore-vuln PYSEC-2025-216
+              --ignore-vuln CVE-2026-1839
           - service: debug
             paths: services/debug services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: ""
+            pip_audit_args: "--ignore-vuln PYSEC-2025-183"
           - service: eval
             paths: services/eval services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: ""
+            pip_audit_args: "--ignore-vuln PYSEC-2025-183"
           - service: rag-triage
             paths: services/rag-triage services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
             pip_audit_args: ""

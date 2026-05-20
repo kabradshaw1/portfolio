@@ -217,8 +217,11 @@ preflight-security:
 	@command -v python3.11 >/dev/null 2>&1 || { echo "python3.11 is required for pip-audit preflight"; exit 1; }
 	@for service in ingestion chat debug eval; do \
 		echo "  Auditing Python service: $$service"; \
-		audit_args=""; \
-		if [ "$$service" = "chat" ]; then audit_args="--ignore-vuln CVE-2026-1839"; fi; \
+		: "PYSEC-2025-183/CVE-2025-45768 is disputed by PyJWT and has no fixed version"; \
+		: "services/shared/auth.py rejects HS256 secrets shorter than 32 bytes"; \
+		chat_model_audit_ignores="--ignore-vuln PYSEC-2024-277 --ignore-vuln PYSEC-2025-210 --ignore-vuln PYSEC-2025-194 --ignore-vuln PYSEC-2025-196 --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-193 --ignore-vuln PYSEC-2025-192 --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2025-191 --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-189 --ignore-vuln PYSEC-2025-190 --ignore-vuln PYSEC-2025-217 --ignore-vuln PYSEC-2025-214 --ignore-vuln PYSEC-2025-218 --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212 --ignore-vuln PYSEC-2025-213 --ignore-vuln PYSEC-2025-215 --ignore-vuln PYSEC-2025-216"; \
+		audit_args="--ignore-vuln PYSEC-2025-183"; \
+		if [ "$$service" = "chat" ]; then audit_args="$$audit_args $$chat_model_audit_ignores --ignore-vuln CVE-2026-1839"; fi; \
 		tmpdir=$$(mktemp -d /tmp/preflight-pip-audit-$$service.XXXXXX); \
 		python3.11 -m venv "$$tmpdir/venv"; \
 		"$$tmpdir/venv/bin/pip" install --upgrade pip setuptools >/dev/null; \
