@@ -42,6 +42,18 @@ eval_item_dlq_total = Counter(
     ["reason"],
 )
 
+eval_item_dlq_inspections_total = Counter(
+    "eval_item_dlq_inspections_total",
+    "Evaluation item DLQ inspections by outcome",
+    ["outcome"],
+)
+
+eval_item_dlq_replays_total = Counter(
+    "eval_item_dlq_replays_total",
+    "Evaluation item DLQ replays by outcome",
+    ["outcome"],
+)
+
 eval_item_duration_seconds = Histogram(
     "eval_item_duration_seconds",
     "Evaluation item stage duration",

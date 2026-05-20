@@ -56,6 +56,8 @@ type EvalService interface {
 	TriageRAGRegression(context.Context, evalworkflow.TriageInput) (map[string]any, error)
 	SummarizeExperiment(context.Context, string) (evalworkflow.ExperimentSummary, error)
 	RecordConclusion(context.Context, evalworkflow.RecordConclusionInput) error
+	ListEvalItemDLQ(context.Context, int) (evalapi.DLQListResponse, error)
+	ReplayEvalItemDLQ(context.Context, evalapi.ReplayDLQItemRequest) (evalapi.ReplayDLQItemResponse, error)
 }
 
 func New(service EvalService) *sdkmcp.Server {
@@ -77,6 +79,8 @@ func New(service EvalService) *sdkmcp.Server {
 	addTool(srv, "get_eval_run_evidence", "Summarize one eval run with configuration, status, and next-step guidance.", evalIDSchema(), runEvidenceHandler(service))
 	addTool(srv, "compare_eval_runs", "Compare eval runs by explicit IDs or experiment labels.", compareEvalRunsSchema(), compareEvalRunsHandler(service))
 	addTool(srv, "get_worst_eval_cases", "Return the lowest-scoring per-query cases for a metric.", worstCasesSchema(), worstCasesHandler(service))
+	addTool(srv, "list_eval_item_dlq", "List eval item DLQ messages without removing them.", listEvalItemDLQSchema(), listEvalItemDLQHandler(service))
+	addTool(srv, "replay_eval_item_dlq", "Explicitly replay one selected eval item DLQ message. This is mutating.", replayEvalItemDLQSchema(), replayEvalItemDLQHandler(service))
 	addTool(srv, "triage_rag_regression", "Run RAG regression triage for an eval run using eval results, worst cases, and optional observability evidence.", triageRAGRegressionSchema(), triageRAGRegressionHandler(service))
 	addTool(srv, "summarize_eval_experiment", "Summarize baseline, candidates, and worst cases for an experiment.", experimentIDSchema(), summarizeExperimentHandler(service))
 	addTool(srv, "record_eval_experiment_conclusion", "Record the approved conclusion for a local eval experiment.", recordConclusionSchema(), recordConclusionHandler(service))
@@ -486,6 +490,41 @@ func worstCasesHandler(service EvalService) sdkmcp.ToolHandler {
 	}
 }
 
+func listEvalItemDLQHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var args struct {
+			Limit int `json:"limit,omitempty"`
+		}
+		if err := decodeArgs(req, &args); err != nil {
+			return toolError(err.Error()), nil
+		}
+		result, err := service.ListEvalItemDLQ(ctx, args.Limit)
+		return resultOrError(result, err), nil
+	}
+}
+
+func replayEvalItemDLQHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var args struct {
+			ItemID string `json:"item_id,omitempty"`
+			Index  *int   `json:"index,omitempty"`
+		}
+		if err := decodeArgs(req, &args); err != nil {
+			return toolError(err.Error()), nil
+		}
+		hasItemID := strings.TrimSpace(args.ItemID) != ""
+		hasIndex := args.Index != nil
+		if hasItemID == hasIndex {
+			return toolError("provide exactly one of item_id or index"), nil
+		}
+		result, err := service.ReplayEvalItemDLQ(ctx, evalapi.ReplayDLQItemRequest{
+			ItemID: strings.TrimSpace(args.ItemID),
+			Index:  args.Index,
+		})
+		return resultOrError(result, err), nil
+	}
+}
+
 func triageRAGRegressionHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var args struct {
@@ -577,7 +616,7 @@ func evalPromptHandler() sdkmcp.PromptHandler {
 			Description: "Start an agent-led RAG eval experiment.",
 			Messages: []*sdkmcp.PromptMessage{{
 				Role:    sdkmcp.Role("user"),
-				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it. Compare completed or partial runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion."},
+				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it. Compare completed or partial runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion. For eval item runtime failures, use list_eval_item_dlq to inspect safe DLQ metadata; call replay_eval_item_dlq only after operator approval because it is mutating and requires operator credentials."},
 			}},
 		}, nil
 	}
@@ -610,8 +649,9 @@ Use this local MCP server to keep RAG eval experiments explicit and reproducible
 7. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it.
 8. Attach externally created runs with attach_eval_run when needed.
 9. Use get_eval_run for individual run inspection, compare_eval_runs for metric deltas, and get_worst_eval_cases for the lowest-scoring per-query cases. Compare completed or completed_with_failures runs.
-10. Call summarize_eval_experiment before presenting a recommendation.
-11. Only call record_eval_experiment_conclusion after the user approves the conclusion.
+10. For eval item runtime failures, use list_eval_item_dlq to inspect safe DLQ metadata. Only call replay_eval_item_dlq after operator approval because it is mutating and requires operator credentials.
+11. Call summarize_eval_experiment before presenting a recommendation.
+12. Only call record_eval_experiment_conclusion after the user approves the conclusion.
 `)
 }
 
@@ -705,6 +745,14 @@ func compareEvalRunsSchema() json.RawMessage {
 
 func worstCasesSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"eval_id":{"type":"string"},"metric":{"type":"string","enum":["faithfulness","answer_relevancy","context_precision","context_recall"]},"limit":{"type":"integer","description":"Number of worst cases to return; omitted or non-positive values default to 5, and values over 20 are capped."}},"required":["eval_id"],"additionalProperties":false}`)
+}
+
+func listEvalItemDLQSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":200}},"additionalProperties":false}`)
+}
+
+func replayEvalItemDLQSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"item_id":{"type":"string","minLength":1},"index":{"type":"integer","minimum":0}},"additionalProperties":false}`)
 }
 
 func triageRAGRegressionSchema() json.RawMessage {

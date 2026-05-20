@@ -145,6 +145,32 @@ func TestRecordConclusionCompletesExperimentWithEvidence(t *testing.T) {
 	}
 }
 
+func TestListEvalItemDLQDelegatesToAPI(t *testing.T) {
+	api := &fakeAPI{dlqListResponse: evalapi.DLQListResponse{IndexesAreTransient: true}}
+	svc := New(api, nil, nil, time.Second, time.Minute)
+
+	got, err := svc.ListEvalItemDLQ(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("ListEvalItemDLQ error: %v", err)
+	}
+	if api.dlqListRequestLimit != 7 || !got.IndexesAreTransient {
+		t.Fatalf("limit=%d response=%#v", api.dlqListRequestLimit, got)
+	}
+}
+
+func TestReplayEvalItemDLQDelegatesToAPI(t *testing.T) {
+	api := &fakeAPI{dlqReplayResponse: evalapi.ReplayDLQItemResponse{ItemID: "item-1", MessagePublished: true}}
+	svc := New(api, nil, nil, time.Second, time.Minute)
+
+	got, err := svc.ReplayEvalItemDLQ(context.Background(), evalapi.ReplayDLQItemRequest{ItemID: "item-1"})
+	if err != nil {
+		t.Fatalf("ReplayEvalItemDLQ error: %v", err)
+	}
+	if api.dlqReplayRequest.ItemID != "item-1" || !got.MessagePublished {
+		t.Fatalf("request=%#v response=%#v", api.dlqReplayRequest, got)
+	}
+}
+
 func TestWaitForRunReturnsCompletedRun(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
@@ -709,6 +735,10 @@ type fakeAPI struct {
 	createExperimentRequests []evalapi.CreateExperimentRequest
 	updateExperimentID       string
 	updateExperimentRequest  evalapi.UpdateExperimentRequest
+	dlqListRequestLimit      int
+	dlqListResponse          evalapi.DLQListResponse
+	dlqReplayRequest         evalapi.ReplayDLQItemRequest
+	dlqReplayResponse        evalapi.ReplayDLQItemResponse
 }
 
 func (f *fakeAPI) ListDatasets(context.Context) ([]evalapi.Dataset, error) {
@@ -810,6 +840,16 @@ func (f *fakeAPI) UpdateExperiment(_ context.Context, id string, in evalapi.Upda
 	return exp, nil
 }
 
+func (f *fakeAPI) ListEvalItemDLQ(_ context.Context, limit int) (evalapi.DLQListResponse, error) {
+	f.dlqListRequestLimit = limit
+	return f.dlqListResponse, nil
+}
+
+func (f *fakeAPI) ReplayEvalItemDLQ(_ context.Context, in evalapi.ReplayDLQItemRequest) (evalapi.ReplayDLQItemResponse, error) {
+	f.dlqReplayRequest = in
+	return f.dlqReplayResponse, nil
+}
+
 type fakeIngestion struct {
 	collections []ingestionapi.Collection
 	configs     map[string]map[string]any
@@ -876,6 +916,14 @@ func (b *blockingGetEvaluationAPI) GetEvaluation(ctx context.Context, _ string) 
 
 func (b *blockingGetEvaluationAPI) CompareEvaluations(context.Context, []string) (evalapi.Comparison, error) {
 	return evalapi.Comparison{}, nil
+}
+
+func (b *blockingGetEvaluationAPI) ListEvalItemDLQ(context.Context, int) (evalapi.DLQListResponse, error) {
+	return evalapi.DLQListResponse{}, nil
+}
+
+func (b *blockingGetEvaluationAPI) ReplayEvalItemDLQ(context.Context, evalapi.ReplayDLQItemRequest) (evalapi.ReplayDLQItemResponse, error) {
+	return evalapi.ReplayDLQItemResponse{}, nil
 }
 
 func (b *blockingGetEvaluationAPI) CreateExperiment(context.Context, evalapi.CreateExperimentRequest) (evalapi.Experiment, error) {
