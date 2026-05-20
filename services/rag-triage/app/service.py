@@ -43,7 +43,11 @@ class RAGTriageService:
 
         worst = sorted(
             results,
-            key=lambda result: self._score_for_metric(result.scores, selected_metric),
+            key=lambda result: (
+                self._score_for_metric(result.scores, selected_metric),
+                result.query,
+                result.answer,
+            ),
         )[:selected_limit]
         cases = [classify_case(result) for result in worst]
         clusters = cluster_cases(cases)
@@ -72,6 +76,9 @@ class RAGTriageService:
             return self._default_limit
         return min(max(limit, 1), self._max_limit)
 
+    async def close(self) -> None:
+        await self._eval_client.close()
+
     def _runtime_response(
         self,
         evaluation: EvaluationDetail,
@@ -90,11 +97,15 @@ class RAGTriageService:
             summary="The evaluation did not produce completed results, so triage "
             "should inspect runtime or configuration evidence.",
         )
+        config = evaluation.config or {}
+        if evaluation.error:
+            config = {**config, "eval_error": evaluation.error}
+
         return TriageResponse(
             subject=TriageSubject(type="eval_run", eval_id=evaluation.id),
             status=evaluation.status,
             aggregate_scores=evaluation.aggregate_scores,
-            config=evaluation.config or {},
+            config=config,
             diagnosis=diagnosis,
             clusters=[runtime_cluster],
             cases=[],

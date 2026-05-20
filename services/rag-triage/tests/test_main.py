@@ -1,3 +1,4 @@
+import httpx
 from app.main import app
 from app.models import Diagnosis, Scores, TriageResponse, TriageSubject
 from fastapi.testclient import TestClient
@@ -14,6 +15,8 @@ def test_health_returns_healthy():
 
 def test_triage_eval_run_endpoint(monkeypatch):
     class FakeService:
+        closed = False
+
         async def triage_eval_run(self, eval_id, metric, limit):
             assert eval_id == "eval-1"
             assert metric is None
@@ -34,12 +37,11 @@ def test_triage_eval_run_endpoint(monkeypatch):
                 metric="context_precision",
             )
 
-    class FakeClient:
         async def close(self):
+            self.closed = True
             return None
 
     service = FakeService()
-    service._eval_client = FakeClient()
     monkeypatch.setattr("app.main.build_service", lambda: service)
     client = TestClient(app)
 
@@ -49,3 +51,25 @@ def test_triage_eval_run_endpoint(monkeypatch):
     assert response.json()["diagnosis"]["primary_failure_mode"] == (
         "retrieval_precision"
     )
+    assert service.closed
+
+
+def test_triage_eval_run_endpoint_maps_upstream_errors(monkeypatch):
+    class FakeService:
+        closed = False
+
+        async def triage_eval_run(self, eval_id, metric, limit):
+            raise httpx.ConnectError("connection refused")
+
+        async def close(self):
+            self.closed = True
+
+    service = FakeService()
+    monkeypatch.setattr("app.main.build_service", lambda: service)
+    client = TestClient(app)
+
+    response = client.post("/triage/eval-run", json={"eval_id": "eval-1"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "eval API request failed"
+    assert service.closed

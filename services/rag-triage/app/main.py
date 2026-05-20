@@ -1,3 +1,4 @@
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -58,8 +59,17 @@ async def triage_eval_run(body: TriageEvalRunRequest):
             outcome="eval_api_error",
         ).inc()
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        triage_requests_total.labels(
+            endpoint="eval-run",
+            outcome="upstream_error",
+        ).inc()
+        raise HTTPException(
+            status_code=502,
+            detail="eval API request failed",
+        ) from exc
     finally:
-        await service._eval_client.close()
+        await service.close()
 
     triage_requests_total.labels(endpoint="eval-run", outcome="success").inc()
     return result
