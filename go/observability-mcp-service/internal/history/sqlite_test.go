@@ -201,6 +201,66 @@ func TestRecordSnapshotDoesNotOverwriteIncidentMetadataWithEmptyValues(t *testin
 	}
 }
 
+func TestRecordManagementActionCreatesIncidentTimeline(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	event, err := db.RecordManagementAction(ctx, ManagementActionInput{
+		IncidentKey:   "grafana-alerting",
+		IncidentTitle: "Grafana alerting reload",
+		ActionID:      "reload_grafana_alerting",
+		RiskTier:      "low_risk_mutation",
+		Decision:      "allow",
+		Status:        "succeeded",
+		Summary:       "reload_grafana_alerting succeeded",
+		DetailsJSON:   []byte(`{"status":"succeeded"}`),
+	})
+	if err != nil {
+		t.Fatalf("RecordManagementAction() error = %v", err)
+	}
+	if event.ID == 0 || event.Type != EventManagementActionCompleted {
+		t.Fatalf("event = %+v", event)
+	}
+	history, err := db.GetIncidentHistory(ctx, "grafana-alerting")
+	if err != nil {
+		t.Fatalf("GetIncidentHistory() error = %v", err)
+	}
+	if len(history.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(history.Events))
+	}
+	if history.Events[0].Details != `{"status":"succeeded"}` {
+		t.Fatalf("details = %q", history.Events[0].Details)
+	}
+}
+
+func TestRecordManagementActionRequiresTitleForNewIncident(t *testing.T) {
+	db := openTestDB(t)
+	_, err := db.RecordManagementAction(context.Background(), ManagementActionInput{
+		IncidentKey: "missing-title",
+		ActionID:    "reload_grafana_alerting",
+		RiskTier:    "low_risk_mutation",
+		Decision:    "allow",
+		Status:      "succeeded",
+		Summary:     "reload_grafana_alerting succeeded",
+	})
+	if err == nil {
+		t.Fatal("expected missing title error")
+	}
+}
+
+func TestListManagementActionsFilters(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	_, _ = db.RecordManagementAction(ctx, ManagementActionInput{IncidentKey: "one", IncidentTitle: "One", ActionID: "reload_grafana_alerting", RiskTier: "low_risk_mutation", Decision: "allow", Status: "succeeded", Summary: "one"})
+	_, _ = db.RecordManagementAction(ctx, ManagementActionInput{IncidentKey: "two", IncidentTitle: "Two", ActionID: "run_postgres_backup_verify", RiskTier: "low_risk_mutation", Decision: "block", Status: "blocked", Summary: "two"})
+	events, err := db.ListManagementActions(ctx, ManagementActionFilter{ActionID: "reload_grafana_alerting", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListManagementActions() error = %v", err)
+	}
+	if len(events) != 1 || events[0].Summary != "one" {
+		t.Fatalf("events = %+v", events)
+	}
+}
+
 func TestListIncidentsFiltersByStatusServiceSeverity(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()

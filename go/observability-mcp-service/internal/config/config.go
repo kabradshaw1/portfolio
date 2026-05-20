@@ -34,6 +34,10 @@ type Config struct {
 	HistoryEnabled                 bool
 	HistoryDBPath                  string
 	HistoryAutoCapture             bool
+	ManagementActionsEnabled       bool
+	ManagementAllowHighRisk        bool
+	ManagementActionTimeout        time.Duration
+	ManagementMaxOutputBytes       int
 }
 
 func FromEnv() (Config, error) {
@@ -65,6 +69,22 @@ func FromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	managementActionsEnabled, err := boolEnv("OBS_MANAGEMENT_ACTIONS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	managementAllowHighRisk, err := boolEnv("OBS_MANAGEMENT_ALLOW_HIGH_RISK", false)
+	if err != nil {
+		return Config{}, err
+	}
+	managementActionTimeout, err := durationEnv("OBS_MANAGEMENT_ACTION_TIMEOUT", 45*time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
+	managementMaxOutputBytes, err := intEnv("OBS_MANAGEMENT_MAX_OUTPUT_BYTES", 32768)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		PrometheusURL:                  getenv("OBS_PROMETHEUS_URL", defaultPrometheusURL),
@@ -84,6 +104,10 @@ func FromEnv() (Config, error) {
 		HistoryEnabled:                 historyEnabled,
 		HistoryDBPath:                  getenv("OBS_HISTORY_DB_PATH", defaultHistoryDBPath()),
 		HistoryAutoCapture:             historyAutoCapture,
+		ManagementActionsEnabled:       managementActionsEnabled,
+		ManagementAllowHighRisk:        managementAllowHighRisk,
+		ManagementActionTimeout:        managementActionTimeout,
+		ManagementMaxOutputBytes:       managementMaxOutputBytes,
 	}
 	if cfg.QueryTimeout <= 0 {
 		return Config{}, fmt.Errorf("OBS_QUERY_TIMEOUT must be positive")
@@ -102,6 +126,12 @@ func FromEnv() (Config, error) {
 	}
 	if cfg.MaxTraceSpans <= 0 {
 		return Config{}, fmt.Errorf("OBS_MAX_TRACE_SPANS must be positive")
+	}
+	if cfg.ManagementActionTimeout <= 0 {
+		return Config{}, fmt.Errorf("OBS_MANAGEMENT_ACTION_TIMEOUT must be positive")
+	}
+	if cfg.ManagementMaxOutputBytes <= 0 {
+		return Config{}, fmt.Errorf("OBS_MANAGEMENT_MAX_OUTPUT_BYTES must be positive")
 	}
 	if (cfg.GrafanaAccessClientID == "") != (cfg.GrafanaAccessClientSecret == "") {
 		return Config{}, fmt.Errorf("OBS_GRAFANA_ACCESS_CLIENT_ID and OBS_GRAFANA_ACCESS_CLIENT_SECRET must be set together")
