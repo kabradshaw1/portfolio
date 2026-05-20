@@ -1,6 +1,6 @@
 import asyncio
 import time
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import jwt
@@ -869,6 +869,71 @@ def test_start_evaluation_passes_retrieval_config_to_background_run(
     assert response.status_code == 202
     assert mock_capture.await_args.kwargs["requested_retrieval_config"] == {"top_k": 3}
     assert mock_run_evaluation.await_args.kwargs["top_k"] == 3
+
+
+@patch("app.main.resolve_answer_model_override")
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_resolves_and_captures_answer_model_override(
+    mock_get_db,
+    mock_validate_collection,
+    mock_capture,
+    mock_run_evaluation,
+    mock_resolve,
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-model",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-model"
+    mock_get_db.return_value = mock_db
+    resolved = MagicMock()
+    resolved.safe_dict.return_value = {
+        "tier": "efficient",
+        "provider": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-5.4-mini",
+        "api_key_secret": "OPENAI_API_KEY",
+    }
+    resolved.tier = "efficient"
+    resolved.provider = "openai"
+    resolved.base_url = "https://api.openai.com/v1"
+    resolved.model = "gpt-5.4-mini"
+    resolved.api_key = "test-key"
+    mock_resolve.return_value = resolved
+    mock_capture.return_value = {"captured_at": "x"}
+    mock_run_evaluation.return_value = ({"faithfulness": 0.8}, [])
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-model",
+            "answer_tier": "efficient",
+            "answer_provider": "openai",
+            "answer_base_url": "https://api.openai.com/v1",
+            "answer_model": "gpt-5.4-mini",
+            "answer_api_key_secret": "OPENAI_API_KEY",
+        },
+    )
+
+    assert response.status_code == 202
+    assert (
+        mock_capture.await_args.kwargs["requested_answer_model"]["model"]
+        == "gpt-5.4-mini"
+    )
+    assert (
+        mock_run_evaluation.await_args.kwargs["answer_model"]["api_key"] == "test-key"
+    )
+    assert mock_capture.await_args.kwargs["judge_model"] == {
+        "provider": settings.llm_provider,
+        "base_url": settings.llm_base_url,
+        "model": settings.llm_model,
+    }
 
 
 @patch("app.main.validate_collection_exists", new_callable=AsyncMock)

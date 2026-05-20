@@ -79,14 +79,19 @@ type RetrievalConfig struct {
 }
 
 type StartEvaluationRequest struct {
-	DatasetID       string           `json:"dataset_id"`
-	Collection      string           `json:"collection,omitempty"`
-	Notes           string           `json:"notes,omitempty"`
-	BaselineEvalID  string           `json:"baseline_eval_id,omitempty"`
-	ExperimentID    string           `json:"experiment_id,omitempty"`
-	ExperimentLabel string           `json:"experiment_label,omitempty"`
-	Rerank          bool             `json:"rerank"`
-	RetrievalConfig *RetrievalConfig `json:"retrieval_config,omitempty"`
+	DatasetID          string           `json:"dataset_id"`
+	Collection         string           `json:"collection,omitempty"`
+	Notes              string           `json:"notes,omitempty"`
+	BaselineEvalID     string           `json:"baseline_eval_id,omitempty"`
+	ExperimentID       string           `json:"experiment_id,omitempty"`
+	ExperimentLabel    string           `json:"experiment_label,omitempty"`
+	Rerank             bool             `json:"rerank"`
+	RetrievalConfig    *RetrievalConfig `json:"retrieval_config,omitempty"`
+	AnswerTier         string           `json:"answer_tier,omitempty"`
+	AnswerProvider     string           `json:"answer_provider,omitempty"`
+	AnswerBaseURL      string           `json:"answer_base_url,omitempty"`
+	AnswerModel        string           `json:"answer_model,omitempty"`
+	AnswerAPIKeySecret string           `json:"answer_api_key_secret,omitempty"`
 }
 
 type StartEvaluationResponse struct {

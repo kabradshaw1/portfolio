@@ -32,6 +32,24 @@ start baseline and candidate runs, wait for completion, compare runs, inspect
 worst cases, summarize evidence, and only record a conclusion after the user
 approves it.
 
+## Model Ladder Experiments
+
+Model ladder experiments vary the answer model while keeping the eval judge
+model fixed across candidates.
+
+- `answer_tier`: local, efficient, or premium.
+- `answer_provider`: ollama, openai, or anthropic.
+- `answer_base_url`: provider endpoint when required.
+- `answer_model`: model name.
+- `answer_api_key_secret`: environment variable name containing the provider
+  key.
+
+For model ladder experiments, keep the judge model fixed and vary
+`answer_tier`, `answer_provider`, `answer_model`, `retrieval_config`, and
+`rerank`. Start one run at a time, wait for completion, compare only completed
+runs, inspect worst cases, and record a conclusion only after the user approves
+it.
+
 ## Run Directly
 
 This is mainly useful for smoke testing. In normal use, Codex or another MCP

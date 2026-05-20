@@ -161,6 +161,34 @@ async def test_ask_forwards_retrieval_config(mock_chat_response):
 
 
 @pytest.mark.asyncio
+async def test_ask_forwards_answer_model_override(mock_chat_response):
+    answer_model = {
+        "tier": "efficient",
+        "provider": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-5.4-mini",
+        "api_key": "test-key",
+    }
+
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/chat"
+        body = json.loads(request.content)
+        assert body["answer_model"] == answer_model
+        return httpx.Response(200, json=mock_chat_response)
+
+    transport = httpx.MockTransport(mock_handler)
+    client = RAGClient(base_url="http://chat:8000", transport=transport)
+
+    response = await client.ask(
+        "what is kubernetes",
+        collection=None,
+        rerank=False,
+        answer_model=answer_model,
+    )
+    assert response["answer"] == mock_chat_response["answer"]
+
+
+@pytest.mark.asyncio
 async def test_search_server_error():
     async def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"detail": "internal error"})

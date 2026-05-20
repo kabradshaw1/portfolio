@@ -76,6 +76,9 @@ func TestStartEvaluationSendsOptionalFields(t *testing.T) {
 		if body.DatasetID != "ds-1" || body.Collection != "documents" || body.Notes != "candidate" || body.BaselineEvalID != "eval-base" || body.ExperimentID != "exp-1" || body.ExperimentLabel != "candidate" || !body.Rerank {
 			t.Fatalf("body = %#v", body)
 		}
+		if body.AnswerTier != "efficient" || body.AnswerProvider != "openai" || body.AnswerBaseURL != "https://api.openai.com/v1" || body.AnswerModel != "gpt-5.4-mini" || body.AnswerAPIKeySecret != "OPENAI_API_KEY" {
+			t.Fatalf("body = %#v", body)
+		}
 		if body.RetrievalConfig == nil || body.RetrievalConfig.TopK == nil || *body.RetrievalConfig.TopK != 3 {
 			t.Fatalf("retrieval_config = %#v", body.RetrievalConfig)
 		}
@@ -86,14 +89,19 @@ func TestStartEvaluationSendsOptionalFields(t *testing.T) {
 
 	client := New(server.URL, "", server.Client())
 	got, err := client.StartEvaluation(context.Background(), StartEvaluationRequest{
-		DatasetID:       "ds-1",
-		Collection:      "documents",
-		Notes:           "candidate",
-		BaselineEvalID:  "eval-base",
-		ExperimentID:    "exp-1",
-		ExperimentLabel: "candidate",
-		Rerank:          true,
-		RetrievalConfig: &RetrievalConfig{TopK: &topK},
+		DatasetID:          "ds-1",
+		Collection:         "documents",
+		Notes:              "candidate",
+		BaselineEvalID:     "eval-base",
+		ExperimentID:       "exp-1",
+		ExperimentLabel:    "candidate",
+		Rerank:             true,
+		RetrievalConfig:    &RetrievalConfig{TopK: &topK},
+		AnswerTier:         "efficient",
+		AnswerProvider:     "openai",
+		AnswerBaseURL:      "https://api.openai.com/v1",
+		AnswerModel:        "gpt-5.4-mini",
+		AnswerAPIKeySecret: "OPENAI_API_KEY",
 	})
 	if err != nil {
 		t.Fatalf("StartEvaluation error: %v", err)

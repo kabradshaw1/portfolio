@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -24,6 +25,17 @@ const (
 	maxRetrievalTopK = 20
 	maxWorstLimit    = 20
 )
+
+var answerAPIKeySecretPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,100}$`)
+var answerTierPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,50}$`)
+
+type answerModelArgs struct {
+	Tier         string
+	Provider     string
+	BaseURL      string
+	Model        string
+	APIKeySecret string
+}
 
 type EvalService interface {
 	StartExperiment(context.Context, evalworkflow.StartExperimentInput) (evalapi.Experiment, error)
@@ -196,14 +208,19 @@ func getRAGCollectionConfigHandler(service EvalService) sdkmcp.ToolHandler {
 func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var args struct {
-			DatasetID       string          `json:"dataset_id"`
-			Collection      string          `json:"collection"`
-			Notes           string          `json:"notes,omitempty"`
-			BaselineEvalID  string          `json:"baseline_eval_id,omitempty"`
-			Rerank          bool            `json:"rerank,omitempty"`
-			ExperimentID    string          `json:"experiment_id,omitempty"`
-			Label           string          `json:"label,omitempty"`
-			RetrievalConfig json.RawMessage `json:"retrieval_config,omitempty"`
+			DatasetID          string          `json:"dataset_id"`
+			Collection         string          `json:"collection"`
+			Notes              string          `json:"notes,omitempty"`
+			BaselineEvalID     string          `json:"baseline_eval_id,omitempty"`
+			Rerank             bool            `json:"rerank,omitempty"`
+			ExperimentID       string          `json:"experiment_id,omitempty"`
+			Label              string          `json:"label,omitempty"`
+			RetrievalConfig    json.RawMessage `json:"retrieval_config,omitempty"`
+			AnswerTier         *string         `json:"answer_tier,omitempty"`
+			AnswerProvider     *string         `json:"answer_provider,omitempty"`
+			AnswerBaseURL      *string         `json:"answer_base_url,omitempty"`
+			AnswerModel        *string         `json:"answer_model,omitempty"`
+			AnswerAPIKeySecret *string         `json:"answer_api_key_secret,omitempty"`
 		}
 		if err := decodeArgs(req, &args); err != nil {
 			return toolError(err.Error()), nil
@@ -224,19 +241,98 @@ func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
+		answerOverride, err := validateAnswerModelArgs(args.AnswerTier, args.AnswerProvider, args.AnswerBaseURL, args.AnswerModel, args.AnswerAPIKeySecret)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
 		in := evalworkflow.StartRunInput{
-			DatasetID:       args.DatasetID,
-			Collection:      args.Collection,
-			Notes:           args.Notes,
-			BaselineEvalID:  args.BaselineEvalID,
-			Rerank:          args.Rerank,
-			ExperimentID:    args.ExperimentID,
-			Label:           args.Label,
-			RetrievalConfig: retrievalConfig,
+			DatasetID:          args.DatasetID,
+			Collection:         args.Collection,
+			Notes:              args.Notes,
+			BaselineEvalID:     args.BaselineEvalID,
+			Rerank:             args.Rerank,
+			ExperimentID:       args.ExperimentID,
+			Label:              args.Label,
+			RetrievalConfig:    retrievalConfig,
+			AnswerTier:         answerOverride.Tier,
+			AnswerProvider:     answerOverride.Provider,
+			AnswerBaseURL:      answerOverride.BaseURL,
+			AnswerModel:        answerOverride.Model,
+			AnswerAPIKeySecret: answerOverride.APIKeySecret,
 		}
 		result, err := service.StartRun(ctx, in)
 		return resultOrError(result, err), nil
 	}
+}
+
+func validateAnswerModelArgs(tier, provider, baseURL, model, secret *string) (answerModelArgs, error) {
+	if tier == nil && provider == nil && baseURL == nil && model == nil && secret == nil {
+		return answerModelArgs{}, nil
+	}
+	for _, field := range []struct {
+		name  string
+		value *string
+	}{
+		{name: "answer_tier", value: tier},
+		{name: "answer_provider", value: provider},
+		{name: "answer_base_url", value: baseURL},
+		{name: "answer_model", value: model},
+		{name: "answer_api_key_secret", value: secret},
+	} {
+		if hasPadding(field.value) {
+			return answerModelArgs{}, fmt.Errorf("%s must not include leading or trailing whitespace", field.name)
+		}
+	}
+	normalized := answerModelArgs{
+		Tier:         trimStringPtr(tier),
+		Provider:     trimStringPtr(provider),
+		BaseURL:      trimStringPtr(baseURL),
+		Model:        trimStringPtr(model),
+		APIKeySecret: trimStringPtr(secret),
+	}
+	if normalized.Provider == "" {
+		return answerModelArgs{}, fmt.Errorf("answer_provider is required with answer override")
+	}
+	if normalized.Provider != "ollama" && normalized.Provider != "openai" && normalized.Provider != "anthropic" {
+		return answerModelArgs{}, fmt.Errorf("answer_provider must be ollama, openai, or anthropic")
+	}
+	if normalized.Model == "" {
+		return answerModelArgs{}, fmt.Errorf("answer_model is required with answer override")
+	}
+	if normalized.Tier != "" && !answerTierPattern.MatchString(normalized.Tier) {
+		return answerModelArgs{}, fmt.Errorf("answer_tier must match ^[a-zA-Z0-9_-]{1,50}$")
+	}
+	if baseURL != nil && normalized.BaseURL == "" {
+		return answerModelArgs{}, fmt.Errorf("answer_base_url must not be empty when provided")
+	}
+	if len(normalized.Model) > 100 {
+		return answerModelArgs{}, fmt.Errorf("answer_model must be at most 100 characters")
+	}
+	if len(normalized.BaseURL) > 300 {
+		return answerModelArgs{}, fmt.Errorf("answer_base_url must be at most 300 characters")
+	}
+	if (normalized.Provider == "openai" || normalized.Provider == "anthropic") && normalized.APIKeySecret == "" {
+		return answerModelArgs{}, fmt.Errorf("answer_api_key_secret is required when answer_provider is %s", normalized.Provider)
+	}
+	lowered := strings.ToLower(normalized.APIKeySecret)
+	if strings.HasPrefix(lowered, "sk-") || strings.HasPrefix(lowered, "sk_") || strings.HasPrefix(lowered, "bearer ") || strings.HasPrefix(lowered, "api-") {
+		return answerModelArgs{}, fmt.Errorf("answer_api_key_secret must be an environment variable name")
+	}
+	if secret != nil && !answerAPIKeySecretPattern.MatchString(normalized.APIKeySecret) {
+		return answerModelArgs{}, fmt.Errorf("answer_api_key_secret must be an environment variable name matching ^[A-Z][A-Z0-9_]{1,100}$")
+	}
+	return normalized, nil
+}
+
+func trimStringPtr(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func hasPadding(value *string) bool {
+	return value != nil && *value != strings.TrimSpace(*value)
 }
 
 func parseRetrievalConfig(raw json.RawMessage) (*evalapi.RetrievalConfig, error) {
@@ -481,7 +577,7 @@ func evalPromptHandler() sdkmcp.PromptHandler {
 			Description: "Start an agent-led RAG eval experiment.",
 			Messages: []*sdkmcp.PromptMessage{{
 				Role:    sdkmcp.Role("user"),
-				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. Compare only completed runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion."},
+				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare only completed runs, inspect worst cases, and record a conclusion only after the user approves it. Compare completed runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion."},
 			}},
 		}, nil
 	}
@@ -511,10 +607,11 @@ Use this local MCP server to keep RAG eval experiments explicit and reproducible
 4. Use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run.
 5. Start baseline with start_eval_run and wait_for_eval_run. Run baseline to completion before starting rerank while runtime hardening is pending.
 6. Start candidate runs with start_eval_run, then call wait_for_eval_run until each run completes or fails.
-7. Attach externally created runs with attach_eval_run when needed.
-8. Use get_eval_run for individual run inspection, compare_eval_runs for metric deltas, and get_worst_eval_cases for the lowest-scoring per-query cases. Compare only completed runs.
-9. Call summarize_eval_experiment before presenting a recommendation.
-10. Only call record_eval_experiment_conclusion after the user approves the conclusion.
+7. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare only completed runs, inspect worst cases, and record a conclusion only after the user approves it.
+8. Attach externally created runs with attach_eval_run when needed.
+9. Use get_eval_run for individual run inspection, compare_eval_runs for metric deltas, and get_worst_eval_cases for the lowest-scoring per-query cases. Compare only completed runs.
+10. Call summarize_eval_experiment before presenting a recommendation.
+11. Only call record_eval_experiment_conclusion after the user approves the conclusion.
 `)
 }
 
@@ -579,7 +676,7 @@ func experimentIDSchema() json.RawMessage {
 }
 
 func startEvalRunSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"},"retrieval_config":{"type":"object","properties":{"top_k":{"type":"integer","minimum":1,"maximum":20}},"additionalProperties":false}},"required":["dataset_id","collection"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"},"retrieval_config":{"type":"object","properties":{"top_k":{"type":"integer","minimum":1,"maximum":20}},"additionalProperties":false},"answer_tier":{"type":"string","pattern":"^[a-zA-Z0-9_-]{1,50}$","maxLength":50},"answer_provider":{"type":"string","enum":["ollama","openai","anthropic"]},"answer_base_url":{"type":"string","pattern":"^\\S(?:.*\\S)?$","minLength":1,"maxLength":300},"answer_model":{"type":"string","pattern":"^\\S(?:.*\\S)?$","minLength":1,"maxLength":100},"answer_api_key_secret":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{1,100}$","minLength":2,"maxLength":101}},"allOf":[{"if":{"anyOf":[{"required":["answer_tier"]},{"required":["answer_provider"]},{"required":["answer_base_url"]},{"required":["answer_model"]},{"required":["answer_api_key_secret"]}]},"then":{"required":["answer_provider","answer_model"]}},{"if":{"properties":{"answer_provider":{"const":"openai"}},"required":["answer_provider"]},"then":{"required":["answer_api_key_secret"]}},{"if":{"properties":{"answer_provider":{"const":"anthropic"}},"required":["answer_provider"]},"then":{"required":["answer_api_key_secret"]}}],"required":["dataset_id","collection"],"additionalProperties":false}`)
 }
 
 func waitEvalRunSchema() json.RawMessage {

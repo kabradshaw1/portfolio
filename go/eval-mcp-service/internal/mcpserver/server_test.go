@@ -224,6 +224,232 @@ func TestStartEvalRunForwardsRetrievalConfig(t *testing.T) {
 	}
 }
 
+func TestStartEvalRunForwardsAnswerModelOverride(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":            "ds-1",
+		"collection":            "documents",
+		"answer_tier":           "efficient",
+		"answer_provider":       "openai",
+		"answer_base_url":       "https://api.openai.com/v1",
+		"answer_model":          "gpt-5.4-mini",
+		"answer_api_key_secret": "OPENAI_API_KEY",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	if fake.startRunInput.AnswerTier != "efficient" ||
+		fake.startRunInput.AnswerProvider != "openai" ||
+		fake.startRunInput.AnswerBaseURL != "https://api.openai.com/v1" ||
+		fake.startRunInput.AnswerModel != "gpt-5.4-mini" ||
+		fake.startRunInput.AnswerAPIKeySecret != "OPENAI_API_KEY" {
+		t.Fatalf("answer model override = %#v", fake.startRunInput)
+	}
+}
+
+func TestStartEvalRunRejectsPartialAnswerModelOverride(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+	}{
+		{
+			name: "answer_tier_only",
+			args: map[string]any{"answer_tier": "efficient"},
+		},
+		{
+			name: "answer_base_url_only",
+			args: map[string]any{"answer_base_url": "https://api.openai.com/v1"},
+		},
+		{
+			name: "empty_answer_base_url_only",
+			args: map[string]any{"answer_base_url": ""},
+		},
+		{
+			name: "empty_answer_secret_only",
+			args: map[string]any{"answer_api_key_secret": ""},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeEvalService{}
+			args := map[string]any{
+				"dataset_id": "ds-1",
+				"collection": "documents",
+			}
+			for key, value := range tc.args {
+				args[key] = value
+			}
+			result, err := startEvalRunHandler(fake)(context.Background(), callReq(args))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.startRunCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+			}
+			if got := textResult(t, result); !strings.Contains(got, "answer_provider") && !strings.Contains(got, "answer_model") {
+				t.Fatalf("error = %q", got)
+			}
+		})
+	}
+}
+
+func TestStartEvalRunRejectsRawAnswerSecret(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":            "ds-1",
+		"collection":            "documents",
+		"answer_provider":       "openai",
+		"answer_model":          "gpt-5.4-mini",
+		"answer_api_key_secret": "sk-test-secret",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected MCP tool error")
+	}
+	if got := textResult(t, result); !strings.Contains(got, "answer_api_key_secret must be an environment variable name") {
+		t.Fatalf("error = %q", got)
+	}
+}
+
+func TestStartEvalRunRejectsInvalidAnswerSecretReference(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		secret string
+	}{
+		{name: "lowercase", secret: "openai_api_key"},
+		{name: "spaces", secret: "OPENAI API KEY"},
+		{name: "hyphen", secret: "OPENAI-API-KEY"},
+		{name: "overlong", secret: "A" + strings.Repeat("B", 101)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeEvalService{}
+			result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+				"dataset_id":            "ds-1",
+				"collection":            "documents",
+				"answer_provider":       "openai",
+				"answer_model":          "gpt-5.4-mini",
+				"answer_api_key_secret": tc.secret,
+			}))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.startRunCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+			}
+			got := textResult(t, result)
+			if !strings.Contains(got, "answer_api_key_secret must be an environment variable name") {
+				t.Fatalf("error = %q", got)
+			}
+			if strings.Contains(got, tc.secret) {
+				t.Fatalf("error echoed secret value: %q", got)
+			}
+		})
+	}
+}
+
+func TestStartEvalRunRejectsWhitespacePaddedAnswerFields(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		field string
+		value string
+	}{
+		{name: "tier", field: "answer_tier", value: " efficient "},
+		{name: "provider", field: "answer_provider", value: " openai "},
+		{name: "base_url", field: "answer_base_url", value: " https://api.openai.com/v1 "},
+		{name: "model", field: "answer_model", value: " gpt-5.4-mini "},
+		{name: "secret", field: "answer_api_key_secret", value: " OPENAI_API_KEY "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeEvalService{}
+			args := map[string]any{
+				"dataset_id":            "ds-1",
+				"collection":            "documents",
+				"answer_tier":           "efficient",
+				"answer_provider":       "openai",
+				"answer_base_url":       "https://api.openai.com/v1",
+				"answer_model":          "gpt-5.4-mini",
+				"answer_api_key_secret": "OPENAI_API_KEY",
+			}
+			args[tc.field] = tc.value
+			result, err := startEvalRunHandler(fake)(context.Background(), callReq(args))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.startRunCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+			}
+			got := textResult(t, result)
+			if !strings.Contains(got, "must not include leading or trailing whitespace") {
+				t.Fatalf("error = %q", got)
+			}
+			if strings.Contains(got, tc.value) {
+				t.Fatalf("error echoed raw field value: %q", got)
+			}
+		})
+	}
+}
+
+func TestStartEvalRunRequiresAnswerSecretForRemoteProviders(t *testing.T) {
+	for _, provider := range []string{"openai", "anthropic"} {
+		t.Run(provider, func(t *testing.T) {
+			fake := &fakeEvalService{}
+			result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+				"dataset_id":      "ds-1",
+				"collection":      "documents",
+				"answer_provider": provider,
+				"answer_model":    "model-1",
+			}))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.startRunCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+			}
+			if got := textResult(t, result); !strings.Contains(got, "answer_api_key_secret is required") {
+				t.Fatalf("error = %q", got)
+			}
+		})
+	}
+}
+
+func TestStartEvalRunAllowsOllamaWithoutAnswerSecret(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":      "ds-1",
+		"collection":      "documents",
+		"answer_provider": "ollama",
+		"answer_model":    "qwen2.5",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	if fake.startRunCalls != 1 {
+		t.Fatalf("service should be called once, got %d calls", fake.startRunCalls)
+	}
+	if fake.startRunInput.AnswerProvider != "ollama" || fake.startRunInput.AnswerModel != "qwen2.5" || fake.startRunInput.AnswerAPIKeySecret != "" {
+		t.Fatalf("answer model override = %#v", fake.startRunInput)
+	}
+}
+
 func TestStartEvalRunRejectsInvalidRetrievalConfig(t *testing.T) {
 	for _, topK := range []float64{0, 21} {
 		t.Run("top_k_range", func(t *testing.T) {
@@ -271,12 +497,77 @@ func TestStartEvalRunRejectsUnknownRetrievalConfigField(t *testing.T) {
 }
 
 func TestStartEvalRunSchemaIncludesRetrievalConfig(t *testing.T) {
-	schema := string(startEvalRunSchema())
-	for _, want := range []string{"retrieval_config", "top_k"} {
-		if !strings.Contains(schema, want) {
-			t.Fatalf("schema missing %q: %s", want, schema)
+	var schema struct {
+		Properties map[string]map[string]any `json:"properties"`
+		AllOf      []map[string]any          `json:"allOf"`
+	}
+	if err := json.Unmarshal(startEvalRunSchema(), &schema); err != nil {
+		t.Fatalf("schema is invalid JSON: %v", err)
+	}
+
+	retrievalConfig := schema.Properties["retrieval_config"]
+	retrievalProperties, ok := retrievalConfig["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("retrieval_config properties = %#v", retrievalConfig["properties"])
+	}
+	if _, ok := retrievalProperties["top_k"]; !ok {
+		t.Fatalf("retrieval_config missing top_k: %#v", retrievalProperties)
+	}
+
+	answerTier := schema.Properties["answer_tier"]
+	if answerTier["pattern"] != "^[a-zA-Z0-9_-]{1,50}$" || answerTier["maxLength"] != float64(50) {
+		t.Fatalf("answer_tier schema = %#v", answerTier)
+	}
+	answerProvider := schema.Properties["answer_provider"]
+	if !reflect.DeepEqual(answerProvider["enum"], []any{"ollama", "openai", "anthropic"}) {
+		t.Fatalf("answer_provider schema = %#v", answerProvider)
+	}
+	if got := schema.Properties["answer_base_url"]["maxLength"]; got != float64(300) {
+		t.Fatalf("answer_base_url maxLength = %#v", got)
+	}
+	if got := schema.Properties["answer_base_url"]["minLength"]; got != float64(1) {
+		t.Fatalf("answer_base_url minLength = %#v", got)
+	}
+	if got := schema.Properties["answer_base_url"]["pattern"]; got != `^\S(?:.*\S)?$` {
+		t.Fatalf("answer_base_url pattern = %#v", got)
+	}
+	answerModel := schema.Properties["answer_model"]
+	if answerModel["minLength"] != float64(1) || answerModel["maxLength"] != float64(100) || answerModel["pattern"] != `^\S(?:.*\S)?$` {
+		t.Fatalf("answer_model schema = %#v", answerModel)
+	}
+	answerAPIKeySecret := schema.Properties["answer_api_key_secret"]
+	if answerAPIKeySecret["pattern"] != "^[A-Z][A-Z0-9_]{1,100}$" || answerAPIKeySecret["minLength"] != float64(2) || answerAPIKeySecret["maxLength"] != float64(101) {
+		t.Fatalf("answer_api_key_secret schema = %#v", answerAPIKeySecret)
+	}
+	if len(schema.AllOf) != 3 {
+		t.Fatalf("answer override dependency schema = %#v", schema.AllOf)
+	}
+	if !schemaRequiresFields(schema.AllOf[0], "answer_provider", "answer_model") {
+		t.Fatalf("answer override dependency schema = %#v", schema.AllOf[0])
+	}
+	if !schemaRequiresFields(schema.AllOf[1], "answer_api_key_secret") || !schemaRequiresFields(schema.AllOf[2], "answer_api_key_secret") {
+		t.Fatalf("remote provider secret dependency schema = %#v", schema.AllOf)
+	}
+}
+
+func schemaRequiresFields(rule map[string]any, fields ...string) bool {
+	thenRule, ok := rule["then"].(map[string]any)
+	if !ok {
+		return false
+	}
+	required, ok := thenRule["required"].([]any)
+	if !ok {
+		return false
+	}
+	for _, field := range fields {
+		if !slices.ContainsFunc(required, func(item any) bool {
+			got, ok := item.(string)
+			return ok && got == field
+		}) {
+			return false
 		}
 	}
+	return true
 }
 
 func TestCreateEvalDatasetHandlerRequiresFixture(t *testing.T) {
@@ -521,10 +812,16 @@ func TestEvalPromptHandler(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected text prompt content, got %T", result.Messages[0].Content)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "Compare only completed runs"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(text.Text, want) {
 			t.Fatalf("expected prompt to mention %s, got %q", want, text.Text)
 		}
+	}
+	if !strings.Contains(strings.ToLower(text.Text), strings.ToLower("Compare only completed runs")) {
+		t.Fatalf("expected prompt to mention Compare only completed runs, got %q", text.Text)
+	}
+	if !strings.Contains(strings.ToLower(text.Text), strings.ToLower("Keep the judge model fixed")) {
+		t.Fatalf("expected prompt to mention Keep the judge model fixed, got %q", text.Text)
 	}
 }
 
@@ -543,10 +840,16 @@ func TestWorkflowResourceHandler(t *testing.T) {
 	if content.MIMEType != "text/markdown" {
 		t.Fatalf("unexpected resource MIME type: %q", content.MIMEType)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "Compare only completed runs"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(content.Text, want) {
 			t.Fatalf("expected workflow resource to mention %s, got %q", want, content.Text)
 		}
+	}
+	if !strings.Contains(strings.ToLower(content.Text), strings.ToLower("Compare only completed runs")) {
+		t.Fatalf("expected workflow resource to mention Compare only completed runs, got %q", content.Text)
+	}
+	if !strings.Contains(strings.ToLower(content.Text), strings.ToLower("Keep the judge model fixed")) {
+		t.Fatalf("expected workflow resource to mention Keep the judge model fixed, got %q", content.Text)
 	}
 }
 
