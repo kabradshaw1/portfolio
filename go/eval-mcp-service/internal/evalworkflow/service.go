@@ -27,6 +27,7 @@ const (
 type API interface {
 	ListDatasets(context.Context) ([]evalapi.Dataset, error)
 	CreateDataset(context.Context, evalapi.CreateDatasetRequest) (evalapi.CreateDatasetResponse, error)
+	CheckRAGReadiness(context.Context, evalapi.RAGReadinessRequest) (evalapi.RAGReadinessResponse, error)
 	StartEvaluation(context.Context, evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error)
 	GetEvaluation(context.Context, string) (evalapi.EvaluationDetail, error)
 	CompareEvaluations(context.Context, []string) (evalapi.Comparison, error)
@@ -87,6 +88,15 @@ type StartRunInput struct {
 	AnswerBaseURL      string
 	AnswerModel        string
 	AnswerAPIKeySecret string
+}
+
+type ReadinessInput struct {
+	DatasetID       string
+	Collection      string
+	Rerank          bool
+	RetrievalConfig *evalapi.RetrievalConfig
+	BaselineEvalID  string
+	ExperimentID    string
 }
 
 type StartRunResult struct {
@@ -208,7 +218,15 @@ func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) 
 	if err := validateMetric(focusMetric); err != nil {
 		return evalapi.Experiment{}, err
 	}
-	if err := s.validateCollectionExists(ctx, collection); err != nil {
+	readiness, err := s.CheckReadiness(ctx, ReadinessInput{
+		DatasetID:      in.DatasetID,
+		Collection:     collection,
+		BaselineEvalID: in.BaselineEvalID,
+	})
+	if err != nil {
+		return evalapi.Experiment{}, err
+	}
+	if err := ensureReadinessAllowed(readiness); err != nil {
 		return evalapi.Experiment{}, err
 	}
 
@@ -268,8 +286,48 @@ func (s *Service) GetRAGCollectionConfig(ctx context.Context, name string) (map[
 	return s.ingestion.GetCollectionConfig(ctx, name)
 }
 
+func (s *Service) CheckReadiness(ctx context.Context, in ReadinessInput) (evalapi.RAGReadinessResponse, error) {
+	collection := in.Collection
+	if collection == "" {
+		collection = DefaultCollection
+	}
+	return s.api.CheckRAGReadiness(ctx, evalapi.RAGReadinessRequest{
+		DatasetID:       in.DatasetID,
+		Collection:      collection,
+		Rerank:          in.Rerank,
+		RetrievalConfig: in.RetrievalConfig,
+		BaselineEvalID:  in.BaselineEvalID,
+		ExperimentID:    in.ExperimentID,
+	})
+}
+
+func ensureReadinessAllowed(readiness evalapi.RAGReadinessResponse) error {
+	if readiness.Status != "blocked" {
+		return nil
+	}
+	codes := make([]string, 0, len(readiness.BlockingFailures))
+	for _, finding := range readiness.BlockingFailures {
+		codes = append(codes, finding.Code)
+	}
+	if len(codes) == 0 {
+		codes = append(codes, "unknown")
+	}
+	return fmt.Errorf("readiness blocked: %s", strings.Join(codes, ", "))
+}
+
 func (s *Service) StartRun(ctx context.Context, in StartRunInput) (StartRunResult, error) {
-	if err := s.validateCollectionExists(ctx, in.Collection); err != nil {
+	readiness, err := s.CheckReadiness(ctx, ReadinessInput{
+		DatasetID:       in.DatasetID,
+		Collection:      in.Collection,
+		Rerank:          in.Rerank,
+		RetrievalConfig: in.RetrievalConfig,
+		BaselineEvalID:  in.BaselineEvalID,
+		ExperimentID:    in.ExperimentID,
+	})
+	if err != nil {
+		return StartRunResult{}, err
+	}
+	if err := ensureReadinessAllowed(readiness); err != nil {
 		return StartRunResult{}, err
 	}
 	resp, err := s.api.StartEvaluation(ctx, evalapi.StartEvaluationRequest{
@@ -655,19 +713,6 @@ func validateCompareIDs(ids []string) error {
 		return fmt.Errorf("compare requires %d to %d eval IDs, got %d", minCompareEvalIDs, maxCompareEvalIDs, len(ids))
 	}
 	return nil
-}
-
-func (s *Service) validateCollectionExists(ctx context.Context, collection string) error {
-	collections, err := s.ingestion.ListCollections(ctx)
-	if err != nil {
-		return fmt.Errorf("list RAG collections: %w", err)
-	}
-	for _, candidate := range collections {
-		if candidate.Name == collection {
-			return nil
-		}
-	}
-	return fmt.Errorf("retrieval collection %q does not exist; call list_rag_collections and choose an existing collection", collection)
 }
 
 func (s *Service) requireCompletedRuns(ctx context.Context, ids []string) error {
