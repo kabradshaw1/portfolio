@@ -6,6 +6,7 @@ from app.evaluator import (
     EvalRunContext,
     EvaluationError,
     JudgeScores,
+    _judge_prompt,
     build_evaluation_dataset,
     judge_generation_scores,
     parse_judge_scores,
@@ -31,6 +32,28 @@ def _judge_row():
         "retrieved_contexts": ["Chunking splits documents."],
         "response": "Chunking splits documents into smaller pieces.",
     }
+
+
+def test_judge_prompt_includes_strict_rubric_anchors():
+    prompt = _judge_prompt(_judge_row())
+    normalized_prompt = " ".join(prompt.split())
+
+    required_phrases = [
+        "Return raw JSON only",
+        "no markdown",
+        "all material claims are supported",
+        "minor unsupported details",
+        "contradicted by the contexts",
+        "Correct-but-ungrounded",
+        "Citation-free answers are not automatically wrong",
+        "directly answers the question",
+        "too broad or too narrow",
+        "answers a different question",
+        "Unsupported or contradicted answers can still be relevant",
+    ]
+
+    for phrase in required_phrases:
+        assert phrase in normalized_prompt
 
 
 @pytest.fixture

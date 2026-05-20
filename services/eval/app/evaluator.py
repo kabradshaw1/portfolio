@@ -324,7 +324,9 @@ def _judge_prompt(row: dict) -> str:
         f"[Context {index + 1}]\n{text}"
         for index, text in enumerate(row["retrieved_contexts"])
     )
-    return f"""Score this RAG answer. Return only valid JSON.
+    return (
+        "Score this RAG answer. Return raw JSON only: no markdown, prose, "
+        f"""comments, or top-level wrapper.
 
 JSON schema:
 {{
@@ -333,10 +335,32 @@ JSON schema:
 }}
 
 Scoring rules:
-- faithfulness: 1.0 means the answer is fully supported by the contexts;
-  0.0 means unsupported or contradicted.
-- answer_relevancy: 1.0 means the answer directly addresses the question
-  and reference; 0.0 means irrelevant.
+- Score each metric from 0.0 to 1.0. Use partial credit when the answer is
+  mixed rather than forcing only 0.0 or 1.0.
+- Keep reasons short and specific. Mention the strongest scoring factor.
+
+Faithfulness measures whether the generated answer is supported by the
+retrieved contexts:
+- 1.0: all material claims are supported by the contexts, with no material
+  contradictions.
+- Partial credit: the answer is mostly grounded but includes minor unsupported
+  details, weak overstatements, or incomplete grounding.
+- 0.0: the answer is unsupported, contradicted by the contexts, or primarily
+  relies on facts absent from the contexts.
+- Correct-but-ungrounded answers receive low faithfulness even when they match
+  the reference answer.
+- Citation-free answers are not automatically wrong, but missing source
+  attribution should reduce faithfulness when the answer makes source-specific
+  claims that are not clearly grounded in the provided contexts.
+
+Answer relevancy measures whether the generated answer addresses the question
+and reference need:
+- 1.0: directly answers the question at the right specificity.
+- Partial credit: partly answers the question, is too broad or too narrow,
+  omits key requested detail, or mixes relevant and irrelevant content.
+- 0.0: off-topic, refuses without cause, or answers a different question.
+- Unsupported or contradicted answers can still be relevant, but should not
+  receive high faithfulness.
 
 Question:
 {row["user_input"]}
@@ -350,6 +374,7 @@ Retrieved contexts:
 Generated answer:
 {row["response"]}
 """
+    )
 
 
 async def judge_generation_scores(
