@@ -22,8 +22,8 @@ type ecommerceAPI interface {
 // -------- get_product --------
 
 type getProductTool struct {
-	api       ecommerceAPI
-	kafkaPub  kafka.Producer
+	api      ecommerceAPI
+	kafkaPub kafka.Producer
 }
 
 func NewGetProductTool(api ecommerceAPI, opts ...kafka.Producer) Tool {
@@ -34,8 +34,10 @@ func NewGetProductTool(api ecommerceAPI, opts ...kafka.Producer) Tool {
 	return t
 }
 
-func (t *getProductTool) Name() string        { return "get_product" }
-func (t *getProductTool) Description() string { return "Fetch the full details of one product by id." }
+func (t *getProductTool) Name() string { return "get_product" }
+func (t *getProductTool) Description() string {
+	return "Fetch public catalog details for one product by id. Use when the user asks about a specific product. Do not use when they need account-specific orders, cart, or returns."
+}
 func (t *getProductTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
@@ -94,15 +96,15 @@ func NewSearchProductsTool(api ecommerceAPI, opts ...kafka.Producer) Tool {
 
 func (t *searchProductsTool) Name() string { return "search_products" }
 func (t *searchProductsTool) Description() string {
-	return "Search the product catalog by free-text query. Optional max_price in dollars (e.g. 150 for $150). Returns at most 10 results."
+	return "Search public product catalog knowledge by free-text query. Use when finding products by name, category, or attributes. Do not use when they need account-specific orders, cart, or returns."
 }
 func (t *searchProductsTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"query":{"type":"string","description":"Free-text product query."},
-			"max_price":{"type":"number","description":"Optional upper bound on price."},
-			"limit":{"type":"integer","description":"Max results to return (cap 10)."}
+			"query":{"type":"string","description":"Free-text public catalog search query."},
+			"max_price":{"type":"number","description":"Optional upper bound in dollars, for example 150 for $150."},
+			"limit":{"type":"integer","description":"Maximum products to return; capped at 10."}
 		},
 		"required":["query"]
 	}`)
@@ -173,13 +175,13 @@ func NewCheckInventoryTool(api ecommerceAPI) Tool { return &checkInventoryTool{a
 
 func (t *checkInventoryTool) Name() string { return "check_inventory" }
 func (t *checkInventoryTool) Description() string {
-	return "Check whether a product is in stock. Returns stock count and a boolean."
+	return "Check public catalog inventory for one product. Use when the user asks whether a product is in stock. Do not use when they need cart reservations, orders, or account-specific state."
 }
 func (t *checkInventoryTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"product_id":{"type":"string"}
+			"product_id":{"type":"string","description":"Opaque public catalog product id to check."}
 		},
 		"required":["product_id"]
 	}`)

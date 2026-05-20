@@ -22,15 +22,15 @@ func NewInitiateReturnTool(api returnsAPI) Tool { return &initiateReturnTool{api
 
 func (t *initiateReturnTool) Name() string { return "initiate_return" }
 func (t *initiateReturnTool) Description() string {
-	return "Initiate a return for specific items on one of the current user's orders. Requires the order id, a non-empty list of item ids, and a short reason."
+	return "Initiate a return for items on the authenticated user's own order. Use when they request a return with order id, item ids, and reason. Do not use when acting for another user or inventing a user id would be needed."
 }
 func (t *initiateReturnTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"order_id":{"type":"string"},
-			"item_ids":{"type":"array","items":{"type":"string"},"minItems":1},
-			"reason":{"type":"string"}
+			"order_id":{"type":"string","description":"Order id from the authenticated user's own order history."},
+			"item_ids":{"type":"array","description":"One or more item ids from that order to return.","items":{"type":"string"},"minItems":1},
+			"reason":{"type":"string","description":"Brief reason the authenticated user wants to return the items."}
 		},
 		"required":["order_id","item_ids","reason"]
 	}`)

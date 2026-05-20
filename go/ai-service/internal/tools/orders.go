@@ -29,13 +29,13 @@ func NewListOrdersTool(api ordersAPI) Tool { return &listOrdersTool{api: api} }
 
 func (t *listOrdersTool) Name() string { return "list_orders" }
 func (t *listOrdersTool) Description() string {
-	return "List the current user's orders. Returns at most 20 most recent orders with id, status, total in cents, and creation date."
+	return "List recent orders for the authenticated user only. Use when they ask about their order history. Do not use when they need public catalog answers or another user id would be needed."
 }
 func (t *listOrdersTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"limit":{"type":"integer","description":"Max orders to return (cap 20)."}
+			"limit":{"type":"integer","description":"Maximum recent orders to return; capped at 20."}
 		}
 	}`)
 }
@@ -89,13 +89,13 @@ func NewGetOrderTool(api ordersAPI) Tool { return &getOrderTool{api: api} }
 
 func (t *getOrderTool) Name() string { return "get_order" }
 func (t *getOrderTool) Description() string {
-	return "Fetch one order by id for the current user. Returns id, status, total, and creation date."
+	return "Fetch one order for the authenticated user only. Use when they provide an order id for their own order. Do not use when they need public catalog answers or another user id would be needed."
 }
 func (t *getOrderTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"order_id":{"type":"string"}
+			"order_id":{"type":"string","description":"Order id from the authenticated user's own order history."}
 		},
 		"required":["order_id"]
 	}`)
@@ -161,13 +161,13 @@ func NewSummarizeOrdersToolWithRecorder(api ordersAPI, llmc llm.Client, rec tool
 
 func (t *summarizeOrdersTool) Name() string { return "summarize_orders" }
 func (t *summarizeOrdersTool) Description() string {
-	return "Summarize the current user's recent orders in plain English."
+	return "Summarize recent orders for the authenticated user only. Use when they ask for a plain-English overview of their orders. Do not use when they need public catalog answers or another user id would be needed."
 }
 func (t *summarizeOrdersTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"period":{"type":"string","enum":["week","month","all"]}
+			"period":{"type":"string","description":"Order summary window: week, month, or all recent orders.","enum":["week","month","all"]}
 		}
 	}`)
 }

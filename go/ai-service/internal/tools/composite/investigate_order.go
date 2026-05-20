@@ -106,14 +106,14 @@ func (t *investigateMyOrderTool) Name() string {
 }
 
 func (t *investigateMyOrderTool) Description() string {
-	return "Investigates the full checkout saga for a given order, correlating order, payment, cart reservation, RabbitMQ events, trace, and logs into a structured verdict with a customer-facing message."
+	return "Investigate checkout evidence for the authenticated user's own order. Use when they ask what happened to their order. Do not use when acting for another user or inventing a user id would be needed."
 }
 
 func (t *investigateMyOrderTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"order_id": { "type": "string", "description": "The order id to investigate." }
+			"order_id": { "type": "string", "description": "Order id from the authenticated user's own order history to investigate." }
 		},
 		"required": ["order_id"]
 	}`)
@@ -142,15 +142,32 @@ func (t *investigateMyOrderTool) Call(ctx context.Context, args json.RawMessage,
 		span.SetStatus(codes.Error, err.Error())
 		return tools.Result{}, err
 	}
-	// TODO(auth): verify order.UserID == userID once source adapters are wired (A5).
-	_ = userID
-	bundle, err := t.fetcher.Fetch(ctx, req.OrderID)
+	if userID == "" {
+		err := errors.New("investigate_my_order: authenticated user required")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return tools.Result{}, err
+	}
+	order, err := t.fetcher.Order.FetchOrder(ctx, req.OrderID)
 	if err != nil {
 		slog.WarnContext(ctx, "tool error", "tool", "investigate_my_order", "order_id", req.OrderID, "error", err.Error())
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return tools.Result{}, fmt.Errorf("investigate_my_order: %w", err)
 	}
+	if order.UserID == "" {
+		err := errors.New("investigate_my_order: order ownership unavailable")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return tools.Result{}, err
+	}
+	if order.UserID != userID {
+		err := errors.New("investigate_my_order: order does not belong to authenticated user")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return tools.Result{}, err
+	}
+	bundle := t.fetcher.fetchWithOrder(ctx, req.OrderID, order)
 	verdict := ComputeVerdict(bundle)
 	slog.InfoContext(ctx, "tool result", "tool", "investigate_my_order",
 		"order_id", req.OrderID,
