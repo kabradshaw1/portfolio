@@ -49,3 +49,23 @@ type PolicyDecision struct {
 	Decision Decision `json:"decision"`
 	Reason   string   `json:"reason"`
 }
+
+type ActionResult struct {
+	ActionID          string    `json:"action_id"`
+	RiskTier          RiskTier  `json:"risk_tier"`
+	Decision          Decision  `json:"decision"`
+	Status            Status    `json:"status"`
+	ScriptPath        string    `json:"script_path"`
+	IncidentKey       string    `json:"incident_key,omitempty"`
+	StartedAt         time.Time `json:"started_at,omitempty"`
+	CompletedAt       time.Time `json:"completed_at,omitempty"`
+	DurationMillis    int64     `json:"duration_ms,omitempty"`
+	ExitCode          int       `json:"exit_code,omitempty"`
+	Stdout            string    `json:"stdout,omitempty"`
+	Stderr            string    `json:"stderr,omitempty"`
+	OutputTruncated   bool      `json:"output_truncated,omitempty"`
+	RedactionsApplied int       `json:"redactions_applied,omitempty"`
+	PolicyReason      string    `json:"policy_reason,omitempty"`
+	HistoryEventIDs   []int64   `json:"history_event_ids,omitempty"`
+	Warning           string    `json:"warning,omitempty"`
+}
