@@ -133,6 +133,14 @@ async def stream_response(
                     OLLAMA_EVAL_DURATION.labels(service="chat", model=model).observe(
                         eval_ns / 1e9
                     )
+                yield {
+                    "done": True,
+                    "usage": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "generation_seconds": duration,
+                    },
+                }
                 break
     finally:
         permit.release()
@@ -334,12 +342,22 @@ async def rag_query(
 
     # Stream response (generate stage timing is inside stream_response)
     generate_start = time.perf_counter()
+    usage = {}
     async for event in stream_response(
         prompt=prompt, model=chat_model, provider=llm_provider
     ):
-        yield event
+        if "token" in event:
+            yield event
+        if event.get("done"):
+            usage = event.get("usage", {})
     RAG_PIPELINE_DURATION.labels(stage="generate").observe(
         time.perf_counter() - generate_start
     )
 
-    yield {"done": True, "sources": sources, "retrieval": retrieval.metadata}
+    usage = {**usage, "answer_model": chat_model}
+    yield {
+        "done": True,
+        "sources": sources,
+        "retrieval": retrieval.metadata,
+        "usage": usage,
+    }

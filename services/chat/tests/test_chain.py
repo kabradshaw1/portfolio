@@ -177,6 +177,44 @@ async def test_rag_query_acquires_generation_admission(mock_retrieve, monkeypatc
     assert events == ["generate:acquire", "generate:release"]
 
 
+@pytest.mark.asyncio
+async def test_rag_query_final_event_includes_answer_usage(monkeypatch):
+    monkeypatch.setattr(
+        "app.chain.retrieve_chunks", AsyncMock(return_value=hybrid_result())
+    )
+
+    async def fake_stream_response(**kwargs):
+        yield {"token": "hello"}
+        yield {
+            "done": True,
+            "usage": {
+                "prompt_tokens": 3,
+                "completion_tokens": 2,
+                "generation_seconds": 0.01,
+            },
+        }
+
+    monkeypatch.setattr("app.chain.stream_response", fake_stream_response)
+
+    events = [
+        event
+        async for event in rag_query(
+            question="q",
+            llm_provider=object(),
+            embedding_provider=object(),
+            chat_model="model-a",
+            embedding_model="embed",
+            qdrant_host="qdrant",
+            qdrant_port=6333,
+            collection_name="documents",
+        )
+    ]
+
+    assert events[-1]["usage"]["answer_model"] == "model-a"
+    assert events[-1]["usage"]["prompt_tokens"] == 3
+    assert events[-1]["usage"]["completion_tokens"] == 2
+
+
 @patch("app.chain.rerank_chunks")
 @patch("app.chain.get_sparse_encoder", create=True)
 @patch("app.chain.QdrantRetriever")

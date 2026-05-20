@@ -130,11 +130,22 @@ class RetrievalConfig(BaseModel):
     top_k: int | None = Field(default=None, ge=1, le=20, strict=True)
 
 
+class AnswerModelOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(pattern=r"^(ollama|openai|anthropic)$")
+    model: str = Field(min_length=1, max_length=100)
+    base_url: str | None = Field(default=None, max_length=300)
+    api_key: str = Field(default="", max_length=500)
+    tier: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,50}$")
+
+
 class ChatRequest(BaseModel):
     question: str = Field(max_length=2000)
     collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")
     retrieval_config: RetrievalConfig | None = None
     rerank: bool = False
+    answer_model: AnswerModelOverride | None = None
 
 
 class SearchRequest(BaseModel):
@@ -148,6 +159,33 @@ def _effective_top_k(config: RetrievalConfig | None) -> int:
     if config is not None and config.top_k is not None:
         return config.top_k
     return settings.top_k
+
+
+def _is_internal_eval(auth_context: AuthContext) -> bool:
+    return (
+        auth_context.subject == "internal_eval" or auth_context.tier == "internal_eval"
+    )
+
+
+def _answer_provider_for_request(
+    body: ChatRequest,
+    auth_context: AuthContext,
+):
+    if body.answer_model is None:
+        return _llm_provider, settings.get_llm_model(), None
+    if not _is_internal_eval(auth_context):
+        raise HTTPException(
+            status_code=403,
+            detail="answer_model override is only available to internal eval requests",
+        )
+    provider = get_llm_provider(
+        provider=body.answer_model.provider,
+        base_url=body.answer_model.base_url or settings.get_llm_base_url(),
+        api_key=body.answer_model.api_key,
+        model=body.answer_model.model,
+    )
+    safe = body.answer_model.model_dump(exclude={"api_key"})
+    return provider, body.answer_model.model, safe
 
 
 @app.get("/config")
@@ -215,17 +253,21 @@ async def chat(
 ):
     wants_json = request.headers.get("accept", "").startswith("application/json")
     effective_top_k = _effective_top_k(body.retrieval_config)
+    llm_provider, chat_model, answer_model_metadata = _answer_provider_for_request(
+        body, auth_context
+    )
 
     if wants_json:
         try:
             tokens = []
             sources = []
             retrieval = {}
+            usage = {}
             async for event in rag_query(
                 question=body.question,
-                llm_provider=_llm_provider,
+                llm_provider=llm_provider,
                 embedding_provider=_embedding_provider,
-                chat_model=settings.get_llm_model(),
+                chat_model=chat_model,
                 embedding_model=settings.embedding_model,
                 qdrant_host=settings.qdrant_host,
                 qdrant_port=settings.qdrant_port,
@@ -238,10 +280,17 @@ async def chat(
                 if event.get("done"):
                     sources = event.get("sources", [])
                     retrieval = event.get("retrieval", {})
+                    usage = event.get("usage", {})
+            if answer_model_metadata is not None:
+                usage = {
+                    **usage,
+                    "answer_model_override": answer_model_metadata,
+                }
             return {
                 "answer": "".join(tokens),
                 "sources": sources,
                 "retrieval": retrieval,
+                "usage": usage,
             }
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             logger.error("Backend service error: %s", e)
@@ -260,9 +309,9 @@ async def chat(
         try:
             async for event in rag_query(
                 question=body.question,
-                llm_provider=_llm_provider,
+                llm_provider=llm_provider,
                 embedding_provider=_embedding_provider,
-                chat_model=settings.get_llm_model(),
+                chat_model=chat_model,
                 embedding_model=settings.embedding_model,
                 qdrant_host=settings.qdrant_host,
                 qdrant_port=settings.qdrant_port,

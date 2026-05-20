@@ -172,6 +172,69 @@ def test_chat_rejects_unknown_retrieval_config_fields():
     assert response.status_code == 422
 
 
+@patch("app.main.get_llm_provider")
+@patch("app.main.rag_query")
+def test_internal_eval_chat_can_override_answer_model(
+    mock_rag_query, mock_get_llm_provider, configured_chat_limits
+):
+    captured = {}
+    provider = object()
+    mock_get_llm_provider.return_value = provider
+
+    async def fake(**kwargs):
+        captured.update(kwargs)
+        yield {"done": True, "sources": [], "retrieval": {}, "usage": {}}
+
+    mock_rag_query.side_effect = fake
+
+    response = client.post(
+        "/chat",
+        json={
+            "question": "hi",
+            "answer_model": {
+                "provider": "openai",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-5.4-mini",
+                "api_key": "test-key",
+                "tier": "efficient",
+            },
+        },
+        headers={
+            "Accept": "application/json",
+            "X-RAG-Internal-Token": "test-internal-token",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_get_llm_provider.assert_called_once_with(
+        provider="openai",
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        model="gpt-5.4-mini",
+    )
+    assert captured["llm_provider"] is provider
+    assert captured["chat_model"] == "gpt-5.4-mini"
+
+
+@patch("app.main.rag_query")
+def test_public_chat_rejects_answer_model_override(mock_rag_query):
+    response = client.post(
+        "/chat",
+        json={
+            "question": "hi",
+            "answer_model": {
+                "provider": "openai",
+                "model": "gpt-5.4-mini",
+                "api_key": "test-key",
+            },
+        },
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 403
+    mock_rag_query.assert_not_called()
+
+
 def test_config_endpoint_omits_secrets():
     response = client.get("/config")
     body = response.json()
