@@ -226,7 +226,7 @@ func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
-		if err := validateAnswerModelArgs(args.AnswerProvider, args.AnswerModel, args.AnswerAPIKeySecret); err != nil {
+		if err := validateAnswerModelArgs(args.AnswerTier, args.AnswerProvider, args.AnswerBaseURL, args.AnswerModel, args.AnswerAPIKeySecret); err != nil {
 			return toolError(err.Error()), nil
 		}
 		in := evalworkflow.StartRunInput{
@@ -249,18 +249,23 @@ func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 	}
 }
 
-func validateAnswerModelArgs(provider, model, secret string) error {
+func validateAnswerModelArgs(tier, provider, baseURL, model, secret string) error {
+	tier = strings.TrimSpace(tier)
 	provider = strings.TrimSpace(provider)
+	baseURL = strings.TrimSpace(baseURL)
 	model = strings.TrimSpace(model)
 	secret = strings.TrimSpace(secret)
-	if provider == "" && model == "" && secret == "" {
+	if tier == "" && provider == "" && baseURL == "" && model == "" && secret == "" {
 		return nil
+	}
+	if provider == "" {
+		return fmt.Errorf("answer_provider is required with answer override")
 	}
 	if provider != "ollama" && provider != "openai" && provider != "anthropic" {
 		return fmt.Errorf("answer_provider must be ollama, openai, or anthropic")
 	}
 	if model == "" {
-		return fmt.Errorf("answer_model is required when answer_provider is set")
+		return fmt.Errorf("answer_model is required with answer override")
 	}
 	lowered := strings.ToLower(secret)
 	if strings.HasPrefix(lowered, "sk-") || strings.HasPrefix(lowered, "sk_") || strings.HasPrefix(lowered, "bearer ") || strings.HasPrefix(lowered, "api-") {

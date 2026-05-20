@@ -232,8 +232,52 @@ func TestStartEvalRunForwardsAnswerModelOverride(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned MCP error: %#v", result)
 	}
-	if fake.startRunInput.AnswerModel != "gpt-5.4-mini" {
-		t.Fatalf("answer model = %#v", fake.startRunInput)
+	if fake.startRunInput.AnswerTier != "efficient" ||
+		fake.startRunInput.AnswerProvider != "openai" ||
+		fake.startRunInput.AnswerBaseURL != "https://api.openai.com/v1" ||
+		fake.startRunInput.AnswerModel != "gpt-5.4-mini" ||
+		fake.startRunInput.AnswerAPIKeySecret != "OPENAI_API_KEY" {
+		t.Fatalf("answer model override = %#v", fake.startRunInput)
+	}
+}
+
+func TestStartEvalRunRejectsPartialAnswerModelOverride(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+	}{
+		{
+			name: "answer_tier_only",
+			args: map[string]any{"answer_tier": "efficient"},
+		},
+		{
+			name: "answer_base_url_only",
+			args: map[string]any{"answer_base_url": "https://api.openai.com/v1"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeEvalService{}
+			args := map[string]any{
+				"dataset_id": "ds-1",
+				"collection": "documents",
+			}
+			for key, value := range tc.args {
+				args[key] = value
+			}
+			result, err := startEvalRunHandler(fake)(context.Background(), callReq(args))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.startRunCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+			}
+			if got := textResult(t, result); !strings.Contains(got, "answer_provider") && !strings.Contains(got, "answer_model") {
+				t.Fatalf("error = %q", got)
+			}
+		})
 	}
 }
 
