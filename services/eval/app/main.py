@@ -295,6 +295,11 @@ async def _run_evaluation_task(
             requested_rerank=rerank,
             requested_retrieval_config=_requested_retrieval_config(retrieval_config),
             requested_answer_model=requested_answer_model,
+            judge_model={
+                "provider": settings.llm_provider,
+                "base_url": settings.llm_base_url,
+                "model": settings.llm_model,
+            },
         )
         await db.set_evaluation_config(eval_id, config)
         effective_top_k = _effective_top_k(retrieval_config, config)

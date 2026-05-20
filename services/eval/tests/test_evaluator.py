@@ -210,6 +210,51 @@ async def test_build_evaluation_dataset_passes_answer_model_override(
 
 
 @pytest.mark.asyncio
+async def test_build_evaluation_dataset_scrubs_usage_api_keys(
+    golden_items, mock_search_results, mock_chat_answer
+):
+    rag_client = AsyncMock()
+    rag_client.search.return_value = mock_search_results
+    rag_client.ask.return_value = {
+        **mock_chat_answer,
+        "usage": {
+            "answer_model": "gpt-5.4-mini",
+            "prompt_tokens": 4,
+            "completion_tokens": 5,
+            "generation_seconds": 0.42,
+            "api_key": "leaked-root",
+            "answer_model_override": {
+                "tier": "efficient",
+                "provider": "openai",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-5.4-mini",
+                "api_key": "leaked-nested",
+            },
+        },
+    }
+
+    dataset = await build_evaluation_dataset(
+        golden_items,
+        rag_client,
+        collection="documents",
+    )
+
+    assert dataset[0]["usage"] == {
+        "answer_model": "gpt-5.4-mini",
+        "prompt_tokens": 4,
+        "completion_tokens": 5,
+        "generation_seconds": 0.42,
+        "answer_model_override": {
+            "tier": "efficient",
+            "provider": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "model": "gpt-5.4-mini",
+        },
+    }
+    assert "api_key" not in json.dumps(dataset[0]["usage"])
+
+
+@pytest.mark.asyncio
 async def test_build_evaluation_dataset_preserves_retrieval_metadata(
     golden_items, mock_search_results, mock_chat_answer_with_retrieval
 ):
@@ -402,6 +447,61 @@ async def test_run_evaluation_preserves_result_shape(
     assert results[0]["scores"]["faithfulness"] == 0.9
     assert results[0]["score_reasons"]["faithfulness"] == "answer is supported"
     assert "retrieval" not in results[0]
+
+
+@pytest.mark.asyncio
+async def test_run_evaluation_scrubs_usage_api_keys_in_results(
+    golden_items,
+    mock_search_results,
+    mock_chat_answer,
+):
+    rag_client = MagicMock(spec=RAGClient)
+    rag_client.search = AsyncMock(return_value=mock_search_results)
+    rag_client.ask = AsyncMock(
+        return_value={
+            **mock_chat_answer,
+            "usage": {
+                "answer_model": "gpt-5.4-mini",
+                "prompt_tokens": 4,
+                "completion_tokens": 5,
+                "generation_seconds": 0.42,
+                "api_key": "leaked-root",
+                "answer_model_override": {
+                    "tier": "efficient",
+                    "provider": "openai",
+                    "base_url": "https://api.openai.com/v1",
+                    "model": "gpt-5.4-mini",
+                    "api_key": "leaked-nested",
+                },
+            },
+        }
+    )
+    judge = AsyncMock(
+        return_value=JudgeScores(
+            faithfulness=1.0,
+            answer_relevancy=1.0,
+            reasons={"faithfulness": "supported", "answer_relevancy": "direct"},
+        )
+    )
+
+    _aggregate, results = await run_evaluation(
+        items=golden_items,
+        rag_client=rag_client,
+        collection="documents",
+        llm_provider="ollama",
+        llm_base_url="http://localhost:11434",
+        llm_model="qwen2.5:14b",
+        llm_api_key="",
+        judge=judge,
+    )
+
+    assert results[0]["usage"]["answer_model_override"] == {
+        "tier": "efficient",
+        "provider": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-5.4-mini",
+    }
+    assert "api_key" not in json.dumps(results[0]["usage"])
 
 
 @pytest.mark.asyncio

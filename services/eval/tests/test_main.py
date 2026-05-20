@@ -929,6 +929,11 @@ def test_start_evaluation_resolves_and_captures_answer_model_override(
     assert (
         mock_run_evaluation.await_args.kwargs["answer_model"]["api_key"] == "test-key"
     )
+    assert mock_capture.await_args.kwargs["judge_model"] == {
+        "provider": settings.llm_provider,
+        "base_url": settings.llm_base_url,
+        "model": settings.llm_model,
+    }
 
 
 @patch("app.main.validate_collection_exists", new_callable=AsyncMock)

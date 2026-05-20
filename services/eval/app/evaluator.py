@@ -25,6 +25,21 @@ METRIC_NAMES = (
     "context_recall",
 )
 
+USAGE_KEYS = {
+    "answer_model",
+    "prompt_tokens",
+    "completion_tokens",
+    "generation_seconds",
+    "answer_model_override",
+}
+
+ANSWER_MODEL_OVERRIDE_USAGE_KEYS = {
+    "tier",
+    "provider",
+    "base_url",
+    "model",
+}
+
 STOPWORDS = {
     "a",
     "an",
@@ -165,7 +180,7 @@ async def build_evaluation_dataset(
         if "retrieval" in chat_response:
             row["retrieval"] = chat_response["retrieval"]
         if "usage" in chat_response:
-            row["usage"] = chat_response["usage"]
+            row["usage"] = _safe_usage(chat_response["usage"])
         dataset.append(row)
         eval_items_total.labels(
             status="completed", requested_rerank=requested_rerank
@@ -288,6 +303,22 @@ def _aggregate(scores: list[dict]) -> dict:
         values = [score.get(name) for score in scores if score.get(name) is not None]
         aggregate[name] = round(sum(values) / len(values), 4) if values else None
     return aggregate
+
+
+def _safe_usage(raw_usage: object) -> dict:
+    if not isinstance(raw_usage, dict):
+        return {}
+
+    usage = {key: raw_usage[key] for key in USAGE_KEYS & raw_usage.keys()}
+    override = usage.get("answer_model_override")
+    if isinstance(override, dict):
+        usage["answer_model_override"] = {
+            key: override[key]
+            for key in ANSWER_MODEL_OVERRIDE_USAGE_KEYS & override.keys()
+        }
+    else:
+        usage.pop("answer_model_override", None)
+    return usage
 
 
 async def run_evaluation(
