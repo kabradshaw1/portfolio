@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
+import { AISectionNav } from "@/components/ai/AISectionNav";
 import { MCPSection } from "@/components/ai/MCPSection";
 
 const architectureDiagram = `flowchart LR
@@ -70,11 +71,13 @@ export default function AISection() {
           </p>
         </section>
 
+        <AISectionNav />
+
         {/* MCP Server (top section) */}
         <MCPSection />
 
         {/* RAG Evaluation */}
-        <section className="mt-16">
+        <section id="rag-evaluation" className="mt-16 scroll-mt-20">
           <h2 className="text-2xl font-semibold">RAG Evaluation</h2>
           <p className="mt-4 text-muted-foreground leading-relaxed">
             A measurement tool for systematically tracking RAG pipeline quality.
@@ -143,9 +146,9 @@ export default function AISection() {
           </Link>
         </section>
 
-        {/* Debug Assistant */}
-        <section className="mt-16">
-          <h2 className="text-2xl font-semibold">Debug Assistant</h2>
+        {/* Debugging Assistant */}
+        <section id="debugging-assistant" className="mt-16 scroll-mt-20">
+          <h2 className="text-2xl font-semibold">Debugging Assistant</h2>
           <p className="mt-4 text-muted-foreground leading-relaxed">
             An agentic debugging tool that indexes a Python codebase into a
             vector store and uses a ReAct-style agent loop to search the code,
