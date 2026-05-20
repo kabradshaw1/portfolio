@@ -78,17 +78,15 @@ func NewRecommendWithRationaleTool(h UserHistory, n NeighborSearch) *recommendTo
 func (t *recommendTool) Name() string { return "recommend_with_rationale" }
 
 func (t *recommendTool) Description() string {
-	return "Recommends products for a user by averaging embeddings of past purchases, cart items, and recently viewed products. Returns each recommendation with a plain-English rationale and the surfaced signals."
+	return "Recommend products for the authenticated user with rationale from their purchases, cart, and views. Use when they ask for personalized product suggestions. Do not use when acting for another user or inventing a user id would be needed."
 }
 
 func (t *recommendTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"user_id":{"type":"string"},
-			"category":{"type":"string"}
-		},
-		"required":["user_id"]
+			"category":{"type":"string","description":"Optional public catalog category to filter personalized recommendations."}
+		}
 	}`)
 }
 
@@ -110,30 +108,35 @@ func (t *recommendTool) Call(ctx context.Context, args json.RawMessage, userID s
 		span.SetStatus(codes.Error, err.Error())
 		return tools.Result{}, fmt.Errorf("recommend_with_rationale: invalid args: %w", err)
 	}
-	if req.UserID == "" {
-		err := errors.New("recommend_with_rationale: user_id is required")
+	if userID == "" {
+		err := errors.New("recommend_with_rationale: authenticated user required")
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return tools.Result{}, err
 	}
-	_ = userID // no per-user authorization beyond the explicit user_id arg in v1
+	if req.UserID != "" && req.UserID != userID {
+		err := errors.New("recommend_with_rationale: user_id must match authenticated user")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return tools.Result{}, err
+	}
 
-	orders, err := t.hist.Orders(ctx, req.UserID)
+	orders, err := t.hist.Orders(ctx, userID)
 	if err != nil {
 		slog.WarnContext(ctx, "recommend_with_rationale: orders fetch failed",
-			"tool", "recommend_with_rationale", "user_id", req.UserID, "error", err)
+			"tool", "recommend_with_rationale", "user_id", userID, "error", err)
 		orders = nil
 	}
-	cart, err := t.hist.CartItems(ctx, req.UserID)
+	cart, err := t.hist.CartItems(ctx, userID)
 	if err != nil {
 		slog.WarnContext(ctx, "recommend_with_rationale: cart fetch failed",
-			"tool", "recommend_with_rationale", "user_id", req.UserID, "error", err)
+			"tool", "recommend_with_rationale", "user_id", userID, "error", err)
 		cart = nil
 	}
-	views, err := t.hist.RecentlyViewed(ctx, req.UserID)
+	views, err := t.hist.RecentlyViewed(ctx, userID)
 	if err != nil {
 		slog.WarnContext(ctx, "recommend_with_rationale: views fetch failed",
-			"tool", "recommend_with_rationale", "user_id", req.UserID, "error", err)
+			"tool", "recommend_with_rationale", "user_id", userID, "error", err)
 		views = nil
 	}
 
@@ -144,14 +147,14 @@ func (t *recommendTool) Call(ctx context.Context, args json.RawMessage, userID s
 
 	if len(signals) == 0 {
 		result := RecommendResult{Products: nil, QueryEmbeddingSource: "no_history"}
-		t.logResult(ctx, req.UserID, result, start)
+		t.logResult(ctx, userID, result, start)
 		return tools.Result{Content: result}, nil
 	}
 
 	avg := averageEmbedding(signals)
 	if avg == nil {
 		result := RecommendResult{Products: nil, QueryEmbeddingSource: "no_embeddings"}
-		t.logResult(ctx, req.UserID, result, start)
+		t.logResult(ctx, userID, result, start)
 		return tools.Result{Content: result}, nil
 	}
 
@@ -191,7 +194,7 @@ func (t *recommendTool) Call(ctx context.Context, args json.RawMessage, userID s
 		Products:             recs,
 		QueryEmbeddingSource: "average_of_" + strconv.Itoa(len(embeddedSignals)) + "_signals",
 	}
-	t.logResult(ctx, req.UserID, result, start)
+	t.logResult(ctx, userID, result, start)
 	return tools.Result{Content: result}, nil
 }
 

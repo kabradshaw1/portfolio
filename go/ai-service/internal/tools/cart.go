@@ -24,8 +24,10 @@ type viewCartTool struct{ api cartAPI }
 
 func NewViewCartTool(api cartAPI) Tool { return &viewCartTool{api: api} }
 
-func (t *viewCartTool) Name() string        { return "view_cart" }
-func (t *viewCartTool) Description() string { return "Return the current user's shopping cart with items and total in cents." }
+func (t *viewCartTool) Name() string { return "view_cart" }
+func (t *viewCartTool) Description() string {
+	return "Return the authenticated user's shopping cart with items and total in cents. Use when they ask what is in their cart. Do not use when they need public catalog search or another user id would be needed."
+}
 func (t *viewCartTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{}}`)
 }
@@ -56,14 +58,14 @@ func NewAddToCartTool(api cartAPI) Tool { return &addToCartTool{api: api} }
 
 func (t *addToCartTool) Name() string { return "add_to_cart" }
 func (t *addToCartTool) Description() string {
-	return "Add a product to the current user's cart. Quantity must be a positive integer."
+	return "Add a product to the authenticated user's cart. Use when they explicitly want a catalog item added with a quantity. Do not use when acting for another user or inventing a user id would be needed."
 }
 func (t *addToCartTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"product_id":{"type":"string"},
-			"qty":{"type":"integer","minimum":1}
+			"product_id":{"type":"string","description":"Public catalog product id to add to the authenticated user's cart."},
+			"qty":{"type":"integer","description":"Quantity to add; must be at least 1.","minimum":1}
 		},
 		"required":["product_id","qty"]
 	}`)

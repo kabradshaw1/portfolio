@@ -29,15 +29,15 @@ func NewSearchDocumentsTool(api ragAPI) Tool { return &searchDocumentsTool{api: 
 
 func (t *searchDocumentsTool) Name() string { return "search_documents" }
 func (t *searchDocumentsTool) Description() string {
-	return "Semantic search over ingested documents. Returns ranked chunks with source file and page. Optional collection name and limit (default 5, max 20)."
+	return "Search public ingested document knowledge and return ranked chunks with sources. Use when the user needs source snippets from documents. Do not use when they need account-specific orders, cart, or returns."
 }
 func (t *searchDocumentsTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"query":{"type":"string","description":"Free-text search query."},
-			"collection":{"type":"string","description":"Optional collection name to search within."},
-			"limit":{"type":"integer","description":"Max results to return (default 5, cap 20)."}
+			"query":{"type":"string","description":"Free-text question or keywords to search in public document knowledge."},
+			"collection":{"type":"string","description":"Optional document collection name to search within."},
+			"limit":{"type":"integer","description":"Maximum document chunks to return; defaults to 5 and caps at 20."}
 		},
 		"required":["query"]
 	}`)
@@ -100,14 +100,14 @@ func NewAskDocumentTool(api ragAPI) Tool { return &askDocumentTool{api: api} }
 
 func (t *askDocumentTool) Name() string { return "ask_document" }
 func (t *askDocumentTool) Description() string {
-	return "Ask a natural-language question against ingested documents. Returns a generated answer with source citations."
+	return "Answer a question from public ingested document knowledge with source citations. Use when the user wants a synthesized document answer. Do not use when they need account-specific orders, cart, or returns."
 }
 func (t *askDocumentTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"question":{"type":"string","description":"The question to answer using document context."},
-			"collection":{"type":"string","description":"Optional collection name to query within."}
+			"question":{"type":"string","description":"Natural-language question to answer using public document context."},
+			"collection":{"type":"string","description":"Optional document collection name to query within."}
 		},
 		"required":["question"]
 	}`)
@@ -162,7 +162,7 @@ func NewListCollectionsTool(api ragAPI) Tool { return &listCollectionsTool{api: 
 
 func (t *listCollectionsTool) Name() string { return "list_collections" }
 func (t *listCollectionsTool) Description() string {
-	return "List all document collections available in the vector store, with their document counts."
+	return "List public document collections available for RAG queries. Use when choosing a collection for document search or question answering. Do not use when they need account-specific orders, cart, or returns."
 }
 func (t *listCollectionsTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{}}`)

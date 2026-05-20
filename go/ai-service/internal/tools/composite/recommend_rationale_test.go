@@ -49,7 +49,7 @@ func TestRecommendRationaleProducesRationaleAndSignals(t *testing.T) {
 		{ProductID: "shoe-trail-2", Score: 0.92, Name: "Trail Shoe v2", Category: "footwear"},
 	}}
 	tool := NewRecommendWithRationaleTool(hist, neigh)
-	res, err := tool.Call(context.Background(), []byte(`{"user_id":"u1"}`), "u1")
+	res, err := tool.Call(context.Background(), []byte(`{"category":"footwear"}`), "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,17 +75,25 @@ func TestRecommendRationaleProducesRationaleAndSignals(t *testing.T) {
 	}
 }
 
-func TestRecommendRationaleRejectsMissingUser(t *testing.T) {
+func TestRecommendRationaleAcceptsOmittedUserID(t *testing.T) {
 	tool := NewRecommendWithRationaleTool(fakeUserHistory{}, fakeNeighborSearch{})
-	_, err := tool.Call(context.Background(), []byte(`{}`), "u1")
-	if err == nil {
-		t.Fatalf("expected error on missing user_id")
+	res, err := tool.Call(context.Background(), []byte(`{}`), "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := json.Marshal(res.Content)
+	var r RecommendResult
+	if err := json.Unmarshal(out, &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.QueryEmbeddingSource != "no_history" {
+		t.Fatalf("query_embedding_source: %s", r.QueryEmbeddingSource)
 	}
 }
 
 func TestRecommendRationaleNoHistoryReturnsEmptyResult(t *testing.T) {
 	tool := NewRecommendWithRationaleTool(fakeUserHistory{}, fakeNeighborSearch{})
-	res, err := tool.Call(context.Background(), []byte(`{"user_id":"u1"}`), "u1")
+	res, err := tool.Call(context.Background(), []byte(`{}`), "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +117,7 @@ func TestRecommendRationaleHistoryWithoutEmbeddingsFallsBack(t *testing.T) {
 		},
 	}
 	tool := NewRecommendWithRationaleTool(hist, fakeNeighborSearch{})
-	res, err := tool.Call(context.Background(), []byte(`{"user_id":"u1"}`), "u1")
+	res, err := tool.Call(context.Background(), []byte(`{}`), "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +142,7 @@ func TestRecommendRationalePropagatesNearestError(t *testing.T) {
 	}
 	neigh := fakeNeighborSearch{err: errors.New("qdrant down")}
 	tool := NewRecommendWithRationaleTool(hist, neigh)
-	_, err := tool.Call(context.Background(), []byte(`{"user_id":"u1"}`), "u1")
+	_, err := tool.Call(context.Background(), []byte(`{}`), "u1")
 	if err == nil {
 		t.Fatalf("expected error from Nearest to propagate")
 	}
