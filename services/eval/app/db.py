@@ -335,6 +335,39 @@ class EvalDB:
         )
         await self._db.commit()
 
+    async def mark_evaluation_item_cancelled(self, item_id: str) -> None:
+        now = datetime.now(_UTC).isoformat()
+        await self._db.execute(
+            "UPDATE evaluation_items "
+            "SET status = 'cancelled', lease_owner = NULL, lease_expires_at = NULL, "
+            "completed_at = ?, updated_at = ? "
+            "WHERE id = ? AND status NOT IN ('completed', 'failed', 'cancelled')",
+            (now, now, item_id),
+        )
+        await self._db.commit()
+
+    async def cancel_evaluation(self, eval_id: str) -> dict | None:
+        now = datetime.now(_UTC).isoformat()
+        cursor = await self._db.execute(
+            "UPDATE evaluations "
+            "SET status = 'cancelled', error = ?, completed_at = ? "
+            "WHERE id = ? AND status IN ('queued', 'running')",
+            ("evaluation cancelled by operator", now, eval_id),
+        )
+        if cursor.rowcount == 0:
+            await self._db.commit()
+            return None
+        await self._db.execute(
+            "UPDATE evaluation_items "
+            "SET status = 'cancelled', lease_owner = NULL, lease_expires_at = NULL, "
+            "completed_at = COALESCE(completed_at, ?), updated_at = ? "
+            "WHERE evaluation_id = ? "
+            "AND status NOT IN ('completed', 'failed', 'cancelled')",
+            (now, now, eval_id),
+        )
+        await self._db.commit()
+        return await self.get_evaluation(eval_id)
+
     async def release_evaluation_item_for_retry(
         self, item_id: str, error: dict
     ) -> None:
@@ -400,7 +433,7 @@ class EvalDB:
                 "UPDATE evaluations "
                 "SET status = ?, aggregate_scores = ?, results = ?, error = ?, "
                 "completed_at = ? WHERE id = ? AND status NOT IN "
-                "('completed', 'completed_with_failures', 'failed')",
+                "('completed', 'completed_with_failures', 'failed', 'cancelled')",
                 (
                     status,
                     json.dumps(aggregate),
@@ -414,20 +447,44 @@ class EvalDB:
             await self._db.execute(
                 "UPDATE evaluations "
                 "SET status = 'failed', error = ?, completed_at = ? "
-                "WHERE id = ? AND status != 'failed'",
+                "WHERE id = ? AND status NOT IN ('failed', 'cancelled')",
                 ("all evaluation items failed", now, eval_id),
             )
         await self._db.commit()
         return True
 
-    async def count_evaluation_items_by_status(self, eval_id: str) -> dict[str, int]:
+    async def count_evaluation_items_by_status(
+        self, eval_id: str, stale_seconds: float = 900.0
+    ) -> dict[str, int]:
         cursor = await self._db.execute(
             "SELECT status, COUNT(*) AS count FROM evaluation_items "
             "WHERE evaluation_id = ? GROUP BY status",
             (eval_id,),
         )
         rows = await cursor.fetchall()
-        return {row["status"]: row["count"] for row in rows}
+        counts = {row["status"]: row["count"] for row in rows}
+        stale_cutoff = (
+            datetime.now(_UTC) - timedelta(seconds=stale_seconds)
+        ).isoformat()
+        retryable_cursor = await self._db.execute(
+            "SELECT COUNT(*) AS count FROM evaluation_items "
+            "WHERE evaluation_id = ? "
+            "AND status IN ('queued', 'running', 'failed') "
+            "AND attempt_count < max_attempts",
+            (eval_id,),
+        )
+        stale_cursor = await self._db.execute(
+            "SELECT COUNT(*) AS count FROM evaluation_items "
+            "WHERE evaluation_id = ? "
+            "AND status IN ('queued', 'running') "
+            "AND (updated_at < ? OR lease_expires_at < ?)",
+            (eval_id, stale_cutoff, datetime.now(_UTC).isoformat()),
+        )
+        retryable_row = await retryable_cursor.fetchone()
+        stale_row = await stale_cursor.fetchone()
+        counts["retryable"] = int(retryable_row["count"])
+        counts["stale"] = int(stale_row["count"])
+        return counts
 
     def _row_to_dict(self, row, *, include_results: bool = True) -> dict:
         """Shared row → dict conversion for evaluation rows."""
@@ -756,10 +813,19 @@ class EvalDB:
         row = await cursor.fetchone()
         return int(row["count"])
 
-    async def reset_expired_running_items(self, max_age_seconds: float) -> int:
+    async def reset_expired_running_items(self, max_age_seconds: float) -> list[dict]:
         now = datetime.now(_UTC)
         cutoff = (now - timedelta(seconds=max_age_seconds)).isoformat()
         cursor = await self._db.execute(
+            "SELECT * FROM evaluation_items "
+            "WHERE status = 'running' AND lease_expires_at < ? "
+            "AND attempt_count < max_attempts "
+            "ORDER BY updated_at ASC",
+            (cutoff,),
+        )
+        rows = await cursor.fetchall()
+        items = [self._item_row_to_dict(row) for row in rows]
+        await self._db.execute(
             "UPDATE evaluation_items "
             "SET status = 'queued', lease_owner = NULL, lease_expires_at = NULL, "
             "updated_at = ? "
@@ -768,4 +834,44 @@ class EvalDB:
             (now.isoformat(), cutoff),
         )
         await self._db.commit()
-        return cursor.rowcount
+        return items
+
+    async def fail_expired_running_items(self, max_age_seconds: float) -> list[dict]:
+        now = datetime.now(_UTC)
+        cutoff = (now - timedelta(seconds=max_age_seconds)).isoformat()
+        cursor = await self._db.execute(
+            "SELECT * FROM evaluation_items "
+            "WHERE status = 'running' AND lease_expires_at < ? "
+            "AND attempt_count >= max_attempts "
+            "ORDER BY updated_at ASC",
+            (cutoff,),
+        )
+        rows = await cursor.fetchall()
+        items = [self._item_row_to_dict(row) for row in rows]
+        error = json.dumps({"error_type": "stale_item_lease", "retryable": False})
+        await self._db.execute(
+            "UPDATE evaluation_items "
+            "SET status = 'failed', last_error = ?, lease_owner = NULL, "
+            "lease_expires_at = NULL, completed_at = ?, updated_at = ? "
+            "WHERE status = 'running' AND lease_expires_at < ? "
+            "AND attempt_count >= max_attempts",
+            (error, now.isoformat(), now.isoformat(), cutoff),
+        )
+        await self._db.commit()
+        return items
+
+    async def list_queued_items_for_republish(
+        self, max_age_seconds: float
+    ) -> list[dict]:
+        cutoff = (datetime.now(_UTC) - timedelta(seconds=max_age_seconds)).isoformat()
+        cursor = await self._db.execute(
+            "SELECT i.* FROM evaluation_items i "
+            "JOIN evaluations e ON e.id = i.evaluation_id "
+            "WHERE i.status = 'queued' AND i.updated_at < ? "
+            "AND e.status NOT IN "
+            "('completed', 'completed_with_failures', 'failed', 'cancelled') "
+            "ORDER BY i.updated_at ASC",
+            (cutoff,),
+        )
+        rows = await cursor.fetchall()
+        return [self._item_row_to_dict(row) for row in rows]

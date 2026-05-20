@@ -349,6 +349,52 @@ func TestRunEvidenceSummarizesStaleRunningRun(t *testing.T) {
 	}
 }
 
+func TestRunEvidenceNextStepsCancelled(t *testing.T) {
+	evidence := RunEvidence{Status: "cancelled"}
+
+	got := runEvidenceNextSteps(evidence)
+
+	if len(got) != 1 || !strings.Contains(got[0], "cancelled") {
+		t.Fatalf("cancelled next steps = %#v", got)
+	}
+}
+
+func TestRunEvidenceNextStepsStaleRetryable(t *testing.T) {
+	evidence := RunEvidence{
+		Status:       "running",
+		StaleRunning: true,
+		ItemCounts: map[string]int{
+			"stale":     2,
+			"retryable": 2,
+		},
+	}
+
+	got := runEvidenceNextSteps(evidence)
+
+	joined := strings.Join(got, " ")
+	if !strings.Contains(joined, "republish") {
+		t.Fatalf("retryable stale next steps should mention republish: %#v", got)
+	}
+}
+
+func TestRunEvidenceNextStepsStaleExhausted(t *testing.T) {
+	evidence := RunEvidence{
+		Status:       "running",
+		StaleRunning: true,
+		ItemCounts: map[string]int{
+			"stale":     2,
+			"retryable": 0,
+		},
+	}
+
+	got := runEvidenceNextSteps(evidence)
+
+	joined := strings.Join(got, " ")
+	if !strings.Contains(joined, "exhausted") {
+		t.Fatalf("exhausted stale next steps should mention exhausted work: %#v", got)
+	}
+}
+
 func TestRunEvidenceIncludesPartialItemCounts(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{

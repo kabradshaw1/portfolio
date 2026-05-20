@@ -507,6 +507,9 @@ def test_get_evaluation_includes_item_summary(mock_get_db):
         "running": 1,
         "completed": 2,
         "failed": 0,
+        "cancelled": 0,
+        "retryable": 0,
+        "stale": 0,
     }
     mock_get_db.return_value = mock_db
 
@@ -518,6 +521,9 @@ def test_get_evaluation_includes_item_summary(mock_get_db):
         "running": 1,
         "completed": 2,
         "failed": 0,
+        "cancelled": 0,
+        "retryable": 0,
+        "stale": 0,
         "total": 4,
     }
     assert response.json()["item_summary"] == {
@@ -525,8 +531,94 @@ def test_get_evaluation_includes_item_summary(mock_get_db):
         "running": 1,
         "completed": 2,
         "failed": 0,
+        "cancelled": 0,
+        "retryable": 0,
+        "stale": 0,
         "total": 4,
     }
+
+
+@patch("app.main.get_db")
+def test_get_evaluation_includes_cancelled_retryable_and_stale_counts(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_evaluation.return_value = {
+        "id": "eval-456",
+        "dataset_id": "ds-123",
+        "status": "running",
+        "collection": "documents",
+        "aggregate_scores": None,
+        "results": None,
+        "error": None,
+        "created_at": "2026-04-16T00:00:00Z",
+        "completed_at": None,
+        "notes": None,
+        "config": None,
+        "baseline_eval_id": None,
+    }
+    mock_db.count_evaluation_items_by_status.return_value = {
+        "queued": 1,
+        "running": 1,
+        "completed": 2,
+        "failed": 1,
+        "cancelled": 1,
+        "retryable": 2,
+        "stale": 1,
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/evaluations/eval-456")
+
+    assert response.status_code == 200
+    assert response.json()["item_counts"] == {
+        "queued": 1,
+        "running": 1,
+        "completed": 2,
+        "failed": 1,
+        "cancelled": 1,
+        "retryable": 2,
+        "stale": 1,
+        "total": 6,
+    }
+
+
+@patch("app.main.get_db")
+def test_cancel_evaluation_marks_run_cancelled(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_evaluation.return_value = _baseline_run(status="running")
+    mock_db.cancel_evaluation.return_value = _baseline_run(status="cancelled") | {
+        "error": "evaluation cancelled by operator",
+        "completed_at": "2026-04-16T00:05:00Z",
+    }
+    mock_db.count_evaluation_items_by_status.return_value = {
+        "queued": 0,
+        "running": 0,
+        "completed": 1,
+        "failed": 0,
+        "cancelled": 1,
+        "retryable": 0,
+        "stale": 0,
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.post("/evaluations/eval-prev/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+    assert response.json()["item_counts"]["cancelled"] == 1
+    mock_db.cancel_evaluation.assert_awaited_once_with("eval-prev")
+
+
+@patch("app.main.get_db")
+def test_cancel_evaluation_rejects_terminal_run(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_evaluation.return_value = _baseline_run(status="completed")
+    mock_get_db.return_value = mock_db
+
+    response = client.post("/evaluations/eval-prev/cancel")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "evaluation is already terminal"
+    mock_db.cancel_evaluation.assert_not_awaited()
 
 
 @patch("app.main.get_db")
@@ -1348,18 +1440,54 @@ async def test_run_evaluation_task_marks_cancellation_failed(
 
 
 @pytest.mark.asyncio
+@patch("app.main.get_item_publisher")
 @patch("app.main.get_db")
-async def test_recover_stale_evaluations_uses_max_runtime_plus_grace(mock_get_db):
+async def test_recover_stale_evaluations_republishes_retryable_items(
+    mock_get_db, mock_get_item_publisher
+):
     mock_db = AsyncMock()
-    mock_db.count_stale_running_evaluations.return_value = 2
-    mock_db.fail_stale_running_evaluations.return_value = 2
+    mock_db.reset_expired_running_items.return_value = [
+        {"evaluation_id": "eval-1", "id": "item-1", "item_index": 0}
+    ]
+    mock_db.fail_expired_running_items.return_value = []
+    mock_db.list_queued_items_for_republish.return_value = [
+        {"evaluation_id": "eval-2", "id": "item-2", "item_index": 1}
+    ]
+    mock_db.count_stale_running_evaluations.return_value = 0
+    mock_get_db.return_value = mock_db
+    publisher = AsyncMock()
+    mock_get_item_publisher.return_value = publisher
+
+    await recover_stale_evaluations()
+
+    assert publisher.publish.await_count == 2
+    published = [call.args[0] for call in publisher.publish.await_args_list]
+    assert published[0].evaluation_id == "eval-1"
+    assert published[0].item_id == "item-1"
+    assert published[1].evaluation_id == "eval-2"
+    assert published[1].item_id == "item-2"
+    mock_db.fail_stale_running_evaluations.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("app.main.get_item_publisher")
+@patch("app.main.get_db")
+async def test_recover_stale_evaluations_finalizes_failed_expired_items(
+    mock_get_db, mock_get_item_publisher
+):
+    mock_db = AsyncMock()
+    mock_db.reset_expired_running_items.return_value = []
+    mock_db.fail_expired_running_items.return_value = [
+        {"evaluation_id": "eval-1", "id": "item-1", "item_index": 0}
+    ]
+    mock_db.list_queued_items_for_republish.return_value = []
+    mock_db.count_stale_running_evaluations.return_value = 1
     mock_get_db.return_value = mock_db
 
     await recover_stale_evaluations()
 
-    expected_age = settings.eval_run_max_seconds + settings.eval_stale_grace_seconds
-    mock_db.count_stale_running_evaluations.assert_awaited_once_with(expected_age)
-    mock_db.fail_stale_running_evaluations.assert_awaited_once_with(expected_age)
+    mock_db.finalize_evaluation_if_terminal.assert_awaited_once_with("eval-1")
+    mock_get_item_publisher.assert_not_awaited()
 
 
 @patch("app.main.validate_collection_exists", new_callable=AsyncMock)

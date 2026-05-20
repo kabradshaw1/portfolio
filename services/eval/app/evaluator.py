@@ -129,6 +129,7 @@ async def evaluate_item(
     run_context: EvalRunContext | None,
     answer_model: dict | None,
     item_index: int,
+    check_cancelled=None,
 ) -> dict:
     started_at = time.perf_counter()
     query = item["query"]
@@ -142,9 +143,13 @@ async def evaluate_item(
             requested_rerank,
         )
     try:
+        if check_cancelled is not None:
+            await check_cancelled()
         search_results = await rag_client.search(
             query, collection=collection, limit=top_k, rerank=rerank
         )
+        if check_cancelled is not None:
+            await check_cancelled()
         chat_response = await rag_client.ask(
             query,
             collection=collection,
@@ -163,6 +168,8 @@ async def evaluate_item(
             row["retrieval"] = chat_response["retrieval"]
         if "usage" in chat_response:
             row["usage"] = _safe_usage(chat_response["usage"])
+        if check_cancelled is not None:
+            await check_cancelled()
         judge_scores = await judge(row)
     except Exception:
         eval_items_total.labels(

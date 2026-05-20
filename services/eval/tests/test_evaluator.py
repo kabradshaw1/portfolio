@@ -8,6 +8,7 @@ from app.evaluator import (
     JudgeScores,
     _judge_prompt,
     build_evaluation_dataset,
+    evaluate_item,
     judge_generation_scores,
     parse_judge_scores,
     run_evaluation,
@@ -145,6 +146,46 @@ async def test_build_evaluation_dataset(
 
     assert rag_client.search.call_count == 2
     assert rag_client.ask.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_evaluate_item_checks_cancellation_before_each_expensive_stage():
+    events = []
+
+    class FakeRAGClient:
+        async def search(self, *args, **kwargs):
+            events.append("search")
+            return [{"text": "ctx"}]
+
+        async def ask(self, *args, **kwargs):
+            events.append("chat")
+            return {"answer": "answer"}
+
+    async def judge(row):
+        events.append("judge")
+        return JudgeScores(
+            faithfulness=1.0,
+            answer_relevancy=1.0,
+            reasons={"faithfulness": "ok", "answer_relevancy": "ok"},
+        )
+
+    async def check_cancelled():
+        events.append("check")
+
+    await evaluate_item(
+        item={"query": "q", "expected_answer": "a", "expected_sources": []},
+        rag_client=FakeRAGClient(),
+        collection="documents",
+        rerank=False,
+        top_k=5,
+        judge=judge,
+        run_context=None,
+        answer_model=None,
+        item_index=0,
+        check_cancelled=check_cancelled,
+    )
+
+    assert events == ["check", "search", "check", "chat", "check", "judge"]
 
 
 @pytest.mark.asyncio
