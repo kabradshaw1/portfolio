@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _bearer_scheme = HTTPBearer(auto_error=False)
+MIN_HS256_SECRET_BYTES = 32
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,9 @@ def create_auth_context_dependency(secret: str):
             return AuthContext(subject="anonymous", email=None, tier="anonymous")
 
         return no_auth
+
+    if len(secret.encode("utf-8")) < MIN_HS256_SECRET_BYTES:
+        raise ValueError("JWT secret must be at least 32 bytes for HS256")
 
     async def require_auth(
         request: Request,
