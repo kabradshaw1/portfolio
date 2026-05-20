@@ -78,6 +78,160 @@ async def test_create_and_get_evaluation(db):
 
 
 @pytest.mark.asyncio
+async def test_create_evaluation_can_start_queued(db):
+    ds_id = await db.create_dataset(name="ds-queued", items=SIMPLE_ITEM)
+
+    eval_id = await db.create_evaluation(
+        dataset_id=ds_id,
+        collection="documents",
+        status="queued",
+    )
+
+    evaluation = await db.get_evaluation(eval_id)
+    assert evaluation["status"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_create_items_for_evaluation_persists_dataset_order(db):
+    items = [
+        {"query": "q1", "expected_answer": "a1", "expected_sources": ["s1"]},
+        {"query": "q2", "expected_answer": "a2", "expected_sources": []},
+    ]
+    ds_id = await db.create_dataset(name="ds-items", items=items)
+    eval_id = await db.create_evaluation(
+        dataset_id=ds_id,
+        collection="documents",
+        status="queued",
+    )
+
+    created = await db.create_evaluation_items(eval_id, items, max_attempts=3)
+    stored = await db.list_evaluation_items(eval_id)
+
+    assert [item["item_index"] for item in created] == [0, 1]
+    assert [item["query"] for item in stored] == ["q1", "q2"]
+    assert stored[0]["expected_sources"] == ["s1"]
+    assert stored[0]["status"] == "queued"
+    assert stored[0]["attempt_count"] == 0
+    assert stored[0]["max_attempts"] == 3
+
+
+@pytest.mark.asyncio
+async def test_claim_evaluation_item_sets_running_lease(db):
+    ds_id = await db.create_dataset(name="ds-claim", items=SIMPLE_ITEM)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="queued")
+    [item] = await db.create_evaluation_items(eval_id, SIMPLE_ITEM, max_attempts=3)
+
+    claimed = await db.claim_evaluation_item(
+        item["id"], worker_id="worker-1", lease_seconds=60
+    )
+
+    assert claimed is not None
+    assert claimed["status"] == "running"
+    assert claimed["attempt_count"] == 1
+    assert claimed["lease_owner"] == "worker-1"
+
+
+@pytest.mark.asyncio
+async def test_claim_evaluation_item_returns_none_for_completed_item(db):
+    ds_id = await db.create_dataset(name="ds-claim-completed", items=SIMPLE_ITEM)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="queued")
+    [item] = await db.create_evaluation_items(eval_id, SIMPLE_ITEM, max_attempts=3)
+    await db.mark_evaluation_item_completed(
+        item["id"],
+        result={"query": "q", "answer": "a", "contexts": []},
+        scores={"faithfulness": 1.0},
+        score_reasons={"faithfulness": "supported"},
+    )
+
+    claimed = await db.claim_evaluation_item(
+        item["id"], worker_id="worker-1", lease_seconds=60
+    )
+
+    assert claimed is None
+
+
+@pytest.mark.asyncio
+async def test_finalize_evaluation_completes_all_successful_items(db):
+    items = [
+        {"query": "q1", "expected_answer": "a1", "expected_sources": []},
+        {"query": "q2", "expected_answer": "a2", "expected_sources": []},
+    ]
+    ds_id = await db.create_dataset(name="ds-finalize", items=items)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="running")
+    created = await db.create_evaluation_items(eval_id, items, max_attempts=3)
+    for index, item in enumerate(created):
+        await db.mark_evaluation_item_completed(
+            item["id"],
+            result={"query": f"q{index + 1}", "answer": "a", "contexts": []},
+            scores={
+                "faithfulness": 1.0,
+                "answer_relevancy": 0.5,
+                "context_precision": 0.25,
+                "context_recall": 0.75,
+            },
+            score_reasons={"faithfulness": "ok"},
+        )
+
+    finalized = await db.finalize_evaluation_if_terminal(eval_id)
+
+    assert finalized is True
+    evaluation = await db.get_evaluation(eval_id)
+    assert evaluation["status"] == "completed"
+    assert evaluation["aggregate_scores"]["faithfulness"] == 1.0
+    assert len(evaluation["results"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_finalize_evaluation_marks_completed_with_failures(db):
+    items = [
+        {"query": "q1", "expected_answer": "a1", "expected_sources": []},
+        {"query": "q2", "expected_answer": "a2", "expected_sources": []},
+    ]
+    ds_id = await db.create_dataset(name="ds-partial", items=items)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="running")
+    completed, failed = await db.create_evaluation_items(eval_id, items, max_attempts=1)
+    await db.mark_evaluation_item_completed(
+        completed["id"],
+        result={"query": "q1", "answer": "a1", "contexts": []},
+        scores={"faithfulness": 0.8},
+        score_reasons={"faithfulness": "ok"},
+    )
+    await db.mark_evaluation_item_failed(
+        failed["id"],
+        error={"error_type": "timeout", "retryable": False},
+    )
+
+    finalized = await db.finalize_evaluation_if_terminal(eval_id)
+
+    assert finalized is True
+    evaluation = await db.get_evaluation(eval_id)
+    assert evaluation["status"] == "completed_with_failures"
+    assert evaluation["aggregate_scores"]["faithfulness"] == 0.8
+    assert "failed_items=1" in evaluation["error"]
+
+
+@pytest.mark.asyncio
+async def test_reset_expired_running_items_to_queued(db):
+    ds_id = await db.create_dataset(name="ds-expired", items=SIMPLE_ITEM)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="running")
+    [item] = await db.create_evaluation_items(eval_id, SIMPLE_ITEM, max_attempts=3)
+    await db.claim_evaluation_item(item["id"], worker_id="worker-1", lease_seconds=1)
+    expired = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    await db._db.execute(  # noqa: SLF001
+        "UPDATE evaluation_items SET lease_expires_at = ? WHERE id = ?",
+        (expired, item["id"]),
+    )
+    await db._db.commit()  # noqa: SLF001
+
+    reset = await db.reset_expired_running_items(max_age_seconds=60)
+
+    assert reset == 1
+    stored = await db.get_evaluation_item(item["id"])
+    assert stored["status"] == "queued"
+    assert stored["lease_owner"] is None
+
+
+@pytest.mark.asyncio
 async def test_complete_evaluation(db):
     ds_id = await db.create_dataset(name="ds", items=SIMPLE_ITEM)
     eval_id = await db.create_evaluation(dataset_id=ds_id, collection="documents")

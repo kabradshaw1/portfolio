@@ -38,7 +38,7 @@ class RAGTriageService:
         evaluation = await self._eval_client.get_evaluation(eval_id)
         results = evaluation.results or []
 
-        if evaluation.status != "completed" or not results:
+        if not _has_triageable_results(evaluation) or not results:
             return self._runtime_response(evaluation, selected_metric)
 
         worst = sorted(
@@ -59,7 +59,7 @@ class RAGTriageService:
             subject=TriageSubject(type="eval_run", eval_id=evaluation.id),
             status=evaluation.status,
             aggregate_scores=evaluation.aggregate_scores,
-            config=evaluation.config or {},
+            config=_triage_config(evaluation),
             diagnosis=Diagnosis(
                 primary_failure_mode=primary,
                 confidence=confidence,
@@ -85,13 +85,13 @@ class RAGTriageService:
         results = candidate.results or []
 
         config = {
-            **(candidate.config or {}),
+            **_triage_config(candidate),
             "baseline_status": baseline.status,
             "candidate_status": candidate.status,
             "metric_delta": _metric_delta(baseline, candidate, selected_metric),
         }
 
-        if candidate.status != "completed" or not results:
+        if not _has_triageable_results(candidate) or not results:
             response = self._runtime_response(candidate, selected_metric)
             response.subject = TriageSubject(
                 type="comparison",
@@ -163,7 +163,7 @@ class RAGTriageService:
         diagnosis = Diagnosis(
             primary_failure_mode="runtime_or_config",
             confidence="high",
-            summary="The evaluation did not produce completed results, so triage "
+            summary="The evaluation did not produce triageable results, so triage "
             "should inspect runtime or configuration evidence.",
         )
         config = evaluation.config or {}
@@ -216,3 +216,19 @@ def _metric_delta(
     if baseline_value is None or candidate_value is None:
         return None
     return round(candidate_value - baseline_value, 4)
+
+
+def _has_triageable_results(evaluation: EvaluationDetail) -> bool:
+    return evaluation.status in {"completed", "completed_with_failures"}
+
+
+def _triage_config(evaluation: EvaluationDetail) -> dict:
+    config = evaluation.config or {}
+    if evaluation.item_counts:
+        config = {**config, "item_counts": evaluation.item_counts}
+    if evaluation.status != "completed_with_failures":
+        return config
+    partial = {**config, "partial_results": True}
+    if evaluation.error:
+        partial["eval_error"] = evaluation.error
+    return partial

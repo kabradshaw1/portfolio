@@ -18,6 +18,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from app.answer_models import AnswerModelOverride, resolve_answer_model_override
+from app.broker import EvalItemMessage, EvalItemPublisher
 from app.collection_validation import validate_collection_exists
 from app.config import settings
 from app.config_capture import capture_run_config
@@ -26,6 +27,7 @@ from app.evaluator import EvalRunContext, run_evaluation
 from app.metrics import (
     eval_quality_score,
     eval_queries_total,
+    eval_queue_publish_total,
     eval_run_duration_seconds,
     eval_runs_total,
     eval_stale_running_runs,
@@ -66,6 +68,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _db: EvalDB | None = None
+_item_publisher: EvalItemPublisher | None = None
 
 
 def build_eval_rate_limiter() -> FixedWindowRateLimiter:
@@ -137,9 +140,39 @@ async def get_db() -> EvalDB:
     return _db
 
 
+async def get_item_publisher() -> EvalItemPublisher:
+    global _item_publisher
+    if _item_publisher is None:
+        if not settings.rabbitmq_url:
+            raise HTTPException(status_code=503, detail="eval queue is not configured")
+        _item_publisher = EvalItemPublisher(
+            rabbitmq_url=settings.rabbitmq_url,
+            queue_name=settings.eval_item_queue,
+            dlq_name=settings.eval_item_dlq,
+        )
+    return _item_publisher
+
+
+async def publish_evaluation_items(eval_id: str, items: list[dict]) -> None:
+    publisher = await get_item_publisher()
+    for item in items:
+        await publisher.publish(
+            EvalItemMessage(
+                evaluation_id=eval_id,
+                item_id=item["id"],
+                item_index=item["item_index"],
+                attempt=1,
+            )
+        )
+        eval_queue_publish_total.labels(status="success").inc()
+
+
 @app.on_event("startup")
 async def recover_stale_evaluations():
     db = await get_db()
+    reset_items = await db.reset_expired_running_items(settings.eval_stale_item_seconds)
+    if reset_items:
+        logger.warning("Recovered %s expired running evaluation item(s)", reset_items)
     max_age = settings.eval_run_max_seconds + settings.eval_stale_grace_seconds
     stale_count = await db.count_stale_running_evaluations(max_age)
     eval_stale_running_runs.set(stale_count)
@@ -153,6 +186,8 @@ async def recover_stale_evaluations():
 async def shutdown():
     if _db:
         await _db.close()
+    if _item_publisher:
+        await _item_publisher.close()
 
 
 # --- Health ---
@@ -381,7 +416,7 @@ async def _validate_baseline(
     baseline = await db.get_evaluation(baseline_eval_id)
     if not baseline:
         raise HTTPException(status_code=404, detail="Baseline evaluation not found")
-    if baseline["status"] != "completed":
+    if baseline["status"] not in {"completed", "completed_with_failures"}:
         raise HTTPException(
             status_code=400, detail="Baseline evaluation must be completed"
         )
@@ -486,7 +521,25 @@ async def start_evaluation(
         collection=collection,
         notes=body.notes,
         baseline_eval_id=body.baseline_eval_id,
+        status="queued",
     )
+    requested_answer_model = None
+    if resolved_answer_model is not None:
+        requested_answer_model = resolved_answer_model.safe_dict()
+    config = await capture_run_config(
+        chat_url=settings.chat_service_url,
+        ingestion_url=settings.ingestion_service_url,
+        collection=collection,
+        requested_rerank=body.rerank,
+        requested_retrieval_config=_requested_retrieval_config(body.retrieval_config),
+        requested_answer_model=requested_answer_model,
+        judge_model={
+            "provider": settings.llm_provider,
+            "base_url": settings.llm_base_url,
+            "model": settings.llm_model,
+        },
+    )
+    await db.set_evaluation_config(eval_id, config)
     if body.experiment_id is not None and body.experiment_label is not None:
         try:
             await db.attach_experiment_run(
@@ -508,17 +561,21 @@ async def start_evaluation(
         str(body.rerank).lower(),
     )
 
-    background_tasks.add_task(
-        _run_evaluation_task,
+    created_items = await db.create_evaluation_items(
         eval_id,
         dataset["items"],
-        collection,
-        body.rerank,
-        body.retrieval_config,
-        resolved_answer_model,
+        max_attempts=settings.eval_item_max_attempts,
     )
+    try:
+        await publish_evaluation_items(eval_id, created_items)
+    except Exception:
+        eval_queue_publish_total.labels(status="failed").inc()
+        logger.exception("evaluation_item_publish_failed eval_id=%s", eval_id)
+        raise HTTPException(
+            status_code=503, detail="unable to queue evaluation"
+        ) from None
 
-    return {"id": eval_id, "status": "running"}
+    return {"id": eval_id, "status": "queued"}
 
 
 @app.post(
@@ -790,14 +847,16 @@ async def compare_evaluations(
         )
 
     invalid_statuses = [
-        f"{r['id']}={r.get('status')}" for r in runs if r.get("status") != "completed"
+        f"{r['id']}={r.get('status')}"
+        for r in runs
+        if r.get("status") not in {"completed", "completed_with_failures"}
     ]
     if invalid_statuses:
         raise HTTPException(
             status_code=400,
             detail=(
-                "compare requires completed runs; invalid statuses: "
-                + ", ".join(invalid_statuses)
+                "compare requires completed or completed_with_failures runs; "
+                "invalid statuses: " + ", ".join(invalid_statuses)
             ),
         )
 
@@ -894,4 +953,17 @@ async def get_evaluation(request: Request, eval_id: str):
     evaluation = await db.get_evaluation(eval_id)
     if not evaluation:
         raise HTTPException(status_code=404, detail="Evaluation not found")
+    counts = await db.count_evaluation_items_by_status(eval_id)
+    if not isinstance(counts, dict):
+        counts = {}
+    if counts:
+        item_counts = {
+            "queued": counts.get("queued", 0),
+            "running": counts.get("running", 0),
+            "completed": counts.get("completed", 0),
+            "failed": counts.get("failed", 0),
+            "total": sum(counts.values()),
+        }
+        evaluation["item_counts"] = item_counts
+        evaluation["item_summary"] = item_counts
     return evaluation

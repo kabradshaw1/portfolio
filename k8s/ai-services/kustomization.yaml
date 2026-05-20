@@ -12,6 +12,7 @@ resources:
   - deployments/chat.yml
   - deployments/debug.yml
   - deployments/eval.yml
+  - deployments/eval-worker.yml
   - deployments/ingestion.yml
   - deployments/qdrant.yml
   - services/chat.yml

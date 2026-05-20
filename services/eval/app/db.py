@@ -19,6 +19,9 @@ class EvalDB:
         """Initialize the database and create tables."""
         self._db = await aiosqlite.connect(self.db_path)
         self._db.row_factory = aiosqlite.Row
+        await self._db.execute("PRAGMA journal_mode=WAL")
+        await self._db.execute("PRAGMA busy_timeout=5000")
+        await self._db.execute("PRAGMA foreign_keys=ON")
         await self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS datasets (
@@ -63,6 +66,32 @@ class EvalDB:
                 PRIMARY KEY (experiment_id, evaluation_id),
                 UNIQUE (experiment_id, label)
             );
+            CREATE TABLE IF NOT EXISTS evaluation_items (
+                id TEXT PRIMARY KEY,
+                evaluation_id TEXT NOT NULL REFERENCES evaluations(id),
+                item_index INTEGER NOT NULL,
+                query TEXT NOT NULL,
+                expected_answer TEXT NOT NULL,
+                expected_sources TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'queued',
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                max_attempts INTEGER NOT NULL DEFAULT 3,
+                lease_owner TEXT,
+                lease_expires_at TEXT,
+                last_error TEXT,
+                result TEXT,
+                scores TEXT,
+                score_reasons TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (evaluation_id, item_index)
+            );
+            CREATE INDEX IF NOT EXISTS idx_evaluation_items_eval_status
+                ON evaluation_items(evaluation_id, status);
+            CREATE INDEX IF NOT EXISTS idx_evaluation_items_status_lease
+                ON evaluation_items(status, lease_expires_at);
             """
         )
 
@@ -141,17 +170,243 @@ class EvalDB:
         collection: str,
         notes: str | None = None,
         baseline_eval_id: str | None = None,
+        status: str = "running",
     ) -> str:
         eval_id = str(uuid.uuid4())
         now = datetime.now(_UTC).isoformat()
         await self._db.execute(
             "INSERT INTO evaluations "
             "(id, dataset_id, status, collection, created_at, notes, baseline_eval_id) "
-            "VALUES (?, ?, 'running', ?, ?, ?, ?)",
-            (eval_id, dataset_id, collection, now, notes, baseline_eval_id),
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (eval_id, dataset_id, status, collection, now, notes, baseline_eval_id),
         )
         await self._db.commit()
         return eval_id
+
+    def _item_row_to_dict(self, row) -> dict:
+        return {
+            "id": row["id"],
+            "evaluation_id": row["evaluation_id"],
+            "item_index": row["item_index"],
+            "query": row["query"],
+            "expected_answer": row["expected_answer"],
+            "expected_sources": json.loads(row["expected_sources"]),
+            "status": row["status"],
+            "attempt_count": row["attempt_count"],
+            "max_attempts": row["max_attempts"],
+            "lease_owner": row["lease_owner"],
+            "lease_expires_at": row["lease_expires_at"],
+            "last_error": json.loads(row["last_error"]) if row["last_error"] else None,
+            "result": json.loads(row["result"]) if row["result"] else None,
+            "scores": json.loads(row["scores"]) if row["scores"] else None,
+            "score_reasons": (
+                json.loads(row["score_reasons"]) if row["score_reasons"] else None
+            ),
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    async def create_evaluation_items(
+        self, eval_id: str, items: list[dict], max_attempts: int
+    ) -> list[dict]:
+        now = datetime.now(_UTC).isoformat()
+        created = []
+        for index, item in enumerate(items):
+            item_id = str(uuid.uuid4())
+            expected_sources = item.get("expected_sources", [])
+            await self._db.execute(
+                "INSERT INTO evaluation_items "
+                "(id, evaluation_id, item_index, query, expected_answer, "
+                "expected_sources, status, attempt_count, max_attempts, "
+                "created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)",
+                (
+                    item_id,
+                    eval_id,
+                    index,
+                    item["query"],
+                    item["expected_answer"],
+                    json.dumps(expected_sources),
+                    max_attempts,
+                    now,
+                    now,
+                ),
+            )
+            created.append(
+                {
+                    "id": item_id,
+                    "evaluation_id": eval_id,
+                    "item_index": index,
+                    "query": item["query"],
+                    "expected_answer": item["expected_answer"],
+                    "expected_sources": expected_sources,
+                    "status": "queued",
+                    "attempt_count": 0,
+                    "max_attempts": max_attempts,
+                }
+            )
+        await self._db.commit()
+        return created
+
+    async def list_evaluation_items(self, eval_id: str) -> list[dict]:
+        cursor = await self._db.execute(
+            "SELECT * FROM evaluation_items "
+            "WHERE evaluation_id = ? ORDER BY item_index",
+            (eval_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._item_row_to_dict(row) for row in rows]
+
+    async def get_evaluation_item(self, item_id: str) -> dict | None:
+        cursor = await self._db.execute(
+            "SELECT * FROM evaluation_items WHERE id = ?", (item_id,)
+        )
+        row = await cursor.fetchone()
+        return self._item_row_to_dict(row) if row else None
+
+    async def claim_evaluation_item(
+        self, item_id: str, worker_id: str, lease_seconds: float
+    ) -> dict | None:
+        now = datetime.now(_UTC)
+        now_text = now.isoformat()
+        lease_until = (now + timedelta(seconds=lease_seconds)).isoformat()
+        cursor = await self._db.execute(
+            "UPDATE evaluation_items "
+            "SET status = 'running', attempt_count = attempt_count + 1, "
+            "lease_owner = ?, lease_expires_at = ?, "
+            "started_at = COALESCE(started_at, ?), updated_at = ? "
+            "WHERE id = ? AND status = 'queued'",
+            (worker_id, lease_until, now_text, now_text, item_id),
+        )
+        await self._db.commit()
+        if cursor.rowcount == 0:
+            return None
+        return await self.get_evaluation_item(item_id)
+
+    async def mark_evaluation_running(self, eval_id: str) -> None:
+        await self._db.execute(
+            "UPDATE evaluations SET status = 'running', completed_at = NULL "
+            "WHERE id = ? AND status = 'queued'",
+            (eval_id,),
+        )
+        await self._db.commit()
+
+    async def mark_evaluation_item_completed(
+        self,
+        item_id: str,
+        result: dict,
+        scores: dict,
+        score_reasons: dict,
+    ) -> None:
+        now = datetime.now(_UTC).isoformat()
+        await self._db.execute(
+            "UPDATE evaluation_items "
+            "SET status = 'completed', result = ?, scores = ?, score_reasons = ?, "
+            "lease_owner = NULL, lease_expires_at = NULL, completed_at = ?, "
+            "updated_at = ? WHERE id = ? AND status != 'completed'",
+            (
+                json.dumps(result),
+                json.dumps(scores),
+                json.dumps(score_reasons),
+                now,
+                now,
+                item_id,
+            ),
+        )
+        await self._db.commit()
+
+    async def mark_evaluation_item_failed(self, item_id: str, error: dict) -> None:
+        now = datetime.now(_UTC).isoformat()
+        await self._db.execute(
+            "UPDATE evaluation_items "
+            "SET status = 'failed', last_error = ?, lease_owner = NULL, "
+            "lease_expires_at = NULL, completed_at = ?, updated_at = ? "
+            "WHERE id = ? AND status != 'completed'",
+            (json.dumps(error), now, now, item_id),
+        )
+        await self._db.commit()
+
+    async def release_evaluation_item_for_retry(
+        self, item_id: str, error: dict
+    ) -> None:
+        now = datetime.now(_UTC).isoformat()
+        await self._db.execute(
+            "UPDATE evaluation_items "
+            "SET status = 'queued', last_error = ?, lease_owner = NULL, "
+            "lease_expires_at = NULL, updated_at = ? "
+            "WHERE id = ? AND status = 'running'",
+            (json.dumps(error), now, item_id),
+        )
+        await self._db.commit()
+
+    def _aggregate_item_scores(self, completed: list[dict]) -> dict:
+        metric_names = (
+            "faithfulness",
+            "answer_relevancy",
+            "context_precision",
+            "context_recall",
+        )
+        aggregate = {}
+        for name in metric_names:
+            values = [
+                item["scores"].get(name)
+                for item in completed
+                if item["scores"] and item["scores"].get(name) is not None
+            ]
+            aggregate[name] = round(sum(values) / len(values), 4) if values else None
+        return aggregate
+
+    async def finalize_evaluation_if_terminal(self, eval_id: str) -> bool:
+        items = await self.list_evaluation_items(eval_id)
+        if not items:
+            return False
+        if any(item["status"] in {"queued", "running"} for item in items):
+            return False
+
+        completed = [item for item in items if item["status"] == "completed"]
+        failed = [item for item in items if item["status"] == "failed"]
+        now = datetime.now(_UTC).isoformat()
+        if completed:
+            status = "completed" if not failed else "completed_with_failures"
+            aggregate = self._aggregate_item_scores(completed)
+            results = [
+                item["result"] | {"scores": item["scores"]} for item in completed
+            ]
+            error = None if not failed else f"failed_items={len(failed)}"
+            await self._db.execute(
+                "UPDATE evaluations "
+                "SET status = ?, aggregate_scores = ?, results = ?, error = ?, "
+                "completed_at = ? WHERE id = ? AND status NOT IN "
+                "('completed', 'completed_with_failures', 'failed')",
+                (
+                    status,
+                    json.dumps(aggregate),
+                    json.dumps(results),
+                    error,
+                    now,
+                    eval_id,
+                ),
+            )
+        else:
+            await self._db.execute(
+                "UPDATE evaluations "
+                "SET status = 'failed', error = ?, completed_at = ? "
+                "WHERE id = ? AND status != 'failed'",
+                ("all evaluation items failed", now, eval_id),
+            )
+        await self._db.commit()
+        return True
+
+    async def count_evaluation_items_by_status(self, eval_id: str) -> dict[str, int]:
+        cursor = await self._db.execute(
+            "SELECT status, COUNT(*) AS count FROM evaluation_items "
+            "WHERE evaluation_id = ? GROUP BY status",
+            (eval_id,),
+        )
+        rows = await cursor.fetchall()
+        return {row["status"]: row["count"] for row in rows}
 
     def _row_to_dict(self, row, *, include_results: bool = True) -> dict:
         """Shared row → dict conversion for evaluation rows."""
@@ -479,3 +734,17 @@ class EvalDB:
         )
         row = await cursor.fetchone()
         return int(row["count"])
+
+    async def reset_expired_running_items(self, max_age_seconds: float) -> int:
+        now = datetime.now(_UTC)
+        cutoff = (now - timedelta(seconds=max_age_seconds)).isoformat()
+        cursor = await self._db.execute(
+            "UPDATE evaluation_items "
+            "SET status = 'queued', lease_owner = NULL, lease_expires_at = NULL, "
+            "updated_at = ? "
+            "WHERE status = 'running' AND lease_expires_at < ? "
+            "AND attempt_count < max_attempts",
+            (now.isoformat(), cutoff),
+        )
+        await self._db.commit()
+        return cursor.rowcount

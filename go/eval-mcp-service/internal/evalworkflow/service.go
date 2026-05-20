@@ -114,6 +114,7 @@ type RunEvidence struct {
 	AgeSeconds      int64           `json:"age_seconds,omitempty"`
 	ResultCount     int             `json:"result_count"`
 	AggregateScores *evalapi.Scores `json:"aggregate_scores,omitempty"`
+	ItemCounts      map[string]int  `json:"item_counts,omitempty"`
 	NextSteps       []string        `json:"next_steps"`
 }
 
@@ -355,7 +356,7 @@ func (s *Service) WaitForRun(ctx context.Context, evalID string) (WaitResult, er
 		}
 		backoff = pollInterval
 		latest = run
-		if run.Status == "completed" || run.Status == "failed" {
+		if isTerminalRunStatus(run.Status) {
 			return WaitResult{Run: run}, nil
 		}
 
@@ -417,6 +418,7 @@ func (s *Service) RunEvidence(ctx context.Context, evalID string) (RunEvidence, 
 		Config:          run.Config,
 		ResultCount:     len(run.Results),
 		AggregateScores: run.AggregateScores,
+		ItemCounts:      run.ItemCounts,
 	}
 	if run.Status == "running" {
 		if createdAt, err := time.Parse(time.RFC3339, run.CreatedAt); err == nil {
@@ -435,7 +437,13 @@ func (s *Service) RunEvidence(ctx context.Context, evalID string) (RunEvidence, 
 
 func runEvidenceNextSteps(evidence RunEvidence) []string {
 	switch evidence.Status {
-	case "completed":
+	case "completed", "completed_with_failures":
+		if evidence.Status == "completed_with_failures" {
+			return []string{
+				"Use get_worst_eval_cases or triage_rag_regression to inspect partial successful results.",
+				"Inspect item_counts and runtime evidence before deciding on a candidate.",
+			}
+		}
 		return []string{
 			"Use get_worst_eval_cases to inspect the lowest-scoring queries.",
 			"Use compare_eval_runs or summarize_eval_experiment before deciding on a candidate.",
@@ -545,8 +553,8 @@ func (s *Service) SummarizeExperiment(ctx context.Context, experimentID string) 
 		if err != nil {
 			return ExperimentSummary{}, fmt.Errorf("get run %q (%s): %w", runLabel.Label, runLabel.EvaluationID, err)
 		}
-		if run.Status != "completed" {
-			return ExperimentSummary{}, fmt.Errorf("summarize requires completed runs; %s=%s", run.ID, run.Status)
+		if !isComparableRunStatus(run.Status) {
+			return ExperimentSummary{}, fmt.Errorf("summarize requires completed or completed_with_failures runs; %s=%s", run.ID, run.Status)
 		}
 		labeledRun := LabeledRun{Label: runLabel.Label, Run: run}
 		if i == 0 {
@@ -641,14 +649,22 @@ func (s *Service) requireCompletedRuns(ctx context.Context, ids []string) error 
 		if err != nil {
 			return fmt.Errorf("get run %q: %w", id, err)
 		}
-		if run.Status != "completed" {
+		if !isComparableRunStatus(run.Status) {
 			invalid = append(invalid, fmt.Sprintf("%s=%s", id, run.Status))
 		}
 	}
 	if len(invalid) > 0 {
-		return fmt.Errorf("compare requires completed runs; invalid statuses: %s", strings.Join(invalid, ", "))
+		return fmt.Errorf("compare requires completed or completed_with_failures runs; invalid statuses: %s", strings.Join(invalid, ", "))
 	}
 	return nil
+}
+
+func isTerminalRunStatus(status string) bool {
+	return status == "completed" || status == "completed_with_failures" || status == "failed"
+}
+
+func isComparableRunStatus(status string) bool {
+	return status == "completed" || status == "completed_with_failures"
 }
 
 func (s *Service) resolveLabels(ctx context.Context, experimentID string, labels []string) ([]string, error) {

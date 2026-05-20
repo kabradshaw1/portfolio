@@ -1,29 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: eval
+  name: eval-worker
   namespace: ai-services
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: eval
+      app: eval-worker
   template:
     metadata:
       labels:
-        app: eval
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8000"
-        prometheus.io/path: "/metrics"
+        app: eval-worker
     spec:
       imagePullSecrets:
         - name: ghcr-secret
       containers:
-        - name: eval
+        - name: eval-worker
           image: ghcr.io/kabradshaw1/portfolio/eval:latest
-          ports:
-            - containerPort: 8000
+          command: ["python", "-m", "app.worker"]
           envFrom:
             - configMapRef:
                 name: eval-config
@@ -44,13 +39,6 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
       volumes:
         - name: eval-data
           persistentVolumeClaim:

@@ -198,6 +198,13 @@ func TestGetEvaluationAndCompare(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":     "eval-1",
 				"status": "completed",
+				"item_counts": map[string]int{
+					"queued":    0,
+					"running":   0,
+					"completed": 2,
+					"failed":    1,
+					"total":     3,
+				},
 				"aggregate_scores": map[string]float64{
 					"context_precision": 0.42,
 				},
@@ -231,6 +238,9 @@ func TestGetEvaluationAndCompare(t *testing.T) {
 	}
 	if run.AggregateScores == nil || run.AggregateScores.ContextPrecision == nil || *run.AggregateScores.ContextPrecision != 0.42 {
 		t.Fatalf("run = %#v", run)
+	}
+	if run.ItemCounts["failed"] != 1 || run.ItemCounts["total"] != 3 {
+		t.Fatalf("item counts = %#v", run.ItemCounts)
 	}
 	if len(run.Results) != 1 || run.Results[0].ScoreReasons["faithfulness"] != "answer is grounded in the retrieved context" {
 		t.Fatalf("score reasons = %#v", run.Results)
