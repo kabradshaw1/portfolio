@@ -1,7 +1,7 @@
 # RAG Eval Readiness Gate Design
 
 Date: 2026-05-20
-Status: Draft for review
+Status: Approved for implementation planning
 
 ## TL;DR
 
