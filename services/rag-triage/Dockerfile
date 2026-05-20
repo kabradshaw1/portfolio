@@ -8,10 +8,9 @@ WORKDIR /app
 COPY rag-triage/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY shared/ ./shared/
 COPY rag-triage/app/ ./app/
 
-ENV PYTHONPATH=/app:/app/shared
+ENV PYTHONPATH=/app
 
 RUN useradd --create-home appuser
 USER appuser
