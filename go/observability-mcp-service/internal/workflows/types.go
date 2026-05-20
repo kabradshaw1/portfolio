@@ -39,6 +39,20 @@ type SourceError struct {
 	Message   string `json:"message"`
 }
 
+type CaptureOptions struct {
+	IncidentKey   string `json:"incident_key,omitempty"`
+	IncidentTitle string `json:"incident_title,omitempty"`
+	Severity      string `json:"severity,omitempty"`
+	Service       string `json:"service,omitempty"`
+	Persist       *bool  `json:"persist,omitempty"`
+}
+
+type HistoryMetadata struct {
+	IncidentKey string `json:"incident_key,omitempty"`
+	SnapshotID  int64  `json:"snapshot_id,omitempty"`
+	Warning     string `json:"warning,omitempty"`
+}
+
 type EvidenceBundle struct {
 	Tool     string                       `json:"tool"`
 	Status   string                       `json:"status"`
@@ -50,6 +64,7 @@ type EvidenceBundle struct {
 	Findings []Finding                    `json:"findings"`
 	Partial  bool                         `json:"partial"`
 	Errors   []SourceError                `json:"errors"`
+	History  *HistoryMetadata             `json:"history,omitempty"`
 }
 
 func NewBundle(tool, duration string) EvidenceBundle {

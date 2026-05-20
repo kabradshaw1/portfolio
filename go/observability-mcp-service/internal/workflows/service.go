@@ -2,9 +2,14 @@ package workflows
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
 
+	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/history"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/observability"
 )
 
@@ -26,6 +31,9 @@ type Service struct {
 	jaeger     Jaeger
 	maxLogs    int
 	now        func() time.Time
+
+	historyStore history.Store
+	autoCapture  bool
 }
 
 func NewService(prometheus Prometheus, loki Loki, jaeger Jaeger, maxLogs int) *Service {
@@ -35,50 +43,62 @@ func NewService(prometheus Prometheus, loki Loki, jaeger Jaeger, maxLogs int) *S
 	return &Service{prometheus: prometheus, loki: loki, jaeger: jaeger, maxLogs: maxLogs, now: func() time.Time { return time.Now().UTC() }}
 }
 
-func (s *Service) GetSystemHealth(ctx context.Context, window time.Duration) EvidenceBundle {
+func (s *Service) WithHistory(store history.Store, autoCapture bool) *Service {
+	s.historyStore = store
+	s.autoCapture = autoCapture
+	return s
+}
+
+func (s *Service) GetSystemHealth(ctx context.Context, window time.Duration, capture CaptureOptions) EvidenceBundle {
 	b := s.bundle("get_system_health", window)
 	s.addPrometheusSignals(ctx, &b, systemHealthQueries)
 	s.finalize(&b)
+	s.maybeRecordSnapshot(ctx, &b, capture)
 	return b
 }
 
-func (s *Service) InvestigateCheckout(ctx context.Context, window time.Duration) EvidenceBundle {
+func (s *Service) InvestigateCheckout(ctx context.Context, window time.Duration, capture CaptureOptions) EvidenceBundle {
 	b := s.bundle("investigate_checkout", window)
 	s.addPrometheusSignals(ctx, &b, checkoutQueries)
 	s.addLogs(ctx, &b, []string{"go-order-service", "go-cart-service", "go-payment-service", "go-product-service"}, "")
 	s.finalize(&b)
+	s.maybeRecordSnapshot(ctx, &b, capture)
 	return b
 }
 
-func (s *Service) InvestigateAIPipeline(ctx context.Context, window time.Duration) EvidenceBundle {
+func (s *Service) InvestigateAIPipeline(ctx context.Context, window time.Duration, capture CaptureOptions) EvidenceBundle {
 	b := s.bundle("investigate_ai_pipeline", window)
 	s.addPrometheusSignals(ctx, &b, aiPipelineQueries)
 	s.addLogs(ctx, &b, []string{"go-ai-service", "chat", "ingestion", "debug", "eval"}, "")
 	s.finalize(&b)
+	s.maybeRecordSnapshot(ctx, &b, capture)
 	return b
 }
 
-func (s *Service) InvestigateEvalRun(ctx context.Context, window time.Duration, evalID string) EvidenceBundle {
+func (s *Service) InvestigateEvalRun(ctx context.Context, window time.Duration, evalID string, capture CaptureOptions) EvidenceBundle {
 	b := s.bundle("investigate_eval_run", window)
 	s.addPrometheusSignals(ctx, &b, evalRunQueries(evalID))
 	s.addLogs(ctx, &b, []string{"eval"}, evalID)
 	s.finalize(&b)
+	s.maybeRecordSnapshot(ctx, &b, capture)
 	return b
 }
 
-func (s *Service) InvestigateStreamingAnalytics(ctx context.Context, window time.Duration) EvidenceBundle {
+func (s *Service) InvestigateStreamingAnalytics(ctx context.Context, window time.Duration, capture CaptureOptions) EvidenceBundle {
 	b := s.bundle("investigate_streaming_analytics", window)
 	s.addPrometheusSignals(ctx, &b, streamingAnalyticsQueries)
 	s.addLogs(ctx, &b, []string{"go-analytics-service"}, "")
 	s.finalize(&b)
+	s.maybeRecordSnapshot(ctx, &b, capture)
 	return b
 }
 
-func (s *Service) GetServiceEvidence(ctx context.Context, service string, window time.Duration, traceID string) EvidenceBundle {
+func (s *Service) GetServiceEvidence(ctx context.Context, service string, window time.Duration, traceID string, capture CaptureOptions) EvidenceBundle {
 	b := s.bundle("get_service_evidence", window)
 	if !AllowedService(service) {
 		b.AddError("input", "validate_service", fmt.Sprintf("service %q is not allowlisted", service))
 		s.finalize(&b)
+		s.maybeRecordSnapshot(ctx, &b, capture)
 		return b
 	}
 	s.addPrometheusSignals(ctx, &b, serviceQueries(service))
@@ -87,7 +107,29 @@ func (s *Service) GetServiceEvidence(ctx context.Context, service string, window
 		s.addTrace(ctx, &b, traceID)
 	}
 	s.finalize(&b)
+	s.maybeRecordSnapshot(ctx, &b, capture)
 	return b
+}
+
+func (s *Service) ListIncidents(ctx context.Context, filter history.ListFilter) ([]history.IncidentSummary, error) {
+	if s.historyStore == nil {
+		return nil, errors.New("history store is disabled")
+	}
+	return s.historyStore.ListIncidents(ctx, filter)
+}
+
+func (s *Service) GetIncidentHistory(ctx context.Context, key string) (history.IncidentHistory, error) {
+	if s.historyStore == nil {
+		return history.IncidentHistory{}, errors.New("history store is disabled")
+	}
+	return s.historyStore.GetIncidentHistory(ctx, key)
+}
+
+func (s *Service) AddIncidentNote(ctx context.Context, input history.AddNoteInput) (history.Event, error) {
+	if s.historyStore == nil {
+		return history.Event{}, errors.New("history store is disabled")
+	}
+	return s.historyStore.AddIncidentNote(ctx, input)
 }
 
 func (s *Service) SearchLogs(ctx context.Context, service string, window time.Duration, pattern string) EvidenceBundle {
@@ -117,6 +159,104 @@ func (s *Service) bundle(tool string, window time.Duration) EvidenceBundle {
 	b := NewBundle(tool, window.String())
 	b.Window = Window{From: now.Add(-window), To: now, Duration: window.String()}
 	return b
+}
+
+func (s *Service) maybeRecordSnapshot(ctx context.Context, b *EvidenceBundle, capture CaptureOptions) {
+	if s.historyStore == nil {
+		return
+	}
+	shouldPersist := s.autoCapture || capture.IncidentKey != ""
+	if capture.Persist != nil {
+		shouldPersist = *capture.Persist
+	}
+	if !shouldPersist {
+		return
+	}
+	incidentKey := capture.IncidentKey
+	if incidentKey == "" {
+		incidentKey = derivedIncidentKey(b, capture)
+	}
+	bundleJSON, err := json.Marshal(b)
+	if err != nil {
+		b.History = &HistoryMetadata{IncidentKey: incidentKey, Warning: "marshal evidence bundle: " + err.Error()}
+		return
+	}
+	critical, warnings := countFindings(b.Findings)
+	snapshot, err := s.historyStore.RecordSnapshot(ctx, history.SnapshotInput{
+		IncidentKey:    incidentKey,
+		IncidentTitle:  capture.IncidentTitle,
+		Severity:       capture.Severity,
+		Service:        capture.Service,
+		Tool:           b.Tool,
+		WindowFrom:     b.Window.From,
+		WindowTo:       b.Window.To,
+		WindowDuration: b.Window.Duration,
+		Status:         b.Status,
+		Partial:        b.Partial,
+		CriticalCount:  critical,
+		WarningCount:   warnings,
+		SignalCount:    len(b.Signals),
+		LogCount:       len(b.Logs),
+		TraceCount:     len(b.Traces),
+		SourceStatuses: historySourceStatuses(b.Sources),
+		BundleJSON:     bundleJSON,
+	})
+	if err != nil {
+		b.History = &HistoryMetadata{IncidentKey: incidentKey, Warning: err.Error()}
+		return
+	}
+	b.History = &HistoryMetadata{IncidentKey: incidentKey, SnapshotID: snapshot.ID}
+}
+
+func derivedIncidentKey(b *EvidenceBundle, capture CaptureOptions) string {
+	scope := capture.Service
+	if scope == "" {
+		scope = "global"
+	}
+	return fmt.Sprintf("auto:%s:%s:%s", keyPart(b.Tool), keyPart(scope), b.Window.To.UTC().Format("20060102T150405Z"))
+}
+
+func keyPart(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	var out strings.Builder
+	previousDash := false
+	for _, r := range value {
+		writeDash := false
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			out.WriteRune(r)
+			previousDash = false
+		case r == '-' || r == '_' || unicode.IsSpace(r):
+			writeDash = true
+		}
+		if writeDash && out.Len() > 0 && !previousDash {
+			out.WriteByte('-')
+			previousDash = true
+		}
+	}
+	return strings.Trim(out.String(), "-")
+}
+
+func countFindings(findings []Finding) (int, int) {
+	var critical int
+	var warnings int
+	for _, finding := range findings {
+		switch finding.Severity {
+		case "critical":
+			critical++
+		case "warning":
+			warnings++
+		}
+	}
+	return critical, warnings
+}
+
+func historySourceStatuses(sources []SourceStatus) []history.SourceStatus {
+	statuses := make([]history.SourceStatus, 0, len(sources))
+	for _, source := range sources {
+		statuses = append(statuses, history.SourceStatus{Name: source.Name, Status: source.Status})
+	}
+	return statuses
 }
 
 func (s *Service) addPrometheusSignals(ctx context.Context, b *EvidenceBundle, queries []querySpec) {
