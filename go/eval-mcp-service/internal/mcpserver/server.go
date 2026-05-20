@@ -193,14 +193,19 @@ func getRAGCollectionConfigHandler(service EvalService) sdkmcp.ToolHandler {
 func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		var args struct {
-			DatasetID       string          `json:"dataset_id"`
-			Collection      string          `json:"collection"`
-			Notes           string          `json:"notes,omitempty"`
-			BaselineEvalID  string          `json:"baseline_eval_id,omitempty"`
-			Rerank          bool            `json:"rerank,omitempty"`
-			ExperimentID    string          `json:"experiment_id,omitempty"`
-			Label           string          `json:"label,omitempty"`
-			RetrievalConfig json.RawMessage `json:"retrieval_config,omitempty"`
+			DatasetID          string          `json:"dataset_id"`
+			Collection         string          `json:"collection"`
+			Notes              string          `json:"notes,omitempty"`
+			BaselineEvalID     string          `json:"baseline_eval_id,omitempty"`
+			Rerank             bool            `json:"rerank,omitempty"`
+			ExperimentID       string          `json:"experiment_id,omitempty"`
+			Label              string          `json:"label,omitempty"`
+			RetrievalConfig    json.RawMessage `json:"retrieval_config,omitempty"`
+			AnswerTier         string          `json:"answer_tier,omitempty"`
+			AnswerProvider     string          `json:"answer_provider,omitempty"`
+			AnswerBaseURL      string          `json:"answer_base_url,omitempty"`
+			AnswerModel        string          `json:"answer_model,omitempty"`
+			AnswerAPIKeySecret string          `json:"answer_api_key_secret,omitempty"`
 		}
 		if err := decodeArgs(req, &args); err != nil {
 			return toolError(err.Error()), nil
@@ -221,19 +226,47 @@ func startEvalRunHandler(service EvalService) sdkmcp.ToolHandler {
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
+		if err := validateAnswerModelArgs(args.AnswerProvider, args.AnswerModel, args.AnswerAPIKeySecret); err != nil {
+			return toolError(err.Error()), nil
+		}
 		in := evalworkflow.StartRunInput{
-			DatasetID:       args.DatasetID,
-			Collection:      args.Collection,
-			Notes:           args.Notes,
-			BaselineEvalID:  args.BaselineEvalID,
-			Rerank:          args.Rerank,
-			ExperimentID:    args.ExperimentID,
-			Label:           args.Label,
-			RetrievalConfig: retrievalConfig,
+			DatasetID:          args.DatasetID,
+			Collection:         args.Collection,
+			Notes:              args.Notes,
+			BaselineEvalID:     args.BaselineEvalID,
+			Rerank:             args.Rerank,
+			ExperimentID:       args.ExperimentID,
+			Label:              args.Label,
+			RetrievalConfig:    retrievalConfig,
+			AnswerTier:         args.AnswerTier,
+			AnswerProvider:     args.AnswerProvider,
+			AnswerBaseURL:      args.AnswerBaseURL,
+			AnswerModel:        args.AnswerModel,
+			AnswerAPIKeySecret: args.AnswerAPIKeySecret,
 		}
 		result, err := service.StartRun(ctx, in)
 		return resultOrError(result, err), nil
 	}
+}
+
+func validateAnswerModelArgs(provider, model, secret string) error {
+	provider = strings.TrimSpace(provider)
+	model = strings.TrimSpace(model)
+	secret = strings.TrimSpace(secret)
+	if provider == "" && model == "" && secret == "" {
+		return nil
+	}
+	if provider != "ollama" && provider != "openai" && provider != "anthropic" {
+		return fmt.Errorf("answer_provider must be ollama, openai, or anthropic")
+	}
+	if model == "" {
+		return fmt.Errorf("answer_model is required when answer_provider is set")
+	}
+	lowered := strings.ToLower(secret)
+	if strings.HasPrefix(lowered, "sk-") || strings.HasPrefix(lowered, "sk_") || strings.HasPrefix(lowered, "bearer ") || strings.HasPrefix(lowered, "api-") {
+		return fmt.Errorf("answer_api_key_secret must be an environment variable name")
+	}
+	return nil
 }
 
 func parseRetrievalConfig(raw json.RawMessage) (*evalapi.RetrievalConfig, error) {
@@ -542,7 +575,7 @@ func experimentIDSchema() json.RawMessage {
 }
 
 func startEvalRunSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"},"retrieval_config":{"type":"object","properties":{"top_k":{"type":"integer","minimum":1,"maximum":20}},"additionalProperties":false}},"required":["dataset_id","collection"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"},"retrieval_config":{"type":"object","properties":{"top_k":{"type":"integer","minimum":1,"maximum":20}},"additionalProperties":false},"answer_tier":{"type":"string"},"answer_provider":{"type":"string","enum":["ollama","openai","anthropic"]},"answer_base_url":{"type":"string"},"answer_model":{"type":"string"},"answer_api_key_secret":{"type":"string"}},"required":["dataset_id","collection"],"additionalProperties":false}`)
 }
 
 func waitEvalRunSchema() json.RawMessage {

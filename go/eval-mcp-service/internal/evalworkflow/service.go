@@ -67,14 +67,19 @@ type StartExperimentInput struct {
 }
 
 type StartRunInput struct {
-	DatasetID       string
-	Collection      string
-	Notes           string
-	BaselineEvalID  string
-	Rerank          bool
-	ExperimentID    string
-	Label           string
-	RetrievalConfig *evalapi.RetrievalConfig
+	DatasetID          string
+	Collection         string
+	Notes              string
+	BaselineEvalID     string
+	Rerank             bool
+	ExperimentID       string
+	Label              string
+	RetrievalConfig    *evalapi.RetrievalConfig
+	AnswerTier         string
+	AnswerProvider     string
+	AnswerBaseURL      string
+	AnswerModel        string
+	AnswerAPIKeySecret string
 }
 
 type StartRunResult struct {
@@ -247,14 +252,19 @@ func (s *Service) StartRun(ctx context.Context, in StartRunInput) (StartRunResul
 		return StartRunResult{}, err
 	}
 	resp, err := s.api.StartEvaluation(ctx, evalapi.StartEvaluationRequest{
-		DatasetID:       in.DatasetID,
-		Collection:      in.Collection,
-		Notes:           in.Notes,
-		BaselineEvalID:  in.BaselineEvalID,
-		Rerank:          in.Rerank,
-		ExperimentID:    in.ExperimentID,
-		ExperimentLabel: in.Label,
-		RetrievalConfig: in.RetrievalConfig,
+		DatasetID:          in.DatasetID,
+		Collection:         in.Collection,
+		Notes:              in.Notes,
+		BaselineEvalID:     in.BaselineEvalID,
+		Rerank:             in.Rerank,
+		ExperimentID:       in.ExperimentID,
+		ExperimentLabel:    in.Label,
+		RetrievalConfig:    in.RetrievalConfig,
+		AnswerTier:         in.AnswerTier,
+		AnswerProvider:     in.AnswerProvider,
+		AnswerBaseURL:      in.AnswerBaseURL,
+		AnswerModel:        in.AnswerModel,
+		AnswerAPIKeySecret: in.AnswerAPIKeySecret,
 	})
 	if err != nil {
 		return StartRunResult{}, err

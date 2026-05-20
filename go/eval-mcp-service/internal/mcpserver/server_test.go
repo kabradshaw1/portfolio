@@ -215,6 +215,48 @@ func TestStartEvalRunForwardsRetrievalConfig(t *testing.T) {
 	}
 }
 
+func TestStartEvalRunForwardsAnswerModelOverride(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":            "ds-1",
+		"collection":            "documents",
+		"answer_tier":           "efficient",
+		"answer_provider":       "openai",
+		"answer_base_url":       "https://api.openai.com/v1",
+		"answer_model":          "gpt-5.4-mini",
+		"answer_api_key_secret": "OPENAI_API_KEY",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	if fake.startRunInput.AnswerModel != "gpt-5.4-mini" {
+		t.Fatalf("answer model = %#v", fake.startRunInput)
+	}
+}
+
+func TestStartEvalRunRejectsRawAnswerSecret(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":            "ds-1",
+		"collection":            "documents",
+		"answer_provider":       "openai",
+		"answer_model":          "gpt-5.4-mini",
+		"answer_api_key_secret": "sk-test-secret",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected MCP tool error")
+	}
+	if got := textResult(t, result); !strings.Contains(got, "answer_api_key_secret must be an environment variable name") {
+		t.Fatalf("error = %q", got)
+	}
+}
+
 func TestStartEvalRunRejectsInvalidRetrievalConfig(t *testing.T) {
 	for _, topK := range []float64{0, 21} {
 		t.Run("top_k_range", func(t *testing.T) {
@@ -263,7 +305,7 @@ func TestStartEvalRunRejectsUnknownRetrievalConfigField(t *testing.T) {
 
 func TestStartEvalRunSchemaIncludesRetrievalConfig(t *testing.T) {
 	schema := string(startEvalRunSchema())
-	for _, want := range []string{"retrieval_config", "top_k"} {
+	for _, want := range []string{"retrieval_config", "top_k", "answer_tier", "answer_provider", "answer_base_url", "answer_model", "answer_api_key_secret"} {
 		if !strings.Contains(schema, want) {
 			t.Fatalf("schema missing %q: %s", want, schema)
 		}

@@ -44,14 +44,19 @@ func TestStartRunSendsExperimentAttachmentToEvalAPI(t *testing.T) {
 	topK := 3
 
 	got, err := svc.StartRun(ctx, StartRunInput{
-		DatasetID:       "dataset-1",
-		Collection:      "kb",
-		Notes:           "candidate notes",
-		ExperimentID:    "exp-7",
-		Label:           "candidate",
-		BaselineEvalID:  "eval-base",
-		Rerank:          true,
-		RetrievalConfig: &evalapi.RetrievalConfig{TopK: &topK},
+		DatasetID:          "dataset-1",
+		Collection:         "kb",
+		Notes:              "candidate notes",
+		ExperimentID:       "exp-7",
+		Label:              "candidate",
+		BaselineEvalID:     "eval-base",
+		Rerank:             true,
+		RetrievalConfig:    &evalapi.RetrievalConfig{TopK: &topK},
+		AnswerTier:         "efficient",
+		AnswerProvider:     "openai",
+		AnswerBaseURL:      "https://api.openai.com/v1",
+		AnswerModel:        "gpt-5.4-mini",
+		AnswerAPIKeySecret: "OPENAI_API_KEY",
 	})
 	if err != nil {
 		t.Fatalf("StartRun error: %v", err)
@@ -65,6 +70,9 @@ func TestStartRunSendsExperimentAttachmentToEvalAPI(t *testing.T) {
 	req := api.startRequests[0]
 	if req.ExperimentID != "exp-7" || req.ExperimentLabel != "candidate" {
 		t.Fatalf("StartEvaluation request = %#v", req)
+	}
+	if req.AnswerTier != "efficient" || req.AnswerProvider != "openai" || req.AnswerBaseURL != "https://api.openai.com/v1" || req.AnswerModel != "gpt-5.4-mini" || req.AnswerAPIKeySecret != "OPENAI_API_KEY" {
+		t.Fatalf("answer model override = %#v", req)
 	}
 	if req.RetrievalConfig == nil || req.RetrievalConfig.TopK == nil || *req.RetrievalConfig.TopK != 3 {
 		t.Fatalf("retrieval config = %#v", req.RetrievalConfig)
