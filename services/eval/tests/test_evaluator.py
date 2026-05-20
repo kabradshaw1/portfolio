@@ -359,6 +359,59 @@ def test_parse_judge_scores_rejects_missing_metric():
         parse_judge_scores('{"faithfulness": {"score": 0.5, "reason": "partial"}}')
 
 
+def test_parse_judge_scores_rejects_metric_that_is_not_object():
+    with pytest.raises(EvaluationError, match="faithfulness must be an object"):
+        parse_judge_scores(
+            json.dumps(
+                {
+                    "faithfulness": 0.5,
+                    "answer_relevancy": {"score": 0.8, "reason": "direct"},
+                }
+            )
+        )
+
+
+def test_parse_judge_scores_rejects_missing_score():
+    with pytest.raises(EvaluationError, match="missing faithfulness.score"):
+        parse_judge_scores(
+            json.dumps(
+                {
+                    "faithfulness": {"reason": "grounded"},
+                    "answer_relevancy": {"score": 0.8, "reason": "direct"},
+                }
+            )
+        )
+
+
+def test_parse_judge_scores_rejects_non_numeric_score():
+    with pytest.raises(EvaluationError, match="answer_relevancy.score must be numeric"):
+        parse_judge_scores(
+            json.dumps(
+                {
+                    "faithfulness": {"score": 0.7, "reason": "grounded"},
+                    "answer_relevancy": {"score": "high", "reason": "direct"},
+                }
+            )
+        )
+
+
+def test_parse_judge_scores_normalizes_non_string_reason():
+    scores = parse_judge_scores(
+        json.dumps(
+            {
+                "faithfulness": {"score": 0.7, "reason": ["grounded"]},
+                "answer_relevancy": {"score": 0.8, "reason": {"why": "direct"}},
+            }
+        )
+    )
+
+    assert scores == JudgeScores(
+        faithfulness=0.7,
+        answer_relevancy=0.8,
+        reasons={"faithfulness": "", "answer_relevancy": ""},
+    )
+
+
 @pytest.mark.asyncio
 @patch("app.evaluator.get_llm_provider")
 async def test_judge_generation_scores_acquires_generation_admission(
