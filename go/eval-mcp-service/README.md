@@ -150,6 +150,11 @@ secret source such as `~/.codex/env/eval-mcp.env`, or use `EVAL_API_TOKEN`
 instead. GitHub Actions secret values such as `SMOKE_GO_PASSWORD` are
 write-only; they can be rotated but not retrieved.
 
+DLQ replay tools are operator-gated by the eval API. Use operator credentials
+or an operator-scoped `EVAL_API_TOKEN` before calling `list_eval_item_dlq` or
+`replay_eval_item_dlq`. `replay_eval_item_dlq` is mutating and should only be
+run after explicit approval.
+
 CORS is normally irrelevant for this MCP server because it makes server-side
 HTTP requests from the local stdio process, not browser fetches. If MCP calls
 fail, check DNS, route paths, credentials, JWT validity, and eval API health
@@ -172,6 +177,8 @@ before changing CORS.
 - `get_eval_run_evidence`
 - `compare_eval_runs`
 - `get_worst_eval_cases`
+- `list_eval_item_dlq`
+- `replay_eval_item_dlq`
 - `triage_rag_regression`
 - `summarize_eval_experiment`
 - `record_eval_experiment_conclusion`

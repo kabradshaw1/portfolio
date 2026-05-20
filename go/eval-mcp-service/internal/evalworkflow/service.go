@@ -30,6 +30,8 @@ type API interface {
 	StartEvaluation(context.Context, evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error)
 	GetEvaluation(context.Context, string) (evalapi.EvaluationDetail, error)
 	CompareEvaluations(context.Context, []string) (evalapi.Comparison, error)
+	ListEvalItemDLQ(context.Context, int) (evalapi.DLQListResponse, error)
+	ReplayEvalItemDLQ(context.Context, evalapi.ReplayDLQItemRequest) (evalapi.ReplayDLQItemResponse, error)
 	CreateExperiment(context.Context, evalapi.CreateExperimentRequest) (evalapi.Experiment, error)
 	ListExperiments(context.Context) ([]evalapi.Experiment, error)
 	GetExperiment(context.Context, string) (evalapi.Experiment, error)
@@ -616,6 +618,14 @@ func (s *Service) RecordConclusion(ctx context.Context, in RecordConclusionInput
 		Evidence:   in.Evidence,
 	})
 	return err
+}
+
+func (s *Service) ListEvalItemDLQ(ctx context.Context, limit int) (evalapi.DLQListResponse, error) {
+	return s.api.ListEvalItemDLQ(ctx, limit)
+}
+
+func (s *Service) ReplayEvalItemDLQ(ctx context.Context, in evalapi.ReplayDLQItemRequest) (evalapi.ReplayDLQItemResponse, error) {
+	return s.api.ReplayEvalItemDLQ(ctx, in)
 }
 
 func waitTimeoutError(evalID string, timeout time.Duration, latest evalapi.EvaluationDetail) error {
