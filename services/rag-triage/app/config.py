@@ -1,4 +1,4 @@
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 METRIC_NAMES = {
@@ -39,6 +39,12 @@ class Settings(BaseSettings):
         if value <= 0:
             raise ValueError("limits must be positive")
         return value
+
+    @model_validator(mode="after")
+    def validate_default_limit_within_max(self) -> "Settings":
+        if self.default_limit > self.max_limit:
+            raise ValueError("default_limit cannot exceed max_limit")
+        return self
 
 
 settings = Settings()

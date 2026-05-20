@@ -45,19 +45,19 @@ class EvaluationDetail(BaseModel):
     status: str
     collection: str | None = None
     aggregate_scores: Scores | None = None
-    results: list[QueryResult] = Field(default_factory=list)
+    results: list[QueryResult] | None = None
     error: str | None = None
     created_at: str | None = None
     completed_at: str | None = None
     notes: str | None = None
-    config: dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any] | None = None
     baseline_eval_id: str | None = None
 
 
 class TriageEvalRunRequest(BaseModel):
     eval_id: str
     metric: MetricName | None = None
-    limit: int | None = None
+    limit: int | None = Field(default=None, ge=1, strict=True)
     include_observability: bool = False
 
 
@@ -65,7 +65,7 @@ class TriageComparisonRequest(BaseModel):
     baseline_eval_id: str
     candidate_eval_id: str
     metric: MetricName | None = None
-    limit: int | None = None
+    limit: int | None = Field(default=None, ge=1, strict=True)
     include_observability: bool = False
 
 

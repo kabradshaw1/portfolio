@@ -18,3 +18,12 @@ def test_metric_validation_rejects_unknown_default():
         assert "default_metric must be one of" in str(exc)
     else:
         raise AssertionError("expected invalid metric to raise")
+
+
+def test_default_limit_cannot_exceed_max_limit():
+    try:
+        Settings(default_limit=25, max_limit=20)
+    except ValueError as exc:
+        assert "default_limit cannot exceed max_limit" in str(exc)
+    else:
+        raise AssertionError("expected invalid limit relationship to raise")

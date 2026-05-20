@@ -45,6 +45,8 @@ class EvalClient:
             payload = response.json()
         except ValueError:
             return response.text[:256]
+        if not isinstance(payload, dict):
+            return str(payload)[:256]
         detail = payload.get("detail")
         if isinstance(detail, str):
             return detail
