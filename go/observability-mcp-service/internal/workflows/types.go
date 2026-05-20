@@ -47,6 +47,7 @@ type EvidenceBundle struct {
 	Signals  []Signal                     `json:"signals"`
 	Logs     []observability.LogLine      `json:"logs"`
 	Traces   []observability.TraceSummary `json:"traces"`
+	Alerts   observability.AlertSummary   `json:"alerts,omitempty"`
 	Findings []Finding                    `json:"findings"`
 	Partial  bool                         `json:"partial"`
 	Errors   []SourceError                `json:"errors"`
