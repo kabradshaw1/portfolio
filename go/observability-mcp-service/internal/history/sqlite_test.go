@@ -171,6 +171,36 @@ func TestRecordSnapshotDoesNotOverwriteIncidentLifecycleStatus(t *testing.T) {
 	}
 }
 
+func TestRecordSnapshotDoesNotOverwriteIncidentMetadataWithEmptyValues(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.RecordSnapshot(ctx, sampleSnapshot("checkout-warning")); err != nil {
+		t.Fatalf("RecordSnapshot() error = %v", err)
+	}
+
+	input := sampleSnapshot("checkout-warning")
+	input.IncidentTitle = ""
+	input.Severity = ""
+	input.Service = ""
+	if _, err := db.RecordSnapshot(ctx, input); err != nil {
+		t.Fatalf("second RecordSnapshot() error = %v", err)
+	}
+
+	history, err := db.GetIncidentHistory(ctx, "checkout-warning")
+	if err != nil {
+		t.Fatalf("GetIncidentHistory() error = %v", err)
+	}
+	if history.Incident.Title != "Checkout failures" {
+		t.Fatalf("incident title = %q, want preserved title", history.Incident.Title)
+	}
+	if history.Incident.Severity != "warning" {
+		t.Fatalf("incident severity = %q, want preserved severity", history.Incident.Severity)
+	}
+	if history.Incident.Service != "go-order-service" {
+		t.Fatalf("incident service = %q, want preserved service", history.Incident.Service)
+	}
+}
+
 func TestListIncidentsFiltersByStatusServiceSeverity(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()

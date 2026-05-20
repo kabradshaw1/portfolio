@@ -396,9 +396,9 @@ func upsertIncident(ctx context.Context, tx *sql.Tx, incident IncidentUpsert, no
 		INSERT INTO incidents (incident_key, title, status, severity, service, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(incident_key) DO UPDATE SET
-			title = excluded.title,
-			severity = excluded.severity,
-			service = excluded.service,
+			title = COALESCE(NULLIF(excluded.title, ''), incidents.title),
+			severity = COALESCE(NULLIF(excluded.severity, ''), incidents.severity),
+			service = COALESCE(NULLIF(excluded.service, ''), incidents.service),
 			updated_at = excluded.updated_at`,
 		incident.Key,
 		incident.Title,
