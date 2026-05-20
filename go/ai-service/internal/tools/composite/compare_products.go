@@ -80,14 +80,14 @@ func NewCompareProductsTool(c ProductCatalog, e EmbeddingSource) *compareProduct
 func (t *compareProductsTool) Name() string { return "compare_products" }
 
 func (t *compareProductsTool) Description() string {
-	return "Compares two or more products structurally and semantically. Returns shared and differing attributes, pairwise embedding similarity, and a short recommendation."
+	return "Compare two to five public catalog products structurally and semantically. Use when the user asks which product fits better. Do not use when they need account-specific orders, cart, or returns."
 }
 
 func (t *compareProductsTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"product_ids":{"type":"array","items":{"type":"string"},"minItems":2,"maxItems":5}
+			"product_ids":{"type":"array","description":"Two to five public catalog product ids to compare.","items":{"type":"string"},"minItems":2,"maxItems":5}
 		},
 		"required":["product_ids"]
 	}`)
