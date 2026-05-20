@@ -59,6 +59,11 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 		logger.Printf("observability MCP server running on stdio prometheus=%s loki=%s jaeger=%s", cfg.PrometheusURL, cfg.LokiURL, cfg.JaegerURL)
 	}
 	service := workflows.NewService(prom, loki, jaeger, cfg.MaxLogLines)
+	if cfg.UseGrafanaGateway() {
+		if grafana, ok := prom.(*observability.GrafanaClient); ok {
+			service.SetGrafanaAlerting(grafana)
+		}
+	}
 	return runServer(ctx, &app{service: service, cfg: cfg})
 }
 

@@ -164,6 +164,25 @@ func TestWaitForRunReturnsCompletedRun(t *testing.T) {
 	}
 }
 
+func TestWaitForRunReturnsCompletedWithFailuresRun(t *testing.T) {
+	ctx := context.Background()
+	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
+		"eval-1": {
+			{ID: "eval-1", Status: "running"},
+			{ID: "eval-1", Status: "completed_with_failures"},
+		},
+	}}
+	svc := newTestService(api)
+
+	got, err := svc.WaitForRun(ctx, "eval-1")
+	if err != nil {
+		t.Fatalf("WaitForRun error: %v", err)
+	}
+	if got.Run.Status != "completed_with_failures" || got.TimedOut {
+		t.Fatalf("WaitResult = %#v", got)
+	}
+}
+
 func TestWaitForRunBacksOffAfterRateLimit(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{
@@ -301,6 +320,30 @@ func TestRunEvidenceSummarizesStaleRunningRun(t *testing.T) {
 	}
 	if got.Config["chat"] == nil {
 		t.Fatalf("Config = %#v", got.Config)
+	}
+}
+
+func TestRunEvidenceIncludesPartialItemCounts(t *testing.T) {
+	ctx := context.Background()
+	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
+		"eval-1": {{
+			ID:         "eval-1",
+			Status:     "completed_with_failures",
+			ItemCounts: map[string]int{"completed": 3, "failed": 1, "total": 4},
+			Results:    []evalapi.QueryResult{queryResult("q", 0.5)},
+		}},
+	}}
+	svc := newTestService(api)
+
+	got, err := svc.RunEvidence(ctx, "eval-1")
+	if err != nil {
+		t.Fatalf("RunEvidence error: %v", err)
+	}
+	if got.ItemCounts["failed"] != 1 || got.ItemCounts["total"] != 4 {
+		t.Fatalf("ItemCounts = %#v", got.ItemCounts)
+	}
+	if len(got.NextSteps) == 0 || !strings.Contains(got.NextSteps[0], "partial successful results") {
+		t.Fatalf("NextSteps = %#v", got.NextSteps)
 	}
 }
 
@@ -485,7 +528,7 @@ func TestTriageRAGRegressionRejectsInvalidLimit(t *testing.T) {
 
 	_, err := svc.TriageRAGRegression(context.Background(), TriageInput{
 		EvalID: "eval-1",
-		Limit: 21,
+		Limit:  21,
 	})
 
 	if err == nil || !strings.Contains(err.Error(), "limit must be between 1 and 20 when provided") {
@@ -519,6 +562,22 @@ func TestCompareResolvesExperimentLabels(t *testing.T) {
 	}
 
 	if _, err := svc.Compare(ctx, CompareInput{ExperimentID: "exp-9", Labels: []string{"baseline", "candidate"}}); err != nil {
+		t.Fatalf("Compare error: %v", err)
+	}
+	if !reflect.DeepEqual(api.compareIDs, []string{"eval-base", "eval-candidate"}) {
+		t.Fatalf("CompareEvaluations IDs = %#v", api.compareIDs)
+	}
+}
+
+func TestCompareAllowsCompletedWithFailures(t *testing.T) {
+	ctx := context.Background()
+	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
+		"eval-base":      {{ID: "eval-base", Status: "completed"}},
+		"eval-candidate": {{ID: "eval-candidate", Status: "completed_with_failures"}},
+	}}
+	svc := newTestService(api)
+
+	if _, err := svc.Compare(ctx, CompareInput{EvalIDs: []string{"eval-base", "eval-candidate"}}); err != nil {
 		t.Fatalf("Compare error: %v", err)
 	}
 	if !reflect.DeepEqual(api.compareIDs, []string{"eval-base", "eval-candidate"}) {

@@ -21,6 +21,16 @@ class Settings(BaseSettings):
     eval_run_max_seconds: float = 900.0
     eval_stale_grace_seconds: float = 300.0
 
+    # RabbitMQ eval item worker
+    rabbitmq_url: str = ""
+    eval_item_queue: str = "eval.item.requested"
+    eval_item_dlq: str = "eval.item.requested.dlq"
+    eval_worker_prefetch: int = 2
+    eval_worker_concurrency: int = 2
+    eval_item_max_attempts: int = 3
+    eval_item_lease_seconds: float = 300.0
+    eval_stale_item_seconds: float = 900.0
+
     # Auth
     jwt_secret: str = ""
 

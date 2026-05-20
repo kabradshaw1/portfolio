@@ -20,12 +20,18 @@ type Jaeger interface {
 	Trace(context.Context, string) (observability.TraceSummary, error)
 }
 
+type GrafanaAlerting interface {
+	ActiveAlerts(context.Context) ([]observability.AlertInstance, error)
+	AlertRules(context.Context) ([]observability.AlertRule, error)
+}
+
 type Service struct {
-	prometheus Prometheus
-	loki       Loki
-	jaeger     Jaeger
-	maxLogs    int
-	now        func() time.Time
+	prometheus      Prometheus
+	loki            Loki
+	jaeger          Jaeger
+	grafanaAlerting GrafanaAlerting
+	maxLogs         int
+	now             func() time.Time
 }
 
 func NewService(prometheus Prometheus, loki Loki, jaeger Jaeger, maxLogs int) *Service {
@@ -35,9 +41,14 @@ func NewService(prometheus Prometheus, loki Loki, jaeger Jaeger, maxLogs int) *S
 	return &Service{prometheus: prometheus, loki: loki, jaeger: jaeger, maxLogs: maxLogs, now: func() time.Time { return time.Now().UTC() }}
 }
 
+func (s *Service) SetGrafanaAlerting(alerting GrafanaAlerting) {
+	s.grafanaAlerting = alerting
+}
+
 func (s *Service) GetSystemHealth(ctx context.Context, window time.Duration) EvidenceBundle {
 	b := s.bundle("get_system_health", window)
 	s.addPrometheusSignals(ctx, &b, systemHealthQueries)
+	s.addGrafanaAlerting(ctx, &b)
 	s.finalize(&b)
 	return b
 }
@@ -196,6 +207,58 @@ func (s *Service) addTrace(ctx context.Context, b *EvidenceBundle, traceID strin
 	}
 }
 
+func (s *Service) addGrafanaAlerting(ctx context.Context, b *EvidenceBundle) {
+	if s.grafanaAlerting == nil {
+		b.Sources = append(b.Sources, SourceStatus{Name: "grafana_alerting", Status: "skipped"})
+		return
+	}
+	alerts, err := s.grafanaAlerting.ActiveAlerts(ctx)
+	if err != nil {
+		b.AddError("grafana_alerting", "active_alerts", err.Error())
+		b.Sources = append(b.Sources, SourceStatus{Name: "grafana_alerting", Status: "error"})
+		return
+	}
+	rules, err := s.grafanaAlerting.AlertRules(ctx)
+	if err != nil {
+		b.AddError("grafana_alerting", "alert_rules", err.Error())
+		b.Sources = append(b.Sources, SourceStatus{Name: "grafana_alerting", Status: "error"})
+		return
+	}
+	b.Alerts = observability.AlertSummary{ActiveAlerts: alerts, Rules: matchingRules(alerts, rules)}
+	b.Sources = append(b.Sources, SourceStatus{Name: "grafana_alerting", Status: "ok"})
+	for _, alert := range alerts {
+		if alert.State == "active" || alert.State == "firing" {
+			title := "Grafana alert is firing"
+			if alert.Name != "" {
+				title = "Grafana alert is firing: " + alert.Name
+			}
+			b.Findings = append(b.Findings, Finding{Severity: "warning", Title: title, Evidence: alert.RuleUID})
+		}
+	}
+}
+
+func matchingRules(alerts []observability.AlertInstance, rules []observability.AlertRule) []observability.AlertRule {
+	if len(alerts) == 0 || len(rules) == 0 {
+		return nil
+	}
+	wanted := make(map[string]struct{}, len(alerts))
+	for _, alert := range alerts {
+		if alert.RuleUID != "" {
+			wanted[alert.RuleUID] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+	matched := make([]observability.AlertRule, 0, len(wanted))
+	for _, rule := range rules {
+		if _, ok := wanted[rule.UID]; ok {
+			matched = append(matched, rule)
+		}
+	}
+	return matched
+}
+
 func (s *Service) addMetricFindings(b *EvidenceBundle, signal Signal) {
 	if signal.Value == nil || *signal.Value <= 0 {
 		return
@@ -211,7 +274,7 @@ func (s *Service) addMetricFindings(b *EvidenceBundle, signal Signal) {
 }
 
 func (s *Service) finalize(b *EvidenceBundle) {
-	hasData := len(b.Signals) > 0 || len(b.Logs) > 0 || len(b.Traces) > 0
+	hasData := len(b.Signals) > 0 || len(b.Logs) > 0 || len(b.Traces) > 0 || len(b.Alerts.ActiveAlerts) > 0 || len(b.Alerts.Rules) > 0
 	b.Status = "unknown"
 	for _, finding := range b.Findings {
 		if finding.Severity == "critical" {

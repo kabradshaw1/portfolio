@@ -57,6 +57,40 @@ async def test_triage_eval_run_returns_worst_cases_first():
 
 
 @pytest.mark.asyncio
+async def test_triage_eval_run_uses_partial_results_for_completed_with_failures():
+    evaluation = EvaluationDetail(
+        id="eval-1",
+        dataset_id="dataset-1",
+        status="completed_with_failures",
+        error="failed_items=1",
+        aggregate_scores=Scores(context_precision=0.4),
+        results=[
+            QueryResult(
+                query="bad",
+                answer="a",
+                scores=Scores(context_precision=0.1, context_recall=0.9),
+            ),
+        ],
+        item_counts={"completed": 1, "failed": 1, "total": 2},
+    )
+    service = RAGTriageService(
+        eval_client=FakeEvalClient(evaluation),
+        default_metric="context_precision",
+        default_limit=5,
+        max_limit=20,
+    )
+
+    response = await service.triage_eval_run("eval-1", metric=None, limit=None)
+
+    assert response.status == "completed_with_failures"
+    assert response.cases[0].query == "bad"
+    assert response.diagnosis.primary_failure_mode == "retrieval_precision"
+    assert response.config["partial_results"] is True
+    assert response.config["eval_error"] == "failed_items=1"
+    assert response.config["item_counts"]["failed"] == 1
+
+
+@pytest.mark.asyncio
 async def test_failed_eval_run_is_runtime_or_config():
     evaluation = EvaluationDetail(
         id="eval-1",

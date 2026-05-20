@@ -127,6 +127,7 @@ type EvaluationDetail struct {
 	Notes           *string        `json:"notes"`
 	Config          map[string]any `json:"config"`
 	BaselineEvalID  *string        `json:"baseline_eval_id"`
+	ItemCounts      map[string]int `json:"item_counts"`
 }
 
 type Comparison struct {
