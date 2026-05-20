@@ -244,6 +244,42 @@ def test_start_evaluation_request_accepts_experiment_attachment():
     assert req.experiment_label == "rerank_on"
 
 
+def test_start_evaluation_accepts_answer_model_override():
+    req = StartEvaluationRequest(
+        dataset_id="ds-1",
+        answer_tier="efficient",
+        answer_provider="openai",
+        answer_base_url="https://api.openai.com/v1",
+        answer_model="gpt-5.4-mini",
+        answer_api_key_secret="OPENAI_API_KEY",
+    )
+
+    assert req.answer_tier == "efficient"
+    assert req.answer_provider == "openai"
+    assert req.answer_base_url == "https://api.openai.com/v1"
+    assert req.answer_model == "gpt-5.4-mini"
+    assert req.answer_api_key_secret == "OPENAI_API_KEY"
+
+
+def test_start_evaluation_rejects_unknown_answer_provider():
+    with pytest.raises(ValueError, match="answer_provider"):
+        StartEvaluationRequest(
+            dataset_id="ds-1",
+            answer_provider="unknown",
+            answer_model="model",
+        )
+
+
+def test_start_evaluation_rejects_raw_answer_secret_value():
+    with pytest.raises(ValueError, match="answer_api_key_secret"):
+        StartEvaluationRequest(
+            dataset_id="ds-1",
+            answer_provider="openai",
+            answer_model="gpt-5.4-mini",
+            answer_api_key_secret="sk-test-secret-value",
+        )
+
+
 def test_experiment_detail_includes_attached_runs():
     detail = ExperimentDetail(
         id="exp-1",
