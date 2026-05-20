@@ -104,6 +104,19 @@ func TestFromEnvOverrides(t *testing.T) {
 	}
 }
 
+func TestFromEnvReadsCorpusFixtureRoots(t *testing.T) {
+	t.Setenv("EVAL_API_TOKEN", "token")
+	t.Setenv("EVAL_MCP_CORPUS_FIXTURE_ROOTS", "/tmp/a"+string(os.PathListSeparator)+"/tmp/b")
+
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv returned error: %v", err)
+	}
+	if len(cfg.CorpusFixtureRoots) != 2 || cfg.CorpusFixtureRoots[0] != "/tmp/a" || cfg.CorpusFixtureRoots[1] != "/tmp/b" {
+		t.Fatalf("CorpusFixtureRoots = %#v", cfg.CorpusFixtureRoots)
+	}
+}
+
 func TestFromEnvStaticTokenBypassesAuthCredentials(t *testing.T) {
 	t.Setenv("EVAL_API_TOKEN", "token-123")
 	t.Setenv("EVAL_MCP_AUTH_EMAIL", "")
