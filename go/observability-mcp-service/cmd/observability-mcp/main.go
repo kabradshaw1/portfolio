@@ -10,6 +10,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/config"
+	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/history"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/mcpserver"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/observability"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/workflows"
@@ -59,6 +60,17 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 		logger.Printf("observability MCP server running on stdio prometheus=%s loki=%s jaeger=%s", cfg.PrometheusURL, cfg.LokiURL, cfg.JaegerURL)
 	}
 	service := workflows.NewService(prom, loki, jaeger, cfg.MaxLogLines)
+	if cfg.HistoryEnabled {
+		historyDB, err := history.Open(cfg.HistoryDBPath)
+		if err != nil {
+			return fmt.Errorf("history open: %w", err)
+		}
+		defer historyDB.Close()
+		if err := historyDB.Migrate(ctx); err != nil {
+			return fmt.Errorf("history migrate: %w", err)
+		}
+		service.WithHistory(historyDB, cfg.HistoryAutoCapture)
+	}
 	return runServer(ctx, &app{service: service, cfg: cfg})
 }
 
