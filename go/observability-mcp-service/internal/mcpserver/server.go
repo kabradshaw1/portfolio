@@ -10,6 +10,7 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/config"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/history"
+	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/management"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/workflows"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/resources/runbooks"
 )
@@ -27,6 +28,10 @@ type WorkflowService interface {
 	GetIncidentHistory(context.Context, string) (history.IncidentHistory, error)
 	AddIncidentNote(context.Context, history.AddNoteInput) (history.Event, error)
 	CompareEvidenceSnapshots(context.Context, int64, int64) (workflows.EvidenceComparison, error)
+	ListManagementActions(context.Context) ([]management.Action, error)
+	PreviewManagementAction(context.Context, management.ActionRequest) (management.ActionResult, error)
+	ExecuteManagementAction(context.Context, management.ActionRequest) (management.ActionResult, error)
+	ListManagementActionHistory(context.Context, history.ManagementActionFilter) ([]history.Event, error)
 }
 
 func New(service WorkflowService, cfg config.Config) *sdkmcp.Server {
@@ -43,6 +48,10 @@ func New(service WorkflowService, cfg config.Config) *sdkmcp.Server {
 	addTool(srv, "get_incident_history", "Return incident timeline and evidence summaries.", incidentHistorySchema(), incidentHistoryHandler(service))
 	addTool(srv, "add_incident_note", "Append an incident note and optionally transition status.", addIncidentNoteSchema(), addIncidentNoteHandler(service))
 	addTool(srv, "compare_evidence_windows", "Compare two persisted observability evidence snapshots.", compareEvidenceWindowsSchema(), compareEvidenceWindowsHandler(service))
+	addTool(srv, "list_management_actions", "List cataloged observability management actions.", listManagementActionsSchema(), listManagementActionsHandler(service))
+	addTool(srv, "preview_management_action", "Validate and preview a cataloged management action without executing it.", managementActionSchema(), previewManagementActionHandler(service))
+	addTool(srv, "execute_management_action", "Execute an allowed cataloged management action.", managementActionSchema(), executeManagementActionHandler(service))
+	addTool(srv, "get_management_action_history", "List persisted management action events.", managementActionHistorySchema(), managementActionHistoryHandler(service))
 	addResource(srv, "observability://runbooks/system-health", "System Health Runbook", "Signals and interpretations for system health.", runbookResourceHandler("observability://runbooks/system-health", "system-health"))
 	addResource(srv, "observability://runbooks/checkout", "Checkout Runbook", "Signals and interpretations for checkout incidents.", runbookResourceHandler("observability://runbooks/checkout", "checkout"))
 	addResource(srv, "observability://runbooks/ai-pipeline", "AI Pipeline Runbook", "Signals and interpretations for AI/RAG incidents.", runbookResourceHandler("observability://runbooks/ai-pipeline", "ai-pipeline"))
@@ -271,6 +280,79 @@ func compareEvidenceWindowsHandler(service WorkflowService) sdkmcp.ToolHandler {
 	}
 }
 
+func listManagementActionsHandler(service WorkflowService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var in struct{}
+		if err := decodeOptionalArgs(req, &in); err != nil {
+			return toolError(err.Error()), nil
+		}
+		result, err := service.ListManagementActions(ctx)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(result), nil
+	}
+}
+
+func previewManagementActionHandler(service WorkflowService) sdkmcp.ToolHandler {
+	return managementActionHandler(func(ctx context.Context, req management.ActionRequest) (management.ActionResult, error) {
+		return service.PreviewManagementAction(ctx, req)
+	})
+}
+
+func executeManagementActionHandler(service WorkflowService) sdkmcp.ToolHandler {
+	return managementActionHandler(func(ctx context.Context, req management.ActionRequest) (management.ActionResult, error) {
+		return service.ExecuteManagementAction(ctx, req)
+	})
+}
+
+func managementActionHandler(fn func(context.Context, management.ActionRequest) (management.ActionResult, error)) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var in management.ActionRequest
+		if err := decodeArgs(req, &in); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if in.ActionID == "" {
+			return toolError("action_id is required"), nil
+		}
+		result, err := fn(ctx, in)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(result), nil
+	}
+}
+
+func managementActionHistoryHandler(service WorkflowService) sdkmcp.ToolHandler {
+	type input struct {
+		IncidentKey string `json:"incident_key,omitempty"`
+		ActionID    string `json:"action_id,omitempty"`
+		Status      string `json:"status,omitempty"`
+		Decision    string `json:"decision,omitempty"`
+		Limit       int    `json:"limit,omitempty"`
+	}
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var in input
+		if err := decodeOptionalArgs(req, &in); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if in.Limit > 100 {
+			return toolError("limit must be <= 100"), nil
+		}
+		result, err := service.ListManagementActionHistory(ctx, history.ManagementActionFilter{
+			IncidentKey: in.IncidentKey,
+			ActionID:    in.ActionID,
+			Status:      in.Status,
+			Decision:    in.Decision,
+			Limit:       in.Limit,
+		})
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(result), nil
+	}
+}
+
 func runbookResourceHandler(uri, name string) sdkmcp.ResourceHandler {
 	return func(context.Context, *sdkmcp.ReadResourceRequest) (*sdkmcp.ReadResourceResult, error) {
 		text, err := runbooks.Read(name)
@@ -344,4 +426,16 @@ func addIncidentNoteSchema() json.RawMessage {
 
 func compareEvidenceWindowsSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"baseline_snapshot_id":{"type":"integer"},"candidate_snapshot_id":{"type":"integer"}},"required":["baseline_snapshot_id"],"additionalProperties":false}`)
+}
+
+func listManagementActionsSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
+}
+
+func managementActionSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"action_id":{"type":"string"},"args":{"type":"object"},"incident_key":{"type":"string"},"incident_title":{"type":"string"},"severity":{"type":"string"},"service":{"type":"string"}},"required":["action_id"],"additionalProperties":false}`)
+}
+
+func managementActionHistorySchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"incident_key":{"type":"string"},"action_id":{"type":"string"},"status":{"type":"string"},"decision":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":100}},"additionalProperties":false}`)
 }

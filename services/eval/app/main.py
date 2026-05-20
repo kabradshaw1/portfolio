@@ -192,19 +192,46 @@ async def publish_evaluation_items(eval_id: str, items: list[dict]) -> None:
         eval_queue_publish_total.labels(status="success").inc()
 
 
+async def republish_evaluation_items(items: list[dict]) -> None:
+    if not items:
+        return
+    publisher = await get_item_publisher()
+    for item in items:
+        await publisher.publish(
+            EvalItemMessage(
+                evaluation_id=item["evaluation_id"],
+                item_id=item["id"],
+                item_index=item["item_index"],
+                attempt=item.get("attempt_count", 0) + 1,
+            )
+        )
+        eval_queue_publish_total.labels(status="success").inc()
+
+
 @app.on_event("startup")
 async def recover_stale_evaluations():
     db = await get_db()
     reset_items = await db.reset_expired_running_items(settings.eval_stale_item_seconds)
     if reset_items:
-        logger.warning("Recovered %s expired running evaluation item(s)", reset_items)
+        await republish_evaluation_items(reset_items)
+        logger.warning(
+            "Recovered %s expired running evaluation item(s)", len(reset_items)
+        )
+    failed_items = await db.fail_expired_running_items(settings.eval_stale_item_seconds)
+    finalized_eval_ids = {item["evaluation_id"] for item in failed_items}
+    for eval_id in finalized_eval_ids:
+        await db.finalize_evaluation_if_terminal(eval_id)
+    queued_items = await db.list_queued_items_for_republish(
+        settings.eval_stale_item_seconds
+    )
+    if queued_items:
+        await republish_evaluation_items(queued_items)
+        logger.warning(
+            "Republished %s stale queued evaluation item(s)", len(queued_items)
+        )
     max_age = settings.eval_run_max_seconds + settings.eval_stale_grace_seconds
     stale_count = await db.count_stale_running_evaluations(max_age)
     eval_stale_running_runs.set(stale_count)
-    recovered = await db.fail_stale_running_evaluations(max_age)
-    if recovered:
-        eval_stale_running_runs.set(max(stale_count - recovered, 0))
-        logger.warning("Recovered %s stale running evaluation(s)", recovered)
 
 
 @app.on_event("shutdown")
@@ -1102,23 +1129,62 @@ async def get_dashboard(
     )
 
 
+TERMINAL_EVALUATION_STATUSES = {
+    "completed",
+    "completed_with_failures",
+    "failed",
+    "cancelled",
+}
+
+
+def _item_counts_response(counts: dict) -> dict:
+    queued = counts.get("queued", 0)
+    running = counts.get("running", 0)
+    completed = counts.get("completed", 0)
+    failed = counts.get("failed", 0)
+    cancelled = counts.get("cancelled", 0)
+    return {
+        "queued": queued,
+        "running": running,
+        "completed": completed,
+        "failed": failed,
+        "cancelled": cancelled,
+        "retryable": counts.get("retryable", 0),
+        "stale": counts.get("stale", 0),
+        "total": queued + running + completed + failed + cancelled,
+    }
+
+
+async def _attach_item_counts(db: EvalDB, evaluation: dict) -> dict:
+    counts = await db.count_evaluation_items_by_status(
+        evaluation["id"], stale_seconds=settings.eval_stale_item_seconds
+    )
+    if isinstance(counts, dict) and counts:
+        item_counts = _item_counts_response(counts)
+        evaluation["item_counts"] = item_counts
+        evaluation["item_summary"] = item_counts
+    return evaluation
+
+
+@app.post("/evaluations/{eval_id}/cancel", dependencies=[Depends(enforce_eval_write)])
+async def cancel_evaluation(request: Request, eval_id: str):
+    db = await get_db()
+    evaluation = await db.get_evaluation(eval_id)
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+    if evaluation["status"] in TERMINAL_EVALUATION_STATUSES:
+        raise HTTPException(status_code=409, detail="evaluation is already terminal")
+    cancelled = await db.cancel_evaluation(eval_id)
+    if cancelled is None:
+        raise HTTPException(status_code=409, detail="evaluation is already terminal")
+    return await _attach_item_counts(db, cancelled)
+
+
 @app.get("/evaluations/{eval_id}", dependencies=[Depends(enforce_eval_read)])
 async def get_evaluation(request: Request, eval_id: str):
     db = await get_db()
     evaluation = await db.get_evaluation(eval_id)
     if not evaluation:
         raise HTTPException(status_code=404, detail="Evaluation not found")
-    counts = await db.count_evaluation_items_by_status(eval_id)
-    if not isinstance(counts, dict):
-        counts = {}
-    if counts:
-        item_counts = {
-            "queued": counts.get("queued", 0),
-            "running": counts.get("running", 0),
-            "completed": counts.get("completed", 0),
-            "failed": counts.get("failed", 0),
-            "total": sum(counts.values()),
-        }
-        evaluation["item_counts"] = item_counts
-        evaluation["item_summary"] = item_counts
+    evaluation = await _attach_item_counts(db, evaluation)
     return evaluation

@@ -51,7 +51,7 @@ class Settings(BaseSettings):
 
     # Prompt versioning — selects which template in app.prompt.PROMPTS is active.
     # Validated in self.validate() to fail fast on typos.
-    prompt_version: str = "v1-baseline"
+    prompt_version: str = "v2-grounded"
 
     def get_llm_base_url(self) -> str:
         if self.llm_provider == "ollama":

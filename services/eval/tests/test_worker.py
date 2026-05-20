@@ -15,6 +15,14 @@ class FakeDB:
             "attempt_count": 0,
             "max_attempts": 3,
         }
+        self.evaluation = {
+            "id": "eval-1",
+            "status": "running",
+            "collection": "documents",
+            "config": {"effective_retrieval_config": {"top_k": 5}},
+        }
+        self.cancelled = None
+        self.running = None
         self.completed = None
         self.failed = None
         self.finalized = False
@@ -24,14 +32,13 @@ class FakeDB:
         return self.item
 
     async def get_evaluation(self, eval_id):
-        return {
-            "id": eval_id,
-            "collection": "documents",
-            "config": {"effective_retrieval_config": {"top_k": 5}},
-        }
+        return self.evaluation | {"id": eval_id}
 
     async def mark_evaluation_running(self, eval_id):
         self.running = eval_id
+
+    async def mark_evaluation_item_cancelled(self, item_id):
+        self.cancelled = item_id
 
     async def mark_evaluation_item_completed(
         self, item_id, result, scores, score_reasons
@@ -74,6 +81,70 @@ async def test_item_processor_completes_claimed_item():
     assert db.completed[0] == "item-1"
     assert db.finalized is True
     assert db.failed is None
+
+
+@pytest.mark.asyncio
+async def test_item_processor_acks_cancelled_run_without_claiming_item():
+    db = FakeDB()
+    db.evaluation["status"] = "cancelled"
+    db.claimed = False
+
+    async def claim_evaluation_item(item_id, worker_id, lease_seconds):
+        db.claimed = True
+        return db.item
+
+    db.claim_evaluation_item = claim_evaluation_item
+
+    async def evaluate_item(**kwargs):
+        raise AssertionError("cancelled work must not be evaluated")
+
+    processor = ItemProcessor(db=db, evaluate_item_fn=evaluate_item, worker_id="w1")
+
+    await processor.process(
+        EvalItemMessage(
+            evaluation_id="eval-1",
+            item_id="item-1",
+            item_index=0,
+            attempt=1,
+        )
+    )
+
+    assert db.claimed is False
+    assert db.cancelled == "item-1"
+    assert db.failed is None
+
+
+@pytest.mark.asyncio
+async def test_item_processor_marks_item_cancelled_when_stage_check_observes_cancel():
+    db = FakeDB()
+    calls = 0
+
+    async def get_evaluation(eval_id):
+        nonlocal calls
+        calls += 1
+        status = "running" if calls <= 2 else "cancelled"
+        return db.evaluation | {"id": eval_id, "status": status}
+
+    db.get_evaluation = get_evaluation
+
+    async def evaluate_item(**kwargs):
+        await kwargs["check_cancelled"]()
+        raise AssertionError("check_cancelled should raise first")
+
+    processor = ItemProcessor(db=db, evaluate_item_fn=evaluate_item, worker_id="w1")
+
+    await processor.process(
+        EvalItemMessage(
+            evaluation_id="eval-1",
+            item_id="item-1",
+            item_index=0,
+            attempt=1,
+        )
+    )
+
+    assert db.cancelled == "item-1"
+    assert db.failed is None
+    assert not hasattr(db, "released")
 
 
 @pytest.mark.asyncio

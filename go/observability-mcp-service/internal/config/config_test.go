@@ -159,6 +159,60 @@ func TestFromEnvHistoryOverrides(t *testing.T) {
 	}
 }
 
+func TestFromEnvManagementDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+	if cfg.ManagementActionsEnabled {
+		t.Fatal("expected management actions disabled by default")
+	}
+	if cfg.ManagementAllowHighRisk {
+		t.Fatal("expected high-risk management actions disabled by default")
+	}
+	if cfg.ManagementActionTimeout != 45*time.Minute {
+		t.Fatalf("ManagementActionTimeout = %s, want 45m", cfg.ManagementActionTimeout)
+	}
+	if cfg.ManagementMaxOutputBytes != 32768 {
+		t.Fatalf("ManagementMaxOutputBytes = %d, want 32768", cfg.ManagementMaxOutputBytes)
+	}
+}
+
+func TestFromEnvManagementOverrides(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("OBS_MANAGEMENT_ACTIONS_ENABLED", "true")
+	t.Setenv("OBS_MANAGEMENT_ALLOW_HIGH_RISK", "true")
+	t.Setenv("OBS_MANAGEMENT_ACTION_TIMEOUT", "45s")
+	t.Setenv("OBS_MANAGEMENT_MAX_OUTPUT_BYTES", "4096")
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+	if !cfg.ManagementActionsEnabled || !cfg.ManagementAllowHighRisk {
+		t.Fatalf("management bool overrides not applied: %+v", cfg)
+	}
+	if cfg.ManagementActionTimeout != 45*time.Second {
+		t.Fatalf("ManagementActionTimeout = %s", cfg.ManagementActionTimeout)
+	}
+	if cfg.ManagementMaxOutputBytes != 4096 {
+		t.Fatalf("ManagementMaxOutputBytes = %d", cfg.ManagementMaxOutputBytes)
+	}
+}
+
+func TestFromEnvRejectsInvalidManagementConfig(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("OBS_MANAGEMENT_ACTION_TIMEOUT", "0s")
+	if _, err := FromEnv(); err == nil {
+		t.Fatal("expected non-positive management timeout error")
+	}
+	clearEnv(t)
+	t.Setenv("OBS_MANAGEMENT_MAX_OUTPUT_BYTES", "0")
+	if _, err := FromEnv(); err == nil {
+		t.Fatal("expected non-positive management output cap error")
+	}
+}
+
 func TestFromEnvRejectsInvalidHistoryBool(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("OBS_HISTORY_ENABLED", "maybe")
@@ -205,6 +259,10 @@ func clearEnv(t *testing.T) {
 	t.Setenv("OBS_HISTORY_ENABLED", "")
 	t.Setenv("OBS_HISTORY_AUTO_CAPTURE", "")
 	t.Setenv("OBS_HISTORY_DB_PATH", "")
+	t.Setenv("OBS_MANAGEMENT_ACTIONS_ENABLED", "")
+	t.Setenv("OBS_MANAGEMENT_ALLOW_HIGH_RISK", "")
+	t.Setenv("OBS_MANAGEMENT_ACTION_TIMEOUT", "")
+	t.Setenv("OBS_MANAGEMENT_MAX_OUTPUT_BYTES", "")
 }
 
 func TestValidateWindow(t *testing.T) {
