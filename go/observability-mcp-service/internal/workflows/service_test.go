@@ -347,6 +347,66 @@ func TestGetTraceAddsTraceSummary(t *testing.T) {
 	}
 }
 
+func TestGetSystemHealthIncludesGrafanaAlerting(t *testing.T) {
+	alerting := &fakeGrafanaAlerting{
+		alerts: []observability.AlertInstance{{
+			Name:    "HighErrorRate",
+			State:   "active",
+			RuleUID: "rule-123",
+			Labels:  map[string]string{"alertname": "HighErrorRate"},
+		}},
+		rules: []observability.AlertRule{{
+			UID:   "rule-123",
+			Title: "HighErrorRate",
+		}},
+	}
+	service := NewService(&fakePrometheus{}, nil, nil, 10)
+	service.SetGrafanaAlerting(alerting)
+
+	got := service.GetSystemHealth(context.Background(), time.Minute, CaptureOptions{})
+
+	if len(got.Alerts.ActiveAlerts) != 1 {
+		t.Fatalf("alerts = %+v", got.Alerts)
+	}
+	if len(got.Alerts.Rules) != 1 {
+		t.Fatalf("rules = %+v", got.Alerts)
+	}
+	if got.Status != "warning" {
+		t.Fatalf("status = %s", got.Status)
+	}
+	if !slices.Contains(sourceStatuses(got.Sources), "grafana_alerting:ok") {
+		t.Fatalf("sources = %+v", got.Sources)
+	}
+}
+
+func TestGetSystemHealthSkipsGrafanaAlertingWhenUnconfigured(t *testing.T) {
+	service := NewService(&fakePrometheus{}, nil, nil, 10)
+	got := service.GetSystemHealth(context.Background(), time.Minute, CaptureOptions{})
+	if len(got.Alerts.ActiveAlerts) != 0 || len(got.Alerts.Rules) != 0 {
+		t.Fatalf("alerts = %+v", got.Alerts)
+	}
+	if !slices.Contains(sourceStatuses(got.Sources), "grafana_alerting:skipped") {
+		t.Fatalf("sources = %+v", got.Sources)
+	}
+}
+
+func TestGetSystemHealthGrafanaAlertingFailureIsPartial(t *testing.T) {
+	service := NewService(&fakePrometheus{}, nil, nil, 10)
+	service.SetGrafanaAlerting(&fakeGrafanaAlerting{err: errors.New("grafana down")})
+
+	got := service.GetSystemHealth(context.Background(), time.Minute, CaptureOptions{})
+
+	if !got.Partial {
+		t.Fatalf("bundle should be partial: %+v", got)
+	}
+	if len(got.Signals) == 0 {
+		t.Fatalf("prometheus evidence should remain: %+v", got)
+	}
+	if !slices.Contains(sourceStatuses(got.Sources), "grafana_alerting:error") {
+		t.Fatalf("sources = %+v", got.Sources)
+	}
+}
+
 type fakePrometheus struct {
 	queries []string
 	err     error
@@ -357,7 +417,7 @@ func (f *fakePrometheus) Query(_ context.Context, query string) ([]observability
 	if f.err != nil {
 		return nil, f.err
 	}
-	return []observability.MetricSample{{Metric: map[string]string{"service": "go-ai-service"}, Value: 1, Time: time.Now().UTC()}}, nil
+	return []observability.MetricSample{{Metric: map[string]string{"service": "go-ai-service"}, Value: 0, Time: time.Now().UTC()}}, nil
 }
 
 type fakeLoki struct {
@@ -427,6 +487,26 @@ func (f *fakeHistoryStore) GetSnapshot(_ context.Context, id int64) (history.Sna
 	return snapshot, nil
 }
 
+type fakeGrafanaAlerting struct {
+	alerts []observability.AlertInstance
+	rules  []observability.AlertRule
+	err    error
+}
+
+func (f *fakeGrafanaAlerting) ActiveAlerts(_ context.Context) ([]observability.AlertInstance, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.alerts, nil
+}
+
+func (f *fakeGrafanaAlerting) AlertRules(_ context.Context) ([]observability.AlertRule, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.rules, nil
+}
+
 func signalNames(signals []Signal) []string {
 	names := make([]string, 0, len(signals))
 	for _, signal := range signals {
@@ -462,4 +542,12 @@ func assertSummaryContains(t *testing.T, summaries []string, want string) {
 	if !slices.Contains(summaries, want) {
 		t.Fatalf("summary missing %q in %+v", want, summaries)
 	}
+}
+
+func sourceStatuses(sources []SourceStatus) []string {
+	statuses := make([]string, 0, len(sources))
+	for _, source := range sources {
+		statuses = append(statuses, source.Name+":"+source.Status)
+	}
+	return statuses
 }

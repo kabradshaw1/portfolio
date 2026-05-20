@@ -817,8 +817,8 @@ func TestEvalPromptHandler(t *testing.T) {
 			t.Fatalf("expected prompt to mention %s, got %q", want, text.Text)
 		}
 	}
-	if !strings.Contains(strings.ToLower(text.Text), strings.ToLower("Compare only completed runs")) {
-		t.Fatalf("expected prompt to mention Compare only completed runs, got %q", text.Text)
+	if !strings.Contains(strings.ToLower(text.Text), strings.ToLower("compare completed or completed_with_failures runs")) {
+		t.Fatalf("expected prompt to mention partial run comparison, got %q", text.Text)
 	}
 	if !strings.Contains(strings.ToLower(text.Text), strings.ToLower("Keep the judge model fixed")) {
 		t.Fatalf("expected prompt to mention Keep the judge model fixed, got %q", text.Text)
@@ -845,8 +845,8 @@ func TestWorkflowResourceHandler(t *testing.T) {
 			t.Fatalf("expected workflow resource to mention %s, got %q", want, content.Text)
 		}
 	}
-	if !strings.Contains(strings.ToLower(content.Text), strings.ToLower("Compare only completed runs")) {
-		t.Fatalf("expected workflow resource to mention Compare only completed runs, got %q", content.Text)
+	if !strings.Contains(strings.ToLower(content.Text), strings.ToLower("compare completed or completed_with_failures runs")) {
+		t.Fatalf("expected workflow resource to mention partial run comparison, got %q", content.Text)
 	}
 	if !strings.Contains(strings.ToLower(content.Text), strings.ToLower("Keep the judge model fixed")) {
 		t.Fatalf("expected workflow resource to mention Keep the judge model fixed, got %q", content.Text)

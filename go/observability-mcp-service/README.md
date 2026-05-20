@@ -27,7 +27,7 @@ codex mcp add observability -- zsh -lc 'source ~/.codex/env/observability-mcp.en
 | `OBS_LOKI_URL` | `http://localhost:3100` | Loki HTTP API endpoint. |
 | `OBS_JAEGER_URL` | `http://localhost:16686` | Jaeger query API endpoint. |
 | `OBS_GRAFANA_URL` | unset | Grafana gateway endpoint for Prometheus and Loki datasource proxy mode. |
-| `OBS_GRAFANA_TOKEN` | unset | Optional Grafana service account token. |
+| `OBS_GRAFANA_TOKEN` | unset | Optional Grafana service account token. When alert discovery is enabled, this token only needs read access to alerting metadata. |
 | `OBS_GRAFANA_ACCESS_CLIENT_ID` | unset | Cloudflare Access service-token client ID for Grafana gateway mode. |
 | `OBS_GRAFANA_ACCESS_CLIENT_SECRET` | unset | Cloudflare Access service-token client secret for Grafana gateway mode. |
 | `OBS_GRAFANA_PROMETHEUS_DS_UID` | `PBFA97CFB590B2093` | Grafana Prometheus datasource UID for gateway mode. |
@@ -46,6 +46,12 @@ codex mcp add observability -- zsh -lc 'source ~/.codex/env/observability-mcp.en
 For normal development-machine usage, prefer Grafana gateway mode for
 Prometheus and Loki instead of direct local ports. Jaeger trace lookup still
 uses `OBS_JAEGER_URL` until Grafana trace proxy support is validated.
+
+When `OBS_GRAFANA_URL` is configured, `get_system_health` also performs
+read-only Grafana alert discovery. It queries active alert instances and
+provisioned alert rule metadata, then returns compact metadata in the evidence
+bundle. The MCP does not silence alerts, edit rules, restart workloads, or run
+ops commands.
 
 Create an uncommitted local env file:
 
@@ -106,9 +112,10 @@ Runbook resources are exposed under:
 ## Safety
 
 External observability and runtime systems remain read-only. The service queries
-metrics, logs, traces, and embedded runbook text; it does not call Kubernetes
-write APIs, roll out or restart workloads, scale deployments, purge queues,
-silence alerts, mutate external databases, or read secrets.
+metrics, logs, traces, embedded runbook text, and Grafana alert metadata; it
+does not call Kubernetes write APIs, roll out or restart workloads, scale
+deployments, purge queues, silence alerts, mutate external databases, edit
+Grafana rules, or read secrets.
 
 When incident history is enabled, the service may write investigation snapshots
 and `add_incident_note` entries to the configured local SQLite history database.

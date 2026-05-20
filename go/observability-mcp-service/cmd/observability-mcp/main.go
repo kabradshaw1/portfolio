@@ -72,6 +72,11 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 			service.WithHistory(historyDB, cfg.HistoryAutoCapture)
 		}
 	}
+	if cfg.UseGrafanaGateway() {
+		if grafana, ok := prom.(*observability.GrafanaClient); ok {
+			service.SetGrafanaAlerting(grafana)
+		}
+	}
 	return runServer(ctx, &app{service: service, cfg: cfg})
 }
 

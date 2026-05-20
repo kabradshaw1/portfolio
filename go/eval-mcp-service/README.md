@@ -46,9 +46,9 @@ model fixed across candidates.
 
 For model ladder experiments, keep the judge model fixed and vary
 `answer_tier`, `answer_provider`, `answer_model`, `retrieval_config`, and
-`rerank`. Start one run at a time, wait for completion, compare only completed
-runs, inspect worst cases, and record a conclusion only after the user approves
-it.
+`rerank`. Start one run at a time, wait for completion, compare completed or
+`completed_with_failures` runs, inspect worst cases, and record a conclusion
+only after the user approves it.
 
 ## Run Directly
 
@@ -133,8 +133,9 @@ falling back to deterministic exponential backoff capped by
 
 Use `get_eval_run_evidence` when a run is still running, failed, or timed out
 from `wait_for_eval_run`. It returns the durable eval API state, captured RAG
-configuration, result counts, stale-running detection, and next-step guidance.
-For runtime evidence, follow its guidance with the observability MCP
+configuration, result counts, item counts when available, stale-running
+detection, and next-step guidance. For runtime evidence, follow its guidance
+with the observability MCP
 `investigate_eval_run` tool, which queries eval metrics and eval-id-scoped
 logs.
 
@@ -180,6 +181,7 @@ golden questions and expected answers. Collections are Qdrant retrieval corpora.
 Use curated fixture tools to create missing datasets, then validate the chosen
 RAG collection before starting baseline and rerank runs.
 
-Use `triage_rag_regression` after a completed eval run when worst cases need a
-single triage packet. Provide `baseline_eval_id` to compare a candidate against
-the baseline, and set `include_observability` when runtime evidence is needed.
+Use `triage_rag_regression` after a completed or `completed_with_failures` eval
+run when worst cases need a single triage packet. Provide `baseline_eval_id` to
+compare a candidate against the baseline, and set `include_observability` when
+runtime evidence is needed.
