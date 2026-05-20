@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/corpusfixture"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/fixturecatalog"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/ingestionapi"
@@ -107,6 +111,64 @@ func TestStartRunRejectsMissingCollection(t *testing.T) {
 	service := New(api, fakeIngestion{collections: []ingestionapi.Collection{{Name: "documents"}}}, fakeFixtures{}, time.Second, time.Minute)
 	_, err := service.StartRun(context.Background(), StartRunInput{DatasetID: "ds-1", Collection: "missing"})
 	if err == nil || !strings.Contains(err.Error(), `retrieval collection "missing" does not exist`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestProvisionRAGCorpusUploadsFixtureAndWritesManifest(t *testing.T) {
+	root := t.TempDir()
+	pdfPath := filepath.Join(root, "laptop.pdf")
+	if err := os.WriteFile(pdfPath, []byte("%PDF-1.4\nlaptop"), 0o644); err != nil {
+		t.Fatalf("write pdf: %v", err)
+	}
+	ingestion := &recordingCorpusIngestion{
+		collections: []ingestionapi.Collection{},
+		uploadResponse: ingestionapi.IngestResponse{
+			Status:        "success",
+			DocumentID:    "doc-1",
+			ChunksCreated: 4,
+			Filename:      "laptop.pdf",
+		},
+	}
+	fixtures := fakeCorpusFixtures{fixture: corpusfixture.Fixture{
+		ID:                "product_catalog_v1",
+		Name:              "Product Catalog v1",
+		SourceHash:        "a1b2c3d4e5f6",
+		DefaultCollection: "eval_product_catalog_v1_a1b2c3d4",
+		Documents: []corpusfixture.Document{{
+			Path:   "laptop.pdf",
+			Abs:    pdfPath,
+			SHA256: "abc123",
+		}},
+		DocumentCount: 1,
+	}}
+	service := New(&fakeAPI{}, ingestion, fakeFixtures{}, time.Second, time.Minute).
+		WithCorpusFixtures(fixtures)
+
+	got, err := service.ProvisionRAGCorpus(context.Background(), ProvisionCorpusInput{
+		Fixture: "product_catalog_v1",
+	})
+	if err != nil {
+		t.Fatalf("ProvisionRAGCorpus returned error: %v", err)
+	}
+	if got.Collection != "eval_product_catalog_v1_a1b2c3d4" || got.ChunksCreated != 4 || got.FixtureHash != "a1b2c3d4e5f6" {
+		t.Fatalf("result = %#v", got)
+	}
+	if ingestion.uploadCollection != "eval_product_catalog_v1_a1b2c3d4" || ingestion.uploadFilename != "laptop.pdf" {
+		t.Fatalf("upload collection=%q filename=%q", ingestion.uploadCollection, ingestion.uploadFilename)
+	}
+	if ingestion.manifest["fixture_hash"] != "a1b2c3d4e5f6" {
+		t.Fatalf("manifest = %#v", ingestion.manifest)
+	}
+}
+
+func TestProvisionRAGCorpusRejectsUnsafeCollection(t *testing.T) {
+	service := New(&fakeAPI{}, fakeIngestion{}, fakeFixtures{}, time.Second, time.Minute)
+	_, err := service.ProvisionRAGCorpus(context.Background(), ProvisionCorpusInput{
+		Fixture:    "product_catalog_v1",
+		Collection: "documents",
+	})
+	if err == nil || !strings.Contains(err.Error(), "managed eval collection") {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -912,6 +974,22 @@ func (f fakeIngestion) GetCollectionConfig(_ context.Context, name string) (map[
 	return f.configs[name], nil
 }
 
+func (f fakeIngestion) UploadPDF(context.Context, string, string, []byte) (ingestionapi.IngestResponse, error) {
+	return ingestionapi.IngestResponse{}, nil
+}
+
+func (f fakeIngestion) PutCollectionManifest(context.Context, string, map[string]any) error {
+	return nil
+}
+
+func (f fakeIngestion) GetCollectionManifest(context.Context, string) (map[string]any, error) {
+	return nil, &ingestionapi.HTTPError{Method: http.MethodGet, Path: "/manifest", StatusCode: http.StatusNotFound}
+}
+
+func (f fakeIngestion) DeleteCollection(context.Context, string) error {
+	return nil
+}
+
 type fakeFixtures struct {
 	fixtures []fixturecatalog.Fixture
 	fixture  fixturecatalog.Fixture
@@ -919,6 +997,54 @@ type fakeFixtures struct {
 
 func (f fakeFixtures) List() ([]fixturecatalog.Fixture, error)     { return f.fixtures, nil }
 func (f fakeFixtures) Load(string) (fixturecatalog.Fixture, error) { return f.fixture, nil }
+
+type fakeCorpusFixtures struct {
+	fixtures []corpusfixture.Fixture
+	fixture  corpusfixture.Fixture
+}
+
+func (f fakeCorpusFixtures) List() ([]corpusfixture.Fixture, error) {
+	return f.fixtures, nil
+}
+
+func (f fakeCorpusFixtures) Load(string) (corpusfixture.Fixture, error) {
+	return f.fixture, nil
+}
+
+type recordingCorpusIngestion struct {
+	collections      []ingestionapi.Collection
+	manifest         map[string]any
+	uploadResponse   ingestionapi.IngestResponse
+	uploadCollection string
+	uploadFilename   string
+}
+
+func (r *recordingCorpusIngestion) ListCollections(context.Context) ([]ingestionapi.Collection, error) {
+	return r.collections, nil
+}
+
+func (r *recordingCorpusIngestion) GetCollectionConfig(context.Context, string) (map[string]any, error) {
+	return map[string]any{}, nil
+}
+
+func (r *recordingCorpusIngestion) UploadPDF(_ context.Context, collection, filename string, _ []byte) (ingestionapi.IngestResponse, error) {
+	r.uploadCollection = collection
+	r.uploadFilename = filename
+	return r.uploadResponse, nil
+}
+
+func (r *recordingCorpusIngestion) PutCollectionManifest(_ context.Context, _ string, manifest map[string]any) error {
+	r.manifest = manifest
+	return nil
+}
+
+func (r *recordingCorpusIngestion) GetCollectionManifest(context.Context, string) (map[string]any, error) {
+	return nil, &ingestionapi.HTTPError{Method: http.MethodGet, Path: "/manifest", StatusCode: http.StatusNotFound}
+}
+
+func (r *recordingCorpusIngestion) DeleteCollection(context.Context, string) error {
+	return nil
+}
 
 type fakeTriageAPI struct {
 	input  TriageInput
