@@ -45,3 +45,26 @@ func TestClientGetCollectionConfig(t *testing.T) {
 		t.Fatalf("unexpected config: %#v", got)
 	}
 }
+
+func TestClientListCollectionSources(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/collections/documents/sources" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"collection": "documents",
+			"sources": []map[string]any{
+				{"filename": "laptop.pdf", "chunks": 2},
+			},
+		})
+	}))
+	defer server.Close()
+
+	got, err := New(server.URL, "", server.Client()).ListCollectionSources(context.Background(), "documents")
+	if err != nil {
+		t.Fatalf("ListCollectionSources returned error: %v", err)
+	}
+	if len(got) != 1 || got[0].Filename != "laptop.pdf" || got[0].Chunks != 2 {
+		t.Fatalf("unexpected sources: %#v", got)
+	}
+}

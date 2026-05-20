@@ -99,6 +99,29 @@ type StartEvaluationResponse struct {
 	Status string `json:"status"`
 }
 
+type RAGReadinessRequest struct {
+	DatasetID       string           `json:"dataset_id"`
+	Collection      string           `json:"collection"`
+	Rerank          bool             `json:"rerank"`
+	RetrievalConfig *RetrievalConfig `json:"retrieval_config,omitempty"`
+	BaselineEvalID  string           `json:"baseline_eval_id,omitempty"`
+	ExperimentID    string           `json:"experiment_id,omitempty"`
+}
+
+type ReadinessFinding struct {
+	Code        string `json:"code"`
+	Message     string `json:"message"`
+	Remediation string `json:"remediation"`
+}
+
+type RAGReadinessResponse struct {
+	Status           string             `json:"status"`
+	BlockingFailures []ReadinessFinding `json:"blocking_failures"`
+	Warnings         []ReadinessFinding `json:"warnings"`
+	Evidence         map[string]any     `json:"evidence"`
+	NextSteps        []string           `json:"next_steps"`
+}
+
 type Scores struct {
 	Faithfulness     *float64 `json:"faithfulness"`
 	AnswerRelevancy  *float64 `json:"answer_relevancy"`
@@ -303,6 +326,14 @@ func (c *Client) StartEvaluation(ctx context.Context, body StartEvaluationReques
 	var response StartEvaluationResponse
 	if err := c.do(ctx, http.MethodPost, "/evaluations", body, &response); err != nil {
 		return StartEvaluationResponse{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) CheckRAGReadiness(ctx context.Context, in RAGReadinessRequest) (RAGReadinessResponse, error) {
+	var response RAGReadinessResponse
+	if err := c.do(ctx, http.MethodPost, "/readiness/rag", in, &response); err != nil {
+		return RAGReadinessResponse{}, err
 	}
 	return response, nil
 }
