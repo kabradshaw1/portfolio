@@ -378,6 +378,122 @@ func (d *DB) AddIncidentNote(ctx context.Context, input AddNoteInput) (Event, er
 	return event, nil
 }
 
+func (d *DB) RecordManagementAction(ctx context.Context, input ManagementActionInput) (Event, error) {
+	if input.IncidentKey == "" {
+		return Event{}, errors.New("incident key is required")
+	}
+	if input.ActionID == "" {
+		return Event{}, errors.New("action id is required")
+	}
+	if input.Summary == "" {
+		return Event{}, errors.New("summary is required")
+	}
+
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Event{}, fmt.Errorf("begin record management action transaction: %w", err)
+	}
+	defer rollback(tx)
+
+	if input.IncidentTitle == "" {
+		if _, err := getIncidentByKeyTx(ctx, tx, input.IncidentKey); err != nil {
+			return Event{}, errors.New("incident title is required for new incident")
+		}
+	}
+
+	now := time.Now().UTC()
+	incidentID, err := upsertIncident(ctx, tx, IncidentUpsert{
+		Key:      input.IncidentKey,
+		Title:    input.IncidentTitle,
+		Status:   StatusInvestigating,
+		Severity: input.Severity,
+		Service:  input.Service,
+	}, now)
+	if err != nil {
+		return Event{}, err
+	}
+	details, err := managementActionDetails(input)
+	if err != nil {
+		return Event{}, err
+	}
+	event, err := insertTimelineEvent(ctx, tx, incidentID, managementEventType(input.Status), input.Summary, details, now)
+	if err != nil {
+		return Event{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Event{}, fmt.Errorf("commit record management action transaction: %w", err)
+	}
+	return event, nil
+}
+
+func (d *DB) ListManagementActions(ctx context.Context, filter ManagementActionFilter) ([]Event, error) {
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = defaultListLimit
+	}
+	if limit > defaultListLimit {
+		limit = defaultListLimit
+	}
+	eventTypes := []string{
+		EventManagementActionPreviewed,
+		EventManagementActionStarted,
+		EventManagementActionCompleted,
+		EventManagementActionFailed,
+		EventManagementActionBlocked,
+	}
+	conditions := []string{"e.event_type IN (?, ?, ?, ?, ?)"}
+	args := []any{
+		eventTypes[0],
+		eventTypes[1],
+		eventTypes[2],
+		eventTypes[3],
+		eventTypes[4],
+	}
+	if filter.IncidentKey != "" {
+		conditions = append(conditions, "i.incident_key = ?")
+		args = append(args, filter.IncidentKey)
+	}
+	if filter.ActionID != "" {
+		conditions = append(conditions, "e.details LIKE ?")
+		args = append(args, `%`+jsonFilterFragment("action_id", filter.ActionID)+`%`)
+	}
+	if filter.Status != "" {
+		conditions = append(conditions, "e.details LIKE ?")
+		args = append(args, `%`+jsonFilterFragment("status", filter.Status)+`%`)
+	}
+	if filter.Decision != "" {
+		conditions = append(conditions, "e.details LIKE ?")
+		args = append(args, `%`+jsonFilterFragment("decision", filter.Decision)+`%`)
+	}
+	query := `
+		SELECT e.id, e.incident_id, e.event_type, e.summary, e.details, e.created_at
+		FROM timeline_events e
+		JOIN incidents i ON i.id = e.incident_id
+		WHERE ` + strings.Join(conditions, " AND ") + `
+		ORDER BY e.created_at DESC, e.id DESC
+		LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := d.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list management actions: %w", err)
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		event, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate management actions: %w", err)
+	}
+	return events, nil
+}
+
 func (d *DB) GetSnapshot(ctx context.Context, id int64) (Snapshot, error) {
 	row := d.db.QueryRowContext(ctx, snapshotSelectSQL()+` WHERE s.id = ?`, id)
 	snapshot, err := scanSnapshot(row)
@@ -388,6 +504,49 @@ func (d *DB) GetSnapshot(ctx context.Context, id int64) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	return snapshot, nil
+}
+
+func managementEventType(status string) string {
+	switch status {
+	case "previewed":
+		return EventManagementActionPreviewed
+	case "blocked":
+		return EventManagementActionBlocked
+	case "succeeded":
+		return EventManagementActionCompleted
+	case "failed", "timed_out":
+		return EventManagementActionFailed
+	default:
+		return EventManagementActionStarted
+	}
+}
+
+func managementActionDetails(input ManagementActionInput) (string, error) {
+	if len(input.DetailsJSON) == 0 {
+		data, err := json.Marshal(map[string]string{
+			"action_id": input.ActionID,
+			"risk_tier": input.RiskTier,
+			"decision":  input.Decision,
+			"status":    input.Status,
+		})
+		if err != nil {
+			return "", fmt.Errorf("marshal management action details: %w", err)
+		}
+		return string(data), nil
+	}
+	if !json.Valid(input.DetailsJSON) {
+		return "", errors.New("management action details must be valid JSON")
+	}
+	return string(input.DetailsJSON), nil
+}
+
+func jsonFilterFragment(key, value string) string {
+	encoded, err := json.Marshal(map[string]string{key: value})
+	if err != nil {
+		return ""
+	}
+	fragment := strings.TrimSuffix(strings.TrimPrefix(string(encoded), "{"), "}")
+	return fragment
 }
 
 func upsertIncident(ctx context.Context, tx *sql.Tx, incident IncidentUpsert, now time.Time) (int64, error) {
