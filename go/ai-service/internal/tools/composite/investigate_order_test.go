@@ -82,7 +82,7 @@ func TestVerdictPartialEvidenceFlagged(t *testing.T) {
 
 func TestInvestigateMyOrderToolEndToEnd(t *testing.T) {
 	tool := NewInvestigateMyOrderTool(EvidenceFetcher{
-		Order:   fakeOrderSource{data: OrderRecord{ID: "ord1", Status: "completed", TraceID: "t1"}},
+		Order:   fakeOrderSource{data: OrderRecord{ID: "ord1", Status: "completed", UserID: "user-1", TraceID: "t1"}},
 		Saga:    fakeSagaSource{data: SagaHistory{Step: "completed"}},
 		Payment: fakePaymentSource{data: PaymentRecord{StripeChargeID: "ch", WebhookReceived: true}},
 		Cart:    fakeCartSource{},
@@ -93,7 +93,7 @@ func TestInvestigateMyOrderToolEndToEnd(t *testing.T) {
 	if tool.Name() != "investigate_my_order" {
 		t.Fatalf("name: %s", tool.Name())
 	}
-	result, err := tool.Call(context.Background(), []byte(`{"order_id":"ord1"}`), "")
+	result, err := tool.Call(context.Background(), []byte(`{"order_id":"ord1"}`), "user-1")
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}

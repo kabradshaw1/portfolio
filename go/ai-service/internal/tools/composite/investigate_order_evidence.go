@@ -106,14 +106,15 @@ type EvidenceFetcher struct {
 // failure there returns a hard error. All other sources are best-effort
 // and contribute Partial=true on failure rather than aborting.
 func (f EvidenceFetcher) Fetch(ctx context.Context, orderID string) (EvidenceBundle, error) {
-	var bundle EvidenceBundle
-
 	order, err := f.Order.FetchOrder(ctx, orderID)
 	if err != nil {
-		return bundle, err
+		return EvidenceBundle{}, err
 	}
-	bundle.Order = order
+	return f.fetchWithOrder(ctx, orderID, order), nil
+}
 
+func (f EvidenceFetcher) fetchWithOrder(ctx context.Context, orderID string, order OrderRecord) EvidenceBundle {
+	bundle := EvidenceBundle{Order: order}
 	g, gctx := errgroup.WithContext(ctx)
 
 	var (
@@ -211,5 +212,5 @@ func (f EvidenceFetcher) Fetch(ctx context.Context, orderID string) (EvidenceBun
 	bundle.Logs = logs
 	bundle.Partial = partial
 	bundle.PartialReason = partialReasons
-	return bundle, nil
+	return bundle
 }
