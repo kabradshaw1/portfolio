@@ -104,6 +104,34 @@ class QdrantStore:
 
         return list(docs.values())
 
+    def list_sources(self, collection_name: str) -> list[dict]:
+        """Return distinct source filenames and chunk counts for a collection."""
+        if not self.client.collection_exists(collection_name):
+            raise ValueError(f"Collection {collection_name} not found")
+
+        start = time.perf_counter()
+        records, _ = self.client.scroll(
+            collection_name=collection_name,
+            limit=10000,
+            with_payload=True,
+            with_vectors=False,
+        )
+        QDRANT_OPERATION_DURATION.labels(
+            service="ingestion", operation="scroll_sources"
+        ).observe(time.perf_counter() - start)
+
+        counts: dict[str, int] = {}
+        for record in records:
+            filename = record.payload.get("filename") if record.payload else None
+            if not filename:
+                continue
+            counts[filename] = counts.get(filename, 0) + 1
+
+        return [
+            {"filename": filename, "chunks": count}
+            for filename, count in sorted(counts.items())
+        ]
+
     def delete_document(self, document_id: str) -> int:
         records, _ = self.client.scroll(
             collection_name=self.collection_name,

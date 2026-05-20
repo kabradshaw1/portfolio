@@ -354,6 +354,49 @@ def test_get_collection_config_404_when_unknown(mock_get_meta_db):
     assert "not found" in response.json()["detail"]
 
 
+@patch("app.main.get_store")
+def test_list_collection_sources(mock_get_store):
+    mock_store = MagicMock()
+    mock_store.list_sources.return_value = [
+        {"filename": "laptop.pdf", "chunks": 2},
+        {"filename": "monitor.pdf", "chunks": 1},
+    ]
+    mock_get_store.return_value = mock_store
+
+    response = client.get("/collections/documents/sources")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "collection": "documents",
+        "sources": [
+            {"filename": "laptop.pdf", "chunks": 2},
+            {"filename": "monitor.pdf", "chunks": 1},
+        ],
+    }
+    mock_store.list_sources.assert_called_once_with("documents")
+
+
+@patch("app.main.get_store")
+def test_list_collection_sources_rejects_invalid_collection_name(mock_get_store):
+    response = client.get("/collections/bad name/sources")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Invalid collection name"
+    mock_get_store.assert_not_called()
+
+
+@patch("app.main.get_store")
+def test_list_collection_sources_not_found(mock_get_store):
+    mock_store = MagicMock()
+    mock_store.list_sources.side_effect = ValueError("Collection missing not found")
+    mock_get_store.return_value = mock_store
+
+    response = client.get("/collections/missing/sources")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Collection missing not found"
+
+
 @patch("app.main.get_meta_db")
 @patch("app.main.get_sparse_encoder")
 @patch("app.main.get_store")

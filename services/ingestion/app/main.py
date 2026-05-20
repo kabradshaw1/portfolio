@@ -171,6 +171,24 @@ async def get_collection_config(
     return cfg
 
 
+@app.get("/collections/{name}/sources")
+@limiter.limit("30/minute")
+async def list_collection_sources(
+    request: Request, name: str, user_id: str = Depends(require_auth)
+):
+    if not _COLLECTION_NAME_RE.match(name):
+        raise HTTPException(status_code=422, detail="Invalid collection name")
+    store = get_store()
+    try:
+        sources = store.list_sources(name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Qdrant error listing collection sources: %s", e, exc_info=True)
+        raise HTTPException(status_code=503, detail="Vector store unavailable")
+    return {"collection": name, "sources": sources}
+
+
 @app.post("/ingest")
 @limiter.limit("5/minute")
 async def ingest(
