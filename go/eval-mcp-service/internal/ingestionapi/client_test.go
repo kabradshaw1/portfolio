@@ -3,8 +3,10 @@ package ingestionapi
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -51,6 +53,12 @@ func TestClientUploadPDF(t *testing.T) {
 		if r.Method != http.MethodPost || r.URL.Path != "/ingest" || r.URL.Query().Get("collection") != "eval_product_catalog_v1_a1b2c3d4" {
 			t.Fatalf("unexpected request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
 		}
+		if r.Header.Get("Authorization") != "Bearer token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
+			t.Fatalf("Content-Type = %q", r.Header.Get("Content-Type"))
+		}
 		if err := r.ParseMultipartForm(10 << 20); err != nil {
 			t.Fatalf("ParseMultipartForm: %v", err)
 		}
@@ -61,6 +69,13 @@ func TestClientUploadPDF(t *testing.T) {
 		defer file.Close()
 		if header.Filename != "laptop.pdf" {
 			t.Fatalf("filename = %q", header.Filename)
+		}
+		data, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("ReadAll: %v", err)
+		}
+		if string(data) != "%PDF-1.4" {
+			t.Fatalf("uploaded data = %q", data)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "chunks_created": 3})
 	}))
@@ -82,6 +97,16 @@ func TestClientManifestRoundTripMethods(t *testing.T) {
 		}
 		switch r.Method {
 		case http.MethodPut:
+			if r.Header.Get("Content-Type") != "application/json" {
+				t.Fatalf("Content-Type = %q", r.Header.Get("Content-Type"))
+			}
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("Decode: %v", err)
+			}
+			if body["fixture_id"] != "product_catalog_v1" {
+				t.Fatalf("body = %#v", body)
+			}
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]string{"status": "stored"})
 		case http.MethodGet:
@@ -103,5 +128,22 @@ func TestClientManifestRoundTripMethods(t *testing.T) {
 	}
 	if got["fixture_id"] != "product_catalog_v1" {
 		t.Fatalf("manifest = %#v", got)
+	}
+}
+
+func TestClientDeleteCollection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/collections/eval_product_catalog_v1_a1b2c3d4" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	if err := New(server.URL, "token", server.Client()).DeleteCollection(context.Background(), "eval_product_catalog_v1_a1b2c3d4"); err != nil {
+		t.Fatalf("DeleteCollection returned error: %v", err)
 	}
 }
