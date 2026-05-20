@@ -46,6 +46,7 @@ type EvalService interface {
 	CreateDatasetFromFixture(context.Context, string) (evalworkflow.CreateDatasetResult, error)
 	ListRAGCollections(context.Context) ([]ingestionapi.Collection, error)
 	GetRAGCollectionConfig(context.Context, string) (map[string]any, error)
+	CheckReadiness(context.Context, evalworkflow.ReadinessInput) (evalapi.RAGReadinessResponse, error)
 	StartRun(context.Context, evalworkflow.StartRunInput) (evalworkflow.StartRunResult, error)
 	WaitForRun(context.Context, string) (evalworkflow.WaitResult, error)
 	AttachRun(context.Context, string, string, string, string) error
@@ -72,6 +73,7 @@ func New(service EvalService) *sdkmcp.Server {
 	addTool(srv, "create_eval_dataset", "Create an eval API dataset from a curated repo fixture.", createEvalDatasetSchema(), createEvalDatasetHandler(service))
 	addTool(srv, "list_rag_collections", "List Qdrant retrieval collections from ingestion.", emptySchema(), listRAGCollectionsHandler(service))
 	addTool(srv, "get_rag_collection_config", "Fetch ingestion metadata for one RAG collection.", ragCollectionConfigSchema(), getRAGCollectionConfigHandler(service))
+	addTool(srv, "check_rag_eval_readiness", "Check whether a dataset and retrieval collection are ready for a RAG eval run.", checkRAGReadinessSchema(), checkRAGReadinessHandler(service))
 	addTool(srv, "start_eval_run", "Start an eval API run and optionally attach it to an experiment label.", startEvalRunSchema(), startEvalRunHandler(service))
 	addTool(srv, "wait_for_eval_run", "Poll one eval run until completion, failure, or timeout.", waitEvalRunSchema(), waitForEvalRunHandler(service))
 	addTool(srv, "attach_eval_run", "Attach an existing eval run ID to a local experiment label.", attachEvalRunSchema(), attachEvalRunHandler(service))
@@ -205,6 +207,41 @@ func getRAGCollectionConfigHandler(service EvalService) sdkmcp.ToolHandler {
 			return toolError("name is required"), nil
 		}
 		result, err := service.GetRAGCollectionConfig(ctx, args.Name)
+		return resultOrError(result, err), nil
+	}
+}
+
+func checkRAGReadinessHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var args struct {
+			DatasetID       string          `json:"dataset_id"`
+			Collection      string          `json:"collection"`
+			Rerank          bool            `json:"rerank,omitempty"`
+			RetrievalConfig json.RawMessage `json:"retrieval_config,omitempty"`
+			BaselineEvalID  string          `json:"baseline_eval_id,omitempty"`
+			ExperimentID    string          `json:"experiment_id,omitempty"`
+		}
+		if err := decodeArgs(req, &args); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if strings.TrimSpace(args.DatasetID) == "" {
+			return toolError("dataset_id is required"), nil
+		}
+		if strings.TrimSpace(args.Collection) == "" {
+			return toolError("collection is required"), nil
+		}
+		retrievalConfig, err := parseRetrievalConfig(args.RetrievalConfig)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		result, err := service.CheckReadiness(ctx, evalworkflow.ReadinessInput{
+			DatasetID:       args.DatasetID,
+			Collection:      args.Collection,
+			Rerank:          args.Rerank,
+			RetrievalConfig: retrievalConfig,
+			BaselineEvalID:  args.BaselineEvalID,
+			ExperimentID:    args.ExperimentID,
+		})
 		return resultOrError(result, err), nil
 	}
 }
@@ -616,7 +653,7 @@ func evalPromptHandler() sdkmcp.PromptHandler {
 			Description: "Start an agent-led RAG eval experiment.",
 			Messages: []*sdkmcp.PromptMessage{{
 				Role:    sdkmcp.Role("user"),
-				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it. Compare completed or partial runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion. For eval item runtime failures, use list_eval_item_dlq to inspect safe DLQ metadata; call replay_eval_item_dlq only after operator approval because it is mutating and requires operator credentials."},
+				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then call check_rag_eval_readiness before start_eval_experiment or start_eval_run. Treat blocked readiness as a stop condition and warning readiness as a caveated run condition. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it. Compare completed or partial runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion. For eval item runtime failures, use list_eval_item_dlq to inspect safe DLQ metadata; call replay_eval_item_dlq only after operator approval because it is mutating and requires operator credentials."},
 			}},
 		}, nil
 	}
@@ -643,9 +680,9 @@ Use this local MCP server to keep RAG eval experiments explicit and reproducible
 1. Start or resume local experiment state with start_eval_experiment, list_eval_experiments, or get_eval_experiment.
 2. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name.
 3. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, or call list_eval_datasets before choosing an existing dataset unless the user already named a dataset ID.
-4. Use list_rag_collections and get_rag_collection_config before start_eval_experiment or start_eval_run.
-5. Start baseline with start_eval_run and wait_for_eval_run. Run baseline to completion before starting rerank while runtime hardening is pending.
-6. Start candidate runs with start_eval_run, then call wait_for_eval_run until each run completes or fails.
+4. Call check_rag_eval_readiness before start_eval_experiment or start_eval_run. Treat blocked readiness as a stop condition and warning readiness as a caveated run condition.
+5. Start baseline with start_eval_run only after readiness is ready or warning, then call wait_for_eval_run. Run baseline to completion before starting rerank while runtime hardening is pending.
+6. Start candidate runs with start_eval_run only after readiness is ready or warning, then call wait_for_eval_run until each run completes or fails.
 7. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it.
 8. Attach externally created runs with attach_eval_run when needed.
 9. Use get_eval_run for individual run inspection, compare_eval_runs for metric deltas, and get_worst_eval_cases for the lowest-scoring per-query cases. Compare completed or completed_with_failures runs.
@@ -717,6 +754,10 @@ func experimentIDSchema() json.RawMessage {
 
 func startEvalRunSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"notes":{"type":"string"},"baseline_eval_id":{"type":"string"},"rerank":{"type":"boolean"},"experiment_id":{"type":"string","minLength":1},"label":{"type":"string"},"retrieval_config":{"type":"object","properties":{"top_k":{"type":"integer","minimum":1,"maximum":20}},"additionalProperties":false},"answer_tier":{"type":"string","pattern":"^[a-zA-Z0-9_-]{1,50}$","maxLength":50},"answer_provider":{"type":"string","enum":["ollama","openai","anthropic"]},"answer_base_url":{"type":"string","pattern":"^\\S(?:.*\\S)?$","minLength":1,"maxLength":300},"answer_model":{"type":"string","pattern":"^\\S(?:.*\\S)?$","minLength":1,"maxLength":100},"answer_api_key_secret":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{1,100}$","minLength":2,"maxLength":101}},"allOf":[{"if":{"anyOf":[{"required":["answer_tier"]},{"required":["answer_provider"]},{"required":["answer_base_url"]},{"required":["answer_model"]},{"required":["answer_api_key_secret"]}]},"then":{"required":["answer_provider","answer_model"]}},{"if":{"properties":{"answer_provider":{"const":"openai"}},"required":["answer_provider"]},"then":{"required":["answer_api_key_secret"]}},{"if":{"properties":{"answer_provider":{"const":"anthropic"}},"required":["answer_provider"]},"then":{"required":["answer_api_key_secret"]}}],"required":["dataset_id","collection"],"additionalProperties":false}`)
+}
+
+func checkRAGReadinessSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"dataset_id":{"type":"string"},"collection":{"type":"string"},"rerank":{"type":"boolean"},"retrieval_config":{"type":"object","properties":{"top_k":{"type":"integer","minimum":1,"maximum":20}},"additionalProperties":false},"baseline_eval_id":{"type":"string"},"experiment_id":{"type":"string"}},"required":["dataset_id","collection"],"additionalProperties":false}`)
 }
 
 func waitEvalRunSchema() json.RawMessage {
