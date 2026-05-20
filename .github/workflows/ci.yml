@@ -1167,6 +1167,127 @@ jobs:
           fi
           echo "CORS check passed — no wildcard origins found."
 
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - grafana-dashboard-sync
+      - python-lint
+      - python-tests
+      - java-lint
+      - java-unit-tests
+      - java-integration-tests
+      - go-lint
+      - go-tests
+      - buf-breaking
+      - go-migration-test
+      - frontend-checks
+      - e2e-mocked
+      - k8s-manifest-validation
+      - compose-smoke
+      - compose-smoke-go
+      - compose-smoke-java
+      - security-bandit
+      - security-pip-audit
+      - security-npm-audit
+      - security-gitleaks
+      - security-hadolint
+      - security-cors-check
+    steps:
+      - name: Summarize required checks
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          GRAFANA_DASHBOARD_SYNC: ${{ needs.grafana-dashboard-sync.result }}
+          PYTHON_LINT: ${{ needs.python-lint.result }}
+          PYTHON_TESTS: ${{ needs.python-tests.result }}
+          JAVA_LINT: ${{ needs.java-lint.result }}
+          JAVA_UNIT_TESTS: ${{ needs.java-unit-tests.result }}
+          JAVA_INTEGRATION_TESTS: ${{ needs.java-integration-tests.result }}
+          GO_LINT: ${{ needs.go-lint.result }}
+          GO_TESTS: ${{ needs.go-tests.result }}
+          BUF_BREAKING: ${{ needs.buf-breaking.result }}
+          GO_MIGRATION_TEST: ${{ needs.go-migration-test.result }}
+          FRONTEND_CHECKS: ${{ needs.frontend-checks.result }}
+          E2E_MOCKED: ${{ needs.e2e-mocked.result }}
+          K8S_MANIFEST_VALIDATION: ${{ needs.k8s-manifest-validation.result }}
+          COMPOSE_SMOKE: ${{ needs.compose-smoke.result }}
+          COMPOSE_SMOKE_GO: ${{ needs.compose-smoke-go.result }}
+          COMPOSE_SMOKE_JAVA: ${{ needs.compose-smoke-java.result }}
+          SECURITY_BANDIT: ${{ needs.security-bandit.result }}
+          SECURITY_PIP_AUDIT: ${{ needs.security-pip-audit.result }}
+          SECURITY_NPM_AUDIT: ${{ needs.security-npm-audit.result }}
+          SECURITY_GITLEAKS: ${{ needs.security-gitleaks.result }}
+          SECURITY_HADOLINT: ${{ needs.security-hadolint.result }}
+          SECURITY_CORS_CHECK: ${{ needs.security-cors-check.result }}
+        run: |
+          set -euo pipefail
+
+          failed=0
+
+          require_success() {
+            local name="$1"
+            local result="$2"
+
+            printf '%-32s %s\n' "$name" "$result"
+            if [ "$result" != "success" ]; then
+              echo "::error title=Quality gate blocked::${name} finished with result '${result}'"
+              failed=1
+            fi
+          }
+
+          allow_event_skip() {
+            local name="$1"
+            local result="$2"
+            local allowed_reason="$3"
+
+            printf '%-32s %s\n' "$name" "$result"
+            case "$result" in
+              success)
+                ;;
+              skipped)
+                echo "::notice title=Quality gate skip::${name} skipped (${allowed_reason})"
+                ;;
+              *)
+                echo "::error title=Quality gate blocked::${name} finished with result '${result}'"
+                failed=1
+                ;;
+            esac
+          }
+
+          echo "Quality gate context: event=${EVENT_NAME}, ref=${REF_NAME}"
+          echo "Required check results:"
+          require_success "grafana-dashboard-sync" "$GRAFANA_DASHBOARD_SYNC"
+          require_success "python-lint" "$PYTHON_LINT"
+          require_success "python-tests" "$PYTHON_TESTS"
+          require_success "java-lint" "$JAVA_LINT"
+          require_success "java-unit-tests" "$JAVA_UNIT_TESTS"
+          require_success "java-integration-tests" "$JAVA_INTEGRATION_TESTS"
+          require_success "go-lint" "$GO_LINT"
+          require_success "go-tests" "$GO_TESTS"
+          allow_event_skip "buf-breaking" "$BUF_BREAKING" "runs only on pull_request"
+          require_success "go-migration-test" "$GO_MIGRATION_TEST"
+          require_success "frontend-checks" "$FRONTEND_CHECKS"
+          allow_event_skip "e2e-mocked" "$E2E_MOCKED" "runs on pull_request and qa pushes"
+          require_success "k8s-manifest-validation" "$K8S_MANIFEST_VALIDATION"
+          require_success "compose-smoke" "$COMPOSE_SMOKE"
+          require_success "compose-smoke-go" "$COMPOSE_SMOKE_GO"
+          require_success "compose-smoke-java" "$COMPOSE_SMOKE_JAVA"
+          require_success "security-bandit" "$SECURITY_BANDIT"
+          require_success "security-pip-audit" "$SECURITY_PIP_AUDIT"
+          require_success "security-npm-audit" "$SECURITY_NPM_AUDIT"
+          require_success "security-gitleaks" "$SECURITY_GITLEAKS"
+          require_success "security-hadolint" "$SECURITY_HADOLINT"
+          require_success "security-cors-check" "$SECURITY_CORS_CHECK"
+
+          if [ "$failed" -ne 0 ]; then
+            echo "One or more required quality checks did not succeed. Blocking image builds and deploys."
+            exit 1
+          fi
+
+          echo "All required quality checks passed."
+
   # ---------- Build Images ----------
 
   build-images:
@@ -1174,15 +1295,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     needs:
-      - python-lint
-      - python-tests
-      - java-lint
-      - java-unit-tests
-      - go-lint
-      - go-tests
-      - frontend-checks
-      - security-gitleaks
-      - security-hadolint
+      - quality-gate
     permissions:
       packages: write
     strategy:
@@ -1606,13 +1719,14 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - changes
+      - quality-gate
       - build-images
       - security-gitleaks
       - security-hadolint
     if: |
-      always() &&
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      !contains(needs.*.result, 'failure')
+      needs.quality-gate.result == 'success' &&
+      needs.build-images.result == 'success'
     concurrency:
       group: shared-runtime-deploy
       cancel-in-progress: false
