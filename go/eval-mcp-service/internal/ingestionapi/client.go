@@ -25,6 +25,11 @@ type Collection struct {
 	PointsCount int    `json:"points_count"`
 }
 
+type Source struct {
+	Filename string `json:"filename"`
+	Chunks   int    `json:"chunks"`
+}
+
 type HTTPError struct {
 	Method     string
 	Path       string
@@ -60,6 +65,17 @@ func (c *Client) GetCollectionConfig(ctx context.Context, name string) (map[stri
 		return nil, err
 	}
 	return response, nil
+}
+
+func (c *Client) ListCollectionSources(ctx context.Context, name string) ([]Source, error) {
+	var response struct {
+		Sources []Source `json:"sources"`
+	}
+	path := "/collections/" + url.PathEscape(name) + "/sources"
+	if err := c.do(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Sources, nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {

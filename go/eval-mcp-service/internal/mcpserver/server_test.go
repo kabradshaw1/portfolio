@@ -18,6 +18,7 @@ import (
 
 type fakeEvalService struct {
 	startExperimentInput  evalworkflow.StartExperimentInput
+	readinessInput        evalworkflow.ReadinessInput
 	startRunInput         evalworkflow.StartRunInput
 	worstCasesInput       evalworkflow.WorstCasesInput
 	triageInput           evalworkflow.TriageInput
@@ -74,6 +75,11 @@ func (f *fakeEvalService) ListRAGCollections(context.Context) ([]ingestionapi.Co
 
 func (f *fakeEvalService) GetRAGCollectionConfig(context.Context, string) (map[string]any, error) {
 	return map[string]any{"chunk_size": 1000}, nil
+}
+
+func (f *fakeEvalService) CheckReadiness(_ context.Context, in evalworkflow.ReadinessInput) (evalapi.RAGReadinessResponse, error) {
+	f.readinessInput = in
+	return evalapi.RAGReadinessResponse{Status: "ready", NextSteps: []string{"Proceed with the eval run."}}, nil
 }
 
 func (f *fakeEvalService) StartRun(_ context.Context, in evalworkflow.StartRunInput) (evalworkflow.StartRunResult, error) {
@@ -153,6 +159,7 @@ func TestServerRegistersPromptResourceAndTools(t *testing.T) {
 	}
 	wantTools := []string{
 		"attach_eval_run",
+		"check_rag_eval_readiness",
 		"compare_eval_runs",
 		"create_eval_dataset",
 		"get_eval_experiment",
@@ -270,6 +277,57 @@ func TestStartEvalRunValidationError(t *testing.T) {
 	}
 	if fake.startRunCalls != 0 {
 		t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+	}
+}
+
+func TestCheckRAGReadinessHandler(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := checkRAGReadinessHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":       "ds-1",
+		"collection":       "documents",
+		"rerank":           true,
+		"retrieval_config": map[string]any{"top_k": float64(3)},
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	if fake.readinessInput.DatasetID != "ds-1" || fake.readinessInput.Collection != "documents" || !fake.readinessInput.Rerank {
+		t.Fatalf("readiness input = %#v", fake.readinessInput)
+	}
+	if fake.readinessInput.RetrievalConfig == nil || fake.readinessInput.RetrievalConfig.TopK == nil || *fake.readinessInput.RetrievalConfig.TopK != 3 {
+		t.Fatalf("retrieval config = %#v", fake.readinessInput.RetrievalConfig)
+	}
+}
+
+func TestCheckRAGReadinessHandlerRequiresDatasetAndCollection(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := checkRAGReadinessHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id": "ds-1",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError || !strings.Contains(textResult(t, result), "collection is required") {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestCheckRAGReadinessSchemaIncludesRetrievalConfig(t *testing.T) {
+	var schema struct {
+		Properties map[string]map[string]any `json:"properties"`
+		Required   []string                  `json:"required"`
+	}
+	if err := json.Unmarshal(checkRAGReadinessSchema(), &schema); err != nil {
+		t.Fatalf("schema is invalid JSON: %v", err)
+	}
+	if !reflect.DeepEqual(schema.Required, []string{"dataset_id", "collection"}) {
+		t.Fatalf("required = %#v", schema.Required)
+	}
+	if _, ok := schema.Properties["retrieval_config"]; !ok {
+		t.Fatalf("missing retrieval_config property")
 	}
 }
 
@@ -880,7 +938,7 @@ func TestEvalPromptHandler(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected text prompt content, got %T", result.Messages[0].Content)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "check_rag_eval_readiness", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(text.Text, want) {
 			t.Fatalf("expected prompt to mention %s, got %q", want, text.Text)
 		}
@@ -908,7 +966,7 @@ func TestWorkflowResourceHandler(t *testing.T) {
 	if content.MIMEType != "text/markdown" {
 		t.Fatalf("unexpected resource MIME type: %q", content.MIMEType)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "check_rag_eval_readiness", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(content.Text, want) {
 			t.Fatalf("expected workflow resource to mention %s, got %q", want, content.Text)
 		}

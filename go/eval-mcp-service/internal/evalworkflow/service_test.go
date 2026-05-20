@@ -79,6 +79,89 @@ func TestStartRunSendsExperimentAttachmentToEvalAPI(t *testing.T) {
 	}
 }
 
+func TestCheckReadinessDelegatesToEvalAPI(t *testing.T) {
+	api := &fakeAPI{readinessResponse: evalapi.RAGReadinessResponse{Status: "ready"}}
+	svc := newTestService(api)
+
+	got, err := svc.CheckReadiness(context.Background(), ReadinessInput{
+		DatasetID:  "ds-1",
+		Collection: "documents",
+		Rerank:     true,
+	})
+	if err != nil {
+		t.Fatalf("CheckReadiness error: %v", err)
+	}
+	if got.Status != "ready" {
+		t.Fatalf("readiness = %#v", got)
+	}
+	if api.readinessRequest.DatasetID != "ds-1" || api.readinessRequest.Collection != "documents" || !api.readinessRequest.Rerank {
+		t.Fatalf("request = %#v", api.readinessRequest)
+	}
+}
+
+func TestStartRunBlocksWhenReadinessBlocked(t *testing.T) {
+	api := &fakeAPI{readinessResponse: evalapi.RAGReadinessResponse{
+		Status: "blocked",
+		BlockingFailures: []evalapi.ReadinessFinding{{
+			Code: "collection_empty",
+		}},
+	}}
+	svc := newTestService(api)
+
+	_, err := svc.StartRun(context.Background(), StartRunInput{
+		DatasetID:  "ds-1",
+		Collection: "documents",
+	})
+	if err == nil || !strings.Contains(err.Error(), "readiness blocked") || !strings.Contains(err.Error(), "collection_empty") {
+		t.Fatalf("error = %v", err)
+	}
+	if len(api.startRequests) != 0 {
+		t.Fatalf("StartEvaluation calls = %d, want 0", len(api.startRequests))
+	}
+}
+
+func TestStartRunAllowsReadinessWarning(t *testing.T) {
+	api := &fakeAPI{
+		readinessResponse: evalapi.RAGReadinessResponse{
+			Status:   "warning",
+			Warnings: []evalapi.ReadinessFinding{{Code: "top_k_override"}},
+		},
+		startResponse: evalapi.StartEvaluationResponse{ID: "eval-1", Status: "queued"},
+	}
+	svc := newTestService(api)
+
+	got, err := svc.StartRun(context.Background(), StartRunInput{
+		DatasetID:  "ds-1",
+		Collection: "documents",
+	})
+	if err != nil {
+		t.Fatalf("StartRun error: %v", err)
+	}
+	if got.EvalID != "eval-1" || len(api.startRequests) != 1 {
+		t.Fatalf("result=%#v startRequests=%d", got, len(api.startRequests))
+	}
+}
+
+func TestStartExperimentBlocksWhenReadinessBlocked(t *testing.T) {
+	api := &fakeAPI{readinessResponse: evalapi.RAGReadinessResponse{
+		Status:           "blocked",
+		BlockingFailures: []evalapi.ReadinessFinding{{Code: "collection_empty"}},
+	}}
+	svc := newTestService(api)
+
+	_, err := svc.StartExperiment(context.Background(), StartExperimentInput{
+		Name:       "experiment",
+		DatasetID:  "ds-1",
+		Collection: "documents",
+	})
+	if err == nil || !strings.Contains(err.Error(), "readiness blocked") {
+		t.Fatalf("error = %v", err)
+	}
+	if len(api.createExperimentRequests) != 0 {
+		t.Fatalf("CreateExperiment calls = %d, want 0", len(api.createExperimentRequests))
+	}
+}
+
 func TestCreateDatasetFromFixture(t *testing.T) {
 	api := &fakeAPI{}
 	fixture := fixturecatalog.Fixture{
@@ -99,15 +182,6 @@ func TestCreateDatasetFromFixture(t *testing.T) {
 	}
 	if api.createDatasetRequest.Name != "product-docs-rag-v1" || len(api.createDatasetRequest.Items) != 1 {
 		t.Fatalf("unexpected request: %#v", api.createDatasetRequest)
-	}
-}
-
-func TestStartRunRejectsMissingCollection(t *testing.T) {
-	api := &fakeAPI{}
-	service := New(api, fakeIngestion{collections: []ingestionapi.Collection{{Name: "documents"}}}, fakeFixtures{}, time.Second, time.Minute)
-	_, err := service.StartRun(context.Background(), StartRunInput{DatasetID: "ds-1", Collection: "missing"})
-	if err == nil || !strings.Contains(err.Error(), `retrieval collection "missing" does not exist`) {
-		t.Fatalf("error = %v", err)
 	}
 }
 
@@ -771,6 +845,8 @@ type fakeAPI struct {
 	datasets                 []evalapi.Dataset
 	createDatasetRequest     evalapi.CreateDatasetRequest
 	createdDatasetID         string
+	readinessRequest         evalapi.RAGReadinessRequest
+	readinessResponse        evalapi.RAGReadinessResponse
 	startResponse            evalapi.StartEvaluationResponse
 	startRequests            []evalapi.StartEvaluationRequest
 	detailsByID              map[string][]evalapi.EvaluationDetail
@@ -798,6 +874,14 @@ func (f *fakeAPI) CreateDataset(_ context.Context, req evalapi.CreateDatasetRequ
 		id = "ds-created"
 	}
 	return evalapi.CreateDatasetResponse{ID: id}, nil
+}
+
+func (f *fakeAPI) CheckRAGReadiness(_ context.Context, in evalapi.RAGReadinessRequest) (evalapi.RAGReadinessResponse, error) {
+	f.readinessRequest = in
+	if f.readinessResponse.Status == "" {
+		return evalapi.RAGReadinessResponse{Status: "ready"}, nil
+	}
+	return f.readinessResponse, nil
 }
 
 func (f *fakeAPI) StartEvaluation(_ context.Context, in evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error) {
@@ -948,6 +1032,10 @@ func (b *blockingGetEvaluationAPI) ListDatasets(context.Context) ([]evalapi.Data
 
 func (b *blockingGetEvaluationAPI) CreateDataset(context.Context, evalapi.CreateDatasetRequest) (evalapi.CreateDatasetResponse, error) {
 	return evalapi.CreateDatasetResponse{}, nil
+}
+
+func (b *blockingGetEvaluationAPI) CheckRAGReadiness(context.Context, evalapi.RAGReadinessRequest) (evalapi.RAGReadinessResponse, error) {
+	return evalapi.RAGReadinessResponse{Status: "ready"}, nil
 }
 
 func (b *blockingGetEvaluationAPI) StartEvaluation(context.Context, evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error) {
