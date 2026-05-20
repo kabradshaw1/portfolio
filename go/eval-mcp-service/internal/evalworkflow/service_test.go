@@ -413,6 +413,28 @@ func TestWorstCasesSortsAscendingByMetric(t *testing.T) {
 	}
 }
 
+func TestTriageRAGRegressionCallsTriageAPI(t *testing.T) {
+	ctx := context.Background()
+	triage := &fakeTriageAPI{result: map[string]any{"status": "completed"}}
+	svc := New(nil, nil, nil, time.Second, time.Minute)
+	svc.triage = triage
+
+	got, err := svc.TriageRAGRegression(ctx, TriageInput{
+		EvalID: "eval-1",
+		Metric: "context_precision",
+		Limit:  5,
+	})
+	if err != nil {
+		t.Fatalf("TriageRAGRegression error: %v", err)
+	}
+	if triage.input.EvalID != "eval-1" {
+		t.Fatalf("triage eval id = %q, want eval-1", triage.input.EvalID)
+	}
+	if got["status"] != "completed" {
+		t.Fatalf("triage result = %#v", got)
+	}
+}
+
 func TestCompareResolvesExperimentLabels(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeAPI{}
@@ -691,6 +713,16 @@ type fakeFixtures struct {
 
 func (f fakeFixtures) List() ([]fixturecatalog.Fixture, error)     { return f.fixtures, nil }
 func (f fakeFixtures) Load(string) (fixturecatalog.Fixture, error) { return f.fixture, nil }
+
+type fakeTriageAPI struct {
+	input  TriageInput
+	result map[string]any
+}
+
+func (f *fakeTriageAPI) TriageRAGRegression(_ context.Context, in TriageInput) (map[string]any, error) {
+	f.input = in
+	return f.result, nil
+}
 
 func newTestService(api API) *Service {
 	return newTestServiceWithTiming(api, time.Millisecond, time.Second)
