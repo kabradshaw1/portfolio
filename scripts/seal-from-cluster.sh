@@ -26,6 +26,7 @@ SECRETS_DIR="$REPO_DIR/k8s/secrets"
 SECRETS=(
   "java-tasks/java-secrets"
   "java-tasks-qa/java-secrets"
+  "ai-services/eval-rabbitmq"
   "go-ecommerce/go-secrets"
   "go-ecommerce/stripe-secrets"
   "go-ecommerce/order-projector-db"
