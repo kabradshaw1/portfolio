@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
-SECRET = "eval-test-secret"
+SECRET = "eval-test-secret-at-least-32-bytes"
 
 
 def _token(sub: str, email: str) -> str:
