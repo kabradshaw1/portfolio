@@ -24,6 +24,24 @@ eval_queue_publish_total = Counter(
     ["status"],
 )
 
+eval_item_messages_total = Counter(
+    "eval_item_messages_total",
+    "Evaluation item messages by outcome",
+    ["outcome"],
+)
+
+eval_item_retries_total = Counter(
+    "eval_item_retries_total",
+    "Evaluation item retries by reason",
+    ["reason"],
+)
+
+eval_item_dlq_total = Counter(
+    "eval_item_dlq_total",
+    "Evaluation item messages sent to DLQ by reason",
+    ["reason"],
+)
+
 eval_item_duration_seconds = Histogram(
     "eval_item_duration_seconds",
     "Evaluation item stage duration",
