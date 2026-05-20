@@ -173,6 +173,74 @@ func TestProvisionRAGCorpusRejectsUnsafeCollection(t *testing.T) {
 	}
 }
 
+func TestProvisionRAGCorpusIdempotentManifestReturnsTotals(t *testing.T) {
+	ingestion := &recordingCorpusIngestion{
+		manifestResponse: map[string]any{
+			"fixture_hash": "a1b2c3d4e5f6",
+			"documents": []any{
+				map[string]any{"path": "laptop.pdf", "sha256": "abc123", "chunks_created": float64(4)},
+			},
+		},
+	}
+	fixtures := fakeCorpusFixtures{fixture: corpusfixture.Fixture{
+		ID:                "product_catalog_v1",
+		SourceHash:        "a1b2c3d4e5f6",
+		DefaultCollection: "eval_product_catalog_v1_a1b2c3d4",
+		DocumentCount:     1,
+	}}
+	service := New(&fakeAPI{}, ingestion, fakeFixtures{}, time.Second, time.Minute).
+		WithCorpusFixtures(fixtures)
+
+	got, err := service.ProvisionRAGCorpus(context.Background(), ProvisionCorpusInput{Fixture: "product_catalog_v1"})
+	if err != nil {
+		t.Fatalf("ProvisionRAGCorpus returned error: %v", err)
+	}
+	if !got.Idempotent || got.ChunksCreated != 4 || len(got.Documents) != 1 || got.Documents[0].Path != "laptop.pdf" {
+		t.Fatalf("result = %#v", got)
+	}
+	if ingestion.uploadFilename != "" {
+		t.Fatalf("unexpected upload: %q", ingestion.uploadFilename)
+	}
+}
+
+func TestProvisionRAGCorpusForceRecreateIgnoresMissingCollection(t *testing.T) {
+	root := t.TempDir()
+	pdfPath := filepath.Join(root, "laptop.pdf")
+	if err := os.WriteFile(pdfPath, []byte("%PDF-1.4\nlaptop"), 0o644); err != nil {
+		t.Fatalf("write pdf: %v", err)
+	}
+	ingestion := &recordingCorpusIngestion{
+		deleteErr: &ingestionapi.HTTPError{Method: http.MethodDelete, Path: "/collections/eval_product_catalog_v1_a1b2c3d4", StatusCode: http.StatusNotFound},
+		uploadResponse: ingestionapi.IngestResponse{
+			ChunksCreated: 4,
+		},
+	}
+	fixtures := fakeCorpusFixtures{fixture: corpusfixture.Fixture{
+		ID:                "product_catalog_v1",
+		SourceHash:        "a1b2c3d4e5f6",
+		DefaultCollection: "eval_product_catalog_v1_a1b2c3d4",
+		Documents: []corpusfixture.Document{{
+			Path:   "laptop.pdf",
+			Abs:    pdfPath,
+			SHA256: "abc123",
+		}},
+		DocumentCount: 1,
+	}}
+	service := New(&fakeAPI{}, ingestion, fakeFixtures{}, time.Second, time.Minute).
+		WithCorpusFixtures(fixtures)
+
+	got, err := service.ProvisionRAGCorpus(context.Background(), ProvisionCorpusInput{
+		Fixture:       "product_catalog_v1",
+		ForceRecreate: true,
+	})
+	if err != nil {
+		t.Fatalf("ProvisionRAGCorpus returned error: %v", err)
+	}
+	if !ingestion.deleteCalled || got.ChunksCreated != 4 {
+		t.Fatalf("deleteCalled=%v result=%#v", ingestion.deleteCalled, got)
+	}
+}
+
 func TestCompareRejectsNonCompletedRuns(t *testing.T) {
 	api := &fakeAPI{detailsByID: map[string][]evalapi.EvaluationDetail{
 		"base": {{ID: "base", Status: "completed"}},
@@ -1014,7 +1082,10 @@ func (f fakeCorpusFixtures) Load(string) (corpusfixture.Fixture, error) {
 type recordingCorpusIngestion struct {
 	collections      []ingestionapi.Collection
 	manifest         map[string]any
+	manifestResponse map[string]any
 	uploadResponse   ingestionapi.IngestResponse
+	deleteErr        error
+	deleteCalled     bool
 	uploadCollection string
 	uploadFilename   string
 }
@@ -1039,11 +1110,15 @@ func (r *recordingCorpusIngestion) PutCollectionManifest(_ context.Context, _ st
 }
 
 func (r *recordingCorpusIngestion) GetCollectionManifest(context.Context, string) (map[string]any, error) {
+	if r.manifestResponse != nil {
+		return r.manifestResponse, nil
+	}
 	return nil, &ingestionapi.HTTPError{Method: http.MethodGet, Path: "/manifest", StatusCode: http.StatusNotFound}
 }
 
 func (r *recordingCorpusIngestion) DeleteCollection(context.Context, string) error {
-	return nil
+	r.deleteCalled = true
+	return r.deleteErr
 }
 
 type fakeTriageAPI struct {

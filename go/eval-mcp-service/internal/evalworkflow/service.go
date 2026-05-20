@@ -351,7 +351,9 @@ func (s *Service) ProvisionRAGCorpus(ctx context.Context, in ProvisionCorpusInpu
 	}
 	if in.ForceRecreate {
 		if err := s.ingestion.DeleteCollection(ctx, collection); err != nil {
-			return ProvisionCorpusResult{}, fmt.Errorf("delete existing corpus collection: %w", err)
+			if !isHTTPStatus(err, http.StatusNotFound) {
+				return ProvisionCorpusResult{}, fmt.Errorf("delete existing corpus collection: %w", err)
+			}
 		}
 	} else {
 		manifest, err := s.ingestion.GetCollectionManifest(ctx, collection)
@@ -359,11 +361,14 @@ func (s *Service) ProvisionRAGCorpus(ctx context.Context, in ProvisionCorpusInpu
 			return ProvisionCorpusResult{}, fmt.Errorf("get corpus manifest: %w", err)
 		}
 		if err == nil && manifest["fixture_hash"] == fixture.SourceHash {
+			documents, chunksCreated := corpusUploadsFromManifest(manifest)
 			return ProvisionCorpusResult{
 				Collection:    collection,
 				FixtureID:     fixture.ID,
 				FixtureHash:   fixture.SourceHash,
 				DocumentCount: fixture.DocumentCount,
+				ChunksCreated: chunksCreated,
+				Documents:     documents,
 				Idempotent:    true,
 			}, nil
 		}
@@ -806,6 +811,39 @@ func isManagedEvalCollection(name string) bool {
 func isHTTPStatus(err error, status int) bool {
 	var httpErr *ingestionapi.HTTPError
 	return errors.As(err, &httpErr) && httpErr.StatusCode == status
+}
+
+func corpusUploadsFromManifest(manifest map[string]any) ([]CorpusUpload, int) {
+	rawDocs, ok := manifest["documents"].([]any)
+	if !ok {
+		return nil, 0
+	}
+	uploads := make([]CorpusUpload, 0, len(rawDocs))
+	totalChunks := 0
+	for _, rawDoc := range rawDocs {
+		doc, ok := rawDoc.(map[string]any)
+		if !ok {
+			continue
+		}
+		upload := CorpusUpload{}
+		if path, ok := doc["path"].(string); ok {
+			upload.Path = path
+		}
+		if sha, ok := doc["sha256"].(string); ok {
+			upload.SHA256 = sha
+		}
+		switch chunks := doc["chunks_created"].(type) {
+		case int:
+			upload.ChunksCreated = chunks
+		case int64:
+			upload.ChunksCreated = int(chunks)
+		case float64:
+			upload.ChunksCreated = int(chunks)
+		}
+		totalChunks += upload.ChunksCreated
+		uploads = append(uploads, upload)
+	}
+	return uploads, totalChunks
 }
 
 func (s *Service) validateCollectionExists(ctx context.Context, collection string) error {
