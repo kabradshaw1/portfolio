@@ -40,6 +40,80 @@ def decode_eval_item_message(body: bytes) -> EvalItemMessage:
     )
 
 
+@dataclass(frozen=True)
+class DLQRoutingMetadata:
+    exchange: str
+    routing_key: str
+    queue: str
+    death_count: int
+    death_reason: str
+
+
+@dataclass(frozen=True)
+class DLQEntry:
+    index: int
+    delivery_tag: str
+    redelivered: bool
+    payload: dict[str, Any] | None
+    routing: DLQRoutingMetadata
+    invalid_payload: str | None = None
+
+
+def safe_x_death_metadata(headers: dict[str, Any], dlq_name: str) -> DLQRoutingMetadata:
+    deaths = headers.get("x-death") or []
+    first = deaths[0] if deaths else {}
+    routing_keys = first.get("routing-keys") or []
+    routing_key = str(routing_keys[0]) if routing_keys else ""
+    return DLQRoutingMetadata(
+        exchange=str(first.get("exchange") or ""),
+        routing_key=routing_key,
+        queue=dlq_name,
+        death_count=int(first.get("count") or 0),
+        death_reason=str(first.get("reason") or ""),
+    )
+
+
+def _safe_payload_dict(decoded: EvalItemMessage) -> dict[str, Any]:
+    return {
+        "message_version": decoded.message_version,
+        "evaluation_id": decoded.evaluation_id,
+        "item_id": decoded.item_id,
+        "item_index": decoded.item_index,
+        "attempt": decoded.attempt,
+    }
+
+
+def build_dlq_entry(index: int, message: Any, dlq_name: str) -> DLQEntry:
+    routing = safe_x_death_metadata(getattr(message, "headers", {}) or {}, dlq_name)
+    try:
+        decoded = decode_eval_item_message(message.body)
+    except json.JSONDecodeError:
+        return DLQEntry(
+            index=index,
+            delivery_tag=str(getattr(message, "delivery_tag", "")),
+            redelivered=bool(getattr(message, "redelivered", False)),
+            payload=None,
+            routing=routing,
+            invalid_payload="invalid_json",
+        )
+    except (KeyError, TypeError, ValueError):
+        return DLQEntry(
+            index=index,
+            delivery_tag=str(getattr(message, "delivery_tag", "")),
+            redelivered=bool(getattr(message, "redelivered", False)),
+            payload=None,
+            routing=routing,
+            invalid_payload="invalid_schema",
+        )
+    return DLQEntry(
+        index=index,
+        delivery_tag=str(getattr(message, "delivery_tag", "")),
+        redelivered=bool(getattr(message, "redelivered", False)),
+        payload=_safe_payload_dict(decoded),
+        routing=routing,
+    )
+
+
 class EvalItemPublisher:
     def __init__(self, rabbitmq_url: str, queue_name: str, dlq_name: str):
         self.rabbitmq_url = rabbitmq_url
@@ -77,6 +151,72 @@ class EvalItemPublisher:
             ),
             routing_key=self.queue_name,
         )
+
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+
+
+@dataclass(frozen=True)
+class TakenDLQMessage:
+    entry: DLQEntry
+    message: Any
+
+
+class EvalItemDLQClient:
+    def __init__(self, rabbitmq_url: str, dlq_name: str):
+        self.rabbitmq_url = rabbitmq_url
+        self.dlq_name = dlq_name
+        self._conn: Any | None = None
+        self._channel: Any | None = None
+
+    async def connect(self) -> None:
+        import aio_pika
+
+        self._conn = await aio_pika.connect_robust(self.rabbitmq_url)
+        self._channel = await self._conn.channel()
+        await self._channel.declare_queue(self.dlq_name, durable=True)
+
+    async def _dlq_queue(self) -> Any:
+        if self._channel is None:
+            await self.connect()
+        assert self._channel is not None
+        return await self._channel.declare_queue(self.dlq_name, durable=True)
+
+    async def list(self, limit: int) -> list[DLQEntry]:
+        queue = await self._dlq_queue()
+        entries: list[DLQEntry] = []
+        messages: list[Any] = []
+        for index in range(limit):
+            message = await queue.get(fail=False, no_ack=False)
+            if message is None:
+                break
+            messages.append(message)
+            entries.append(build_dlq_entry(index, message, self.dlq_name))
+        for message in messages:
+            await message.nack(requeue=True)
+        return entries
+
+    async def take(
+        self, *, item_id: str | None, index: int | None, scan_limit: int
+    ) -> TakenDLQMessage | None:
+        queue = await self._dlq_queue()
+        for current_index in range(scan_limit):
+            message = await queue.get(fail=False, no_ack=False)
+            if message is None:
+                return None
+            entry = build_dlq_entry(current_index, message, self.dlq_name)
+            matches_index = index is not None and current_index == index
+            matches_item = (
+                item_id is not None
+                and entry.payload is not None
+                and entry.payload.get("item_id") == item_id
+            )
+            if matches_index or matches_item:
+                await message.ack()
+                return TakenDLQMessage(entry=entry, message=message)
+            await message.nack(requeue=True)
+        return None
 
     async def close(self) -> None:
         if self._conn is not None:

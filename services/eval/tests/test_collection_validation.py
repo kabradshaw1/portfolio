@@ -1,32 +1,44 @@
 import httpx
 import pytest
-import respx
 from app.collection_validation import validate_collection_exists
 from fastapi import HTTPException
 
 
+def _patch_async_transport(monkeypatch, transport: httpx.MockTransport) -> None:
+    class MockedAsyncClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = transport
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "app.collection_validation.httpx.AsyncClient", MockedAsyncClient
+    )
+
+
 @pytest.mark.asyncio
-@respx.mock
-async def test_validate_collection_exists_accepts_existing_collection():
-    respx.get("http://ingestion/collections").mock(
-        return_value=httpx.Response(
+async def test_validate_collection_exists_accepts_existing_collection(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "http://ingestion/collections"
+        return httpx.Response(
             200,
             json={"collections": [{"name": "documents", "points_count": 15}]},
         )
-    )
+
+    _patch_async_transport(monkeypatch, httpx.MockTransport(handler))
 
     await validate_collection_exists("http://ingestion", "documents")
 
 
 @pytest.mark.asyncio
-@respx.mock
-async def test_validate_collection_exists_rejects_missing_collection():
-    respx.get("http://ingestion/collections").mock(
-        return_value=httpx.Response(
+async def test_validate_collection_exists_rejects_missing_collection(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "http://ingestion/collections"
+        return httpx.Response(
             200,
             json={"collections": [{"name": "documents", "points_count": 15}]},
         )
-    )
+
+    _patch_async_transport(monkeypatch, httpx.MockTransport(handler))
 
     with pytest.raises(HTTPException) as exc:
         await validate_collection_exists("http://ingestion", "missing")
@@ -36,11 +48,11 @@ async def test_validate_collection_exists_rejects_missing_collection():
 
 
 @pytest.mark.asyncio
-@respx.mock
-async def test_validate_collection_exists_reports_dependency_failure():
-    respx.get("http://ingestion/collections").mock(
-        side_effect=httpx.ConnectError("boom")
-    )
+async def test_validate_collection_exists_reports_dependency_failure(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("boom", request=request)
+
+    _patch_async_transport(monkeypatch, httpx.MockTransport(handler))
 
     with pytest.raises(HTTPException) as exc:
         await validate_collection_exists("http://ingestion", "documents")

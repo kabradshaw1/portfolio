@@ -79,6 +79,8 @@ class EvalDB:
                 lease_owner TEXT,
                 lease_expires_at TEXT,
                 last_error TEXT,
+                replay_count INTEGER NOT NULL DEFAULT 0,
+                last_replayed_at TEXT,
                 result TEXT,
                 scores TEXT,
                 score_reasons TEXT,
@@ -107,6 +109,9 @@ class EvalDB:
             "ADD COLUMN focus_metric TEXT NOT NULL DEFAULT 'context_precision'",
             "ALTER TABLE experiments ADD COLUMN conclusion TEXT",
             "ALTER TABLE experiments ADD COLUMN evidence TEXT",
+            "ALTER TABLE evaluation_items "
+            "ADD COLUMN replay_count INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE evaluation_items ADD COLUMN last_replayed_at TEXT",
         ):
             try:
                 await self._db.execute(column_ddl)
@@ -197,6 +202,8 @@ class EvalDB:
             "lease_owner": row["lease_owner"],
             "lease_expires_at": row["lease_expires_at"],
             "last_error": json.loads(row["last_error"]) if row["last_error"] else None,
+            "replay_count": row["replay_count"],
+            "last_replayed_at": row["last_replayed_at"],
             "result": json.loads(row["result"]) if row["result"] else None,
             "scores": json.loads(row["scores"]) if row["scores"] else None,
             "score_reasons": (
@@ -340,6 +347,20 @@ class EvalDB:
             (json.dumps(error), now, item_id),
         )
         await self._db.commit()
+
+    async def requeue_failed_item_for_replay(self, item_id: str) -> dict | None:
+        now = datetime.now(_UTC).isoformat()
+        cursor = await self._db.execute(
+            "UPDATE evaluation_items "
+            "SET status = 'queued', lease_owner = NULL, lease_expires_at = NULL, "
+            "replay_count = replay_count + 1, last_replayed_at = ?, updated_at = ? "
+            "WHERE id = ? AND status = 'failed'",
+            (now, now, item_id),
+        )
+        await self._db.commit()
+        if cursor.rowcount == 0:
+            return None
+        return await self.get_evaluation_item(item_id)
 
     def _aggregate_item_scores(self, completed: list[dict]) -> dict:
         metric_names = (

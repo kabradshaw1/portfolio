@@ -11,11 +11,11 @@ preflight-python:
 	@echo "\n=== Python: ruff format ==="
 	ruff format --check services/
 	@echo "\n=== Python: pytest (ingestion) ==="
-	pytest services/ingestion/tests/ -v
+	PYTHONPATH=services pytest services/ingestion/tests/ -v
 	@echo "\n=== Python: pytest (chat) ==="
-	pytest services/chat/tests/ -v
+	PYTHONPATH=services pytest services/chat/tests/ -v
 	@echo "\n=== Python: pytest (debug) ==="
-	pytest services/debug/tests/ -v
+	PYTHONPATH=services pytest services/debug/tests/ -v
 
 # --- Frontend ---
 preflight-frontend:

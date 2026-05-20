@@ -130,6 +130,71 @@ type EvaluationDetail struct {
 	ItemCounts      map[string]int `json:"item_counts"`
 }
 
+type DLQPayload struct {
+	MessageVersion int    `json:"message_version"`
+	EvaluationID   string `json:"evaluation_id"`
+	ItemID         string `json:"item_id"`
+	ItemIndex      int    `json:"item_index"`
+	Attempt        int    `json:"attempt"`
+}
+
+type DLQRouting struct {
+	Exchange    string `json:"exchange"`
+	RoutingKey  string `json:"routing_key"`
+	Queue       string `json:"queue"`
+	DeathCount  int    `json:"death_count"`
+	DeathReason string `json:"death_reason"`
+}
+
+type DLQItemEvidence struct {
+	EvaluationID   string         `json:"evaluation_id"`
+	ItemID         string         `json:"item_id"`
+	ItemIndex      int            `json:"item_index"`
+	Status         string         `json:"status"`
+	AttemptCount   int            `json:"attempt_count"`
+	MaxAttempts    int            `json:"max_attempts"`
+	LastError      map[string]any `json:"last_error"`
+	ReplayCount    int            `json:"replay_count"`
+	LastReplayedAt *string        `json:"last_replayed_at"`
+}
+
+type DLQEvaluationEvidence struct {
+	Status      string  `json:"status"`
+	Collection  *string `json:"collection"`
+	CreatedAt   string  `json:"created_at"`
+	CompletedAt *string `json:"completed_at"`
+}
+
+type DLQEntry struct {
+	Index          int                    `json:"index"`
+	DeliveryTag    string                 `json:"delivery_tag"`
+	Redelivered    bool                   `json:"redelivered"`
+	Payload        *DLQPayload            `json:"payload"`
+	Routing        DLQRouting             `json:"routing"`
+	Item           *DLQItemEvidence       `json:"item"`
+	Evaluation     *DLQEvaluationEvidence `json:"evaluation"`
+	InvalidPayload *string                `json:"invalid_payload"`
+}
+
+type DLQListResponse struct {
+	Entries             []DLQEntry `json:"entries"`
+	IndexesAreTransient bool       `json:"indexes_are_transient"`
+}
+
+type ReplayDLQItemRequest struct {
+	ItemID string `json:"item_id,omitempty"`
+	Index  *int   `json:"index,omitempty"`
+}
+
+type ReplayDLQItemResponse struct {
+	EvaluationID     string `json:"evaluation_id"`
+	ItemID           string `json:"item_id"`
+	ItemIndex        int    `json:"item_index"`
+	Status           string `json:"status"`
+	ReplayCount      int    `json:"replay_count"`
+	MessagePublished bool   `json:"message_published"`
+}
+
 type Comparison struct {
 	Runs   []EvaluationDetail   `json:"runs"`
 	Deltas map[string][]float64 `json:"deltas"`
@@ -259,6 +324,30 @@ func (c *Client) CompareEvaluations(ctx context.Context, ids []string) (Comparis
 	var response Comparison
 	if err := c.do(ctx, http.MethodGet, path, nil, &response); err != nil {
 		return Comparison{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) ListEvalItemDLQ(ctx context.Context, limit int) (DLQListResponse, error) {
+	values := url.Values{}
+	if limit > 0 {
+		values.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	path := "/evaluations/items/dlq"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var response DLQListResponse
+	if err := c.do(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return DLQListResponse{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) ReplayEvalItemDLQ(ctx context.Context, body ReplayDLQItemRequest) (ReplayDLQItemResponse, error) {
+	var response ReplayDLQItemResponse
+	if err := c.do(ctx, http.MethodPost, "/evaluations/items/dlq/replay", body, &response); err != nil {
+		return ReplayDLQItemResponse{}, err
 	}
 	return response, nil
 }
