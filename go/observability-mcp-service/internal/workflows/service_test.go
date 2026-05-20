@@ -186,6 +186,13 @@ func TestNilHistoryStoreDoesNotPersist(t *testing.T) {
 	}
 }
 
+func TestManagementActionsUnavailableUntilConfigured(t *testing.T) {
+	service := NewService(nil, nil, nil, 10)
+	if _, err := service.ListManagementActions(context.Background()); err == nil {
+		t.Fatal("expected management service disabled error")
+	}
+}
+
 func TestCompareEvidenceSnapshotsReportsStatusAndCountDeltas(t *testing.T) {
 	store := &fakeHistoryStore{snapshotsByID: map[int64]history.Snapshot{
 		1: snapshotWithBundle(t, 1, EvidenceBundle{

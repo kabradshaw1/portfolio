@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/history"
+	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/management"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/observability"
 )
 
@@ -42,6 +43,7 @@ type Service struct {
 
 	historyStore history.Store
 	autoCapture  bool
+	management   *management.Service
 }
 
 func NewService(prometheus Prometheus, loki Loki, jaeger Jaeger, maxLogs int) *Service {
@@ -54,6 +56,11 @@ func NewService(prometheus Prometheus, loki Loki, jaeger Jaeger, maxLogs int) *S
 func (s *Service) WithHistory(store history.Store, autoCapture bool) *Service {
 	s.historyStore = store
 	s.autoCapture = autoCapture
+	return s
+}
+
+func (s *Service) WithManagement(m *management.Service) *Service {
+	s.management = m
 	return s
 }
 
@@ -198,6 +205,34 @@ func (s *Service) CompareEvidenceSnapshots(ctx context.Context, baselineID, cand
 		comparison.Summary = append(comparison.Summary, fmt.Sprintf("signal %s %s from %s to %s", delta.Name, delta.Direction, delta.Before, delta.After))
 	}
 	return comparison, nil
+}
+
+func (s *Service) ListManagementActions(ctx context.Context) ([]management.Action, error) {
+	if s.management == nil {
+		return nil, errors.New("management actions are disabled")
+	}
+	return s.management.List(), nil
+}
+
+func (s *Service) PreviewManagementAction(ctx context.Context, req management.ActionRequest) (management.ActionResult, error) {
+	if s.management == nil {
+		return management.ActionResult{}, errors.New("management actions are disabled")
+	}
+	return s.management.Preview(ctx, req), nil
+}
+
+func (s *Service) ExecuteManagementAction(ctx context.Context, req management.ActionRequest) (management.ActionResult, error) {
+	if s.management == nil {
+		return management.ActionResult{}, errors.New("management actions are disabled")
+	}
+	return s.management.Execute(ctx, req), nil
+}
+
+func (s *Service) ListManagementActionHistory(ctx context.Context, filter history.ManagementActionFilter) ([]history.Event, error) {
+	if s.management == nil {
+		return nil, errors.New("management actions are disabled")
+	}
+	return s.management.History(ctx, filter)
 }
 
 func (s *Service) SearchLogs(ctx context.Context, service string, window time.Duration, pattern string) EvidenceBundle {
