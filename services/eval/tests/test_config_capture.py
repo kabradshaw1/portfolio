@@ -1,12 +1,29 @@
 import httpx
 import pytest
-import respx
 from app.config_capture import capture_run_config
 
 
+def _patch_async_transport(monkeypatch, transport: httpx.MockTransport) -> None:
+    class MockedAsyncClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = transport
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr("app.config_capture.httpx.AsyncClient", MockedAsyncClient)
+
+
+def _transport(routes: dict[str, httpx.Response | Exception]) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        value = routes[str(request.url)]
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    return httpx.MockTransport(handler)
+
+
 @pytest.mark.asyncio
-@respx.mock
-async def test_capture_merges_chat_and_collection():
+async def test_capture_merges_chat_and_collection(monkeypatch):
     expected_chat_config = {
         "llm_model": "qwen2.5:14b",
         "embedding_model": "nomic-embed-text",
@@ -20,21 +37,21 @@ async def test_capture_merges_chat_and_collection():
         "fusion": "rrf",
     }
 
-    respx.get("http://chat/config").mock(
-        return_value=httpx.Response(
-            200,
-            json=expected_chat_config,
-        )
-    )
-    respx.get("http://ingestion/collections/documents/config").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "chunk_size": 1000,
-                "chunk_overlap": 200,
-                "embedding_model": "nomic-embed-text",
-            },
-        )
+    _patch_async_transport(
+        monkeypatch,
+        _transport(
+            {
+                "http://chat/config": httpx.Response(200, json=expected_chat_config),
+                "http://ingestion/collections/documents/config": httpx.Response(
+                    200,
+                    json={
+                        "chunk_size": 1000,
+                        "chunk_overlap": 200,
+                        "embedding_model": "nomic-embed-text",
+                    },
+                ),
+            }
+        ),
     )
 
     cfg = await capture_run_config(
@@ -53,13 +70,19 @@ async def test_capture_merges_chat_and_collection():
 
 
 @pytest.mark.asyncio
-@respx.mock
-async def test_capture_records_baseline_rerank_intent():
-    respx.get("http://chat/config").mock(
-        return_value=httpx.Response(200, json={"rerank_enabled": True})
-    )
-    respx.get("http://ingestion/collections/documents/config").mock(
-        return_value=httpx.Response(404, json={"detail": "not found"})
+async def test_capture_records_baseline_rerank_intent(monkeypatch):
+    _patch_async_transport(
+        monkeypatch,
+        _transport(
+            {
+                "http://chat/config": httpx.Response(
+                    200, json={"rerank_enabled": True}
+                ),
+                "http://ingestion/collections/documents/config": httpx.Response(
+                    404, json={"detail": "not found"}
+                ),
+            }
+        ),
     )
 
     cfg = await capture_run_config(
@@ -76,13 +99,17 @@ async def test_capture_records_baseline_rerank_intent():
 
 
 @pytest.mark.asyncio
-@respx.mock
-async def test_capture_records_requested_and_effective_retrieval_config():
-    respx.get("http://chat/config").mock(
-        return_value=httpx.Response(200, json={"top_k": 5})
-    )
-    respx.get("http://ingestion/collections/documents/config").mock(
-        return_value=httpx.Response(200, json={"chunk_size": 1000})
+async def test_capture_records_requested_and_effective_retrieval_config(monkeypatch):
+    _patch_async_transport(
+        monkeypatch,
+        _transport(
+            {
+                "http://chat/config": httpx.Response(200, json={"top_k": 5}),
+                "http://ingestion/collections/documents/config": httpx.Response(
+                    200, json={"chunk_size": 1000}
+                ),
+            }
+        ),
     )
 
     cfg = await capture_run_config(
@@ -99,13 +126,19 @@ async def test_capture_records_requested_and_effective_retrieval_config():
 
 
 @pytest.mark.asyncio
-@respx.mock
-async def test_capture_records_empty_requested_retrieval_config_for_default_run():
-    respx.get("http://chat/config").mock(
-        return_value=httpx.Response(200, json={"top_k": 5})
-    )
-    respx.get("http://ingestion/collections/documents/config").mock(
-        return_value=httpx.Response(200, json={"chunk_size": 1000})
+async def test_capture_records_empty_requested_retrieval_config_for_default_run(
+    monkeypatch,
+):
+    _patch_async_transport(
+        monkeypatch,
+        _transport(
+            {
+                "http://chat/config": httpx.Response(200, json={"top_k": 5}),
+                "http://ingestion/collections/documents/config": httpx.Response(
+                    200, json={"chunk_size": 1000}
+                ),
+            }
+        ),
     )
 
     cfg = await capture_run_config(
@@ -120,18 +153,22 @@ async def test_capture_records_empty_requested_retrieval_config_for_default_run(
 
 
 @pytest.mark.asyncio
-@respx.mock
-async def test_capture_records_error_when_chat_fails():
-    respx.get("http://chat/config").mock(side_effect=httpx.ConnectError("boom"))
-    respx.get("http://ingestion/collections/documents/config").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "chunk_size": 1000,
-                "chunk_overlap": 200,
-                "embedding_model": "nomic-embed-text",
-            },
-        )
+async def test_capture_records_error_when_chat_fails(monkeypatch):
+    _patch_async_transport(
+        monkeypatch,
+        _transport(
+            {
+                "http://chat/config": httpx.ConnectError("boom"),
+                "http://ingestion/collections/documents/config": httpx.Response(
+                    200,
+                    json={
+                        "chunk_size": 1000,
+                        "chunk_overlap": 200,
+                        "embedding_model": "nomic-embed-text",
+                    },
+                ),
+            }
+        ),
     )
 
     cfg = await capture_run_config(
@@ -148,21 +185,25 @@ async def test_capture_records_error_when_chat_fails():
 
 
 @pytest.mark.asyncio
-@respx.mock
-async def test_capture_records_error_when_collection_unknown():
-    respx.get("http://chat/config").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "llm_model": "qwen2.5:14b",
-                "embedding_model": "nomic-embed-text",
-                "top_k": 5,
-                "prompt_version": "v1-baseline",
-            },
-        )
-    )
-    respx.get("http://ingestion/collections/nope/config").mock(
-        return_value=httpx.Response(404, json={"detail": "not found"})
+async def test_capture_records_error_when_collection_unknown(monkeypatch):
+    _patch_async_transport(
+        monkeypatch,
+        _transport(
+            {
+                "http://chat/config": httpx.Response(
+                    200,
+                    json={
+                        "llm_model": "qwen2.5:14b",
+                        "embedding_model": "nomic-embed-text",
+                        "top_k": 5,
+                        "prompt_version": "v1-baseline",
+                    },
+                ),
+                "http://ingestion/collections/nope/config": httpx.Response(
+                    404, json={"detail": "not found"}
+                ),
+            }
+        ),
     )
 
     cfg = await capture_run_config(
@@ -178,11 +219,17 @@ async def test_capture_records_error_when_collection_unknown():
 
 
 @pytest.mark.asyncio
-@respx.mock
-async def test_capture_records_both_errors_when_both_fail():
-    respx.get("http://chat/config").mock(side_effect=httpx.ConnectError("boom"))
-    respx.get("http://ingestion/collections/documents/config").mock(
-        return_value=httpx.Response(500, json={"detail": "internal"})
+async def test_capture_records_both_errors_when_both_fail(monkeypatch):
+    _patch_async_transport(
+        monkeypatch,
+        _transport(
+            {
+                "http://chat/config": httpx.ConnectError("boom"),
+                "http://ingestion/collections/documents/config": httpx.Response(
+                    500, json={"detail": "internal"}
+                ),
+            }
+        ),
     )
 
     cfg = await capture_run_config(
