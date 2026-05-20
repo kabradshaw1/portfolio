@@ -52,6 +52,7 @@ class EvaluationDetail(BaseModel):
     notes: str | None = None
     config: dict[str, Any] | None = None
     baseline_eval_id: str | None = None
+    item_counts: dict[str, int] | None = None
 
 
 class TriageEvalRunRequest(BaseModel):

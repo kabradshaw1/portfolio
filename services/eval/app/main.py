@@ -855,8 +855,8 @@ async def compare_evaluations(
         raise HTTPException(
             status_code=400,
             detail=(
-                "compare requires completed runs; invalid statuses: "
-                + ", ".join(invalid_statuses)
+                "compare requires completed or completed_with_failures runs; "
+                "invalid statuses: " + ", ".join(invalid_statuses)
             ),
         )
 
