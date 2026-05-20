@@ -16,7 +16,7 @@ data:
   # Retrieval tuning — number of chunks pulled from Qdrant per /chat call.
   TOP_K: "5"
   # Selects which template in app.prompt.PROMPTS is used; validated at startup.
-  PROMPT_VERSION: v1-baseline
+  PROMPT_VERSION: v2-grounded
   CHAT_RATE_LIMIT_ASK_OPERATOR: 60/minute
   CHAT_RATE_LIMIT_ASK_USER: 20/minute
   CHAT_RATE_LIMIT_ASK_ANONYMOUS: 5/minute
