@@ -18,13 +18,15 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from app.answer_models import AnswerModelOverride, resolve_answer_model_override
-from app.broker import EvalItemMessage, EvalItemPublisher
+from app.broker import EvalItemDLQClient, EvalItemMessage, EvalItemPublisher
 from app.collection_validation import validate_collection_exists
 from app.config import settings
 from app.config_capture import capture_run_config
 from app.db import EvalDB
 from app.evaluator import EvalRunContext, run_evaluation
 from app.metrics import (
+    eval_item_dlq_inspections_total,
+    eval_item_dlq_replays_total,
     eval_quality_score,
     eval_queries_total,
     eval_queue_publish_total,
@@ -39,9 +41,12 @@ from app.models import (
     DashboardBaselineDeltas,
     DashboardDatasetSummary,
     DashboardRunSummary,
+    DLQListResponse,
     EvaluationDashboard,
     MetricTrendPoint,
     QueryScore,
+    ReplayDLQItemRequest,
+    ReplayDLQItemResponse,
     RetrievalConfig,
     StartEvaluationRequest,
     UpdateExperimentRequest,
@@ -69,6 +74,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _db: EvalDB | None = None
 _item_publisher: EvalItemPublisher | None = None
+_dlq_client: EvalItemDLQClient | None = None
 
 
 def build_eval_rate_limiter() -> FixedWindowRateLimiter:
@@ -131,6 +137,13 @@ async def enforce_eval_write(request: Request) -> AuthContext:
     return await _enforce_eval_rate_limit("eval_write", request)
 
 
+async def enforce_eval_operator(request: Request) -> AuthContext:
+    context = await _enforce_eval_rate_limit("eval_write", request)
+    if context.tier != "operator":
+        raise HTTPException(status_code=403, detail="operator access required")
+    return context
+
+
 async def get_db() -> EvalDB:
     global _db
     if _db is None:
@@ -153,6 +166,18 @@ async def get_item_publisher() -> EvalItemPublisher:
     return _item_publisher
 
 
+async def get_dlq_client() -> EvalItemDLQClient:
+    global _dlq_client
+    if _dlq_client is None:
+        if not settings.rabbitmq_url:
+            raise HTTPException(status_code=503, detail="eval queue is not configured")
+        _dlq_client = EvalItemDLQClient(
+            rabbitmq_url=settings.rabbitmq_url,
+            dlq_name=settings.eval_item_dlq,
+        )
+    return _dlq_client
+
+
 async def publish_evaluation_items(eval_id: str, items: list[dict]) -> None:
     publisher = await get_item_publisher()
     for item in items:
@@ -161,7 +186,7 @@ async def publish_evaluation_items(eval_id: str, items: list[dict]) -> None:
                 evaluation_id=eval_id,
                 item_id=item["id"],
                 item_index=item["item_index"],
-                attempt=1,
+                attempt=item.get("attempt_count", 0) + 1,
             )
         )
         eval_queue_publish_total.labels(status="success").inc()
@@ -188,6 +213,8 @@ async def shutdown():
         await _db.close()
     if _item_publisher:
         await _item_publisher.close()
+    if _dlq_client:
+        await _dlq_client.close()
 
 
 # --- Health ---
@@ -576,6 +603,134 @@ async def start_evaluation(
         ) from None
 
     return {"id": eval_id, "status": "queued"}
+
+
+async def _hydrate_dlq_entry(db: EvalDB, entry) -> dict:
+    payload = entry.payload
+    item_evidence = None
+    eval_evidence = None
+    if payload is not None:
+        item = await db.get_evaluation_item(payload["item_id"])
+        if item is not None:
+            item_evidence = {
+                "evaluation_id": item["evaluation_id"],
+                "item_id": item["id"],
+                "item_index": item["item_index"],
+                "status": item["status"],
+                "attempt_count": item["attempt_count"],
+                "max_attempts": item["max_attempts"],
+                "last_error": item["last_error"],
+                "replay_count": item.get("replay_count", 0),
+                "last_replayed_at": item.get("last_replayed_at"),
+            }
+        evaluation = await db.get_evaluation(payload["evaluation_id"])
+        if evaluation is not None:
+            eval_evidence = {
+                "status": evaluation["status"],
+                "collection": evaluation["collection"],
+                "created_at": evaluation["created_at"],
+                "completed_at": evaluation["completed_at"],
+            }
+    return {
+        "index": entry.index,
+        "delivery_tag": entry.delivery_tag,
+        "redelivered": entry.redelivered,
+        "payload": payload,
+        "routing": entry.routing.__dict__,
+        "item": item_evidence,
+        "evaluation": eval_evidence,
+        "invalid_payload": entry.invalid_payload,
+    }
+
+
+@app.get(
+    "/evaluations/items/dlq",
+    response_model=DLQListResponse,
+    dependencies=[Depends(enforce_eval_operator)],
+)
+async def list_eval_item_dlq(request: Request, limit: int = 20):
+    bounded_limit = min(max(limit, 1), 200)
+    db = await get_db()
+    dlq = await get_dlq_client()
+    entries = await dlq.list(limit=bounded_limit)
+    outcome = "empty" if not entries else "success"
+    eval_item_dlq_inspections_total.labels(outcome=outcome).inc()
+    return {
+        "entries": [await _hydrate_dlq_entry(db, entry) for entry in entries],
+        "indexes_are_transient": True,
+    }
+
+
+@app.post(
+    "/evaluations/items/dlq/replay",
+    response_model=ReplayDLQItemResponse,
+    dependencies=[Depends(enforce_eval_operator)],
+)
+async def replay_eval_item_dlq(request: Request, body: ReplayDLQItemRequest):
+    db = await get_db()
+    dlq = await get_dlq_client()
+    taken = await dlq.take(
+        item_id=body.item_id,
+        index=body.index,
+        scan_limit=200,
+    )
+    if taken is None:
+        eval_item_dlq_replays_total.labels(outcome="not_found").inc()
+        raise HTTPException(status_code=404, detail="DLQ message not found")
+    entry = taken.entry
+    if entry.payload is None:
+        eval_item_dlq_replays_total.labels(outcome="invalid_payload").inc()
+        raise HTTPException(status_code=400, detail="invalid DLQ payload")
+    item_id = entry.payload["item_id"]
+    item = await db.get_evaluation_item(item_id)
+    if item is None:
+        eval_item_dlq_replays_total.labels(outcome="not_found").inc()
+        raise HTTPException(status_code=404, detail="evaluation item not found")
+    if item["status"] != "failed":
+        eval_item_dlq_replays_total.labels(outcome="not_failed").inc()
+        raise HTTPException(status_code=409, detail="evaluation item is not failed")
+    replayed = await db.requeue_failed_item_for_replay(item_id)
+    if replayed is None:
+        eval_item_dlq_replays_total.labels(outcome="not_failed").inc()
+        raise HTTPException(status_code=409, detail="evaluation item is not failed")
+    try:
+        await publish_evaluation_items(
+            replayed["evaluation_id"],
+            [
+                {
+                    "id": replayed["id"],
+                    "item_index": replayed["item_index"],
+                    "attempt_count": replayed["attempt_count"],
+                }
+            ],
+        )
+    except Exception as exc:
+        eval_item_dlq_replays_total.labels(outcome="publish_failed").inc()
+        logger.warning(
+            "eval_item_dlq_replay_publish_failed eval_id=%s item_id=%s item_index=%s",
+            replayed["evaluation_id"],
+            replayed["id"],
+            replayed["item_index"],
+        )
+        raise HTTPException(status_code=503, detail="unable to publish replay") from exc
+    eval_item_dlq_replays_total.labels(outcome="success").inc()
+    logger.info(
+        "eval_item_dlq_replayed eval_id=%s item_id=%s item_index=%s selector=%s "
+        "routing_key=%s",
+        replayed["evaluation_id"],
+        replayed["id"],
+        replayed["item_index"],
+        "item_id" if body.item_id is not None else "index",
+        entry.routing.routing_key,
+    )
+    return {
+        "evaluation_id": replayed["evaluation_id"],
+        "item_id": replayed["id"],
+        "item_index": replayed["item_index"],
+        "status": replayed["status"],
+        "replay_count": replayed["replay_count"],
+        "message_published": True,
+    }
 
 
 @app.post(

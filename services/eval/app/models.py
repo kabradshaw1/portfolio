@@ -118,6 +118,78 @@ class EvaluationSummary(BaseModel):
     baseline_eval_id: str | None = None
 
 
+class DLQPayload(BaseModel):
+    message_version: int
+    evaluation_id: str
+    item_id: str
+    item_index: int
+    attempt: int
+
+
+class DLQRouting(BaseModel):
+    exchange: str
+    routing_key: str
+    queue: str
+    death_count: int
+    death_reason: str
+
+
+class DLQItemEvidence(BaseModel):
+    evaluation_id: str
+    item_id: str
+    item_index: int
+    status: str
+    attempt_count: int
+    max_attempts: int
+    last_error: dict[str, Any] | None = None
+    replay_count: int = 0
+    last_replayed_at: str | None = None
+
+
+class DLQEvaluationEvidence(BaseModel):
+    status: str
+    collection: str | None = None
+    created_at: str
+    completed_at: str | None = None
+
+
+class DLQEntryResponse(BaseModel):
+    index: int
+    delivery_tag: str
+    redelivered: bool
+    payload: DLQPayload | None = None
+    routing: DLQRouting
+    item: DLQItemEvidence | None = None
+    evaluation: DLQEvaluationEvidence | None = None
+    invalid_payload: str | None = None
+
+
+class DLQListResponse(BaseModel):
+    entries: list[DLQEntryResponse]
+    indexes_are_transient: bool = True
+
+
+class ReplayDLQItemRequest(BaseModel):
+    item_id: str | None = None
+    index: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def exactly_one_selector(self) -> "ReplayDLQItemRequest":
+        selectors = [self.item_id is not None, self.index is not None]
+        if selectors.count(True) != 1:
+            raise ValueError("provide exactly one of item_id or index")
+        return self
+
+
+class ReplayDLQItemResponse(BaseModel):
+    evaluation_id: str
+    item_id: str
+    item_index: int
+    status: str
+    replay_count: int
+    message_published: bool
+
+
 ExperimentStatus = Literal["planned", "running", "completed", "abandoned"]
 InitialExperimentStatus = Literal["planned", "running"]
 ExperimentDecision = Literal["keep", "revert", "needs_more_data"]
