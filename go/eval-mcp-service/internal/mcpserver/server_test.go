@@ -26,6 +26,10 @@ type fakeEvalService struct {
 	triageCalls           int
 	compareInput          evalworkflow.CompareInput
 	recordConclusionInput evalworkflow.RecordConclusionInput
+	listDLQLimit          int
+	listDLQResponse       evalapi.DLQListResponse
+	replayDLQRequest      evalapi.ReplayDLQItemRequest
+	replayDLQResponse     evalapi.ReplayDLQItemResponse
 }
 
 func (f *fakeEvalService) StartExperiment(_ context.Context, in evalworkflow.StartExperimentInput) (evalapi.Experiment, error) {
@@ -128,6 +132,16 @@ func (f *fakeEvalService) RecordConclusion(_ context.Context, in evalworkflow.Re
 	return nil
 }
 
+func (f *fakeEvalService) ListEvalItemDLQ(_ context.Context, limit int) (evalapi.DLQListResponse, error) {
+	f.listDLQLimit = limit
+	return f.listDLQResponse, nil
+}
+
+func (f *fakeEvalService) ReplayEvalItemDLQ(_ context.Context, in evalapi.ReplayDLQItemRequest) (evalapi.ReplayDLQItemResponse, error) {
+	f.replayDLQRequest = in
+	return f.replayDLQResponse, nil
+}
+
 func TestServerRegistersPromptResourceAndTools(t *testing.T) {
 	srv := New(&fakeEvalService{})
 
@@ -149,8 +163,10 @@ func TestServerRegistersPromptResourceAndTools(t *testing.T) {
 		"list_eval_dataset_fixtures",
 		"list_eval_datasets",
 		"list_eval_experiments",
+		"list_eval_item_dlq",
 		"list_rag_collections",
 		"record_eval_experiment_conclusion",
+		"replay_eval_item_dlq",
 		"start_eval_experiment",
 		"start_eval_run",
 		"summarize_eval_experiment",
@@ -159,6 +175,58 @@ func TestServerRegistersPromptResourceAndTools(t *testing.T) {
 	}
 	if got := serverFeatureNames(t, srv, "tools"); !slices.Equal(got, wantTools) {
 		t.Fatalf("unexpected tools:\n got: %v\nwant: %v", got, wantTools)
+	}
+}
+
+func TestReplayEvalItemDLQRejectsMissingSelector(t *testing.T) {
+	service := &fakeEvalService{}
+	result, err := replayEvalItemDLQHandler(service)(context.Background(), callReq(map[string]any{}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+
+	if !result.IsError {
+		t.Fatalf("expected MCP tool error")
+	}
+	if got := textResult(t, result); !strings.Contains(got, "provide exactly one of item_id or index") {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestReplayEvalItemDLQRejectsBothSelectors(t *testing.T) {
+	service := &fakeEvalService{}
+	result, err := replayEvalItemDLQHandler(service)(context.Background(), callReq(map[string]any{
+		"item_id": "item-1",
+		"index":   0,
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+
+	if !result.IsError {
+		t.Fatalf("expected MCP tool error")
+	}
+	if got := textResult(t, result); !strings.Contains(got, "provide exactly one of item_id or index") {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestReplayEvalItemDLQCallsServiceByItemID(t *testing.T) {
+	service := &fakeEvalService{
+		replayDLQResponse: evalapi.ReplayDLQItemResponse{ItemID: "item-1", MessagePublished: true},
+	}
+	result, err := replayEvalItemDLQHandler(service)(context.Background(), callReq(map[string]any{
+		"item_id": "item-1",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+
+	if service.replayDLQRequest.ItemID != "item-1" || !strings.Contains(textResult(t, result), "item-1") {
+		t.Fatalf("request=%#v result=%#v", service.replayDLQRequest, result)
 	}
 }
 
