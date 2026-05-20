@@ -72,9 +72,13 @@ test.describe("/ai MCP Server section", () => {
     ).toBeVisible();
   });
 
-  test("MCP section describes the internal engineering MCPs", async ({ page }) => {
+  test("MCP section highlights the internal engineering MCP workflow", async ({
+    page,
+  }) => {
     await page.goto("/ai");
 
+    const section = page.locator("#internal-mcps");
+    await expect(section).toBeVisible();
     await expect(
       page.getByRole("heading", {
         name: "Internal MCPs for Engineering Operations",
@@ -83,6 +87,12 @@ test.describe("/ai MCP Server section", () => {
     await expect(page.getByText("Observability MCP", { exact: false })).toBeVisible();
     await expect(page.getByText("QA MCP", { exact: false })).toBeVisible();
     await expect(page.getByText("Eval MCP service", { exact: false })).toBeVisible();
+    await expect(page.getByText("Evidence-backed engineering action")).toBeVisible();
+    await expect(page.getByText("Example tool-call trace")).toBeVisible();
+    await expect(
+      page.getByText("observability.investigate_checkout"),
+    ).toBeVisible();
+    await expect(page.getByText("Why this matters")).toBeVisible();
   });
 
   test("Tool catalog renders on /go AI Assistant tab", async ({ page }) => {
