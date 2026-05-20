@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,7 +12,10 @@ import (
 	"time"
 )
 
-const defaultHTTPTimeout = 30 * time.Second
+const (
+	defaultHTTPTimeout = 30 * time.Second
+	errorExcerptLimit  = 256
+)
 
 type TokenProvider interface {
 	Token(context.Context) (string, error)
@@ -30,6 +34,17 @@ type TriageRequest struct {
 	Metric               string `json:"metric,omitempty"`
 	Limit                int    `json:"limit,omitempty"`
 	IncludeObservability bool   `json:"include_observability,omitempty"`
+}
+
+type HTTPError struct {
+	Method     string
+	Path       string
+	StatusCode int
+	Excerpt    string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("%s %s: status %d: %s", e.Method, e.Path, e.StatusCode, e.Excerpt)
 }
 
 func New(baseURL string, tokenProvider TokenProvider, httpClient *http.Client) *Client {
@@ -78,6 +93,21 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		return fmt.Errorf("%s %s: encode request: %w", method, path, err)
 	}
 
+	err = c.doOnce(ctx, method, path, payload, out)
+	if err == nil || c.tokenProvider == nil {
+		return err
+	}
+
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusUnauthorized {
+		return err
+	}
+
+	c.tokenProvider.Invalidate()
+	return c.doOnce(ctx, method, path, payload, out)
+}
+
+func (c *Client) doOnce(ctx context.Context, method, path string, payload []byte, out any) error {
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("%s %s: create request: %w", method, path, err)
@@ -99,17 +129,19 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return fmt.Errorf("%s %s: read response: %w", method, path, err)
-	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("%s %s: status %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(data)))
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		excerpt, _ := io.ReadAll(io.LimitReader(resp.Body, errorExcerptLimit))
+		return &HTTPError{
+			Method:     method,
+			Path:       path,
+			StatusCode: resp.StatusCode,
+			Excerpt:    strings.TrimSpace(string(excerpt)),
+		}
 	}
 	if out == nil {
 		return nil
 	}
-	if err := json.Unmarshal(data, out); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("%s %s: decode response: %w", method, path, err)
 	}
 	return nil

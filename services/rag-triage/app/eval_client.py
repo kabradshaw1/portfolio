@@ -35,7 +35,7 @@ class EvalClient:
             f"/evaluations/{eval_id}",
             headers=self._headers(),
         )
-        if response.status_code >= 400:
+        if response.status_code != 200:
             raise EvalAPIError(response.status_code, self._error_message(response))
         return EvaluationDetail.model_validate(response.json())
 

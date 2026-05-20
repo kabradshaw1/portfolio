@@ -48,3 +48,21 @@ async def test_get_evaluation_raises_for_non_200():
 
     assert exc.value.status_code == 404
     assert "Evaluation not found" in str(exc.value)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_evaluation_raises_for_redirect_status():
+    respx.get("http://eval:8000/evaluations/redirect").mock(
+        return_value=Response(302, text="redirect")
+    )
+
+    client = EvalClient(base_url="http://eval:8000", token="")
+    try:
+        with pytest.raises(EvalAPIError) as exc:
+            await client.get_evaluation("redirect")
+    finally:
+        await client.close()
+
+    assert exc.value.status_code == 302
+    assert "redirect" in str(exc.value)
