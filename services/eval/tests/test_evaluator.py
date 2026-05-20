@@ -218,11 +218,11 @@ async def test_build_evaluation_dataset_scrubs_usage_api_keys(
     rag_client.ask.return_value = {
         **mock_chat_answer,
         "usage": {
-            "answer_model": "gpt-5.4-mini",
             "prompt_tokens": 4,
             "completion_tokens": 5,
             "generation_seconds": 0.42,
             "api_key": "leaked-root",
+            "answer_model": {"name": "gpt-5.4-mini", "api_key": "leaked-model"},
             "answer_model_override": {
                 "tier": "efficient",
                 "provider": "openai",
@@ -240,7 +240,7 @@ async def test_build_evaluation_dataset_scrubs_usage_api_keys(
     )
 
     assert dataset[0]["usage"] == {
-        "answer_model": "gpt-5.4-mini",
+        "answer_model": {"name": "gpt-5.4-mini"},
         "prompt_tokens": 4,
         "completion_tokens": 5,
         "generation_seconds": 0.42,
@@ -461,11 +461,11 @@ async def test_run_evaluation_scrubs_usage_api_keys_in_results(
         return_value={
             **mock_chat_answer,
             "usage": {
-                "answer_model": "gpt-5.4-mini",
                 "prompt_tokens": 4,
                 "completion_tokens": 5,
                 "generation_seconds": 0.42,
                 "api_key": "leaked-root",
+                "answer_model": {"name": "gpt-5.4-mini", "api_key": "leaked-model"},
                 "answer_model_override": {
                     "tier": "efficient",
                     "provider": "openai",

@@ -305,11 +305,26 @@ def _aggregate(scores: list[dict]) -> dict:
     return aggregate
 
 
+def _without_sensitive_keys(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: _without_sensitive_keys(item)
+            for key, item in value.items()
+            if key.lower() != "api_key"
+        }
+    if isinstance(value, list):
+        return [_without_sensitive_keys(item) for item in value]
+    return value
+
+
 def _safe_usage(raw_usage: object) -> dict:
     if not isinstance(raw_usage, dict):
         return {}
 
-    usage = {key: raw_usage[key] for key in USAGE_KEYS & raw_usage.keys()}
+    usage = {
+        key: _without_sensitive_keys(raw_usage[key])
+        for key in USAGE_KEYS & raw_usage.keys()
+    }
     override = usage.get("answer_model_override")
     if isinstance(override, dict):
         usage["answer_model_override"] = {
