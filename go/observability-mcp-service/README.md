@@ -37,6 +37,9 @@ codex mcp add observability -- zsh -lc 'source ~/.codex/env/observability-mcp.en
 | `OBS_MAX_WINDOW` | `1h` | Maximum accepted investigation window. |
 | `OBS_MAX_LOG_LINES` | `100` | Maximum log lines per Loki query. |
 | `OBS_MAX_TRACE_SPANS` | `100` | Maximum spans returned per trace. |
+| `OBS_HISTORY_ENABLED` | `true` | Enables local SQLite incident history. |
+| `OBS_HISTORY_DB_PATH` | `~/.codex/data/observability-mcp/history.db` | Local SQLite history database path. |
+| `OBS_HISTORY_AUTO_CAPTURE` | `false` | Persist investigation evidence even without `incident_key`. |
 
 ## Grafana Gateway Mode
 
@@ -94,6 +97,10 @@ stale-running gauges, and eval service logs filtered by that run ID.
 - `get_service_evidence`
 - `search_logs`
 - `get_trace`
+- `list_incidents`
+- `get_incident_history`
+- `add_incident_note`
+- `compare_evidence_windows`
 
 Runbook resources are exposed under:
 
@@ -104,10 +111,14 @@ Runbook resources are exposed under:
 
 ## Safety
 
-V1 is read-only. It queries metrics, logs, traces, embedded runbook text, and
-Grafana alert metadata. It does not call Kubernetes write APIs, roll out or
-restart workloads, scale deployments, purge queues, silence alerts, mutate
-databases, edit Grafana rules, or read secrets.
+External observability and runtime systems remain read-only. The service queries
+metrics, logs, traces, embedded runbook text, and Grafana alert metadata; it
+does not call Kubernetes write APIs, roll out or restart workloads, scale
+deployments, purge queues, silence alerts, mutate external databases, edit
+Grafana rules, or read secrets.
+
+When incident history is enabled, the service may write investigation snapshots
+and `add_incident_note` entries to the configured local SQLite history database.
 
 Example prompts:
 

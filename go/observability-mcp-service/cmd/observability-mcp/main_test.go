@@ -3,13 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/workflows"
 )
 
 func TestRunWiresConfigClientsAndRunner(t *testing.T) {
@@ -60,6 +65,62 @@ func TestRunRejectsInvalidConfigBeforeServerStartup(t *testing.T) {
 	}
 	if called {
 		t.Fatal("runner should not be called")
+	}
+}
+
+func TestRunOpensHistoryStoreWhenEnabled(t *testing.T) {
+	clearEnv(t)
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+	t.Setenv("OBS_HISTORY_DB_PATH", dbPath)
+	t.Setenv("OBS_HISTORY_ENABLED", "true")
+
+	err := run(context.Background(), log.New(&bytes.Buffer{}, "", 0), func(context.Context, *app) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("expected history db file to exist: %v", err)
+	}
+}
+
+func TestRunSkipsHistoryStoreWhenDisabled(t *testing.T) {
+	clearEnv(t)
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+	t.Setenv("OBS_HISTORY_DB_PATH", dbPath)
+	t.Setenv("OBS_HISTORY_ENABLED", "false")
+
+	err := run(context.Background(), log.New(&bytes.Buffer{}, "", 0), func(context.Context, *app) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if _, err := os.Stat(dbPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected history db file to not exist, stat error = %v", err)
+	}
+}
+
+func TestRunContinuesWhenHistoryStoreFails(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("OBS_HISTORY_DB_PATH", t.TempDir())
+	t.Setenv("OBS_HISTORY_ENABLED", "true")
+
+	var logs bytes.Buffer
+	called := false
+	err := run(context.Background(), log.New(&logs, "", 0), func(context.Context, *app) error {
+		called = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected runner to be called")
+	}
+	if !strings.Contains(logs.String(), "history disabled") {
+		t.Fatalf("expected history disabled warning, got %q", logs.String())
 	}
 }
 
@@ -115,7 +176,7 @@ func TestRunUsesGrafanaGatewayMode(t *testing.T) {
 	var logs bytes.Buffer
 	err := run(context.Background(), log.New(&logs, "", 0), func(_ context.Context, application *app) error {
 		got = application
-		bundle := application.service.GetServiceEvidence(context.Background(), "go-order-service", time.Minute, "")
+		bundle := application.service.GetServiceEvidence(context.Background(), "go-order-service", time.Minute, "", workflows.CaptureOptions{})
 		if len(bundle.Errors) > 0 {
 			t.Fatalf("service evidence errors = %+v", bundle.Errors)
 		}
@@ -165,4 +226,7 @@ func clearEnv(t *testing.T) {
 	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET", "")
 	t.Setenv("OBS_GRAFANA_PROMETHEUS_DS_UID", "")
 	t.Setenv("OBS_GRAFANA_LOKI_DS_UID", "")
+	t.Setenv("OBS_HISTORY_ENABLED", "false")
+	t.Setenv("OBS_HISTORY_DB_PATH", "")
+	t.Setenv("OBS_HISTORY_AUTO_CAPTURE", "")
 }

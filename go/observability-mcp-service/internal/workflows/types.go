@@ -39,6 +39,38 @@ type SourceError struct {
 	Message   string `json:"message"`
 }
 
+type CaptureOptions struct {
+	IncidentKey   string `json:"incident_key,omitempty"`
+	IncidentTitle string `json:"incident_title,omitempty"`
+	Severity      string `json:"severity,omitempty"`
+	Service       string `json:"service,omitempty"`
+	Persist       *bool  `json:"persist,omitempty"`
+}
+
+type HistoryMetadata struct {
+	IncidentKey string `json:"incident_key,omitempty"`
+	SnapshotID  int64  `json:"snapshot_id,omitempty"`
+	Warning     string `json:"warning,omitempty"`
+}
+
+type EvidenceComparison struct {
+	BaselineSnapshotID  int64             `json:"baseline_snapshot_id"`
+	CandidateSnapshotID int64             `json:"candidate_snapshot_id,omitempty"`
+	StatusChange        string            `json:"status_change,omitempty"`
+	PartialChange       string            `json:"partial_change,omitempty"`
+	SourceChanges       []ComparisonDelta `json:"source_changes,omitempty"`
+	SignalChanges       []ComparisonDelta `json:"signal_changes,omitempty"`
+	CountChanges        []ComparisonDelta `json:"count_changes,omitempty"`
+	Summary             []string          `json:"summary"`
+}
+
+type ComparisonDelta struct {
+	Name      string `json:"name"`
+	Before    string `json:"before"`
+	After     string `json:"after"`
+	Direction string `json:"direction"`
+}
+
 type EvidenceBundle struct {
 	Tool     string                       `json:"tool"`
 	Status   string                       `json:"status"`
@@ -51,6 +83,7 @@ type EvidenceBundle struct {
 	Findings []Finding                    `json:"findings"`
 	Partial  bool                         `json:"partial"`
 	Errors   []SourceError                `json:"errors"`
+	History  *HistoryMetadata             `json:"history,omitempty"`
 }
 
 func NewBundle(tool, duration string) EvidenceBundle {
