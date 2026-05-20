@@ -2,6 +2,7 @@ package workflows
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -185,6 +186,105 @@ func TestNilHistoryStoreDoesNotPersist(t *testing.T) {
 	}
 }
 
+func TestCompareEvidenceSnapshotsReportsStatusAndCountDeltas(t *testing.T) {
+	store := &fakeHistoryStore{snapshotsByID: map[int64]history.Snapshot{
+		1: snapshotWithBundle(t, 1, EvidenceBundle{
+			Status:   "warning",
+			Partial:  true,
+			Findings: []Finding{{Severity: "warning", Title: "slow", Evidence: "latency"}},
+			Logs:     []observability.LogLine{{Line: "first"}, {Line: "second"}, {Line: "third"}},
+			Traces:   []observability.TraceSummary{{TraceID: "trace-1"}, {TraceID: "trace-2"}},
+		}),
+		2: snapshotWithBundle(t, 2, EvidenceBundle{
+			Status:   "ok",
+			Partial:  false,
+			Findings: []Finding{{Severity: "critical", Title: "error", Evidence: "rate"}, {Severity: "warning", Title: "retry", Evidence: "rate"}},
+			Logs:     []observability.LogLine{{Line: "only"}},
+			Traces:   []observability.TraceSummary{{TraceID: "trace-1"}},
+		}),
+	}}
+	service := NewService(nil, nil, nil, 10).WithHistory(store, false)
+
+	got, err := service.CompareEvidenceSnapshots(context.Background(), 1, 2)
+
+	if err != nil {
+		t.Fatalf("CompareEvidenceSnapshots returned error: %v", err)
+	}
+	if got.BaselineSnapshotID != 1 || got.CandidateSnapshotID != 2 {
+		t.Fatalf("snapshot ids = %d, %d", got.BaselineSnapshotID, got.CandidateSnapshotID)
+	}
+	if got.StatusChange != "status changed from warning to ok" {
+		t.Fatalf("status change = %q", got.StatusChange)
+	}
+	if got.PartialChange != "partial changed from true to false" {
+		t.Fatalf("partial change = %q", got.PartialChange)
+	}
+	assertDelta(t, got.CountChanges, "finding_count", "1", "2", "increased")
+	assertDelta(t, got.CountChanges, "log_count", "3", "1", "decreased")
+	assertDelta(t, got.CountChanges, "trace_count", "2", "1", "decreased")
+	assertSummaryContains(t, got.Summary, "status changed from warning to ok")
+	assertSummaryContains(t, got.Summary, "log_count decreased from 3 to 1")
+}
+
+func TestCompareEvidenceSnapshotsReportsSourceAvailabilityChanges(t *testing.T) {
+	store := &fakeHistoryStore{snapshotsByID: map[int64]history.Snapshot{
+		1: snapshotWithBundle(t, 1, EvidenceBundle{
+			Sources: []SourceStatus{
+				{Name: "loki", Status: "error"},
+				{Name: "prometheus", Status: "ok"},
+			},
+		}),
+		2: snapshotWithBundle(t, 2, EvidenceBundle{
+			Sources: []SourceStatus{
+				{Name: "loki", Status: "ok"},
+				{Name: "jaeger", Status: "ok"},
+			},
+		}),
+	}}
+	service := NewService(nil, nil, nil, 10).WithHistory(store, false)
+
+	got, err := service.CompareEvidenceSnapshots(context.Background(), 1, 2)
+
+	if err != nil {
+		t.Fatalf("CompareEvidenceSnapshots returned error: %v", err)
+	}
+	assertDelta(t, got.SourceChanges, "loki", "error", "ok", "changed")
+	assertDelta(t, got.SourceChanges, "prometheus", "ok", "", "removed")
+	assertDelta(t, got.SourceChanges, "jaeger", "", "ok", "added")
+	assertSummaryContains(t, got.Summary, "source loki changed from error to ok")
+}
+
+func TestCompareEvidenceSnapshotsReportsSignalValueDeltas(t *testing.T) {
+	beforeValue := 12.5
+	afterValue := 2.25
+	newValue := 1.5
+	store := &fakeHistoryStore{snapshotsByID: map[int64]history.Snapshot{
+		1: snapshotWithBundle(t, 1, EvidenceBundle{
+			Signals: []Signal{
+				{Name: "error_rate", Value: &beforeValue},
+				{Name: "latency_p95", Value: &newValue},
+			},
+		}),
+		2: snapshotWithBundle(t, 2, EvidenceBundle{
+			Signals: []Signal{
+				{Name: "error_rate", Value: &afterValue},
+				{Name: "queue_depth", Value: &newValue},
+			},
+		}),
+	}}
+	service := NewService(nil, nil, nil, 10).WithHistory(store, false)
+
+	got, err := service.CompareEvidenceSnapshots(context.Background(), 1, 2)
+
+	if err != nil {
+		t.Fatalf("CompareEvidenceSnapshots returned error: %v", err)
+	}
+	assertDelta(t, got.SignalChanges, "error_rate", "12.5", "2.25", "decreased")
+	assertDelta(t, got.SignalChanges, "latency_p95", "1.5", "", "removed")
+	assertDelta(t, got.SignalChanges, "queue_depth", "", "1.5", "added")
+	assertSummaryContains(t, got.Summary, "signal error_rate decreased from 12.5 to 2.25")
+}
+
 func TestInvestigateAIPipelineIncludesExpectedQueryNames(t *testing.T) {
 	service := NewService(&fakePrometheus{}, nil, nil, 10)
 	got := service.InvestigateAIPipeline(context.Background(), time.Minute, CaptureOptions{})
@@ -287,8 +387,9 @@ func (f *fakeJaeger) Trace(_ context.Context, traceID string) (observability.Tra
 }
 
 type fakeHistoryStore struct {
-	snapshots []history.SnapshotInput
-	err       error
+	snapshots     []history.SnapshotInput
+	snapshotsByID map[int64]history.Snapshot
+	err           error
 }
 
 func (f *fakeHistoryStore) Close() error { return nil }
@@ -315,8 +416,15 @@ func (f *fakeHistoryStore) AddIncidentNote(context.Context, history.AddNoteInput
 	return history.Event{}, f.err
 }
 
-func (f *fakeHistoryStore) GetSnapshot(context.Context, int64) (history.Snapshot, error) {
-	return history.Snapshot{}, f.err
+func (f *fakeHistoryStore) GetSnapshot(_ context.Context, id int64) (history.Snapshot, error) {
+	if f.err != nil {
+		return history.Snapshot{}, f.err
+	}
+	snapshot, ok := f.snapshotsByID[id]
+	if !ok {
+		return history.Snapshot{}, history.ErrNotFound
+	}
+	return snapshot, nil
 }
 
 func signalNames(signals []Signal) []string {
@@ -325,4 +433,33 @@ func signalNames(signals []Signal) []string {
 		names = append(names, signal.Name)
 	}
 	return names
+}
+
+func snapshotWithBundle(t *testing.T, id int64, bundle EvidenceBundle) history.Snapshot {
+	t.Helper()
+	bundleJSON, err := json.Marshal(bundle)
+	if err != nil {
+		t.Fatalf("marshal bundle: %v", err)
+	}
+	return history.Snapshot{ID: id, BundleJSON: bundleJSON}
+}
+
+func assertDelta(t *testing.T, deltas []ComparisonDelta, name, before, after, direction string) {
+	t.Helper()
+	for _, delta := range deltas {
+		if delta.Name == name {
+			if delta.Before != before || delta.After != after || delta.Direction != direction {
+				t.Fatalf("delta %s = %+v, want before=%q after=%q direction=%q", name, delta, before, after, direction)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing delta %q in %+v", name, deltas)
+}
+
+func assertSummaryContains(t *testing.T, summaries []string, want string) {
+	t.Helper()
+	if !slices.Contains(summaries, want) {
+		t.Fatalf("summary missing %q in %+v", want, summaries)
+	}
 }

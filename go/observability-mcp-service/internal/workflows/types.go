@@ -53,6 +53,24 @@ type HistoryMetadata struct {
 	Warning     string `json:"warning,omitempty"`
 }
 
+type EvidenceComparison struct {
+	BaselineSnapshotID  int64             `json:"baseline_snapshot_id"`
+	CandidateSnapshotID int64             `json:"candidate_snapshot_id,omitempty"`
+	StatusChange        string            `json:"status_change,omitempty"`
+	PartialChange       string            `json:"partial_change,omitempty"`
+	SourceChanges       []ComparisonDelta `json:"source_changes,omitempty"`
+	SignalChanges       []ComparisonDelta `json:"signal_changes,omitempty"`
+	CountChanges        []ComparisonDelta `json:"count_changes,omitempty"`
+	Summary             []string          `json:"summary"`
+}
+
+type ComparisonDelta struct {
+	Name      string `json:"name"`
+	Before    string `json:"before"`
+	After     string `json:"after"`
+	Direction string `json:"direction"`
+}
+
 type EvidenceBundle struct {
 	Tool     string                       `json:"tool"`
 	Status   string                       `json:"status"`

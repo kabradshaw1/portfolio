@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -132,6 +134,61 @@ func (s *Service) AddIncidentNote(ctx context.Context, input history.AddNoteInpu
 	return s.historyStore.AddIncidentNote(ctx, input)
 }
 
+func (s *Service) CompareEvidenceSnapshots(ctx context.Context, baselineID, candidateID int64) (EvidenceComparison, error) {
+	if s.historyStore == nil {
+		return EvidenceComparison{}, errors.New("history store is disabled")
+	}
+	if candidateID <= 0 {
+		candidateID = baselineID
+	}
+
+	baselineSnapshot, err := s.historyStore.GetSnapshot(ctx, baselineID)
+	if err != nil {
+		return EvidenceComparison{}, fmt.Errorf("get baseline snapshot %d: %w", baselineID, err)
+	}
+	candidateSnapshot, err := s.historyStore.GetSnapshot(ctx, candidateID)
+	if err != nil {
+		return EvidenceComparison{}, fmt.Errorf("get candidate snapshot %d: %w", candidateID, err)
+	}
+
+	baseline, err := evidenceBundleFromSnapshot(baselineSnapshot)
+	if err != nil {
+		return EvidenceComparison{}, fmt.Errorf("decode baseline snapshot %d: %w", baselineID, err)
+	}
+	candidate, err := evidenceBundleFromSnapshot(candidateSnapshot)
+	if err != nil {
+		return EvidenceComparison{}, fmt.Errorf("decode candidate snapshot %d: %w", candidateID, err)
+	}
+
+	comparison := EvidenceComparison{
+		BaselineSnapshotID:  baselineID,
+		CandidateSnapshotID: candidateID,
+		Summary:             []string{},
+	}
+	if baseline.Status != candidate.Status {
+		comparison.StatusChange = fmt.Sprintf("status changed from %s to %s", baseline.Status, candidate.Status)
+		comparison.Summary = append(comparison.Summary, comparison.StatusChange)
+	}
+	if baseline.Partial != candidate.Partial {
+		comparison.PartialChange = fmt.Sprintf("partial changed from %t to %t", baseline.Partial, candidate.Partial)
+		comparison.Summary = append(comparison.Summary, comparison.PartialChange)
+	}
+
+	comparison.CountChanges = compareCounts(baseline, candidate)
+	for _, delta := range comparison.CountChanges {
+		comparison.Summary = append(comparison.Summary, fmt.Sprintf("%s %s from %s to %s", delta.Name, delta.Direction, delta.Before, delta.After))
+	}
+	comparison.SourceChanges = compareSources(baseline.Sources, candidate.Sources)
+	for _, delta := range comparison.SourceChanges {
+		comparison.Summary = append(comparison.Summary, fmt.Sprintf("source %s %s from %s to %s", delta.Name, delta.Direction, delta.Before, delta.After))
+	}
+	comparison.SignalChanges = compareSignals(baseline.Signals, candidate.Signals)
+	for _, delta := range comparison.SignalChanges {
+		comparison.Summary = append(comparison.Summary, fmt.Sprintf("signal %s %s from %s to %s", delta.Name, delta.Direction, delta.Before, delta.After))
+	}
+	return comparison, nil
+}
+
 func (s *Service) SearchLogs(ctx context.Context, service string, window time.Duration, pattern string) EvidenceBundle {
 	b := s.bundle("search_logs", window)
 	if !AllowedService(service) {
@@ -257,6 +314,145 @@ func historySourceStatuses(sources []SourceStatus) []history.SourceStatus {
 		statuses = append(statuses, history.SourceStatus{Name: source.Name, Status: source.Status})
 	}
 	return statuses
+}
+
+func evidenceBundleFromSnapshot(snapshot history.Snapshot) (EvidenceBundle, error) {
+	var bundle EvidenceBundle
+	if err := json.Unmarshal(snapshot.BundleJSON, &bundle); err != nil {
+		return EvidenceBundle{}, err
+	}
+	return bundle, nil
+}
+
+func compareCounts(baseline, candidate EvidenceBundle) []ComparisonDelta {
+	counts := []struct {
+		name   string
+		before int
+		after  int
+	}{
+		{name: "finding_count", before: len(baseline.Findings), after: len(candidate.Findings)},
+		{name: "log_count", before: len(baseline.Logs), after: len(candidate.Logs)},
+		{name: "trace_count", before: len(baseline.Traces), after: len(candidate.Traces)},
+	}
+	deltas := make([]ComparisonDelta, 0, len(counts))
+	for _, count := range counts {
+		if count.before == count.after {
+			continue
+		}
+		deltas = append(deltas, ComparisonDelta{
+			Name:      count.name,
+			Before:    strconv.Itoa(count.before),
+			After:     strconv.Itoa(count.after),
+			Direction: numericDirection(float64(count.before), float64(count.after)),
+		})
+	}
+	return deltas
+}
+
+func compareSources(baseline, candidate []SourceStatus) []ComparisonDelta {
+	before := sourceStatusByName(baseline)
+	after := sourceStatusByName(candidate)
+	names := sortedUnionKeys(before, after)
+	deltas := make([]ComparisonDelta, 0, len(names))
+	for _, name := range names {
+		beforeStatus, beforeOK := before[name]
+		afterStatus, afterOK := after[name]
+		if beforeOK && afterOK && beforeStatus == afterStatus {
+			continue
+		}
+		deltas = append(deltas, ComparisonDelta{
+			Name:      name,
+			Before:    beforeStatus,
+			After:     afterStatus,
+			Direction: presenceDirection(beforeOK, afterOK),
+		})
+	}
+	return deltas
+}
+
+func compareSignals(baseline, candidate []Signal) []ComparisonDelta {
+	before := signalValuesByName(baseline)
+	after := signalValuesByName(candidate)
+	names := sortedUnionKeys(before, after)
+	deltas := make([]ComparisonDelta, 0, len(names))
+	for _, name := range names {
+		beforeValue, beforeOK := before[name]
+		afterValue, afterOK := after[name]
+		if beforeOK && afterOK && beforeValue == afterValue {
+			continue
+		}
+		deltas = append(deltas, ComparisonDelta{
+			Name:      name,
+			Before:    beforeValue,
+			After:     afterValue,
+			Direction: signalDirection(beforeValue, afterValue, beforeOK, afterOK),
+		})
+	}
+	return deltas
+}
+
+func sourceStatusByName(sources []SourceStatus) map[string]string {
+	statuses := make(map[string]string, len(sources))
+	for _, source := range sources {
+		statuses[source.Name] = source.Status
+	}
+	return statuses
+}
+
+func signalValuesByName(signals []Signal) map[string]string {
+	values := make(map[string]string, len(signals))
+	for _, signal := range signals {
+		if signal.Value == nil {
+			continue
+		}
+		values[signal.Name] = strconv.FormatFloat(*signal.Value, 'f', -1, 64)
+	}
+	return values
+}
+
+func sortedUnionKeys(left, right map[string]string) []string {
+	seen := make(map[string]struct{}, len(left)+len(right))
+	for key := range left {
+		seen[key] = struct{}{}
+	}
+	for key := range right {
+		seen[key] = struct{}{}
+	}
+	keys := make([]string, 0, len(seen))
+	for key := range seen {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func presenceDirection(beforeOK, afterOK bool) string {
+	switch {
+	case !beforeOK && afterOK:
+		return "added"
+	case beforeOK && !afterOK:
+		return "removed"
+	default:
+		return "changed"
+	}
+}
+
+func signalDirection(before, after string, beforeOK, afterOK bool) string {
+	if beforeOK && afterOK {
+		beforeValue, beforeErr := strconv.ParseFloat(before, 64)
+		afterValue, afterErr := strconv.ParseFloat(after, 64)
+		if beforeErr == nil && afterErr == nil && beforeValue != afterValue {
+			return numericDirection(beforeValue, afterValue)
+		}
+	}
+	return presenceDirection(beforeOK, afterOK)
+}
+
+func numericDirection(before, after float64) string {
+	if after > before {
+		return "increased"
+	}
+	return "decreased"
 }
 
 func (s *Service) addPrometheusSignals(ctx context.Context, b *EvidenceBundle, queries []querySpec) {
