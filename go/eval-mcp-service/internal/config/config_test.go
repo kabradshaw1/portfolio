@@ -66,6 +66,9 @@ func TestFromEnvDefaults(t *testing.T) {
 	if !slices.Equal(cfg.DatasetFixtureRoots, []string{"../../docs/product-catalog"}) {
 		t.Fatalf("DatasetFixtureRoots = %#v", cfg.DatasetFixtureRoots)
 	}
+	if !slices.Equal(cfg.CorpusFixtureRoots, []string{"../../docs/product-catalog"}) {
+		t.Fatalf("CorpusFixtureRoots = %#v", cfg.CorpusFixtureRoots)
+	}
 }
 
 func TestFromEnvOverrides(t *testing.T) {

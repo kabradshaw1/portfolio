@@ -10,13 +10,14 @@ import (
 func TestCatalogListsFixtureWithDeterministicCollection(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "laptop.pdf", "%PDF-1.4\nlaptop")
-	writeFile(t, root, "product_catalog_v1.json", `{
+	writeFile(t, root, "product_catalog_v1.corpus.json", `{
 		"id": "product_catalog_v1",
 		"name": "Product Catalog v1",
 		"description": "Product catalog PDFs",
 		"documents": ["laptop.pdf"],
 		"expected_collection_prefix": "eval_product_catalog_v1"
 	}`)
+	writeFile(t, root, "rag-eval-dataset-product-docs.json", `{"name":"dataset","items":[]}`)
 
 	fixtures, err := New([]string{root}).List()
 	if err != nil {
@@ -34,13 +35,54 @@ func TestCatalogListsFixtureWithDeterministicCollection(t *testing.T) {
 	}
 }
 
+func TestLoadResolvesFixtureIDToCorpusManifest(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "laptop.pdf", "%PDF-1.4\nlaptop")
+	writeFile(t, root, "product_catalog_v1.corpus.json", `{
+		"id": "product_catalog_v1",
+		"name": "Product Catalog v1",
+		"description": "Product catalog PDFs",
+		"documents": ["laptop.pdf"],
+		"expected_collection_prefix": "eval_product_catalog_v1"
+	}`)
+
+	got, err := New([]string{root}).Load("product_catalog_v1")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if got.ID != "product_catalog_v1" {
+		t.Fatalf("ID = %q", got.ID)
+	}
+}
+
 func TestLoadRejectsEscapingDocument(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "bad.json", `{
+	writeFile(t, root, "bad.corpus.json", `{
 		"id": "bad",
 		"name": "Bad",
 		"description": "Bad fixture",
 		"documents": ["../secret.pdf"],
+		"expected_collection_prefix": "eval_bad"
+	}`)
+
+	_, err := New([]string{root}).Load("bad")
+	if err == nil || !strings.Contains(err.Error(), "must stay under fixture root") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestLoadRejectsSymlinkEscapingFixtureRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	writeFile(t, outside, "secret.pdf", "%PDF-1.4\nsecret")
+	if err := os.Symlink(filepath.Join(outside, "secret.pdf"), filepath.Join(root, "linked.pdf")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	writeFile(t, root, "bad.corpus.json", `{
+		"id": "bad",
+		"name": "Bad",
+		"description": "Bad fixture",
+		"documents": ["linked.pdf"],
 		"expected_collection_prefix": "eval_bad"
 	}`)
 

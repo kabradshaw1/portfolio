@@ -63,7 +63,7 @@ func New(roots []string) *Catalog {
 func (c *Catalog) List() ([]Fixture, error) {
 	var out []Fixture
 	for _, root := range c.roots {
-		matches, err := filepath.Glob(filepath.Join(root, "*.json"))
+		matches, err := filepath.Glob(filepath.Join(root, "*.corpus.json"))
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +136,7 @@ func (c *Catalog) resolve(idOrPath string) (string, string, error) {
 	for _, root := range c.roots {
 		candidate := idOrPath
 		if !filepath.IsAbs(candidate) && filepath.Ext(candidate) == "" {
-			candidate = filepath.Join(root, idOrPath+".json")
+			candidate = filepath.Join(root, idOrPath+".corpus.json")
 		} else if !filepath.IsAbs(candidate) {
 			candidate = filepath.Join(root, candidate)
 		}
@@ -174,12 +174,24 @@ func resolveDocument(root, docPath string) (Document, error) {
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
 		return Document{}, fmt.Errorf("document %q must stay under fixture root", docPath)
 	}
-	data, err := os.ReadFile(absDoc)
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return Document{}, err
+	}
+	realDoc, err := filepath.EvalSymlinks(absDoc)
+	if err != nil {
+		return Document{}, err
+	}
+	realRel, err := filepath.Rel(realRoot, realDoc)
+	if err != nil || realRel == ".." || strings.HasPrefix(realRel, ".."+string(filepath.Separator)) || filepath.IsAbs(realRel) {
+		return Document{}, fmt.Errorf("document %q must stay under fixture root", docPath)
+	}
+	data, err := os.ReadFile(realDoc)
 	if err != nil {
 		return Document{}, err
 	}
 	sum := sha256.Sum256(data)
-	return Document{Path: filepath.ToSlash(docPath), Abs: absDoc, SHA256: hex.EncodeToString(sum[:])}, nil
+	return Document{Path: filepath.ToSlash(docPath), Abs: realDoc, SHA256: hex.EncodeToString(sum[:])}, nil
 }
 
 func computeHash(raw fixtureFile, docs []Document) (string, error) {
