@@ -16,11 +16,11 @@
       ]
     },
     {
-      "query": "If retrieved chunks disagree about monitor warranty length, how should the answer handle the conflict?",
-      "expected_answer": "The answer should state that the retrieved documents conflict, avoid choosing one unsupported warranty length, and cite the conflicting source documents.",
+      "query": "If retrieved chunks disagree about Smartwatch Sport GPS battery life, how should the answer handle the conflict?",
+      "expected_answer": "The answer should state that the retrieved documents conflict because the Smartwatch Sport specifications say GPS mode lasts up to 18 hours, while the fitness equipment guide says GPS mode lasts 20+ hours. It should avoid choosing one unsupported value and cite the conflicting source documents.",
       "expected_sources": [
-        "27-4k-monitor-specs.pdf",
-        "electronics-buying-guide.pdf"
+        "smartwatch-sport-specs.pdf",
+        "fitness-equipment-guide.pdf"
       ]
     },
     {
