@@ -24,7 +24,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/redis v0.42.0
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.68.0
 	go.opentelemetry.io/otel/trace v1.43.0
-	google.golang.org/grpc v1.81.0
+	google.golang.org/grpc v1.81.1
 )
 
 replace github.com/kabradshaw1/portfolio/go/pkg => ../pkg
