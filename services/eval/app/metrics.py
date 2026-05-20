@@ -18,6 +18,12 @@ eval_items_total = Counter(
     ["status", "requested_rerank"],
 )
 
+eval_queue_publish_total = Counter(
+    "eval_queue_publish_total",
+    "Evaluation item queue publish attempts",
+    ["status"],
+)
+
 eval_item_duration_seconds = Histogram(
     "eval_item_duration_seconds",
     "Evaluation item stage duration",
