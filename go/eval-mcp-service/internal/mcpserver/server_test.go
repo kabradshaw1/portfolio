@@ -301,6 +301,93 @@ func TestStartEvalRunRejectsRawAnswerSecret(t *testing.T) {
 	}
 }
 
+func TestStartEvalRunRejectsInvalidAnswerSecretReference(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		secret string
+	}{
+		{name: "lowercase", secret: "openai_api_key"},
+		{name: "spaces", secret: "OPENAI API KEY"},
+		{name: "hyphen", secret: "OPENAI-API-KEY"},
+		{name: "overlong", secret: "A" + strings.Repeat("B", 101)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeEvalService{}
+			result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+				"dataset_id":            "ds-1",
+				"collection":            "documents",
+				"answer_provider":       "openai",
+				"answer_model":          "gpt-5.4-mini",
+				"answer_api_key_secret": tc.secret,
+			}))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.startRunCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+			}
+			got := textResult(t, result)
+			if !strings.Contains(got, "answer_api_key_secret must be an environment variable name") {
+				t.Fatalf("error = %q", got)
+			}
+			if strings.Contains(got, tc.secret) {
+				t.Fatalf("error echoed secret value: %q", got)
+			}
+		})
+	}
+}
+
+func TestStartEvalRunRequiresAnswerSecretForRemoteProviders(t *testing.T) {
+	for _, provider := range []string{"openai", "anthropic"} {
+		t.Run(provider, func(t *testing.T) {
+			fake := &fakeEvalService{}
+			result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+				"dataset_id":      "ds-1",
+				"collection":      "documents",
+				"answer_provider": provider,
+				"answer_model":    "model-1",
+			}))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected MCP tool error")
+			}
+			if fake.startRunCalls != 0 {
+				t.Fatalf("service should not be called on validation error, got %d calls", fake.startRunCalls)
+			}
+			if got := textResult(t, result); !strings.Contains(got, "answer_api_key_secret is required") {
+				t.Fatalf("error = %q", got)
+			}
+		})
+	}
+}
+
+func TestStartEvalRunAllowsOllamaWithoutAnswerSecret(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
+		"dataset_id":      "ds-1",
+		"collection":      "documents",
+		"answer_provider": "ollama",
+		"answer_model":    "qwen2.5",
+	}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned MCP error: %#v", result)
+	}
+	if fake.startRunCalls != 1 {
+		t.Fatalf("service should be called once, got %d calls", fake.startRunCalls)
+	}
+	if fake.startRunInput.AnswerProvider != "ollama" || fake.startRunInput.AnswerModel != "qwen2.5" || fake.startRunInput.AnswerAPIKeySecret != "" {
+		t.Fatalf("answer model override = %#v", fake.startRunInput)
+	}
+}
+
 func TestStartEvalRunRejectsInvalidRetrievalConfig(t *testing.T) {
 	for _, topK := range []float64{0, 21} {
 		t.Run("top_k_range", func(t *testing.T) {
@@ -348,11 +435,40 @@ func TestStartEvalRunRejectsUnknownRetrievalConfigField(t *testing.T) {
 }
 
 func TestStartEvalRunSchemaIncludesRetrievalConfig(t *testing.T) {
-	schema := string(startEvalRunSchema())
-	for _, want := range []string{"retrieval_config", "top_k", "answer_tier", "answer_provider", "answer_base_url", "answer_model", "answer_api_key_secret"} {
-		if !strings.Contains(schema, want) {
-			t.Fatalf("schema missing %q: %s", want, schema)
-		}
+	var schema struct {
+		Properties map[string]map[string]any `json:"properties"`
+	}
+	if err := json.Unmarshal(startEvalRunSchema(), &schema); err != nil {
+		t.Fatalf("schema is invalid JSON: %v", err)
+	}
+
+	retrievalConfig := schema.Properties["retrieval_config"]
+	retrievalProperties, ok := retrievalConfig["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("retrieval_config properties = %#v", retrievalConfig["properties"])
+	}
+	if _, ok := retrievalProperties["top_k"]; !ok {
+		t.Fatalf("retrieval_config missing top_k: %#v", retrievalProperties)
+	}
+
+	answerTier := schema.Properties["answer_tier"]
+	if answerTier["pattern"] != "^[a-zA-Z0-9_-]{1,50}$" || answerTier["maxLength"] != float64(50) {
+		t.Fatalf("answer_tier schema = %#v", answerTier)
+	}
+	answerProvider := schema.Properties["answer_provider"]
+	if !reflect.DeepEqual(answerProvider["enum"], []any{"ollama", "openai", "anthropic"}) {
+		t.Fatalf("answer_provider schema = %#v", answerProvider)
+	}
+	if got := schema.Properties["answer_base_url"]["maxLength"]; got != float64(300) {
+		t.Fatalf("answer_base_url maxLength = %#v", got)
+	}
+	answerModel := schema.Properties["answer_model"]
+	if answerModel["minLength"] != float64(1) || answerModel["maxLength"] != float64(100) {
+		t.Fatalf("answer_model schema = %#v", answerModel)
+	}
+	answerAPIKeySecret := schema.Properties["answer_api_key_secret"]
+	if answerAPIKeySecret["pattern"] != "^[A-Z][A-Z0-9_]{1,100}$" || answerAPIKeySecret["maxLength"] != float64(101) {
+		t.Fatalf("answer_api_key_secret schema = %#v", answerAPIKeySecret)
 	}
 }
 
