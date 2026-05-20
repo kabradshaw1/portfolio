@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -121,6 +122,51 @@ func TestFromEnvGrafanaDatasourceUIDOverrides(t *testing.T) {
 	}
 }
 
+func TestFromEnvHistoryDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+	if !cfg.HistoryEnabled {
+		t.Fatal("expected history enabled by default")
+	}
+	if cfg.HistoryAutoCapture {
+		t.Fatal("expected auto capture disabled by default")
+	}
+	if !strings.HasSuffix(cfg.HistoryDBPath, "observability-mcp/history.db") {
+		t.Fatalf("HistoryDBPath = %q", cfg.HistoryDBPath)
+	}
+}
+
+func TestFromEnvHistoryOverrides(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("OBS_HISTORY_ENABLED", "false")
+	t.Setenv("OBS_HISTORY_AUTO_CAPTURE", "true")
+	t.Setenv("OBS_HISTORY_DB_PATH", "/tmp/obs-history.db")
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+	if cfg.HistoryEnabled {
+		t.Fatal("expected history disabled")
+	}
+	if !cfg.HistoryAutoCapture {
+		t.Fatal("expected auto capture enabled")
+	}
+	if cfg.HistoryDBPath != "/tmp/obs-history.db" {
+		t.Fatalf("HistoryDBPath = %q", cfg.HistoryDBPath)
+	}
+}
+
+func TestFromEnvRejectsInvalidHistoryBool(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("OBS_HISTORY_ENABLED", "maybe")
+	if _, err := FromEnv(); err == nil {
+		t.Fatal("expected invalid bool error")
+	}
+}
+
 func TestFromEnvRejectsPartialGrafanaAccessToken(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("OBS_GRAFANA_URL", "https://observability-api.kylebradshaw.dev")
@@ -156,6 +202,9 @@ func clearEnv(t *testing.T) {
 	t.Setenv("OBS_GRAFANA_ACCESS_CLIENT_SECRET", "")
 	t.Setenv("OBS_GRAFANA_PROMETHEUS_DS_UID", "")
 	t.Setenv("OBS_GRAFANA_LOKI_DS_UID", "")
+	t.Setenv("OBS_HISTORY_ENABLED", "")
+	t.Setenv("OBS_HISTORY_AUTO_CAPTURE", "")
+	t.Setenv("OBS_HISTORY_DB_PATH", "")
 }
 
 func TestValidateWindow(t *testing.T) {

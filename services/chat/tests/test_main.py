@@ -10,7 +10,7 @@ from app.retriever import RetrievalResult
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
-SECRET = "chat-test-secret"
+SECRET = "chat-test-secret-at-least-32-bytes"
 
 
 def _token(sub: str, email: str) -> str:

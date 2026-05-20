@@ -10,7 +10,7 @@ from starlette.testclient import TestClient
 
 from shared.auth import create_auth_context_dependency, create_auth_dependency
 
-SECRET = "test-secret"
+SECRET = "test-secret-key-at-least-32-bytes"
 ALGORITHM = "HS256"
 
 
@@ -77,6 +77,16 @@ def test_empty_secret_allows_anonymous():
     resp = client.get("/protected")
     assert resp.status_code == 200
     assert resp.json() == {"user_id": "anonymous"}
+
+
+def test_short_secret_rejected_when_auth_enabled():
+    """HS256 auth must not run with weak HMAC secrets."""
+    try:
+        create_auth_context_dependency("short-secret")
+    except ValueError as exc:
+        assert "at least 32 bytes" in str(exc)
+    else:
+        raise AssertionError("short JWT secret should be rejected")
 
 
 # ---------------------------------------------------------------------------
@@ -174,8 +184,8 @@ def test_bearer_takes_precedence_over_cookie():
 
 def test_auth_context_classifies_operator_by_email(monkeypatch):
     monkeypatch.setenv("RAG_OPERATOR_EMAILS", "kyle@example.test")
-    dependency = create_auth_context_dependency("secret")
-    token = _token("secret", sub="user-1", email="kyle@example.test")
+    dependency = create_auth_context_dependency(SECRET)
+    token = _token(SECRET, sub="user-1", email="kyle@example.test")
     request = _request(headers={"Authorization": f"Bearer {token}"})
 
     context = anyio.run(dependency, request, None)
@@ -187,8 +197,8 @@ def test_auth_context_classifies_operator_by_email(monkeypatch):
 
 def test_auth_context_classifies_normal_user(monkeypatch):
     monkeypatch.setenv("RAG_OPERATOR_EMAILS", "kyle@example.test")
-    dependency = create_auth_context_dependency("secret")
-    token = _token("secret", sub="user-2", email="other@example.test")
+    dependency = create_auth_context_dependency(SECRET)
+    token = _token(SECRET, sub="user-2", email="other@example.test")
     request = _request(headers={"Authorization": f"Bearer {token}"})
 
     context = anyio.run(dependency, request, None)
@@ -210,7 +220,7 @@ def test_auth_context_preserves_anonymous_when_secret_empty():
 
 
 def test_auth_context_rejects_malformed_token():
-    dependency = create_auth_context_dependency("secret")
+    dependency = create_auth_context_dependency(SECRET)
     request = _request(headers={"Authorization": "Bearer not-a-jwt"})
 
     try:

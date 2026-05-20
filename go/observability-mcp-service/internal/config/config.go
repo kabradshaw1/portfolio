@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -30,6 +31,9 @@ type Config struct {
 	MaxWindow                      time.Duration
 	MaxLogLines                    int
 	MaxTraceSpans                  int
+	HistoryEnabled                 bool
+	HistoryDBPath                  string
+	HistoryAutoCapture             bool
 }
 
 func FromEnv() (Config, error) {
@@ -53,6 +57,14 @@ func FromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	historyEnabled, err := boolEnv("OBS_HISTORY_ENABLED", true)
+	if err != nil {
+		return Config{}, err
+	}
+	historyAutoCapture, err := boolEnv("OBS_HISTORY_AUTO_CAPTURE", false)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		PrometheusURL:                  getenv("OBS_PROMETHEUS_URL", defaultPrometheusURL),
@@ -69,6 +81,9 @@ func FromEnv() (Config, error) {
 		MaxWindow:                      maxWindow,
 		MaxLogLines:                    maxLogLines,
 		MaxTraceSpans:                  maxTraceSpans,
+		HistoryEnabled:                 historyEnabled,
+		HistoryDBPath:                  getenv("OBS_HISTORY_DB_PATH", defaultHistoryDBPath()),
+		HistoryAutoCapture:             historyAutoCapture,
 	}
 	if cfg.QueryTimeout <= 0 {
 		return Config{}, fmt.Errorf("OBS_QUERY_TIMEOUT must be positive")
@@ -124,6 +139,25 @@ func getenv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func defaultHistoryDBPath() string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".codex", "data", "observability-mcp", "history.db")
+	}
+	return filepath.Join(".codex", "data", "observability-mcp", "history.db")
+}
+
+func boolEnv(key string, fallback bool) (bool, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", key, err)
+	}
+	return parsed, nil
 }
 
 func durationEnv(key string, fallback time.Duration) (time.Duration, error) {

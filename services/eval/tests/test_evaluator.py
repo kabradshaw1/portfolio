@@ -6,6 +6,7 @@ from app.evaluator import (
     EvalRunContext,
     EvaluationError,
     JudgeScores,
+    _judge_prompt,
     build_evaluation_dataset,
     judge_generation_scores,
     parse_judge_scores,
@@ -31,6 +32,28 @@ def _judge_row():
         "retrieved_contexts": ["Chunking splits documents."],
         "response": "Chunking splits documents into smaller pieces.",
     }
+
+
+def test_judge_prompt_includes_strict_rubric_anchors():
+    prompt = _judge_prompt(_judge_row())
+    normalized_prompt = " ".join(prompt.split())
+
+    required_phrases = [
+        "Return raw JSON only",
+        "no markdown",
+        "all material claims are supported",
+        "minor unsupported details",
+        "contradicted by the contexts",
+        "Correct-but-ungrounded",
+        "Citation-free answers are not automatically wrong",
+        "directly answers the question",
+        "too broad or too narrow",
+        "answers a different question",
+        "Unsupported or contradicted answers can still be relevant",
+    ]
+
+    for phrase in required_phrases:
+        assert phrase in normalized_prompt
 
 
 @pytest.fixture
@@ -357,6 +380,59 @@ def test_parse_judge_scores_rejects_malformed_json():
 def test_parse_judge_scores_rejects_missing_metric():
     with pytest.raises(EvaluationError, match="missing answer_relevancy"):
         parse_judge_scores('{"faithfulness": {"score": 0.5, "reason": "partial"}}')
+
+
+def test_parse_judge_scores_rejects_metric_that_is_not_object():
+    with pytest.raises(EvaluationError, match="faithfulness must be an object"):
+        parse_judge_scores(
+            json.dumps(
+                {
+                    "faithfulness": 0.5,
+                    "answer_relevancy": {"score": 0.8, "reason": "direct"},
+                }
+            )
+        )
+
+
+def test_parse_judge_scores_rejects_missing_score():
+    with pytest.raises(EvaluationError, match="missing faithfulness.score"):
+        parse_judge_scores(
+            json.dumps(
+                {
+                    "faithfulness": {"reason": "grounded"},
+                    "answer_relevancy": {"score": 0.8, "reason": "direct"},
+                }
+            )
+        )
+
+
+def test_parse_judge_scores_rejects_non_numeric_score():
+    with pytest.raises(EvaluationError, match="answer_relevancy.score must be numeric"):
+        parse_judge_scores(
+            json.dumps(
+                {
+                    "faithfulness": {"score": 0.7, "reason": "grounded"},
+                    "answer_relevancy": {"score": "high", "reason": "direct"},
+                }
+            )
+        )
+
+
+def test_parse_judge_scores_normalizes_non_string_reason():
+    scores = parse_judge_scores(
+        json.dumps(
+            {
+                "faithfulness": {"score": 0.7, "reason": ["grounded"]},
+                "answer_relevancy": {"score": 0.8, "reason": {"why": "direct"}},
+            }
+        )
+    )
+
+    assert scores == JudgeScores(
+        faithfulness=0.7,
+        answer_relevancy=0.8,
+        reasons={"faithfulness": "", "answer_relevancy": ""},
+    )
 
 
 @pytest.mark.asyncio

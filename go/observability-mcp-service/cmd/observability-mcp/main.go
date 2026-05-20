@@ -10,6 +10,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/config"
+	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/history"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/mcpserver"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/observability"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/workflows"
@@ -59,6 +60,18 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 		logger.Printf("observability MCP server running on stdio prometheus=%s loki=%s jaeger=%s", cfg.PrometheusURL, cfg.LokiURL, cfg.JaegerURL)
 	}
 	service := workflows.NewService(prom, loki, jaeger, cfg.MaxLogLines)
+	if cfg.HistoryEnabled {
+		historyDB, err := history.Open(cfg.HistoryDBPath)
+		if err != nil {
+			logger.Printf("observability MCP history disabled: open %s: %v", cfg.HistoryDBPath, err)
+		} else if err := historyDB.Migrate(ctx); err != nil {
+			_ = historyDB.Close()
+			logger.Printf("observability MCP history disabled: migrate %s: %v", cfg.HistoryDBPath, err)
+		} else {
+			defer historyDB.Close()
+			service.WithHistory(historyDB, cfg.HistoryAutoCapture)
+		}
+	}
 	if cfg.UseGrafanaGateway() {
 		if grafana, ok := prom.(*observability.GrafanaClient); ok {
 			service.SetGrafanaAlerting(grafana)

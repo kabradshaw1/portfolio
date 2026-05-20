@@ -9,19 +9,24 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/config"
+	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/history"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/workflows"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/resources/runbooks"
 )
 
 type WorkflowService interface {
-	GetSystemHealth(context.Context, time.Duration) workflows.EvidenceBundle
-	InvestigateCheckout(context.Context, time.Duration) workflows.EvidenceBundle
-	InvestigateAIPipeline(context.Context, time.Duration) workflows.EvidenceBundle
-	InvestigateEvalRun(context.Context, time.Duration, string) workflows.EvidenceBundle
-	InvestigateStreamingAnalytics(context.Context, time.Duration) workflows.EvidenceBundle
-	GetServiceEvidence(context.Context, string, time.Duration, string) workflows.EvidenceBundle
+	GetSystemHealth(context.Context, time.Duration, workflows.CaptureOptions) workflows.EvidenceBundle
+	InvestigateCheckout(context.Context, time.Duration, workflows.CaptureOptions) workflows.EvidenceBundle
+	InvestigateAIPipeline(context.Context, time.Duration, workflows.CaptureOptions) workflows.EvidenceBundle
+	InvestigateEvalRun(context.Context, time.Duration, string, workflows.CaptureOptions) workflows.EvidenceBundle
+	InvestigateStreamingAnalytics(context.Context, time.Duration, workflows.CaptureOptions) workflows.EvidenceBundle
+	GetServiceEvidence(context.Context, string, time.Duration, string, workflows.CaptureOptions) workflows.EvidenceBundle
 	SearchLogs(context.Context, string, time.Duration, string) workflows.EvidenceBundle
 	GetTrace(context.Context, string) workflows.EvidenceBundle
+	ListIncidents(context.Context, history.ListFilter) ([]history.IncidentSummary, error)
+	GetIncidentHistory(context.Context, string) (history.IncidentHistory, error)
+	AddIncidentNote(context.Context, history.AddNoteInput) (history.Event, error)
+	CompareEvidenceSnapshots(context.Context, int64, int64) (workflows.EvidenceComparison, error)
 }
 
 func New(service WorkflowService, cfg config.Config) *sdkmcp.Server {
@@ -34,6 +39,10 @@ func New(service WorkflowService, cfg config.Config) *sdkmcp.Server {
 	addTool(srv, "get_service_evidence", "Return bounded evidence for one allowlisted service.", serviceEvidenceSchema(), serviceEvidenceHandler(cfg, service))
 	addTool(srv, "search_logs", "Search recent logs for one allowlisted service.", searchLogsSchema(), searchLogsHandler(cfg, service))
 	addTool(srv, "get_trace", "Fetch and summarize a Jaeger trace.", traceSchema(), traceHandler(service))
+	addTool(srv, "list_incidents", "List persisted observability incidents.", listIncidentsSchema(), listIncidentsHandler(service))
+	addTool(srv, "get_incident_history", "Return incident timeline and evidence summaries.", incidentHistorySchema(), incidentHistoryHandler(service))
+	addTool(srv, "add_incident_note", "Append an incident note and optionally transition status.", addIncidentNoteSchema(), addIncidentNoteHandler(service))
+	addTool(srv, "compare_evidence_windows", "Compare two persisted observability evidence snapshots.", compareEvidenceWindowsSchema(), compareEvidenceWindowsHandler(service))
 	addResource(srv, "observability://runbooks/system-health", "System Health Runbook", "Signals and interpretations for system health.", runbookResourceHandler("observability://runbooks/system-health", "system-health"))
 	addResource(srv, "observability://runbooks/checkout", "Checkout Runbook", "Signals and interpretations for checkout incidents.", runbookResourceHandler("observability://runbooks/checkout", "checkout"))
 	addResource(srv, "observability://runbooks/ai-pipeline", "AI Pipeline Runbook", "Signals and interpretations for AI/RAG incidents.", runbookResourceHandler("observability://runbooks/ai-pipeline", "ai-pipeline"))
@@ -49,13 +58,28 @@ func addResource(srv *sdkmcp.Server, uri, name, description string, handler sdkm
 	srv.AddResource(&sdkmcp.Resource{URI: uri, Name: name, Title: name, Description: description, MIMEType: "text/markdown"}, handler)
 }
 
-type windowInput struct {
-	Window string `json:"window,omitempty"`
+type investigationInput struct {
+	Window        string `json:"window,omitempty"`
+	IncidentKey   string `json:"incident_key,omitempty"`
+	IncidentTitle string `json:"incident_title,omitempty"`
+	Severity      string `json:"severity,omitempty"`
+	Service       string `json:"service,omitempty"`
+	Persist       *bool  `json:"persist,omitempty"`
 }
 
-func windowHandler(cfg config.Config, fn func(context.Context, time.Duration) workflows.EvidenceBundle) sdkmcp.ToolHandler {
+func (in investigationInput) captureOptions() workflows.CaptureOptions {
+	return workflows.CaptureOptions{
+		IncidentKey:   in.IncidentKey,
+		IncidentTitle: in.IncidentTitle,
+		Severity:      in.Severity,
+		Service:       in.Service,
+		Persist:       in.Persist,
+	}
+}
+
+func windowHandler(cfg config.Config, fn func(context.Context, time.Duration, workflows.CaptureOptions) workflows.EvidenceBundle) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
-		var in windowInput
+		var in investigationInput
 		if err := decodeOptionalArgs(req, &in); err != nil {
 			return toolError(err.Error()), nil
 		}
@@ -63,14 +87,13 @@ func windowHandler(cfg config.Config, fn func(context.Context, time.Duration) wo
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
-		return jsonResult(fn(ctx, window)), nil
+		return jsonResult(fn(ctx, window, in.captureOptions())), nil
 	}
 }
 
 func serviceEvidenceHandler(cfg config.Config, service WorkflowService) sdkmcp.ToolHandler {
 	type input struct {
-		Window  string `json:"window,omitempty"`
-		Service string `json:"service"`
+		investigationInput
 		TraceID string `json:"trace_id,omitempty"`
 	}
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
@@ -85,13 +108,15 @@ func serviceEvidenceHandler(cfg config.Config, service WorkflowService) sdkmcp.T
 		if !workflows.AllowedService(in.Service) {
 			return toolError(fmt.Sprintf("service %q is not allowlisted", in.Service)), nil
 		}
-		return jsonResult(service.GetServiceEvidence(ctx, in.Service, window, in.TraceID)), nil
+		capture := in.captureOptions()
+		capture.Service = in.Service
+		return jsonResult(service.GetServiceEvidence(ctx, in.Service, window, in.TraceID, capture)), nil
 	}
 }
 
 func investigateEvalRunHandler(cfg config.Config, service WorkflowService) sdkmcp.ToolHandler {
 	type input struct {
-		Window string `json:"window,omitempty"`
+		investigationInput
 		EvalID string `json:"eval_id"`
 	}
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
@@ -106,7 +131,7 @@ func investigateEvalRunHandler(cfg config.Config, service WorkflowService) sdkmc
 		if err != nil {
 			return toolError(err.Error()), nil
 		}
-		return jsonResult(service.InvestigateEvalRun(ctx, window, in.EvalID)), nil
+		return jsonResult(service.InvestigateEvalRun(ctx, window, in.EvalID, in.captureOptions())), nil
 	}
 }
 
@@ -145,6 +170,104 @@ func traceHandler(service WorkflowService) sdkmcp.ToolHandler {
 			return toolError("trace_id is required"), nil
 		}
 		return jsonResult(service.GetTrace(ctx, in.TraceID)), nil
+	}
+}
+
+func listIncidentsHandler(service WorkflowService) sdkmcp.ToolHandler {
+	type input struct {
+		Status   string `json:"status,omitempty"`
+		Service  string `json:"service,omitempty"`
+		Severity string `json:"severity,omitempty"`
+		Limit    int    `json:"limit,omitempty"`
+	}
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var in input
+		if err := decodeOptionalArgs(req, &in); err != nil {
+			return toolError(err.Error()), nil
+		}
+		result, err := service.ListIncidents(ctx, history.ListFilter{
+			Status:   in.Status,
+			Service:  in.Service,
+			Severity: in.Severity,
+			Limit:    in.Limit,
+		})
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(result), nil
+	}
+}
+
+func incidentHistoryHandler(service WorkflowService) sdkmcp.ToolHandler {
+	type input struct {
+		IncidentKey string `json:"incident_key"`
+	}
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var in input
+		if err := decodeArgs(req, &in); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if in.IncidentKey == "" {
+			return toolError("incident_key is required"), nil
+		}
+		result, err := service.GetIncidentHistory(ctx, in.IncidentKey)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(result), nil
+	}
+}
+
+func addIncidentNoteHandler(service WorkflowService) sdkmcp.ToolHandler {
+	type input struct {
+		IncidentKey string `json:"incident_key"`
+		Note        string `json:"note"`
+		Status      string `json:"status,omitempty"`
+	}
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var in input
+		if err := decodeArgs(req, &in); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if in.IncidentKey == "" {
+			return toolError("incident_key is required"), nil
+		}
+		if in.Note == "" {
+			return toolError("note is required"), nil
+		}
+		if in.Status != "" && !history.ValidStatus(in.Status) {
+			return toolError("status must be one of investigating, mitigated, resolved"), nil
+		}
+		result, err := service.AddIncidentNote(ctx, history.AddNoteInput{
+			IncidentKey: in.IncidentKey,
+			Note:        in.Note,
+			Status:      in.Status,
+		})
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(result), nil
+	}
+}
+
+func compareEvidenceWindowsHandler(service WorkflowService) sdkmcp.ToolHandler {
+	type input struct {
+		BaselineSnapshotID  int64 `json:"baseline_snapshot_id"`
+		CandidateSnapshotID int64 `json:"candidate_snapshot_id,omitempty"`
+	}
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var in input
+		if err := decodeArgs(req, &in); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if in.BaselineSnapshotID <= 0 {
+			return toolError("baseline_snapshot_id is required"), nil
+		}
+		result, err := service.CompareEvidenceSnapshots(ctx, in.BaselineSnapshotID, in.CandidateSnapshotID)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(result), nil
 	}
 }
 
@@ -188,15 +311,15 @@ func toolError(message string) *sdkmcp.CallToolResult {
 }
 
 func windowSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"window":{"type":"string"}},"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"window":{"type":"string"},"incident_key":{"type":"string"},"incident_title":{"type":"string"},"severity":{"type":"string"},"service":{"type":"string"},"persist":{"type":"boolean"}},"additionalProperties":false}`)
 }
 
 func serviceEvidenceSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"window":{"type":"string"},"service":{"type":"string"},"trace_id":{"type":"string"}},"required":["service"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"window":{"type":"string"},"service":{"type":"string"},"trace_id":{"type":"string"},"incident_key":{"type":"string"},"incident_title":{"type":"string"},"severity":{"type":"string"},"persist":{"type":"boolean"}},"required":["service"],"additionalProperties":false}`)
 }
 
 func evalRunSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"window":{"type":"string"},"eval_id":{"type":"string"}},"required":["eval_id"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"window":{"type":"string"},"eval_id":{"type":"string"},"incident_key":{"type":"string"},"incident_title":{"type":"string"},"severity":{"type":"string"},"service":{"type":"string"},"persist":{"type":"boolean"}},"required":["eval_id"],"additionalProperties":false}`)
 }
 
 func searchLogsSchema() json.RawMessage {
@@ -205,4 +328,20 @@ func searchLogsSchema() json.RawMessage {
 
 func traceSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"trace_id":{"type":"string"}},"required":["trace_id"],"additionalProperties":false}`)
+}
+
+func listIncidentsSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["investigating","mitigated","resolved"]},"service":{"type":"string"},"severity":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":100}},"additionalProperties":false}`)
+}
+
+func incidentHistorySchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"incident_key":{"type":"string"}},"required":["incident_key"],"additionalProperties":false}`)
+}
+
+func addIncidentNoteSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"incident_key":{"type":"string"},"note":{"type":"string"},"status":{"type":"string","enum":["investigating","mitigated","resolved"]}},"required":["incident_key","note"],"additionalProperties":false}`)
+}
+
+func compareEvidenceWindowsSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"baseline_snapshot_id":{"type":"integer"},"candidate_snapshot_id":{"type":"integer"}},"required":["baseline_snapshot_id"],"additionalProperties":false}`)
 }
