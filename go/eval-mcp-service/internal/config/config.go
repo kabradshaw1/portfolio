@@ -11,6 +11,7 @@ import (
 const (
 	defaultEvalAPIURL       = "http://localhost:8000/eval"
 	defaultIngestionURL     = "http://localhost:8000/ingestion"
+	defaultTriageAPIURL     = "http://localhost:8000/rag-triage"
 	defaultAuthServiceURL   = "http://localhost:8091/auth"
 	defaultTokenCachePath   = "data/eval-mcp-auth.json"
 	defaultPollInterval     = time.Second
@@ -22,6 +23,7 @@ const (
 type Config struct {
 	EvalAPIURL          string
 	IngestionURL        string
+	TriageAPIURL        string
 	APIToken            string
 	AuthServiceURL      string
 	AuthEmail           string
@@ -79,6 +81,7 @@ func FromEnv() (Config, error) {
 	return Config{
 		EvalAPIURL:          getenv("EVAL_API_URL", defaultEvalAPIURL),
 		IngestionURL:        getenv("EVAL_MCP_INGESTION_URL", defaultIngestionURL),
+		TriageAPIURL:        getenv("RAG_TRIAGE_API_URL", defaultTriageAPIURL),
 		APIToken:            apiToken,
 		AuthServiceURL:      getenv("AUTH_SERVICE_URL", defaultAuthServiceURL),
 		AuthEmail:           authEmail,

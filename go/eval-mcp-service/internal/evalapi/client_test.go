@@ -76,6 +76,9 @@ func TestStartEvaluationSendsOptionalFields(t *testing.T) {
 		if body.DatasetID != "ds-1" || body.Collection != "documents" || body.Notes != "candidate" || body.BaselineEvalID != "eval-base" || body.ExperimentID != "exp-1" || body.ExperimentLabel != "candidate" || !body.Rerank {
 			t.Fatalf("body = %#v", body)
 		}
+		if body.AnswerTier != "efficient" || body.AnswerProvider != "openai" || body.AnswerBaseURL != "https://api.openai.com/v1" || body.AnswerModel != "gpt-5.4-mini" || body.AnswerAPIKeySecret != "OPENAI_API_KEY" {
+			t.Fatalf("body = %#v", body)
+		}
 		if body.RetrievalConfig == nil || body.RetrievalConfig.TopK == nil || *body.RetrievalConfig.TopK != 3 {
 			t.Fatalf("retrieval_config = %#v", body.RetrievalConfig)
 		}
@@ -86,14 +89,19 @@ func TestStartEvaluationSendsOptionalFields(t *testing.T) {
 
 	client := New(server.URL, "", server.Client())
 	got, err := client.StartEvaluation(context.Background(), StartEvaluationRequest{
-		DatasetID:       "ds-1",
-		Collection:      "documents",
-		Notes:           "candidate",
-		BaselineEvalID:  "eval-base",
-		ExperimentID:    "exp-1",
-		ExperimentLabel: "candidate",
-		Rerank:          true,
-		RetrievalConfig: &RetrievalConfig{TopK: &topK},
+		DatasetID:          "ds-1",
+		Collection:         "documents",
+		Notes:              "candidate",
+		BaselineEvalID:     "eval-base",
+		ExperimentID:       "exp-1",
+		ExperimentLabel:    "candidate",
+		Rerank:             true,
+		RetrievalConfig:    &RetrievalConfig{TopK: &topK},
+		AnswerTier:         "efficient",
+		AnswerProvider:     "openai",
+		AnswerBaseURL:      "https://api.openai.com/v1",
+		AnswerModel:        "gpt-5.4-mini",
+		AnswerAPIKeySecret: "OPENAI_API_KEY",
 	})
 	if err != nil {
 		t.Fatalf("StartEvaluation error: %v", err)
@@ -190,6 +198,13 @@ func TestGetEvaluationAndCompare(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":     "eval-1",
 				"status": "completed",
+				"item_counts": map[string]int{
+					"queued":    0,
+					"running":   0,
+					"completed": 2,
+					"failed":    1,
+					"total":     3,
+				},
 				"aggregate_scores": map[string]float64{
 					"context_precision": 0.42,
 				},
@@ -223,6 +238,9 @@ func TestGetEvaluationAndCompare(t *testing.T) {
 	}
 	if run.AggregateScores == nil || run.AggregateScores.ContextPrecision == nil || *run.AggregateScores.ContextPrecision != 0.42 {
 		t.Fatalf("run = %#v", run)
+	}
+	if run.ItemCounts["failed"] != 1 || run.ItemCounts["total"] != 3 {
+		t.Fatalf("item counts = %#v", run.ItemCounts)
 	}
 	if len(run.Results) != 1 || run.Results[0].ScoreReasons["faithfulness"] != "answer is grounded in the retrieved context" {
 		t.Fatalf("score reasons = %#v", run.Results)

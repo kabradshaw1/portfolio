@@ -137,3 +137,103 @@ func TestGrafanaCloudflareHeadersRequirePair(t *testing.T) {
 		t.Fatalf("Query() error = %v", err)
 	}
 }
+
+func TestGrafanaActiveAlertsUsesAlertmanagerAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer grafana-token" {
+			t.Fatalf("Authorization = %s", r.Header.Get("Authorization"))
+		}
+		if r.Header.Get("CF-Access-Client-Id") != "cf-id" {
+			t.Fatalf("CF-Access-Client-Id = %s", r.Header.Get("CF-Access-Client-Id"))
+		}
+		if r.Header.Get("CF-Access-Client-Secret") != "cf-secret" {
+			t.Fatalf("CF-Access-Client-Secret = %s", r.Header.Get("CF-Access-Client-Secret"))
+		}
+		if r.URL.Path != "/api/alertmanager/grafana/api/v2/alerts" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`[
+			{
+				"labels":{"alertname":"HighErrorRate","grafana_rule_uid":"rule-123","service":"go-order-service"},
+				"annotations":{"summary":"Order service errors","__dashboardUid__":"orders"},
+				"startsAt":"2026-05-20T12:00:00Z",
+				"endsAt":"0001-01-01T00:00:00Z",
+				"generatorURL":"https://grafana.example/alerting/grafana/rule-123/view",
+				"status":{"state":"active"}
+			}
+		]`))
+	}))
+	defer server.Close()
+
+	client := NewGrafana(GrafanaConfig{
+		BaseURL:            server.URL,
+		Token:              "grafana-token",
+		AccessClientID:     "cf-id",
+		AccessClientSecret: "cf-secret",
+	}, server.Client())
+
+	got, err := client.ActiveAlerts(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveAlerts() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("alerts = %+v", got)
+	}
+	if got[0].Name != "HighErrorRate" || got[0].State != "active" || got[0].RuleUID != "rule-123" {
+		t.Fatalf("alert = %+v", got[0])
+	}
+	if got[0].Annotations["summary"] != "Order service errors" {
+		t.Fatalf("annotations = %+v", got[0].Annotations)
+	}
+}
+
+func TestGrafanaAlertRulesUsesProvisioningAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/provisioning/alert-rules" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`[
+			{
+				"uid":"rule-123",
+				"title":"HighErrorRate",
+				"folderUID":"go-services",
+				"ruleGroup":"slo",
+				"condition":"C",
+				"labels":{"service":"go-order-service"},
+				"provenance":"file"
+			}
+		]`))
+	}))
+	defer server.Close()
+
+	client := NewGrafana(GrafanaConfig{BaseURL: server.URL}, server.Client())
+	got, err := client.AlertRules(context.Background())
+	if err != nil {
+		t.Fatalf("AlertRules() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("rules = %+v", got)
+	}
+	if got[0].UID != "rule-123" || got[0].Title != "HighErrorRate" || got[0].FolderUID != "go-services" {
+		t.Fatalf("rule = %+v", got[0])
+	}
+}
+
+func TestGrafanaAlertingBoundsLabelsAndAnnotations(t *testing.T) {
+	labels := map[string]string{
+		"alertname": "Noisy",
+		"keep1":     "1",
+		"keep2":     "2",
+		"keep3":     "3",
+		"keep4":     "4",
+		"keep5":     "5",
+		"drop":      "6",
+	}
+	got := boundedMap(labels, 5)
+	if len(got) != 5 {
+		t.Fatalf("bounded labels length = %d", len(got))
+	}
+	if got["alertname"] != "Noisy" {
+		t.Fatalf("bounded labels = %+v", got)
+	}
+}

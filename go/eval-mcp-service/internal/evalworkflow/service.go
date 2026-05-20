@@ -47,10 +47,15 @@ type Fixtures interface {
 	Load(string) (fixturecatalog.Fixture, error)
 }
 
+type TriageAPI interface {
+	TriageRAGRegression(context.Context, TriageInput) (map[string]any, error)
+}
+
 type Service struct {
 	api          API
 	ingestion    Ingestion
 	fixtures     Fixtures
+	triage       TriageAPI
 	pollInterval time.Duration
 	waitTimeout  time.Duration
 	maxBackoff   time.Duration
@@ -67,14 +72,19 @@ type StartExperimentInput struct {
 }
 
 type StartRunInput struct {
-	DatasetID       string
-	Collection      string
-	Notes           string
-	BaselineEvalID  string
-	Rerank          bool
-	ExperimentID    string
-	Label           string
-	RetrievalConfig *evalapi.RetrievalConfig
+	DatasetID          string
+	Collection         string
+	Notes              string
+	BaselineEvalID     string
+	Rerank             bool
+	ExperimentID       string
+	Label              string
+	RetrievalConfig    *evalapi.RetrievalConfig
+	AnswerTier         string
+	AnswerProvider     string
+	AnswerBaseURL      string
+	AnswerModel        string
+	AnswerAPIKeySecret string
 }
 
 type StartRunResult struct {
@@ -104,6 +114,7 @@ type RunEvidence struct {
 	AgeSeconds      int64           `json:"age_seconds,omitempty"`
 	ResultCount     int             `json:"result_count"`
 	AggregateScores *evalapi.Scores `json:"aggregate_scores,omitempty"`
+	ItemCounts      map[string]int  `json:"item_counts,omitempty"`
 	NextSteps       []string        `json:"next_steps"`
 }
 
@@ -117,6 +128,14 @@ type WorstCasesInput struct {
 	EvalID string
 	Metric string
 	Limit  int
+}
+
+type TriageInput struct {
+	EvalID               string
+	BaselineEvalID       string
+	Metric               string
+	Limit                int
+	IncludeObservability bool
 }
 
 type WorstCasesResult struct {
@@ -168,6 +187,11 @@ func New(api API, ingestion Ingestion, fixtures Fixtures, pollInterval, waitTime
 		waitTimeout:  waitTimeout,
 		maxBackoff:   backoff,
 	}
+}
+
+func (s *Service) WithTriageAPI(triage TriageAPI) *Service {
+	s.triage = triage
+	return s
 }
 
 func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) (evalapi.Experiment, error) {
@@ -247,14 +271,19 @@ func (s *Service) StartRun(ctx context.Context, in StartRunInput) (StartRunResul
 		return StartRunResult{}, err
 	}
 	resp, err := s.api.StartEvaluation(ctx, evalapi.StartEvaluationRequest{
-		DatasetID:       in.DatasetID,
-		Collection:      in.Collection,
-		Notes:           in.Notes,
-		BaselineEvalID:  in.BaselineEvalID,
-		Rerank:          in.Rerank,
-		ExperimentID:    in.ExperimentID,
-		ExperimentLabel: in.Label,
-		RetrievalConfig: in.RetrievalConfig,
+		DatasetID:          in.DatasetID,
+		Collection:         in.Collection,
+		Notes:              in.Notes,
+		BaselineEvalID:     in.BaselineEvalID,
+		Rerank:             in.Rerank,
+		ExperimentID:       in.ExperimentID,
+		ExperimentLabel:    in.Label,
+		RetrievalConfig:    in.RetrievalConfig,
+		AnswerTier:         in.AnswerTier,
+		AnswerProvider:     in.AnswerProvider,
+		AnswerBaseURL:      in.AnswerBaseURL,
+		AnswerModel:        in.AnswerModel,
+		AnswerAPIKeySecret: in.AnswerAPIKeySecret,
 	})
 	if err != nil {
 		return StartRunResult{}, err
@@ -327,7 +356,7 @@ func (s *Service) WaitForRun(ctx context.Context, evalID string) (WaitResult, er
 		}
 		backoff = pollInterval
 		latest = run
-		if run.Status == "completed" || run.Status == "failed" {
+		if isTerminalRunStatus(run.Status) {
 			return WaitResult{Run: run}, nil
 		}
 
@@ -389,6 +418,7 @@ func (s *Service) RunEvidence(ctx context.Context, evalID string) (RunEvidence, 
 		Config:          run.Config,
 		ResultCount:     len(run.Results),
 		AggregateScores: run.AggregateScores,
+		ItemCounts:      run.ItemCounts,
 	}
 	if run.Status == "running" {
 		if createdAt, err := time.Parse(time.RFC3339, run.CreatedAt); err == nil {
@@ -407,7 +437,13 @@ func (s *Service) RunEvidence(ctx context.Context, evalID string) (RunEvidence, 
 
 func runEvidenceNextSteps(evidence RunEvidence) []string {
 	switch evidence.Status {
-	case "completed":
+	case "completed", "completed_with_failures":
+		if evidence.Status == "completed_with_failures" {
+			return []string{
+				"Use get_worst_eval_cases or triage_rag_regression to inspect partial successful results.",
+				"Inspect item_counts and runtime evidence before deciding on a candidate.",
+			}
+		}
 		return []string{
 			"Use get_worst_eval_cases to inspect the lowest-scoring queries.",
 			"Use compare_eval_runs or summarize_eval_experiment before deciding on a candidate.",
@@ -465,6 +501,27 @@ func (s *Service) WorstCases(ctx context.Context, in WorstCasesInput) (WorstCase
 	return worstCasesFromResults(in.EvalID, metric, limit, run.Results), nil
 }
 
+func (s *Service) TriageRAGRegression(ctx context.Context, in TriageInput) (map[string]any, error) {
+	if strings.TrimSpace(in.EvalID) == "" {
+		return nil, errors.New("eval_id is required")
+	}
+	if s.triage == nil {
+		return nil, errors.New("triage API is not configured")
+	}
+	metric := in.Metric
+	if metric == "" {
+		metric = DefaultFocusMetric
+	}
+	if err := validateMetric(metric); err != nil {
+		return nil, err
+	}
+	if in.Limit < 0 || in.Limit > maxWorstLimit {
+		return nil, fmt.Errorf("limit must be between 1 and %d when provided", maxWorstLimit)
+	}
+	in.Metric = metric
+	return s.triage.TriageRAGRegression(ctx, in)
+}
+
 func worstCasesFromResults(evalID, metric string, limit int, results []evalapi.QueryResult) WorstCasesResult {
 	cases := make([]WorstCase, 0, len(results))
 	for _, result := range results {
@@ -496,8 +553,8 @@ func (s *Service) SummarizeExperiment(ctx context.Context, experimentID string) 
 		if err != nil {
 			return ExperimentSummary{}, fmt.Errorf("get run %q (%s): %w", runLabel.Label, runLabel.EvaluationID, err)
 		}
-		if run.Status != "completed" {
-			return ExperimentSummary{}, fmt.Errorf("summarize requires completed runs; %s=%s", run.ID, run.Status)
+		if !isComparableRunStatus(run.Status) {
+			return ExperimentSummary{}, fmt.Errorf("summarize requires completed or completed_with_failures runs; %s=%s", run.ID, run.Status)
 		}
 		labeledRun := LabeledRun{Label: runLabel.Label, Run: run}
 		if i == 0 {
@@ -592,14 +649,22 @@ func (s *Service) requireCompletedRuns(ctx context.Context, ids []string) error 
 		if err != nil {
 			return fmt.Errorf("get run %q: %w", id, err)
 		}
-		if run.Status != "completed" {
+		if !isComparableRunStatus(run.Status) {
 			invalid = append(invalid, fmt.Sprintf("%s=%s", id, run.Status))
 		}
 	}
 	if len(invalid) > 0 {
-		return fmt.Errorf("compare requires completed runs; invalid statuses: %s", strings.Join(invalid, ", "))
+		return fmt.Errorf("compare requires completed or completed_with_failures runs; invalid statuses: %s", strings.Join(invalid, ", "))
 	}
 	return nil
+}
+
+func isTerminalRunStatus(status string) bool {
+	return status == "completed" || status == "completed_with_failures" || status == "failed"
+}
+
+func isComparableRunStatus(status string) bool {
+	return status == "completed" || status == "completed_with_failures"
 }
 
 func (s *Service) resolveLabels(ctx context.Context, experimentID string, labels []string) ([]string, error) {

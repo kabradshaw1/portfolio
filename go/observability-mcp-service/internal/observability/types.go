@@ -28,6 +28,35 @@ type TraceSummary struct {
 	Truncated bool        `json:"truncated"`
 }
 
+type AlertInstance struct {
+	Name         string            `json:"name,omitempty"`
+	State        string            `json:"state,omitempty"`
+	Labels       map[string]string `json:"labels,omitempty"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
+	StartsAt     time.Time         `json:"starts_at,omitempty"`
+	EndsAt       time.Time         `json:"ends_at,omitempty"`
+	GeneratorURL string            `json:"generator_url,omitempty"`
+	DashboardURL string            `json:"dashboard_url,omitempty"`
+	RuleUID      string            `json:"rule_uid,omitempty"`
+}
+
+type AlertRule struct {
+	UID        string            `json:"uid,omitempty"`
+	Title      string            `json:"title,omitempty"`
+	FolderUID  string            `json:"folder_uid,omitempty"`
+	Namespace  string            `json:"namespace,omitempty"`
+	RuleGroup  string            `json:"rule_group,omitempty"`
+	Condition  string            `json:"condition,omitempty"`
+	Labels     map[string]string `json:"labels,omitempty"`
+	Provenance string            `json:"provenance,omitempty"`
+}
+
+type AlertSummary struct {
+	ActiveAlerts []AlertInstance `json:"active_alerts,omitempty"`
+	Rules        []AlertRule     `json:"rules,omitempty"`
+	Truncated    bool            `json:"truncated,omitempty"`
+}
+
 type LogQuery struct {
 	Service string
 	Pattern string

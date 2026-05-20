@@ -1,6 +1,6 @@
 import asyncio
 import time
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import jwt
@@ -38,6 +38,16 @@ def configured_eval_limits(monkeypatch):
     main.eval_rate_limiter.enabled = False
 
 
+@pytest.fixture(autouse=True)
+def fake_eval_item_publisher(monkeypatch):
+    import app.main as main
+
+    publisher = AsyncMock()
+    monkeypatch.setattr(main, "get_item_publisher", AsyncMock(return_value=publisher))
+    yield publisher
+    main._item_publisher = None
+
+
 def test_metrics_contains_eval_observability_metrics():
     response = client.get("/metrics")
 
@@ -49,6 +59,7 @@ def test_metrics_contains_eval_observability_metrics():
     assert "eval_upstream_failures_total" in body
     assert "eval_runs_total" in body
     assert "eval_items_total" in body
+    assert "eval_queue_publish_total" in body
     assert "eval_stale_running_runs" in body
 
 
@@ -177,6 +188,44 @@ def test_start_evaluation(mock_get_db, mock_validate_collection):
     assert response.json()["id"] == "eval-456"
 
 
+@patch("app.main.get_item_publisher")
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_creates_items_and_publishes_messages(
+    mock_get_db, mock_validate_collection, mock_get_item_publisher
+):
+    mock_db = AsyncMock()
+    dataset_items = [
+        {"query": "q1", "expected_answer": "a1", "expected_sources": []},
+        {"query": "q2", "expected_answer": "a2", "expected_sources": []},
+    ]
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": dataset_items,
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-456"
+    mock_db.create_evaluation_items.return_value = [
+        {"id": "item-1", "item_index": 0},
+        {"id": "item-2", "item_index": 1},
+    ]
+    mock_get_db.return_value = mock_db
+    publisher = AsyncMock()
+    mock_get_item_publisher.return_value = publisher
+
+    response = client.post("/evaluations", json={"dataset_id": "ds-123"})
+
+    assert response.status_code == 202
+    assert response.json() == {"id": "eval-456", "status": "queued"}
+    mock_db.create_evaluation.assert_awaited_once()
+    assert mock_db.create_evaluation.await_args.kwargs["status"] == "queued"
+    mock_db.create_evaluation_items.assert_awaited_once_with(
+        "eval-456", dataset_items, max_attempts=settings.eval_item_max_attempts
+    )
+    assert publisher.publish.await_count == 2
+
+
 @patch("app.main.validate_collection_exists", new_callable=AsyncMock)
 @patch("app.main.get_db")
 def test_start_evaluation_logs_run_context(
@@ -268,6 +317,50 @@ def test_get_evaluation(mock_get_db):
     assert response.status_code == 200
     assert response.json()["status"] == "completed"
     assert response.json()["aggregate_scores"]["faithfulness"] == 0.87
+
+
+@patch("app.main.get_db")
+def test_get_evaluation_includes_item_summary(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_evaluation.return_value = {
+        "id": "eval-456",
+        "dataset_id": "ds-123",
+        "status": "running",
+        "collection": "documents",
+        "aggregate_scores": None,
+        "results": None,
+        "error": None,
+        "created_at": "2026-04-16T00:00:00Z",
+        "completed_at": None,
+        "notes": None,
+        "config": None,
+        "baseline_eval_id": None,
+    }
+    mock_db.count_evaluation_items_by_status.return_value = {
+        "queued": 1,
+        "running": 1,
+        "completed": 2,
+        "failed": 0,
+    }
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/evaluations/eval-456")
+
+    assert response.status_code == 200
+    assert response.json()["item_counts"] == {
+        "queued": 1,
+        "running": 1,
+        "completed": 2,
+        "failed": 0,
+        "total": 4,
+    }
+    assert response.json()["item_summary"] == {
+        "queued": 1,
+        "running": 1,
+        "completed": 2,
+        "failed": 0,
+        "total": 4,
+    }
 
 
 @patch("app.main.get_db")
@@ -381,7 +474,35 @@ def test_start_evaluation_persists_notes_and_baseline(
         collection="documents",
         notes="bumped chunk overlap to 300",
         baseline_eval_id="eval-prev",
+        status="queued",
     )
+
+
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_allows_completed_with_failures_baseline(
+    mock_get_db, mock_validate_collection
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-123",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.get_evaluation.return_value = _baseline_run(
+        status="completed_with_failures"
+    )
+    mock_db.create_evaluation.return_value = "eval-789"
+    mock_get_db.return_value = mock_db
+
+    response = client.post(
+        "/evaluations",
+        json={"dataset_id": "ds-123", "baseline_eval_id": "eval-prev"},
+    )
+
+    assert response.status_code == 202
+    mock_db.create_evaluation.assert_awaited_once()
 
 
 @patch("app.main.get_db")
@@ -533,6 +654,7 @@ def test_start_evaluation_accepts_valid_baseline_for_custom_collection(
         collection="release-notes",
         notes=None,
         baseline_eval_id="eval-prev",
+        status="queued",
     )
 
 
@@ -833,9 +955,9 @@ def test_start_evaluation_passes_rerank_to_background_run(
     )
 
     assert response.status_code == 202
-    assert mock_run_evaluation.await_args.kwargs["rerank"] is True
     assert mock_capture.await_args.kwargs["requested_rerank"] is True
     assert mock_capture.await_args.kwargs["collection"] == "documents"
+    mock_run_evaluation.assert_not_awaited()
 
 
 @patch("app.main.run_evaluation", new_callable=AsyncMock)
@@ -868,7 +990,70 @@ def test_start_evaluation_passes_retrieval_config_to_background_run(
 
     assert response.status_code == 202
     assert mock_capture.await_args.kwargs["requested_retrieval_config"] == {"top_k": 3}
-    assert mock_run_evaluation.await_args.kwargs["top_k"] == 3
+    mock_run_evaluation.assert_not_awaited()
+
+
+@patch("app.main.resolve_answer_model_override")
+@patch("app.main.run_evaluation", new_callable=AsyncMock)
+@patch("app.main.capture_run_config", new_callable=AsyncMock)
+@patch("app.main.validate_collection_exists", new_callable=AsyncMock)
+@patch("app.main.get_db")
+def test_start_evaluation_resolves_and_captures_answer_model_override(
+    mock_get_db,
+    mock_validate_collection,
+    mock_capture,
+    mock_run_evaluation,
+    mock_resolve,
+):
+    mock_db = AsyncMock()
+    mock_db.get_dataset.return_value = {
+        "id": "ds-model",
+        "name": "test",
+        "items": [{"query": "q", "expected_answer": "a", "expected_sources": []}],
+        "created_at": "2026-04-16T00:00:00Z",
+    }
+    mock_db.create_evaluation.return_value = "eval-model"
+    mock_get_db.return_value = mock_db
+    resolved = MagicMock()
+    resolved.safe_dict.return_value = {
+        "tier": "efficient",
+        "provider": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-5.4-mini",
+        "api_key_secret": "OPENAI_API_KEY",
+    }
+    resolved.tier = "efficient"
+    resolved.provider = "openai"
+    resolved.base_url = "https://api.openai.com/v1"
+    resolved.model = "gpt-5.4-mini"
+    resolved.api_key = "test-key"
+    mock_resolve.return_value = resolved
+    mock_capture.return_value = {"captured_at": "x"}
+    mock_run_evaluation.return_value = ({"faithfulness": 0.8}, [])
+
+    response = client.post(
+        "/evaluations",
+        json={
+            "dataset_id": "ds-model",
+            "answer_tier": "efficient",
+            "answer_provider": "openai",
+            "answer_base_url": "https://api.openai.com/v1",
+            "answer_model": "gpt-5.4-mini",
+            "answer_api_key_secret": "OPENAI_API_KEY",
+        },
+    )
+
+    assert response.status_code == 202
+    assert (
+        mock_capture.await_args.kwargs["requested_answer_model"]["model"]
+        == "gpt-5.4-mini"
+    )
+    mock_run_evaluation.assert_not_awaited()
+    assert mock_capture.await_args.kwargs["judge_model"] == {
+        "provider": settings.llm_provider,
+        "base_url": settings.llm_base_url,
+        "model": settings.llm_model,
+    }
 
 
 @patch("app.main.validate_collection_exists", new_callable=AsyncMock)
@@ -1031,6 +1216,7 @@ def test_start_evaluation_omits_optional_fields(mock_get_db, mock_validate_colle
         collection="documents",
         notes=None,
         baseline_eval_id=None,
+        status="queued",
     )
     mock_validate_collection.assert_awaited_once_with(
         settings.ingestion_service_url, "documents"
@@ -1317,6 +1503,22 @@ def test_compare_rejects_failed_runs(mock_get_db):
 
     assert response.status_code == 400
     assert "candidate=failed" in response.json()["detail"]
+
+
+@patch("app.main.get_db")
+def test_compare_allows_completed_with_failures_runs(mock_get_db):
+    mock_db = AsyncMock()
+    mock_db.get_evaluations_by_ids.return_value = [
+        _stub_run("base", "ds-1", {"faithfulness": 0.8}) | {"status": "completed"},
+        _stub_run("candidate", "ds-1", {"faithfulness": 0.7})
+        | {"status": "completed_with_failures"},
+    ]
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/evaluations/compare?ids=base,candidate")
+
+    assert response.status_code == 200
+    assert response.json()["runs"][1]["status"] == "completed_with_failures"
 
 
 @patch("app.main.get_db")

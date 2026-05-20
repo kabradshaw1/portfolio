@@ -25,6 +25,21 @@ METRIC_NAMES = (
     "context_recall",
 )
 
+USAGE_KEYS = {
+    "answer_model",
+    "prompt_tokens",
+    "completion_tokens",
+    "generation_seconds",
+    "answer_model_override",
+}
+
+ANSWER_MODEL_OVERRIDE_USAGE_KEYS = {
+    "tier",
+    "provider",
+    "base_url",
+    "model",
+}
+
 STOPWORDS = {
     "a",
     "an",
@@ -104,6 +119,93 @@ def score_context_precision(query: str, reference: str, contexts: list[str]) -> 
     return _round_score(sum(context_scores) / len(context_scores))
 
 
+async def evaluate_item(
+    item: dict,
+    rag_client: RAGClient,
+    collection: str | None,
+    rerank: bool,
+    top_k: int,
+    judge: JudgeFn,
+    run_context: EvalRunContext | None,
+    answer_model: dict | None,
+    item_index: int,
+) -> dict:
+    started_at = time.perf_counter()
+    query = item["query"]
+    requested_rerank = str(rerank).lower()
+    if run_context:
+        logger.info(
+            "eval_item_start eval_id=%s item_index=%s collection=%s rerank=%s",
+            run_context.eval_id,
+            item_index,
+            run_context.collection,
+            requested_rerank,
+        )
+    try:
+        search_results = await rag_client.search(
+            query, collection=collection, limit=top_k, rerank=rerank
+        )
+        chat_response = await rag_client.ask(
+            query,
+            collection=collection,
+            rerank=rerank,
+            retrieval_config={"top_k": top_k},
+            answer_model=answer_model,
+        )
+        row = {
+            "user_input": query,
+            "retrieved_contexts": [r["text"] for r in search_results],
+            "response": chat_response["answer"],
+            "reference": item["expected_answer"],
+            "expected_sources": item.get("expected_sources", []),
+        }
+        if "retrieval" in chat_response:
+            row["retrieval"] = chat_response["retrieval"]
+        if "usage" in chat_response:
+            row["usage"] = _safe_usage(chat_response["usage"])
+        judge_scores = await judge(row)
+    except Exception:
+        eval_items_total.labels(
+            status="failed", requested_rerank=requested_rerank
+        ).inc()
+        eval_item_duration_seconds.labels(
+            stage="total", requested_rerank=requested_rerank
+        ).observe(time.perf_counter() - started_at)
+        raise
+
+    scores = {
+        "faithfulness": judge_scores.faithfulness,
+        "answer_relevancy": judge_scores.answer_relevancy,
+        "context_precision": score_context_precision(
+            query=row["user_input"],
+            reference=row["reference"],
+            contexts=row["retrieved_contexts"],
+        ),
+        "context_recall": score_context_recall(
+            reference=row["reference"],
+            contexts=row["retrieved_contexts"],
+        ),
+    }
+    result = {
+        "query": row["user_input"],
+        "answer": row["response"],
+        "contexts": row["retrieved_contexts"],
+    }
+    if "retrieval" in row:
+        result["retrieval"] = row["retrieval"]
+    if "usage" in row:
+        result["usage"] = row["usage"]
+    eval_items_total.labels(status="completed", requested_rerank=requested_rerank).inc()
+    eval_item_duration_seconds.labels(
+        stage="total", requested_rerank=requested_rerank
+    ).observe(time.perf_counter() - started_at)
+    return {
+        "result": result,
+        "scores": scores,
+        "score_reasons": judge_scores.reasons,
+    }
+
+
 async def build_evaluation_dataset(
     items: list[dict],
     rag_client: RAGClient,
@@ -111,6 +213,7 @@ async def build_evaluation_dataset(
     rerank: bool = False,
     top_k: int = 5,
     run_context: EvalRunContext | None = None,
+    answer_model: dict | None = None,
 ) -> list[dict]:
     """Run each golden item through the RAG pipeline and build evaluation rows."""
     dataset = []
@@ -135,6 +238,7 @@ async def build_evaluation_dataset(
                 collection=collection,
                 rerank=rerank,
                 retrieval_config={"top_k": top_k},
+                answer_model=answer_model,
             )
         except Exception:
             eval_items_total.labels(
@@ -162,6 +266,8 @@ async def build_evaluation_dataset(
         }
         if "retrieval" in chat_response:
             row["retrieval"] = chat_response["retrieval"]
+        if "usage" in chat_response:
+            row["usage"] = _safe_usage(chat_response["usage"])
         dataset.append(row)
         eval_items_total.labels(
             status="completed", requested_rerank=requested_rerank
@@ -286,6 +392,37 @@ def _aggregate(scores: list[dict]) -> dict:
     return aggregate
 
 
+def _without_sensitive_keys(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: _without_sensitive_keys(item)
+            for key, item in value.items()
+            if key.lower() != "api_key"
+        }
+    if isinstance(value, list):
+        return [_without_sensitive_keys(item) for item in value]
+    return value
+
+
+def _safe_usage(raw_usage: object) -> dict:
+    if not isinstance(raw_usage, dict):
+        return {}
+
+    usage = {
+        key: _without_sensitive_keys(raw_usage[key])
+        for key in USAGE_KEYS & raw_usage.keys()
+    }
+    override = usage.get("answer_model_override")
+    if isinstance(override, dict):
+        usage["answer_model_override"] = {
+            key: override[key]
+            for key in ANSWER_MODEL_OVERRIDE_USAGE_KEYS & override.keys()
+        }
+    else:
+        usage.pop("answer_model_override", None)
+    return usage
+
+
 async def run_evaluation(
     items: list[dict],
     rag_client: RAGClient,
@@ -298,17 +435,10 @@ async def run_evaluation(
     top_k: int = 5,
     judge: JudgeFn | None = None,
     run_context: EvalRunContext | None = None,
+    answer_model: dict | None = None,
 ) -> tuple[dict, list[dict]]:
     """Run a full first-party RAG evaluation."""
-    raw_dataset = await build_evaluation_dataset(
-        items,
-        rag_client,
-        collection,
-        rerank=rerank,
-        top_k=top_k,
-        run_context=run_context,
-    )
-    if not raw_dataset:
+    if not items:
         return {name: None for name in METRIC_NAMES}, []
 
     if judge is None:
@@ -324,35 +454,23 @@ async def run_evaluation(
 
     per_query = []
     all_scores = []
-    for index, row in enumerate(raw_dataset):
-        try:
-            judge_scores = await judge(row)
-        except Exception as exc:
-            raise EvaluationError(f"judge failed for row {index}: {exc}") from exc
-
-        scores = {
-            "faithfulness": judge_scores.faithfulness,
-            "answer_relevancy": judge_scores.answer_relevancy,
-            "context_precision": score_context_precision(
-                query=row["user_input"],
-                reference=row["reference"],
-                contexts=row["retrieved_contexts"],
-            ),
-            "context_recall": score_context_recall(
-                reference=row["reference"],
-                contexts=row["retrieved_contexts"],
-            ),
+    for index, item in enumerate(items):
+        evaluated = await evaluate_item(
+            item=item,
+            rag_client=rag_client,
+            collection=collection,
+            rerank=rerank,
+            top_k=top_k,
+            judge=judge,
+            run_context=run_context,
+            answer_model=answer_model,
+            item_index=index,
+        )
+        result = evaluated["result"] | {
+            "scores": evaluated["scores"],
+            "score_reasons": evaluated["score_reasons"],
         }
-        all_scores.append(scores)
-        result = {
-            "query": row["user_input"],
-            "answer": row["response"],
-            "contexts": row["retrieved_contexts"],
-            "scores": scores,
-            "score_reasons": judge_scores.reasons,
-        }
-        if "retrieval" in row:
-            result["retrieval"] = row["retrieval"]
+        all_scores.append(evaluated["scores"])
         per_query.append(result)
 
     return _aggregate(all_scores), per_query

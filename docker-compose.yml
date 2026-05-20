@@ -12,6 +12,19 @@ services:
       timeout: 3s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
   gateway:
     image: nginx:alpine
     ports:
@@ -23,6 +36,7 @@ services:
       - chat
       - debug
       - eval
+      - rag-triage
     restart: unless-stopped
 
   ingestion:
@@ -93,6 +107,9 @@ services:
       - EVAL_RATE_LIMIT_WRITE_USER=${EVAL_RATE_LIMIT_WRITE_USER:-10/minute}
       - EVAL_RATE_LIMIT_WRITE_ANONYMOUS=${EVAL_RATE_LIMIT_WRITE_ANONYMOUS:-0/minute}
       - RAG_INTERNAL_EVAL_TOKEN=${RAG_INTERNAL_EVAL_TOKEN:-}
+      - RABBITMQ_URL=${EVAL_RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      - EVAL_ITEM_QUEUE=${EVAL_ITEM_QUEUE:-eval.item.requested}
+      - EVAL_ITEM_DLQ=${EVAL_ITEM_DLQ:-eval.item.requested.dlq}
       - OLLAMA_GENERATE_MAX_IN_FLIGHT=${OLLAMA_GENERATE_MAX_IN_FLIGHT:-2}
       - OLLAMA_ADMISSION_QUEUE_TIMEOUT=${OLLAMA_ADMISSION_QUEUE_TIMEOUT:-5.0}
     volumes:
@@ -100,8 +117,48 @@ services:
     depends_on:
       chat:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  eval-worker:
+    image: ghcr.io/kabradshaw1/portfolio/eval:latest
+    build:
+      context: ./services
+      dockerfile: eval/Dockerfile
+    command: ["python", "-m", "app.worker"]
+    env_file: .env
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - RABBITMQ_URL=${EVAL_RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      - EVAL_ITEM_QUEUE=${EVAL_ITEM_QUEUE:-eval.item.requested}
+      - EVAL_ITEM_DLQ=${EVAL_ITEM_DLQ:-eval.item.requested.dlq}
+      - RAG_INTERNAL_EVAL_TOKEN=${RAG_INTERNAL_EVAL_TOKEN:-}
+      - OLLAMA_GENERATE_MAX_IN_FLIGHT=${OLLAMA_GENERATE_MAX_IN_FLIGHT:-2}
+      - OLLAMA_ADMISSION_QUEUE_TIMEOUT=${OLLAMA_ADMISSION_QUEUE_TIMEOUT:-5.0}
+    volumes:
+      - eval_data:/app/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      chat:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  rag-triage:
+    image: ghcr.io/kabradshaw1/portfolio/rag-triage:latest
+    build:
+      context: ./services
+      dockerfile: rag-triage/Dockerfile
+    env_file: .env
+    environment:
+      - EVAL_API_URL=${RAG_TRIAGE_EVAL_API_URL:-http://eval:8000}
+      - EVAL_API_TOKEN=${RAG_TRIAGE_EVAL_API_TOKEN:-}
+    depends_on:
+      eval:
+        condition: service_started
 
   prometheus:
     image: prom/prometheus:latest
@@ -156,6 +213,7 @@ services:
 
 volumes:
   qdrant_data:
+  rabbitmq_data:
   eval_data:
   prometheus_data:
   grafana_data:

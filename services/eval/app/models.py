@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class GoldenItem(BaseModel):
@@ -45,6 +45,50 @@ class StartEvaluationRequest(BaseModel):
     experiment_label: str | None = Field(
         default=None, min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$"
     )
+    answer_tier: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,50}$")
+    answer_provider: str | None = None
+    answer_base_url: str | None = Field(default=None, max_length=300)
+    answer_model: str | None = Field(default=None, max_length=100)
+    answer_api_key_secret: str | None = Field(
+        default=None, pattern=r"^[A-Z][A-Z0-9_]{1,100}$"
+    )
+
+    @field_validator("answer_provider")
+    @classmethod
+    def validate_answer_provider(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if value not in {"ollama", "openai", "anthropic"}:
+            raise ValueError(
+                "answer_provider must be 'ollama', 'openai', or 'anthropic'"
+            )
+        return value
+
+    @field_validator("answer_api_key_secret")
+    @classmethod
+    def reject_secret_values(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        lowered = value.lower()
+        if lowered.startswith(("sk-", "sk_", "bearer ", "api-")):
+            raise ValueError("answer_api_key_secret must name an environment variable")
+        return value
+
+    @model_validator(mode="after")
+    def validate_answer_override(self) -> "StartEvaluationRequest":
+        fields = [
+            self.answer_tier,
+            self.answer_provider,
+            self.answer_base_url,
+            self.answer_model,
+            self.answer_api_key_secret,
+        ]
+        if any(value is not None for value in fields):
+            if not self.answer_provider:
+                raise ValueError("answer_provider is required with answer override")
+            if not self.answer_model:
+                raise ValueError("answer_model is required with answer override")
+        return self
 
 
 class QueryScore(BaseModel):

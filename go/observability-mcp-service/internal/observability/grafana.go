@@ -22,6 +22,8 @@ type GrafanaConfig struct {
 }
 
 type GrafanaClient struct {
+	baseURL    string
+	http       *http.Client
 	prometheus *PrometheusClient
 	loki       *LokiClient
 }
@@ -56,6 +58,8 @@ func NewGrafana(cfg GrafanaConfig, httpClient *http.Client) *GrafanaClient {
 		lokiUID = defaultGrafanaLokiUID
 	}
 	return &GrafanaClient{
+		baseURL:    baseURL,
+		http:       &client,
 		prometheus: NewPrometheus(baseURL+"/api/datasources/proxy/uid/"+prometheusUID, &client),
 		loki:       NewLoki(baseURL+"/api/datasources/proxy/uid/"+lokiUID, &client),
 	}

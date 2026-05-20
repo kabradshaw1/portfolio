@@ -29,6 +29,8 @@ async def capture_run_config(
     collection: str,
     requested_rerank: bool,
     requested_retrieval_config: dict | None = None,
+    requested_answer_model: dict | None = None,
+    judge_model: dict | None = None,
 ) -> dict:
     """Return a merged RAG config snapshot. Always returns a dict.
 
@@ -49,6 +51,9 @@ async def capture_run_config(
         "effective_collection": collection,
         "requested_rerank": requested_rerank,
         "requested_retrieval_config": requested_retrieval_config or {},
+        "requested_answer_model": requested_answer_model or {},
+        "judge_model": judge_model or {},
+        "usage": {"available": False},
     }
     errors: list[str] = []
 

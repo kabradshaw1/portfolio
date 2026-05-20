@@ -32,6 +32,24 @@ start baseline and candidate runs, wait for completion, compare runs, inspect
 worst cases, summarize evidence, and only record a conclusion after the user
 approves it.
 
+## Model Ladder Experiments
+
+Model ladder experiments vary the answer model while keeping the eval judge
+model fixed across candidates.
+
+- `answer_tier`: local, efficient, or premium.
+- `answer_provider`: ollama, openai, or anthropic.
+- `answer_base_url`: provider endpoint when required.
+- `answer_model`: model name.
+- `answer_api_key_secret`: environment variable name containing the provider
+  key.
+
+For model ladder experiments, keep the judge model fixed and vary
+`answer_tier`, `answer_provider`, `answer_model`, `retrieval_config`, and
+`rerank`. Start one run at a time, wait for completion, compare completed or
+`completed_with_failures` runs, inspect worst cases, and record a conclusion
+only after the user approves it.
+
 ## Run Directly
 
 This is mainly useful for smoke testing. In normal use, Codex or another MCP
@@ -84,6 +102,8 @@ Restart Codex after adding the MCP server or changing the env file.
 ## Configuration
 
 - `EVAL_API_URL`: eval API base URL, defaults to `http://localhost:8000/eval`.
+- `RAG_TRIAGE_API_URL`: RAG triage API base URL, defaults to
+  `http://localhost:8000/rag-triage`.
 - `EVAL_MCP_INGESTION_URL`: ingestion API base URL for collection discovery,
   defaults to `http://localhost:8000/ingestion`.
 - `EVAL_API_TOKEN`: optional bearer token override for eval API calls. When set,
@@ -113,8 +133,9 @@ falling back to deterministic exponential backoff capped by
 
 Use `get_eval_run_evidence` when a run is still running, failed, or timed out
 from `wait_for_eval_run`. It returns the durable eval API state, captured RAG
-configuration, result counts, stale-running detection, and next-step guidance.
-For runtime evidence, follow its guidance with the observability MCP
+configuration, result counts, item counts when available, stale-running
+detection, and next-step guidance. For runtime evidence, follow its guidance
+with the observability MCP
 `investigate_eval_run` tool, which queries eval metrics and eval-id-scoped
 logs.
 
@@ -151,6 +172,7 @@ before changing CORS.
 - `get_eval_run_evidence`
 - `compare_eval_runs`
 - `get_worst_eval_cases`
+- `triage_rag_regression`
 - `summarize_eval_experiment`
 - `record_eval_experiment_conclusion`
 
@@ -158,3 +180,8 @@ Eval datasets and RAG collections are separate concepts. Datasets contain
 golden questions and expected answers. Collections are Qdrant retrieval corpora.
 Use curated fixture tools to create missing datasets, then validate the chosen
 RAG collection before starting baseline and rerank runs.
+
+Use `triage_rag_regression` after a completed or `completed_with_failures` eval
+run when worst cases need a single triage packet. Provide `baseline_eval_id` to
+compare a candidate against the baseline, and set `include_observability` when
+runtime evidence is needed.

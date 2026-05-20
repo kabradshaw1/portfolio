@@ -32,9 +32,49 @@ const internalMcpChart = `flowchart LR
   CODEX --> InternalMCPs
   InternalMCPs --> ACTION`;
 
+const observabilityProofPoints = [
+  "Prometheus",
+  "Loki",
+  "Jaeger",
+  "Grafana",
+  "5 dashboards",
+  "16 alert rules",
+];
+
+const observabilityTools = [
+  "get_system_health",
+  "investigate_checkout",
+  "investigate_ai_pipeline",
+  "investigate_eval_run",
+  "investigate_streaming_analytics",
+  "get_service_evidence",
+  "search_logs",
+  "get_trace",
+];
+
+const evalProofPoints = [
+  "Eval API",
+  "RAG collections",
+  "dataset fixtures",
+  "evaluation runs",
+  "experiments",
+  "rerank",
+  "top_k",
+];
+
+const evalTools = [
+  "start_eval_run",
+  "wait_for_eval_run",
+  "compare_eval_runs",
+  "get_worst_eval_cases",
+  "get_rag_collection_config",
+  "record_eval_experiment_conclusion",
+  "summarize_eval_experiment",
+];
+
 export function MCPSection() {
   return (
-    <section className="mt-12">
+    <section id="mcp-server" className="mt-12 scroll-mt-20">
       <h2 className="text-2xl font-semibold">MCP Server</h2>
       <p className="mt-4 text-muted-foreground leading-relaxed">
         The Go ai-service exposes twelve tools to any{" "}
@@ -73,17 +113,129 @@ export function MCPSection() {
           Internal MCPs for Engineering Operations
         </h3>
         <p className="mt-4 text-muted-foreground leading-relaxed">
-          The public MCP server is the user-facing showcase. Behind it, three
-          internal MCPs give Codex bounded, purpose-built access to the systems
-          that keep this portfolio operable: production evidence, structured
-          practice feedback, and repeatable RAG quality measurement.
+          These MCPs are Codex-facing control surfaces over larger engineering
+          systems. The route stays focused on what the MCP layer adds: bounded
+          tool access, evidence gathering, repeatable workflows, and links into
+          the deeper platforms behind each service.
         </p>
 
         <div className="mt-6 rounded-lg border border-foreground/10 bg-card p-4 sm:p-6">
           <MermaidDiagram chart={internalMcpChart} />
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <article className="rounded-lg border border-foreground/10 bg-card p-4 sm:p-5">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Read-only production evidence
+            </div>
+            <h4 className="mt-2 text-lg font-semibold">Observability MCP</h4>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              A local MCP endpoint over the metrics, logs, traces, dashboard,
+              and runbook layers. It turns operational questions into bounded
+              evidence bundles for system health, checkout incidents, AI
+              pipeline failures, eval runs, streaming analytics, service logs,
+              and trace lookup without mutating the cluster.
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {observabilityProofPoints.map((point) => (
+                <span
+                  key={point}
+                  className="rounded-md border border-foreground/10 bg-muted px-2 py-1 text-xs text-muted-foreground"
+                >
+                  {point}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Representative tools
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {observabilityTools.map((tool) => (
+                  <code
+                    key={tool}
+                    className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
+                  >
+                    {tool}
+                  </code>
+                ))}
+              </div>
+            </div>
+
+            <Link
+              href="/observability"
+              className="mt-5 inline-flex text-sm font-medium underline hover:text-foreground"
+            >
+              See the full observability platform &rarr;
+            </Link>
+          </article>
+
+          <article className="rounded-lg border border-foreground/10 bg-card p-4 sm:p-5">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              RAG experiment control plane
+            </div>
+            <h4 className="mt-2 text-lg font-semibold">Eval MCP service</h4>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              An operator MCP for repeatable RAG evaluation work. It coordinates
+              evaluator datasets, run history, study records, conclusions,
+              collection metadata from ingestion, retrieval settings, ranking
+              comparisons, worst-case review, and the eval-run evidence handoff
+              into the observability control plane.
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {evalProofPoints.map((point) => (
+                <span
+                  key={point}
+                  className="rounded-md border border-foreground/10 bg-muted px-2 py-1 text-xs text-muted-foreground"
+                >
+                  {point}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Representative tools
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {evalTools.map((tool) => (
+                  <code
+                    key={tool}
+                    className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
+                  >
+                    {tool}
+                  </code>
+                ))}
+              </div>
+            </div>
+
+            <Link
+              href="/ai/eval"
+              className="mt-5 inline-flex text-sm font-medium underline hover:text-foreground"
+            >
+              Open the RAG evaluation workflow &rarr;
+            </Link>
+          </article>
+        </div>
+
+        <article className="mt-4 rounded-lg border border-foreground/10 bg-card p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Structured practice feedback
+          </div>
+          <h4 className="mt-2 text-lg font-semibold">QA MCP</h4>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            A compact internal MCP for structured practice sessions, expected
+            answer feedback, weak-topic tracking, review attempts, and scoring.
+            It keeps interview preparation in the same tool-call workflow
+            without competing with the production observability and RAG eval
+            control planes.
+          </p>
+        </article>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           <div className="rounded-lg border border-foreground/10 bg-card p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Example tool-call trace
@@ -143,21 +295,23 @@ export function MCPSection() {
         </Link>
       </div>
 
-      <h3 className="mt-10 text-xl font-semibold">Connect your own client</h3>
-      <p className="mt-4 text-muted-foreground leading-relaxed">
-        The MCP server is publicly reachable at{" "}
-        <code className="rounded bg-muted px-1.5 py-0.5 text-sm">
-          https://api.kylebradshaw.dev/ai-api/mcp
-        </code>
-        . Public tools (catalog search, RAG search,{" "}
-        <code>list_collections</code>) work without auth. Auth-scoped tools
-        require a Bearer JWT &mdash; register at{" "}
-        <Link href="/go/register" className="underline hover:text-foreground">
-          /go/register
-        </Link>
-        , log in, and copy the access token from the{" "}
-        <code>Authorization</code> header in DevTools.
-      </p>
+      <section id="connect-client" className="mt-10 scroll-mt-20">
+        <h3 className="text-xl font-semibold">Connect your own client</h3>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          The MCP server is publicly reachable at{" "}
+          <code className="rounded bg-muted px-1.5 py-0.5 text-sm">
+            https://api.kylebradshaw.dev/ai-api/mcp
+          </code>
+          . Public tools (catalog search, RAG search,{" "}
+          <code>list_collections</code>) work without auth. Auth-scoped tools
+          require a Bearer JWT &mdash; register at{" "}
+          <Link href="/go/register" className="underline hover:text-foreground">
+            /go/register
+          </Link>
+          , log in, and copy the access token from the{" "}
+          <code>Authorization</code> header in DevTools.
+        </p>
+      </section>
 
       <h4 className="mt-6 text-lg font-medium">Claude Desktop</h4>
       <p className="mt-2 text-sm text-muted-foreground">

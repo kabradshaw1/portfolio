@@ -18,6 +18,7 @@ import (
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/ingestionapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/mcpserver"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/tokenstore"
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/triageapi"
 )
 
 type app struct {
@@ -26,6 +27,30 @@ type app struct {
 }
 
 type serverRunner func(context.Context, *app) error
+
+type staticTokenProvider struct {
+	token string
+}
+
+func (p staticTokenProvider) Token(context.Context) (string, error) {
+	return p.token, nil
+}
+
+func (p staticTokenProvider) Invalidate() {}
+
+type triageAdapter struct {
+	client *triageapi.Client
+}
+
+func (a triageAdapter) TriageRAGRegression(ctx context.Context, in evalworkflow.TriageInput) (map[string]any, error) {
+	return a.client.TriageRAGRegression(ctx, triageapi.TriageRequest{
+		EvalID:               in.EvalID,
+		BaselineEvalID:       in.BaselineEvalID,
+		Metric:               in.Metric,
+		Limit:                in.Limit,
+		IncludeObservability: in.IncludeObservability,
+	})
+}
 
 func main() {
 	logger := log.New(os.Stderr, "", log.LstdFlags)
@@ -41,8 +66,10 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 	}
 	httpClient := &http.Client{Timeout: cfg.WaitTimeout}
 	var api *evalapi.Client
+	var tokenProvider triageapi.TokenProvider
 	if cfg.APIToken != "" {
 		api = evalapi.New(cfg.EvalAPIURL, cfg.APIToken, httpClient)
+		tokenProvider = staticTokenProvider{token: cfg.APIToken}
 	} else {
 		authClient := authclient.New(cfg.AuthServiceURL, httpClient)
 		tokenStore := tokenstore.NewFileStore(cfg.TokenCachePath)
@@ -53,11 +80,14 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 			RefreshSkew:    cfg.TokenRefreshSkew,
 		})
 		api = evalapi.NewWithTokenProvider(cfg.EvalAPIURL, provider, httpClient)
+		tokenProvider = provider
 	}
 	ingestion := ingestionapi.New(cfg.IngestionURL, cfg.APIToken, httpClient)
+	triageClient := triageapi.New(cfg.TriageAPIURL, tokenProvider, httpClient)
 	fixtures := fixturecatalog.New(cfg.DatasetFixtureRoots)
-	service := evalworkflow.New(api, ingestion, fixtures, cfg.PollInterval, cfg.WaitTimeout, cfg.MaxBackoff)
-	logger.Printf("eval MCP server running on stdio eval_api_url=%s ingestion_url=%s", cfg.EvalAPIURL, cfg.IngestionURL)
+	service := evalworkflow.New(api, ingestion, fixtures, cfg.PollInterval, cfg.WaitTimeout, cfg.MaxBackoff).
+		WithTriageAPI(triageAdapter{client: triageClient})
+	logger.Printf("eval MCP server running on stdio eval_api_url=%s ingestion_url=%s triage_api_url=%s", cfg.EvalAPIURL, cfg.IngestionURL, cfg.TriageAPIURL)
 	return runServer(ctx, &app{service: service, cfg: cfg})
 }
 
