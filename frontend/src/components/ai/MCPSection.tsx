@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MermaidDiagram } from "@/components/MermaidDiagram";
 import { MCPArchitectureDiagram } from "./MCPArchitectureDiagram";
 import { MCPToolCatalog } from "./MCPToolCatalog";
 
@@ -19,6 +20,17 @@ const inspectorCommand = `npx @modelcontextprotocol/inspector https://api.kylebr
 
 const githubMcpUrl =
   "https://github.com/kabradshaw1/portfolio/tree/main/go/ai-service/internal/mcp";
+
+const internalMcpChart = `flowchart LR
+  CODEX[Codex]
+  subgraph InternalMCPs ["Internal MCPs"]
+    OBS[Observability MCP<br/>logs · traces · health]
+    QA[QA MCP<br/>answers · critique · weak topics]
+    EVAL[Eval MCP service<br/>datasets · runs · comparisons]
+  end
+  ACTION[Evidence-backed engineering action]
+  CODEX --> InternalMCPs
+  InternalMCPs --> ACTION`;
 
 export function MCPSection() {
   return (
@@ -56,33 +68,65 @@ export function MCPSection() {
 
       <MCPToolCatalog />
 
-      <h3 className="mt-10 text-xl font-semibold">
-        Internal MCPs for Engineering Operations
-      </h3>
-      <p className="mt-4 text-muted-foreground leading-relaxed">
-        The public MCP server is the user-facing showcase. Behind it, three
-        internal MCPs give Codex bounded, purpose-built access to the systems
-        that keep this portfolio operable: production evidence, structured
-        practice feedback, and repeatable RAG quality measurement.
-      </p>
-      <ul className="mt-4 list-disc space-y-2 pl-6 text-muted-foreground">
-        <li>
-          <strong className="text-foreground">Observability MCP:</strong>{" "}
-          gathers service health, logs, metrics, and traces into bounded
-          evidence bundles for incident triage and recovery verification.
-        </li>
-        <li>
-          <strong className="text-foreground">QA MCP:</strong> manages
-          structured interview-practice sessions, weak-topic tracking, answer
-          attempts, and feedback against expected answers.
-        </li>
-        <li>
-          <strong className="text-foreground">Eval MCP service:</strong>{" "}
-          manages RAG datasets and evaluation runs, compares candidate changes,
-          surfaces worst cases, and helps decide whether retrieval work improved
-          quality.
-        </li>
-      </ul>
+      <section id="internal-mcps" className="mt-10 scroll-mt-20">
+        <h3 className="text-xl font-semibold">
+          Internal MCPs for Engineering Operations
+        </h3>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          The public MCP server is the user-facing showcase. Behind it, three
+          internal MCPs give Codex bounded, purpose-built access to the systems
+          that keep this portfolio operable: production evidence, structured
+          practice feedback, and repeatable RAG quality measurement.
+        </p>
+
+        <div className="mt-6 rounded-lg border border-foreground/10 bg-card p-4 sm:p-6">
+          <MermaidDiagram chart={internalMcpChart} />
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          <div className="rounded-lg border border-foreground/10 bg-card p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Example tool-call trace
+            </div>
+            <div className="mt-4 space-y-3">
+              <div className="ml-auto w-fit max-w-[85%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">
+                Why did checkout stall in QA?
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-block size-2 animate-pulse rounded-full bg-yellow-500" />
+                observability.investigate_checkout
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-block size-2 rounded-full bg-green-500" />
+                observability.get_trace
+              </div>
+              <div className="mr-auto w-fit max-w-[92%] rounded-lg bg-muted px-3 py-2 text-sm">
+                Payment was created, but the order saga never observed
+                completion. The trace points to a RabbitMQ reply timeout.
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-foreground/10 bg-card p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Why this matters
+            </div>
+            <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+              <li>
+                Turns production questions into bounded evidence requests.
+              </li>
+              <li>
+                Keeps practice feedback and weak-topic tracking in the same
+                workflow.
+              </li>
+              <li>
+                Makes RAG changes measurable before they are treated as
+                improvements.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
 
       <h3 className="mt-10 text-xl font-semibold">Try it interactively</h3>
       <p className="mt-4 text-muted-foreground leading-relaxed">
