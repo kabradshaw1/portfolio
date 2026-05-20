@@ -69,3 +69,12 @@ type ActionResult struct {
 	HistoryEventIDs   []int64   `json:"history_event_ids,omitempty"`
 	Warning           string    `json:"warning,omitempty"`
 }
+
+type ActionRequest struct {
+	ActionID      string         `json:"action_id"`
+	Args          map[string]any `json:"args,omitempty"`
+	IncidentKey   string         `json:"incident_key,omitempty"`
+	IncidentTitle string         `json:"incident_title,omitempty"`
+	Severity      string         `json:"severity,omitempty"`
+	Service       string         `json:"service,omitempty"`
+}
