@@ -746,10 +746,16 @@ func TestEvalPromptHandler(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected text prompt content, got %T", result.Messages[0].Content)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "Compare only completed runs"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(text.Text, want) {
 			t.Fatalf("expected prompt to mention %s, got %q", want, text.Text)
 		}
+	}
+	if !strings.Contains(strings.ToLower(text.Text), strings.ToLower("Compare only completed runs")) {
+		t.Fatalf("expected prompt to mention Compare only completed runs, got %q", text.Text)
+	}
+	if !strings.Contains(strings.ToLower(text.Text), strings.ToLower("Keep the judge model fixed")) {
+		t.Fatalf("expected prompt to mention Keep the judge model fixed, got %q", text.Text)
 	}
 }
 
@@ -768,10 +774,16 @@ func TestWorkflowResourceHandler(t *testing.T) {
 	if content.MIMEType != "text/markdown" {
 		t.Fatalf("unexpected resource MIME type: %q", content.MIMEType)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "Compare only completed runs"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(content.Text, want) {
 			t.Fatalf("expected workflow resource to mention %s, got %q", want, content.Text)
 		}
+	}
+	if !strings.Contains(strings.ToLower(content.Text), strings.ToLower("Compare only completed runs")) {
+		t.Fatalf("expected workflow resource to mention Compare only completed runs, got %q", content.Text)
+	}
+	if !strings.Contains(strings.ToLower(content.Text), strings.ToLower("Keep the judge model fixed")) {
+		t.Fatalf("expected workflow resource to mention Keep the judge model fixed, got %q", content.Text)
 	}
 }
 
