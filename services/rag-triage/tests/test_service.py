@@ -16,6 +16,14 @@ class FakeEvalClient:
         self.closed = True
 
 
+class FakeComparisonEvalClient:
+    def __init__(self, evaluations):
+        self.evaluations = evaluations
+
+    async def get_evaluation(self, eval_id: str) -> EvaluationDetail:
+        return self.evaluations[eval_id]
+
+
 @pytest.mark.asyncio
 async def test_triage_eval_run_returns_worst_cases_first():
     evaluation = EvaluationDetail(
@@ -137,3 +145,79 @@ async def test_close_delegates_to_eval_client():
     await service.close()
 
     assert client.closed
+
+
+@pytest.mark.asyncio
+async def test_triage_comparison_uses_candidate_worst_cases_and_delta():
+    baseline = EvaluationDetail(
+        id="base",
+        dataset_id="dataset-1",
+        status="completed",
+        aggregate_scores=Scores(context_precision=0.8),
+        results=[
+            QueryResult(
+                query="q1",
+                answer="a",
+                scores=Scores(context_precision=0.8, context_recall=0.8),
+            )
+        ],
+    )
+    candidate = EvaluationDetail(
+        id="cand",
+        dataset_id="dataset-1",
+        status="completed",
+        aggregate_scores=Scores(context_precision=0.3),
+        results=[
+            QueryResult(
+                query="q1",
+                answer="a",
+                scores=Scores(context_precision=0.2, context_recall=0.8),
+            )
+        ],
+    )
+    service = RAGTriageService(
+        eval_client=FakeComparisonEvalClient({"base": baseline, "cand": candidate}),
+        default_metric="context_precision",
+        default_limit=5,
+        max_limit=20,
+    )
+
+    response = await service.triage_comparison("base", "cand", metric=None, limit=None)
+
+    assert response.subject.type == "comparison"
+    assert response.subject.baseline_eval_id == "base"
+    assert response.subject.candidate_eval_id == "cand"
+    assert response.diagnosis.primary_failure_mode == "retrieval_precision"
+    assert response.config["metric_delta"] == -0.5
+
+
+@pytest.mark.asyncio
+async def test_triage_comparison_runtime_preserves_statuses_and_candidate_error():
+    baseline = EvaluationDetail(
+        id="base",
+        dataset_id="dataset-1",
+        status="completed",
+        aggregate_scores=Scores(context_precision=0.8),
+    )
+    candidate = EvaluationDetail(
+        id="cand",
+        dataset_id="dataset-1",
+        status="failed",
+        aggregate_scores=Scores(context_precision=0.3),
+        results=[],
+        error="candidate timed out",
+    )
+    service = RAGTriageService(
+        eval_client=FakeComparisonEvalClient({"base": baseline, "cand": candidate}),
+        default_metric="context_precision",
+        default_limit=5,
+        max_limit=20,
+    )
+
+    response = await service.triage_comparison("base", "cand", metric=None, limit=None)
+
+    assert response.subject.type == "comparison"
+    assert response.config["baseline_status"] == "completed"
+    assert response.config["candidate_status"] == "failed"
+    assert response.config["eval_error"] == "candidate timed out"
+    assert response.config["metric_delta"] == -0.5

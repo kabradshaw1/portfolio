@@ -71,6 +71,75 @@ class RAGTriageService:
             metric=selected_metric,
         )
 
+    async def triage_comparison(
+        self,
+        baseline_eval_id: str,
+        candidate_eval_id: str,
+        metric: MetricName | None,
+        limit: int | None,
+    ) -> TriageResponse:
+        selected_metric = cast(MetricName, metric or self._default_metric)
+        selected_limit = self._bounded_limit(limit)
+        baseline = await self._eval_client.get_evaluation(baseline_eval_id)
+        candidate = await self._eval_client.get_evaluation(candidate_eval_id)
+        results = candidate.results or []
+
+        config = {
+            **(candidate.config or {}),
+            "baseline_status": baseline.status,
+            "candidate_status": candidate.status,
+            "metric_delta": _metric_delta(baseline, candidate, selected_metric),
+        }
+
+        if candidate.status != "completed" or not results:
+            response = self._runtime_response(candidate, selected_metric)
+            response.subject = TriageSubject(
+                type="comparison",
+                baseline_eval_id=baseline.id,
+                candidate_eval_id=candidate.id,
+            )
+            response.config = {
+                **response.config,
+                "baseline_status": baseline.status,
+                "candidate_status": candidate.status,
+                "metric_delta": _metric_delta(baseline, candidate, selected_metric),
+            }
+            return response
+
+        worst = sorted(
+            results,
+            key=lambda result: (
+                self._score_for_metric(result.scores, selected_metric),
+                result.query,
+                result.answer,
+            ),
+        )[:selected_limit]
+        cases = [classify_case(result) for result in worst]
+        clusters = cluster_cases(cases)
+        recommendations = recommendations_for_clusters(clusters)
+        primary = clusters[0].failure_mode if clusters else "insufficient_evidence"
+        confidence = clusters[0].confidence if clusters else "low"
+
+        return TriageResponse(
+            subject=TriageSubject(
+                type="comparison",
+                baseline_eval_id=baseline.id,
+                candidate_eval_id=candidate.id,
+            ),
+            status=candidate.status,
+            aggregate_scores=candidate.aggregate_scores,
+            config=config,
+            diagnosis=Diagnosis(
+                primary_failure_mode=primary,
+                confidence=confidence,
+                summary=self._summary(primary),
+            ),
+            clusters=clusters,
+            cases=cases,
+            recommendations=recommendations,
+            metric=selected_metric,
+        )
+
     def _bounded_limit(self, limit: int | None) -> int:
         if limit is None:
             return self._default_limit
@@ -133,3 +202,17 @@ class RAGTriageService:
             "regression cause.",
         }
         return summaries[mode]
+
+
+def _metric_delta(
+    baseline: EvaluationDetail,
+    candidate: EvaluationDetail,
+    metric: str,
+) -> float | None:
+    if baseline.aggregate_scores is None or candidate.aggregate_scores is None:
+        return None
+    baseline_value = getattr(baseline.aggregate_scores, metric)
+    candidate_value = getattr(candidate.aggregate_scores, metric)
+    if baseline_value is None or candidate_value is None:
+        return None
+    return round(candidate_value - baseline_value, 4)

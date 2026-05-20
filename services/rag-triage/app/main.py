@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.eval_client import EvalAPIError, EvalClient
 from app.metrics import instrumentator, triage_requests_total
-from app.models import TriageEvalRunRequest
+from app.models import TriageComparisonRequest, TriageEvalRunRequest
 from app.service import RAGTriageService
 
 app = FastAPI(title="RAG Triage API")
@@ -72,4 +72,36 @@ async def triage_eval_run(body: TriageEvalRunRequest):
         await service.close()
 
     triage_requests_total.labels(endpoint="eval-run", outcome="success").inc()
+    return result
+
+
+@app.post("/triage/comparison")
+async def triage_comparison(body: TriageComparisonRequest):
+    service = build_service()
+    try:
+        result = await service.triage_comparison(
+            baseline_eval_id=body.baseline_eval_id,
+            candidate_eval_id=body.candidate_eval_id,
+            metric=body.metric,
+            limit=body.limit,
+        )
+    except EvalAPIError as exc:
+        triage_requests_total.labels(
+            endpoint="comparison",
+            outcome="eval_api_error",
+        ).inc()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        triage_requests_total.labels(
+            endpoint="comparison",
+            outcome="upstream_error",
+        ).inc()
+        raise HTTPException(
+            status_code=502,
+            detail="eval API request failed",
+        ) from exc
+    finally:
+        await service.close()
+
+    triage_requests_total.labels(endpoint="comparison", outcome="success").inc()
     return result
