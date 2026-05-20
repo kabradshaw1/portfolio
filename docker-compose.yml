@@ -23,6 +23,7 @@ services:
       - chat
       - debug
       - eval
+      - rag-triage
     restart: unless-stopped
 
   ingestion:
@@ -102,6 +103,19 @@ services:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  rag-triage:
+    image: ghcr.io/kabradshaw1/portfolio/rag-triage:latest
+    build:
+      context: ./services
+      dockerfile: rag-triage/Dockerfile
+    env_file: .env
+    environment:
+      - EVAL_API_URL=${RAG_TRIAGE_EVAL_API_URL:-http://eval:8000}
+      - EVAL_API_TOKEN=${RAG_TRIAGE_EVAL_API_TOKEN:-}
+    depends_on:
+      eval:
+        condition: service_started
 
   prometheus:
     image: prom/prometheus:latest
