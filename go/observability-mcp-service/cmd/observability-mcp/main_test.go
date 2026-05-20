@@ -102,6 +102,25 @@ func TestRunSkipsHistoryStoreWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestRunWiresManagementWhenEnabled(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("OBS_MANAGEMENT_ACTIONS_ENABLED", "true")
+	t.Setenv("OBS_MANAGEMENT_ACTION_TIMEOUT", "30s")
+	err := run(context.Background(), log.New(&bytes.Buffer{}, "", 0), func(ctx context.Context, application *app) error {
+		actions, err := application.service.ListManagementActions(ctx)
+		if err != nil {
+			t.Fatalf("ListManagementActions() error = %v", err)
+		}
+		if len(actions) == 0 {
+			t.Fatal("expected management actions")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+}
+
 func TestRunContinuesWhenHistoryStoreFails(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("OBS_HISTORY_DB_PATH", t.TempDir())
@@ -229,4 +248,8 @@ func clearEnv(t *testing.T) {
 	t.Setenv("OBS_HISTORY_ENABLED", "false")
 	t.Setenv("OBS_HISTORY_DB_PATH", "")
 	t.Setenv("OBS_HISTORY_AUTO_CAPTURE", "")
+	t.Setenv("OBS_MANAGEMENT_ACTIONS_ENABLED", "")
+	t.Setenv("OBS_MANAGEMENT_ALLOW_HIGH_RISK", "")
+	t.Setenv("OBS_MANAGEMENT_ACTION_TIMEOUT", "")
+	t.Setenv("OBS_MANAGEMENT_MAX_OUTPUT_BYTES", "")
 }

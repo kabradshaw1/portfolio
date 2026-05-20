@@ -254,6 +254,73 @@ func TestGetEvaluationAndCompare(t *testing.T) {
 	}
 }
 
+func TestListEvalItemDLQ(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/evaluations/items/dlq" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.URL.Query().Get("limit") != "5" {
+			t.Fatalf("limit = %q", r.URL.Query().Get("limit"))
+		}
+		_ = json.NewEncoder(w).Encode(DLQListResponse{
+			IndexesAreTransient: true,
+			Entries: []DLQEntry{{
+				Index: 0,
+				Payload: &DLQPayload{
+					MessageVersion: 1,
+					EvaluationID:   "eval-1",
+					ItemID:         "item-1",
+					ItemIndex:      0,
+					Attempt:        3,
+				},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "", server.Client())
+	got, err := client.ListEvalItemDLQ(context.Background(), 5)
+	if err != nil {
+		t.Fatalf("ListEvalItemDLQ error: %v", err)
+	}
+	if len(got.Entries) != 1 || got.Entries[0].Payload.ItemID != "item-1" || !got.IndexesAreTransient {
+		t.Fatalf("response = %#v", got)
+	}
+}
+
+func TestReplayEvalItemDLQByItemID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/evaluations/items/dlq/replay" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body ReplayDLQItemRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body.ItemID != "item-1" || body.Index != nil {
+			t.Fatalf("body = %#v", body)
+		}
+		_ = json.NewEncoder(w).Encode(ReplayDLQItemResponse{
+			EvaluationID:     "eval-1",
+			ItemID:           "item-1",
+			ItemIndex:        0,
+			Status:           "queued",
+			ReplayCount:      1,
+			MessagePublished: true,
+		})
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "", server.Client())
+	got, err := client.ReplayEvalItemDLQ(context.Background(), ReplayDLQItemRequest{ItemID: "item-1"})
+	if err != nil {
+		t.Fatalf("ReplayEvalItemDLQ error: %v", err)
+	}
+	if got.ItemID != "item-1" || !got.MessagePublished {
+		t.Fatalf("response = %#v", got)
+	}
+}
+
 func TestHTTPErrorIncludesStatusAndExcerpt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, strings.Repeat("x", 300), http.StatusUnauthorized)

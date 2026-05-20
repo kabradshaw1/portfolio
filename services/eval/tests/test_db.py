@@ -151,6 +151,64 @@ async def test_claim_evaluation_item_returns_none_for_completed_item(db):
 
 
 @pytest.mark.asyncio
+async def test_cancel_evaluation_marks_run_and_non_terminal_items_cancelled(db):
+    items = [
+        {"query": "q1", "expected_answer": "a1", "expected_sources": []},
+        {"query": "q2", "expected_answer": "a2", "expected_sources": []},
+    ]
+    ds_id = await db.create_dataset(name="ds-cancel", items=items)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="running")
+    first, second = await db.create_evaluation_items(eval_id, items, max_attempts=3)
+    await db.mark_evaluation_item_completed(
+        first["id"],
+        result={"query": "q1", "answer": "a1", "contexts": []},
+        scores={"faithfulness": 1.0},
+        score_reasons={"faithfulness": "ok"},
+    )
+    await db.claim_evaluation_item(second["id"], worker_id="worker-1", lease_seconds=60)
+
+    cancelled = await db.cancel_evaluation(eval_id)
+
+    assert cancelled is not None
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["error"] == "evaluation cancelled by operator"
+    stored = await db.list_evaluation_items(eval_id)
+    assert stored[0]["status"] == "completed"
+    assert stored[1]["status"] == "cancelled"
+    assert stored[1]["lease_owner"] is None
+    assert stored[1]["lease_expires_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_evaluation_returns_none_for_terminal_run(db):
+    ds_id = await db.create_dataset(name="ds-cancel-terminal", items=SIMPLE_ITEM)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="running")
+    await db.complete_evaluation(eval_id, aggregate_scores={}, results=[])
+
+    cancelled = await db.cancel_evaluation(eval_id)
+
+    assert cancelled is None
+    evaluation = await db.get_evaluation(eval_id)
+    assert evaluation["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_mark_evaluation_item_cancelled_clears_lease(db):
+    ds_id = await db.create_dataset(name="ds-cancel-item", items=SIMPLE_ITEM)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="running")
+    [item] = await db.create_evaluation_items(eval_id, SIMPLE_ITEM, max_attempts=3)
+    await db.claim_evaluation_item(item["id"], worker_id="worker-1", lease_seconds=60)
+
+    await db.mark_evaluation_item_cancelled(item["id"])
+
+    stored = await db.get_evaluation_item(item["id"])
+    assert stored["status"] == "cancelled"
+    assert stored["lease_owner"] is None
+    assert stored["lease_expires_at"] is None
+    assert stored["completed_at"] is not None
+
+
+@pytest.mark.asyncio
 async def test_finalize_evaluation_completes_all_successful_items(db):
     items = [
         {"query": "q1", "expected_answer": "a1", "expected_sources": []},
@@ -225,10 +283,146 @@ async def test_reset_expired_running_items_to_queued(db):
 
     reset = await db.reset_expired_running_items(max_age_seconds=60)
 
-    assert reset == 1
+    assert len(reset) == 1
+    assert reset[0]["id"] == item["id"]
     stored = await db.get_evaluation_item(item["id"])
     assert stored["status"] == "queued"
     assert stored["lease_owner"] is None
+
+
+@pytest.mark.asyncio
+async def test_reset_expired_running_items_returns_republishable_items(db):
+    ds_id = await db.create_dataset(name="ds-expired-return", items=SIMPLE_ITEM)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="running")
+    [item] = await db.create_evaluation_items(eval_id, SIMPLE_ITEM, max_attempts=3)
+    await db.claim_evaluation_item(item["id"], worker_id="worker-1", lease_seconds=1)
+    expired = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    await db._db.execute(  # noqa: SLF001
+        "UPDATE evaluation_items SET lease_expires_at = ? WHERE id = ?",
+        (expired, item["id"]),
+    )
+    await db._db.commit()  # noqa: SLF001
+
+    reset_items = await db.reset_expired_running_items(max_age_seconds=60)
+
+    assert [item["id"] for item in reset_items] == [item["id"]]
+    assert reset_items[0]["item_index"] == 0
+
+
+@pytest.mark.asyncio
+async def test_fail_expired_running_items_without_attempts_remaining(db):
+    ds_id = await db.create_dataset(name="ds-expired-fail", items=SIMPLE_ITEM)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="running")
+    [item] = await db.create_evaluation_items(eval_id, SIMPLE_ITEM, max_attempts=1)
+    await db.claim_evaluation_item(item["id"], worker_id="worker-1", lease_seconds=1)
+    expired = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    await db._db.execute(  # noqa: SLF001
+        "UPDATE evaluation_items SET lease_expires_at = ? WHERE id = ?",
+        (expired, item["id"]),
+    )
+    await db._db.commit()  # noqa: SLF001
+
+    failed_items = await db.fail_expired_running_items(max_age_seconds=60)
+
+    assert [failed["id"] for failed in failed_items] == [item["id"]]
+    stored = await db.get_evaluation_item(item["id"])
+    assert stored["status"] == "failed"
+    assert stored["last_error"]["error_type"] == "stale_item_lease"
+    assert stored["last_error"]["retryable"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_queued_items_for_republish_excludes_cancelled_runs(db):
+    ds_id = await db.create_dataset(name="ds-republish", items=SIMPLE_ITEM)
+    running_eval = await db.create_evaluation(ds_id, "documents", status="running")
+    cancelled_eval = await db.create_evaluation(ds_id, "documents", status="cancelled")
+    [running_item] = await db.create_evaluation_items(
+        running_eval, SIMPLE_ITEM, max_attempts=3
+    )
+    await db.create_evaluation_items(cancelled_eval, SIMPLE_ITEM, max_attempts=3)
+
+    queued = await db.list_queued_items_for_republish(max_age_seconds=0)
+
+    assert [item["id"] for item in queued] == [running_item["id"]]
+
+
+@pytest.mark.asyncio
+async def test_count_evaluation_items_by_status_includes_retryable_and_stale(db):
+    ds_id = await db.create_dataset(name="ds-count-rich", items=SIMPLE_ITEM)
+    eval_id = await db.create_evaluation(ds_id, "documents", status="running")
+    [item] = await db.create_evaluation_items(eval_id, SIMPLE_ITEM, max_attempts=3)
+    old = (datetime.now(UTC) - timedelta(minutes=30)).isoformat()
+    await db._db.execute(  # noqa: SLF001
+        "UPDATE evaluation_items SET updated_at = ? WHERE id = ?",
+        (old, item["id"]),
+    )
+    await db._db.commit()  # noqa: SLF001
+
+    counts = await db.count_evaluation_items_by_status(eval_id)
+
+    assert counts["queued"] == 1
+    assert counts["retryable"] == 1
+    assert counts["stale"] == 1
+
+
+@pytest.mark.asyncio
+async def test_requeue_failed_item_for_replay_records_audit_state(db):
+    ds_id = await db.create_dataset(
+        name="ds-replay",
+        items=[{"query": "q", "expected_answer": "a", "expected_sources": []}],
+    )
+    eval_id = await db.create_evaluation(
+        dataset_id=ds_id,
+        collection="documents",
+        status="queued",
+    )
+    [item] = await db.create_evaluation_items(
+        eval_id, (await db.get_dataset(ds_id))["items"], max_attempts=3
+    )
+    claimed = await db.claim_evaluation_item(
+        item["id"], worker_id="worker-1", lease_seconds=30
+    )
+    assert claimed is not None
+    await db.mark_evaluation_item_failed(
+        item["id"], {"error_type": "TimeoutError", "retryable": False}
+    )
+
+    replayed = await db.requeue_failed_item_for_replay(item["id"])
+
+    assert replayed is not None
+    assert replayed["status"] == "queued"
+    assert replayed["attempt_count"] == 1
+    assert replayed["last_error"] == {"error_type": "TimeoutError", "retryable": False}
+    assert replayed["replay_count"] == 1
+    assert replayed["last_replayed_at"] is not None
+    assert replayed["lease_owner"] is None
+    assert replayed["lease_expires_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_requeue_failed_item_for_replay_rejects_completed_item(db):
+    ds_id = await db.create_dataset(
+        name="ds-no-replay-completed",
+        items=[{"query": "q", "expected_answer": "a", "expected_sources": []}],
+    )
+    eval_id = await db.create_evaluation(
+        dataset_id=ds_id,
+        collection="documents",
+        status="queued",
+    )
+    [item] = await db.create_evaluation_items(
+        eval_id, (await db.get_dataset(ds_id))["items"], max_attempts=3
+    )
+    await db.mark_evaluation_item_completed(
+        item["id"],
+        result={"query": "q", "answer": "a", "contexts": []},
+        scores={"faithfulness": 1.0},
+        score_reasons={},
+    )
+
+    replayed = await db.requeue_failed_item_for_replay(item["id"])
+
+    assert replayed is None
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,12 @@ const (
 	EventEvidenceSnapshot = "evidence_snapshot"
 	EventNoteAdded        = "note_added"
 	EventStatusChanged    = "status_changed"
+
+	EventManagementActionPreviewed = "management_action_previewed"
+	EventManagementActionStarted   = "management_action_started"
+	EventManagementActionCompleted = "management_action_completed"
+	EventManagementActionFailed    = "management_action_failed"
+	EventManagementActionBlocked   = "management_action_blocked"
 )
 
 type IncidentUpsert struct {
@@ -116,6 +122,27 @@ type AddNoteInput struct {
 	Status      string
 }
 
+type ManagementActionInput struct {
+	IncidentKey   string
+	IncidentTitle string
+	Severity      string
+	Service       string
+	ActionID      string
+	RiskTier      string
+	Decision      string
+	Status        string
+	Summary       string
+	DetailsJSON   []byte
+}
+
+type ManagementActionFilter struct {
+	IncidentKey string
+	ActionID    string
+	Status      string
+	Decision    string
+	Limit       int
+}
+
 type Store interface {
 	Close() error
 	Migrate(context.Context) error
@@ -124,6 +151,8 @@ type Store interface {
 	GetIncidentHistory(context.Context, string) (IncidentHistory, error)
 	AddIncidentNote(context.Context, AddNoteInput) (Event, error)
 	GetSnapshot(context.Context, int64) (Snapshot, error)
+	RecordManagementAction(context.Context, ManagementActionInput) (Event, error)
+	ListManagementActions(context.Context, ManagementActionFilter) ([]Event, error)
 }
 
 func NormalizeStatus(status string) string {

@@ -6,11 +6,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/config"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/history"
+	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/management"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/mcpserver"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/observability"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/workflows"
@@ -60,8 +63,9 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 		logger.Printf("observability MCP server running on stdio prometheus=%s loki=%s jaeger=%s", cfg.PrometheusURL, cfg.LokiURL, cfg.JaegerURL)
 	}
 	service := workflows.NewService(prom, loki, jaeger, cfg.MaxLogLines)
+	var historyDB *history.DB
 	if cfg.HistoryEnabled {
-		historyDB, err := history.Open(cfg.HistoryDBPath)
+		historyDB, err = history.Open(cfg.HistoryDBPath)
 		if err != nil {
 			logger.Printf("observability MCP history disabled: open %s: %v", cfg.HistoryDBPath, err)
 		} else if err := historyDB.Migrate(ctx); err != nil {
@@ -72,12 +76,33 @@ func run(ctx context.Context, logger *log.Logger, runServer serverRunner) error 
 			service.WithHistory(historyDB, cfg.HistoryAutoCapture)
 		}
 	}
+	root := repoRoot()
+	catalog := management.DefaultCatalog()
+	if err := catalog.ValidateScripts(root); err != nil {
+		return fmt.Errorf("management catalog: %w", err)
+	}
+	runner := management.Runner{RepoRoot: root, MaxOutputBytes: cfg.ManagementMaxOutputBytes, MaxTimeout: cfg.ManagementActionTimeout}
+	managementService := management.NewService(
+		catalog,
+		management.Policy{ActionsEnabled: cfg.ManagementActionsEnabled, AllowHighRisk: cfg.ManagementAllowHighRisk},
+		runner,
+		historyDB,
+	)
+	service.WithManagement(managementService)
 	if cfg.UseGrafanaGateway() {
 		if grafana, ok := prom.(*observability.GrafanaClient); ok {
 			service.SetGrafanaAlerting(grafana)
 		}
 	}
 	return runServer(ctx, &app{service: service, cfg: cfg})
+}
+
+func repoRoot() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "."
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", ".."))
 }
 
 func runMCPServer(ctx context.Context, application *app) error {

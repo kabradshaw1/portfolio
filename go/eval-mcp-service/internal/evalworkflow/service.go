@@ -30,6 +30,8 @@ type API interface {
 	StartEvaluation(context.Context, evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error)
 	GetEvaluation(context.Context, string) (evalapi.EvaluationDetail, error)
 	CompareEvaluations(context.Context, []string) (evalapi.Comparison, error)
+	ListEvalItemDLQ(context.Context, int) (evalapi.DLQListResponse, error)
+	ReplayEvalItemDLQ(context.Context, evalapi.ReplayDLQItemRequest) (evalapi.ReplayDLQItemResponse, error)
 	CreateExperiment(context.Context, evalapi.CreateExperimentRequest) (evalapi.Experiment, error)
 	ListExperiments(context.Context) ([]evalapi.Experiment, error)
 	GetExperiment(context.Context, string) (evalapi.Experiment, error)
@@ -453,8 +455,26 @@ func runEvidenceNextSteps(evidence RunEvidence) []string {
 			"Use investigate_eval_run in observability-mcp-service with this eval_id.",
 			"Inspect the run error and upstream failure metrics before retrying.",
 		}
+	case "cancelled":
+		return []string{
+			"Run was cancelled; start a new eval run if evaluation is still needed.",
+		}
 	case "running":
 		if evidence.StaleRunning {
+			staleItems := evidence.ItemCounts["stale"]
+			retryableItems := evidence.ItemCounts["retryable"]
+			if staleItems > 0 && retryableItems > 0 {
+				return []string{
+					"Recovery should reset or republish retryable eval item work.",
+					"Inspect eval worker logs if stale or retryable item counts do not change.",
+				}
+			}
+			if staleItems > 0 {
+				return []string{
+					"Stale eval item work appears exhausted or terminal repair is needed.",
+					"Use investigate_eval_run in observability-mcp-service with this eval_id.",
+				}
+			}
 			return []string{
 				"Use investigate_eval_run in observability-mcp-service with this eval_id.",
 				"Check eval service logs for eval_item_start without eval_item_completed.",
@@ -600,6 +620,14 @@ func (s *Service) RecordConclusion(ctx context.Context, in RecordConclusionInput
 	return err
 }
 
+func (s *Service) ListEvalItemDLQ(ctx context.Context, limit int) (evalapi.DLQListResponse, error) {
+	return s.api.ListEvalItemDLQ(ctx, limit)
+}
+
+func (s *Service) ReplayEvalItemDLQ(ctx context.Context, in evalapi.ReplayDLQItemRequest) (evalapi.ReplayDLQItemResponse, error) {
+	return s.api.ReplayEvalItemDLQ(ctx, in)
+}
+
 func waitTimeoutError(evalID string, timeout time.Duration, latest evalapi.EvaluationDetail) error {
 	parts := []string{fmt.Sprintf("latest status %q", latest.Status)}
 	if latest.CreatedAt != "" {
@@ -660,7 +688,10 @@ func (s *Service) requireCompletedRuns(ctx context.Context, ids []string) error 
 }
 
 func isTerminalRunStatus(status string) bool {
-	return status == "completed" || status == "completed_with_failures" || status == "failed"
+	return status == "completed" ||
+		status == "completed_with_failures" ||
+		status == "failed" ||
+		status == "cancelled"
 }
 
 func isComparableRunStatus(status string) bool {

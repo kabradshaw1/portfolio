@@ -40,6 +40,10 @@ codex mcp add observability -- zsh -lc 'source ~/.codex/env/observability-mcp.en
 | `OBS_HISTORY_ENABLED` | `true` | Enables local SQLite incident history. |
 | `OBS_HISTORY_DB_PATH` | `~/.codex/data/observability-mcp/history.db` | Local SQLite history database path. |
 | `OBS_HISTORY_AUTO_CAPTURE` | `false` | Persist investigation evidence even without `incident_key`. |
+| `OBS_MANAGEMENT_ACTIONS_ENABLED` | `false` | Enables cataloged management action execution. Read-only evidence tools work without this. |
+| `OBS_MANAGEMENT_ALLOW_HIGH_RISK` | `false` | Allows high-risk cataloged actions to execute instead of preview-only. Keep false for normal use. |
+| `OBS_MANAGEMENT_ACTION_TIMEOUT` | `45m` | Default maximum action execution timeout unless a catalog entry is lower. |
+| `OBS_MANAGEMENT_MAX_OUTPUT_BYTES` | `32768` | Maximum stdout/stderr bytes returned and stored for each action. |
 
 ## Grafana Gateway Mode
 
@@ -101,6 +105,10 @@ stale-running gauges, and eval service logs filtered by that run ID.
 - `get_incident_history`
 - `add_incident_note`
 - `compare_evidence_windows`
+- `list_management_actions`
+- `preview_management_action`
+- `execute_management_action`
+- `get_management_action_history`
 
 Runbook resources are exposed under:
 
@@ -111,11 +119,12 @@ Runbook resources are exposed under:
 
 ## Safety
 
-External observability and runtime systems remain read-only. The service queries
-metrics, logs, traces, embedded runbook text, and Grafana alert metadata; it
-does not call Kubernetes write APIs, roll out or restart workloads, scale
-deployments, purge queues, silence alerts, mutate external databases, edit
-Grafana rules, or read secrets.
+By default, external observability and runtime systems remain read-only. When
+`OBS_MANAGEMENT_ACTIONS_ENABLED=true`, the MCP can execute cataloged management
+actions only. Those actions must map to committed repo scripts, use fixed
+command shapes, bounded inputs, timeouts, output redaction, and incident-history
+logging. The MCP still does not accept free-form shell, kubectl, SSH commands,
+Grafana mutation payloads, arbitrary URLs, or arbitrary script paths.
 
 When incident history is enabled, the service may write investigation snapshots
 and `add_incident_note` entries to the configured local SQLite history database.

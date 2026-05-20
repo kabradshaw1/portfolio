@@ -11,6 +11,7 @@ import (
 
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/config"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/history"
+	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/management"
 	"github.com/kabradshaw1/portfolio/go/observability-mcp-service/internal/workflows"
 )
 
@@ -62,10 +63,43 @@ func TestHistoryToolsAreRegistered(t *testing.T) {
 	for _, tool := range tools.Tools {
 		got[tool.Name] = true
 	}
-	for _, name := range []string{"list_incidents", "get_incident_history", "add_incident_note", "compare_evidence_windows"} {
+	for _, name := range []string{"list_incidents", "get_incident_history", "add_incident_note", "compare_evidence_windows", "list_management_actions", "preview_management_action", "execute_management_action", "get_management_action_history"} {
 		if !got[name] {
 			t.Fatalf("expected registered tool %q; got %v", name, got)
 		}
+	}
+}
+
+func TestManagementActionHandlers(t *testing.T) {
+	fake := &fakeWorkflow{}
+	result, err := previewManagementActionHandler(fake)(context.Background(), callReq(map[string]any{"action_id": "reload_grafana_alerting"}))
+	if err != nil || result.IsError {
+		t.Fatalf("preview failed: result=%#v err=%v", result, err)
+	}
+	if fake.managementRequest.ActionID != "reload_grafana_alerting" {
+		t.Fatalf("request = %+v", fake.managementRequest)
+	}
+
+	result, err = executeManagementActionHandler(fake)(context.Background(), callReq(map[string]any{
+		"action_id":      "reload_grafana_alerting",
+		"incident_key":   "inc",
+		"incident_title": "Incident",
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("execute failed: result=%#v err=%v", result, err)
+	}
+	if fake.managementRequest.IncidentKey != "inc" {
+		t.Fatalf("request = %+v", fake.managementRequest)
+	}
+}
+
+func TestManagementActionHistoryHandlerValidatesLimit(t *testing.T) {
+	result, err := managementActionHistoryHandler(&fakeWorkflow{})(context.Background(), callReq(map[string]any{"limit": 101}))
+	if err != nil {
+		t.Fatalf("handler transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected tool error")
 	}
 }
 
@@ -213,9 +247,10 @@ func TestInvestigateEvalRunHandlerReturnsBundle(t *testing.T) {
 }
 
 type fakeWorkflow struct {
-	window  time.Duration
-	evalID  string
-	capture workflows.CaptureOptions
+	window            time.Duration
+	evalID            string
+	capture           workflows.CaptureOptions
+	managementRequest management.ActionRequest
 }
 
 func (f *fakeWorkflow) GetSystemHealth(_ context.Context, window time.Duration, capture workflows.CaptureOptions) workflows.EvidenceBundle {
@@ -277,6 +312,24 @@ func (f *fakeWorkflow) AddIncidentNote(context.Context, history.AddNoteInput) (h
 
 func (f *fakeWorkflow) CompareEvidenceSnapshots(context.Context, int64, int64) (workflows.EvidenceComparison, error) {
 	return workflows.EvidenceComparison{}, nil
+}
+
+func (f *fakeWorkflow) ListManagementActions(context.Context) ([]management.Action, error) {
+	return []management.Action{{ID: "reload_grafana_alerting"}}, nil
+}
+
+func (f *fakeWorkflow) PreviewManagementAction(_ context.Context, req management.ActionRequest) (management.ActionResult, error) {
+	f.managementRequest = req
+	return management.ActionResult{ActionID: req.ActionID, Status: management.StatusPreviewed}, nil
+}
+
+func (f *fakeWorkflow) ExecuteManagementAction(_ context.Context, req management.ActionRequest) (management.ActionResult, error) {
+	f.managementRequest = req
+	return management.ActionResult{ActionID: req.ActionID, Status: management.StatusSucceeded}, nil
+}
+
+func (f *fakeWorkflow) ListManagementActionHistory(context.Context, history.ManagementActionFilter) ([]history.Event, error) {
+	return []history.Event{}, nil
 }
 
 func testConfig() config.Config {

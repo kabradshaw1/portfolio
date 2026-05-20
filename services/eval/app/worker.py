@@ -31,6 +31,10 @@ class PermanentEvalItemError(RuntimeError):
     pass
 
 
+class CancelledEvaluationError(RuntimeError):
+    pass
+
+
 def classify_item_error(exc: Exception) -> tuple[str, bool]:
     if isinstance(exc, PermanentEvalItemError):
         return (type(exc).__name__, False)
@@ -50,7 +54,25 @@ class ItemProcessor:
         self.evaluate_item_fn = evaluate_item_fn
         self.worker_id = worker_id or socket.gethostname()
 
+    async def _raise_if_cancelled(self, eval_id: str) -> None:
+        evaluation = await self.db.get_evaluation(eval_id)
+        if evaluation and evaluation.get("status") == "cancelled":
+            raise CancelledEvaluationError(f"evaluation {eval_id} is cancelled")
+
     async def process(self, message: EvalItemMessage) -> None:
+        evaluation = await self.db.get_evaluation(message.evaluation_id)
+        if evaluation is None:
+            await self.db.mark_evaluation_item_failed(
+                message.item_id,
+                {"error_type": "missing_evaluation", "retryable": False},
+            )
+            eval_item_dlq_total.labels(reason="missing_evaluation").inc()
+            return
+        if evaluation.get("status") == "cancelled":
+            await self.db.mark_evaluation_item_cancelled(message.item_id)
+            eval_item_messages_total.labels(outcome="cancelled").inc()
+            return
+
         item = await self.db.claim_evaluation_item(
             message.item_id,
             worker_id=self.worker_id,
@@ -60,12 +82,9 @@ class ItemProcessor:
             eval_item_messages_total.labels(outcome="duplicate_or_terminal").inc()
             return
         evaluation = await self.db.get_evaluation(message.evaluation_id)
-        if evaluation is None:
-            await self.db.mark_evaluation_item_failed(
-                message.item_id,
-                {"error_type": "missing_evaluation", "retryable": False},
-            )
-            eval_item_dlq_total.labels(reason="missing_evaluation").inc()
+        if evaluation.get("status") == "cancelled":
+            await self.db.mark_evaluation_item_cancelled(message.item_id)
+            eval_item_messages_total.labels(outcome="cancelled").inc()
             return
 
         await self.db.mark_evaluation_running(message.evaluation_id)
@@ -103,6 +122,7 @@ class ItemProcessor:
                 ),
                 answer_model=None,
                 item_index=message.item_index,
+                check_cancelled=lambda: self._raise_if_cancelled(message.evaluation_id),
             )
             await self.db.mark_evaluation_item_completed(
                 message.item_id,
@@ -111,6 +131,9 @@ class ItemProcessor:
                 score_reasons=evaluated["score_reasons"],
             )
             eval_item_messages_total.labels(outcome="completed").inc()
+        except CancelledEvaluationError:
+            await self.db.mark_evaluation_item_cancelled(message.item_id)
+            eval_item_messages_total.labels(outcome="cancelled").inc()
         except Exception as exc:
             error_type, retryable = classify_item_error(exc)
             attempts = item["attempt_count"]
