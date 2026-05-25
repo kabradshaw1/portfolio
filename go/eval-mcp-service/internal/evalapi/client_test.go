@@ -111,6 +111,49 @@ func TestStartEvaluationSendsOptionalFields(t *testing.T) {
 	}
 }
 
+func TestClientCheckRAGReadiness(t *testing.T) {
+	topK := 3
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/readiness/rag" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body RAGReadinessRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body.DatasetID != "ds-1" || body.Collection != "documents" || !body.Rerank {
+			t.Fatalf("body = %#v", body)
+		}
+		if body.RetrievalConfig == nil || body.RetrievalConfig.TopK == nil || *body.RetrievalConfig.TopK != 3 {
+			t.Fatalf("retrieval config = %#v", body.RetrievalConfig)
+		}
+		_ = json.NewEncoder(w).Encode(RAGReadinessResponse{
+			Status: "warning",
+			Warnings: []ReadinessFinding{{
+				Code:        "top_k_override",
+				Message:     "Requested top_k differs.",
+				Remediation: "Record caveat.",
+			}},
+			Evidence:  map[string]any{"collection": map[string]any{"name": "documents"}},
+			NextSteps: []string{"Proceed only if caveats are acceptable."},
+		})
+	}))
+	defer server.Close()
+
+	got, err := New(server.URL, "", server.Client()).CheckRAGReadiness(context.Background(), RAGReadinessRequest{
+		DatasetID:       "ds-1",
+		Collection:      "documents",
+		Rerank:          true,
+		RetrievalConfig: &RetrievalConfig{TopK: &topK},
+	})
+	if err != nil {
+		t.Fatalf("CheckRAGReadiness error: %v", err)
+	}
+	if got.Status != "warning" || got.Warnings[0].Code != "top_k_override" {
+		t.Fatalf("readiness = %#v", got)
+	}
+}
+
 func TestExperimentAPIMethods(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

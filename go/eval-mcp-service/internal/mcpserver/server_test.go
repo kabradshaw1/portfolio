@@ -19,6 +19,7 @@ import (
 
 type fakeEvalService struct {
 	startExperimentInput  evalworkflow.StartExperimentInput
+	readinessInput        evalworkflow.ReadinessInput
 	startRunInput         evalworkflow.StartRunInput
 	worstCasesInput       evalworkflow.WorstCasesInput
 	triageInput           evalworkflow.TriageInput
@@ -99,6 +100,11 @@ func (f *fakeEvalService) DeleteRAGCorpus(_ context.Context, collection string) 
 	return nil
 }
 
+func (f *fakeEvalService) CheckReadiness(_ context.Context, in evalworkflow.ReadinessInput) (evalapi.RAGReadinessResponse, error) {
+	f.readinessInput = in
+	return evalapi.RAGReadinessResponse{Status: "ready", NextSteps: []string{"Proceed with the eval run."}}, nil
+}
+
 func (f *fakeEvalService) StartRun(_ context.Context, in evalworkflow.StartRunInput) (evalworkflow.StartRunResult, error) {
 	f.startRunCalls++
 	f.startRunInput = in
@@ -176,6 +182,7 @@ func TestServerRegistersPromptResourceAndTools(t *testing.T) {
 	}
 	wantTools := []string{
 		"attach_eval_run",
+		"check_rag_eval_readiness",
 		"compare_eval_runs",
 		"create_eval_dataset",
 		"delete_rag_corpus",
@@ -1020,7 +1027,7 @@ func TestEvalPromptHandler(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected text prompt content, got %T", result.Messages[0].Content)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "list_rag_corpus_fixtures", "provision_rag_corpus", "get_rag_corpus_manifest", "delete_rag_corpus", "Never mutate a collection after baseline starts", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "check_rag_eval_readiness", "list_rag_corpus_fixtures", "provision_rag_corpus", "get_rag_corpus_manifest", "delete_rag_corpus", "Never mutate a collection after baseline starts", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(text.Text, want) {
 			t.Fatalf("expected prompt to mention %s, got %q", want, text.Text)
 		}
@@ -1048,7 +1055,7 @@ func TestWorkflowResourceHandler(t *testing.T) {
 	if content.MIMEType != "text/markdown" {
 		t.Fatalf("unexpected resource MIME type: %q", content.MIMEType)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "list_rag_corpus_fixtures", "provision_rag_corpus", "get_rag_corpus_manifest", "delete_rag_corpus", "Never mutate a collection after baseline starts", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "check_rag_eval_readiness", "list_rag_corpus_fixtures", "provision_rag_corpus", "get_rag_corpus_manifest", "delete_rag_corpus", "Never mutate a collection after baseline starts", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(content.Text, want) {
 			t.Fatalf("expected workflow resource to mention %s, got %q", want, content.Text)
 		}

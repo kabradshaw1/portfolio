@@ -34,6 +34,11 @@ type IngestResponse struct {
 	Filename      string `json:"filename"`
 }
 
+type Source struct {
+	Filename string `json:"filename"`
+	Chunks   int    `json:"chunks"`
+}
+
 type HTTPError struct {
 	Method     string
 	Path       string
@@ -109,6 +114,17 @@ func (c *Client) GetCollectionManifest(ctx context.Context, name string) (map[st
 func (c *Client) DeleteCollection(ctx context.Context, name string) error {
 	path := "/collections/" + url.PathEscape(name)
 	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+func (c *Client) ListCollectionSources(ctx context.Context, name string) ([]Source, error) {
+	var response struct {
+		Sources []Source `json:"sources"`
+	}
+	path := "/collections/" + url.PathEscape(name) + "/sources"
+	if err := c.do(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Sources, nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
