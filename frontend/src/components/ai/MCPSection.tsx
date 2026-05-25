@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MermaidDiagram } from "@/components/MermaidDiagram";
 import { MCPArchitectureDiagram } from "./MCPArchitectureDiagram";
 import { MCPToolCatalog } from "./MCPToolCatalog";
 
@@ -19,6 +20,17 @@ const inspectorCommand = `npx @modelcontextprotocol/inspector https://api.kylebr
 
 const githubMcpUrl =
   "https://github.com/kabradshaw1/portfolio/tree/main/go/ai-service/internal/mcp";
+
+const internalMcpChart = `flowchart LR
+  CODEX[Codex]
+  subgraph InternalMCPs ["Internal MCPs"]
+    OBS[Observability MCP<br/>logs · traces · health]
+    QA[QA MCP<br/>answers · critique · weak topics]
+    EVAL[Eval MCP service<br/>datasets · runs · comparisons]
+  end
+  ACTION[Evidence-backed engineering action]
+  CODEX --> InternalMCPs
+  InternalMCPs --> ACTION`;
 
 const observabilityProofPoints = [
   "Prometheus",
@@ -106,6 +118,10 @@ export function MCPSection() {
           tool access, evidence gathering, repeatable workflows, and links into
           the deeper platforms behind each service.
         </p>
+
+        <div className="mt-6 rounded-lg border border-foreground/10 bg-card p-4 sm:p-6">
+          <MermaidDiagram chart={internalMcpChart} />
+        </div>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <article className="rounded-lg border border-foreground/10 bg-card p-4 sm:p-5">
@@ -218,6 +234,50 @@ export function MCPSection() {
             control planes.
           </p>
         </article>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          <div className="rounded-lg border border-foreground/10 bg-card p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Example tool-call trace
+            </div>
+            <div className="mt-4 space-y-3">
+              <div className="ml-auto w-fit max-w-[85%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">
+                Why did checkout stall in QA?
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-block size-2 animate-pulse rounded-full bg-yellow-500" />
+                observability.investigate_checkout
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-block size-2 rounded-full bg-green-500" />
+                observability.get_trace
+              </div>
+              <div className="mr-auto w-fit max-w-[92%] rounded-lg bg-muted px-3 py-2 text-sm">
+                Payment was created, but the order saga never observed
+                completion. The trace points to a RabbitMQ reply timeout.
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-foreground/10 bg-card p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Why this matters
+            </div>
+            <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+              <li>
+                Turns production questions into bounded evidence requests.
+              </li>
+              <li>
+                Keeps practice feedback and weak-topic tracking in the same
+                workflow.
+              </li>
+              <li>
+                Makes RAG changes measurable before they are treated as
+                improvements.
+              </li>
+            </ul>
+          </div>
+        </div>
       </section>
 
       <h3 className="mt-10 text-xl font-semibold">Try it interactively</h3>

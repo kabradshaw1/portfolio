@@ -109,6 +109,9 @@ test.describe("/ai MCP Server section", () => {
         name: "Internal MCPs for Engineering Operations",
       }),
     ).toBeVisible();
+    await expect(
+      section.getByText("Evidence-backed engineering action"),
+    ).toBeVisible();
 
     await expect(
       section.getByRole("heading", { name: "Observability MCP" }),
@@ -120,8 +123,10 @@ test.describe("/ai MCP Server section", () => {
     await expect(section.getByText("5 dashboards")).toBeVisible();
     await expect(section.getByText("16 alert rules")).toBeVisible();
     await expect(section.getByText("get_system_health")).toBeVisible();
-    await expect(section.getByText("investigate_checkout")).toBeVisible();
-    await expect(section.getByText("get_trace")).toBeVisible();
+    await expect(
+      section.getByText("investigate_checkout", { exact: true }),
+    ).toBeVisible();
+    await expect(section.getByText("get_trace", { exact: true })).toBeVisible();
     await expect(
       section.getByRole("link", { name: "See the full observability platform" }),
     ).toHaveAttribute("href", "/observability");
@@ -146,7 +151,14 @@ test.describe("/ai MCP Server section", () => {
     await expect(
       section.getByRole("heading", { name: "QA MCP" }),
     ).toBeVisible();
-    await expect(section.getByText("weak-topic tracking")).toBeVisible();
+    await expect(
+      section.getByText(/A compact internal MCP.*weak-topic tracking/),
+    ).toBeVisible();
+    await expect(section.getByText("Example tool-call trace")).toBeVisible();
+    await expect(
+      section.getByText("observability.investigate_checkout"),
+    ).toBeVisible();
+    await expect(section.getByText("Why this matters")).toBeVisible();
   });
 
   test("Tool catalog renders on /go AI Assistant tab", async ({ page }) => {
