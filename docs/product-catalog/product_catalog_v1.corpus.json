@@ -1,0 +1,14 @@
+{
+  "id": "product_catalog_v1",
+  "name": "Product Catalog v1",
+  "description": "Curated product catalog PDFs used by product-spec RAG eval datasets.",
+  "documents": [
+    "27-4k-monitor-specs.pdf",
+    "laptop-pro-15-specs.pdf",
+    "robot-vacuum-specs.pdf",
+    "smartwatch-sport-specs.pdf",
+    "stand-mixer-5qt-specs.pdf"
+  ],
+  "expected_collection_prefix": "eval_product_catalog_v1",
+  "notes": "Use this corpus with product catalog golden QA datasets."
+}

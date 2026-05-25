@@ -10,6 +10,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/corpusfixture"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalworkflow"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/fixturecatalog"
@@ -46,6 +47,10 @@ type EvalService interface {
 	CreateDatasetFromFixture(context.Context, string) (evalworkflow.CreateDatasetResult, error)
 	ListRAGCollections(context.Context) ([]ingestionapi.Collection, error)
 	GetRAGCollectionConfig(context.Context, string) (map[string]any, error)
+	ListRAGCorpusFixtures(context.Context) ([]corpusfixture.Fixture, error)
+	ProvisionRAGCorpus(context.Context, evalworkflow.ProvisionCorpusInput) (evalworkflow.ProvisionCorpusResult, error)
+	GetRAGCorpusManifest(context.Context, string) (map[string]any, error)
+	DeleteRAGCorpus(context.Context, string) error
 	CheckReadiness(context.Context, evalworkflow.ReadinessInput) (evalapi.RAGReadinessResponse, error)
 	StartRun(context.Context, evalworkflow.StartRunInput) (evalworkflow.StartRunResult, error)
 	WaitForRun(context.Context, string) (evalworkflow.WaitResult, error)
@@ -73,6 +78,10 @@ func New(service EvalService) *sdkmcp.Server {
 	addTool(srv, "create_eval_dataset", "Create an eval API dataset from a curated repo fixture.", createEvalDatasetSchema(), createEvalDatasetHandler(service))
 	addTool(srv, "list_rag_collections", "List Qdrant retrieval collections from ingestion.", emptySchema(), listRAGCollectionsHandler(service))
 	addTool(srv, "get_rag_collection_config", "Fetch ingestion metadata for one RAG collection.", ragCollectionConfigSchema(), getRAGCollectionConfigHandler(service))
+	addTool(srv, "list_rag_corpus_fixtures", "List curated RAG corpus fixtures available in the repo.", emptySchema(), listRAGCorpusFixturesHandler(service))
+	addTool(srv, "provision_rag_corpus", "Provision a managed eval RAG collection from a curated fixture through ingestion.", provisionRAGCorpusSchema(), provisionRAGCorpusHandler(service))
+	addTool(srv, "get_rag_corpus_manifest", "Fetch corpus manifest metadata for one managed eval collection.", ragCorpusManifestSchema(), getRAGCorpusManifestHandler(service))
+	addTool(srv, "delete_rag_corpus", "Delete one managed eval RAG corpus collection. Mutating cleanup-only tool.", ragCorpusManifestSchema(), deleteRAGCorpusHandler(service))
 	addTool(srv, "check_rag_eval_readiness", "Check whether a dataset and retrieval collection are ready for a RAG eval run.", checkRAGReadinessSchema(), checkRAGReadinessHandler(service))
 	addTool(srv, "start_eval_run", "Start an eval API run and optionally attach it to an experiment label.", startEvalRunSchema(), startEvalRunHandler(service))
 	addTool(srv, "wait_for_eval_run", "Poll one eval run until completion, failure, or timeout.", waitEvalRunSchema(), waitForEvalRunHandler(service))
@@ -208,6 +217,51 @@ func getRAGCollectionConfigHandler(service EvalService) sdkmcp.ToolHandler {
 		}
 		result, err := service.GetRAGCollectionConfig(ctx, args.Name)
 		return resultOrError(result, err), nil
+	}
+}
+
+func listRAGCorpusFixturesHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		result, err := service.ListRAGCorpusFixtures(ctx)
+		return resultOrError(result, err), nil
+	}
+}
+
+func provisionRAGCorpusHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		var in evalworkflow.ProvisionCorpusInput
+		if err := decodeArgs(req, &in); err != nil {
+			return toolError(err.Error()), nil
+		}
+		if strings.TrimSpace(in.Fixture) == "" {
+			return toolError("fixture is required"), nil
+		}
+		result, err := service.ProvisionRAGCorpus(ctx, in)
+		return resultOrError(result, err), nil
+	}
+}
+
+func getRAGCorpusManifestHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		collection, err := ragCorpusCollectionFromRequest(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		result, err := service.GetRAGCorpusManifest(ctx, collection)
+		return resultOrError(result, err), nil
+	}
+}
+
+func deleteRAGCorpusHandler(service EvalService) sdkmcp.ToolHandler {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		collection, err := ragCorpusCollectionFromRequest(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		if err := service.DeleteRAGCorpus(ctx, collection); err != nil {
+			return toolError(err.Error()), nil
+		}
+		return jsonResult(map[string]bool{"ok": true}), nil
 	}
 }
 
@@ -653,7 +707,7 @@ func evalPromptHandler() sdkmcp.PromptHandler {
 			Description: "Start an agent-led RAG eval experiment.",
 			Messages: []*sdkmcp.PromptMessage{{
 				Role:    sdkmcp.Role("user"),
-				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then call check_rag_eval_readiness before start_eval_experiment or start_eval_run. Treat blocked readiness as a stop condition and warning readiness as a caveated run condition. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it. Compare completed or partial runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion. For eval item runtime failures, use list_eval_item_dlq to inspect safe DLQ metadata; call replay_eval_item_dlq only after operator approval because it is mutating and requires operator credentials."},
+				Content: &sdkmcp.TextContent{Text: "Start or resume a RAG eval experiment. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, list_eval_datasets to choose existing API data, then use list_rag_collections, get_rag_collection_config, and check_rag_eval_readiness before start_eval_experiment or start_eval_run. Treat blocked readiness as a stop condition and warning readiness as a caveated run condition. Use list_rag_corpus_fixtures and provision_rag_corpus only before starting a baseline run when a curated corpus collection is missing. Check get_rag_corpus_manifest for managed eval corpora and reserve delete_rag_corpus for cleanup. Never mutate a collection after baseline starts, and use the same collection for all candidates in one experiment. Run baseline to completion with wait_for_eval_run before starting rerank while runtime hardening is pending. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it. Compare completed or partial runs with compare_eval_runs, inspect failures with get_worst_eval_cases, summarize_eval_experiment for the final evidence packet, and record_eval_experiment_conclusion once the user approves the conclusion. For eval item runtime failures, use list_eval_item_dlq to inspect safe DLQ metadata; call replay_eval_item_dlq only after operator approval because it is mutating and requires operator credentials."},
 			}},
 		}, nil
 	}
@@ -680,15 +734,16 @@ Use this local MCP server to keep RAG eval experiments explicit and reproducible
 1. Start or resume local experiment state with start_eval_experiment, list_eval_experiments, or get_eval_experiment.
 2. Datasets are golden questions and expected answers. Collections are Qdrant retrieval corpora. Never infer a collection from a dataset name.
 3. Use list_eval_dataset_fixtures and create_eval_dataset for curated repo fixtures, or call list_eval_datasets before choosing an existing dataset unless the user already named a dataset ID.
-4. Call check_rag_eval_readiness before start_eval_experiment or start_eval_run. Treat blocked readiness as a stop condition and warning readiness as a caveated run condition.
-5. Start baseline with start_eval_run only after readiness is ready or warning, then call wait_for_eval_run. Run baseline to completion before starting rerank while runtime hardening is pending.
-6. Start candidate runs with start_eval_run only after readiness is ready or warning, then call wait_for_eval_run until each run completes or fails.
-7. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it.
-8. Attach externally created runs with attach_eval_run when needed.
-9. Use get_eval_run for individual run inspection, compare_eval_runs for metric deltas, and get_worst_eval_cases for the lowest-scoring per-query cases. Compare completed or completed_with_failures runs.
-10. For eval item runtime failures, use list_eval_item_dlq to inspect safe DLQ metadata. Only call replay_eval_item_dlq after operator approval because it is mutating and requires operator credentials.
-11. Call summarize_eval_experiment before presenting a recommendation.
-12. Only call record_eval_experiment_conclusion after the user approves the conclusion.
+4. Use list_rag_collections, get_rag_collection_config, and check_rag_eval_readiness before start_eval_experiment or start_eval_run. Treat blocked readiness as a stop condition and warning readiness as a caveated run condition.
+5. Use list_rag_corpus_fixtures and provision_rag_corpus only before starting a baseline run when a curated corpus collection is missing. Check get_rag_corpus_manifest for managed eval corpora and reserve delete_rag_corpus for cleanup. Never mutate a collection after baseline starts, and use the same collection for all candidates in one experiment.
+6. Start baseline with start_eval_run and wait_for_eval_run only after readiness is ready or warning. Run baseline to completion before starting rerank while runtime hardening is pending.
+7. Start candidate runs with start_eval_run, then call wait_for_eval_run until each run completes or fails.
+8. For model ladder experiments, keep the judge model fixed and vary answer_tier, answer_provider, answer_model, retrieval_config, and rerank. Start one run at a time, wait for completion, compare completed or completed_with_failures runs, inspect worst cases, and record a conclusion only after the user approves it.
+9. Attach externally created runs with attach_eval_run when needed.
+10. Use get_eval_run for individual run inspection, compare_eval_runs for metric deltas, and get_worst_eval_cases for the lowest-scoring per-query cases. Compare completed or completed_with_failures runs.
+11. For eval item runtime failures, use list_eval_item_dlq to inspect safe DLQ metadata. Only call replay_eval_item_dlq after operator approval because it is mutating and requires operator credentials.
+12. Call summarize_eval_experiment before presenting a recommendation.
+13. Only call record_eval_experiment_conclusion after the user approves the conclusion.
 `)
 }
 
@@ -704,6 +759,20 @@ func evalIDFromRequest(req *sdkmcp.CallToolRequest) (string, error) {
 		return "", errors.New("eval_id is required")
 	}
 	return evalID, nil
+}
+
+func ragCorpusCollectionFromRequest(req *sdkmcp.CallToolRequest) (string, error) {
+	var in struct {
+		Collection string `json:"collection"`
+	}
+	if err := decodeArgs(req, &in); err != nil {
+		return "", err
+	}
+	collection := strings.TrimSpace(in.Collection)
+	if collection == "" {
+		return "", errors.New("collection is required")
+	}
+	return collection, nil
 }
 
 func decodeArgs(req *sdkmcp.CallToolRequest, out any) error {
@@ -778,6 +847,14 @@ func createEvalDatasetSchema() json.RawMessage {
 
 func ragCollectionConfigSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","minLength":1}},"required":["name"],"additionalProperties":false}`)
+}
+
+func provisionRAGCorpusSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"fixture":{"type":"string","minLength":1},"collection":{"type":"string","pattern":"^eval_[a-z0-9_]+_[a-f0-9]{8,16}$"},"force_recreate":{"type":"boolean"}},"required":["fixture"],"additionalProperties":false}`)
+}
+
+func ragCorpusManifestSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"collection":{"type":"string","pattern":"^eval_[a-z0-9_]+_[a-f0-9]{8,16}$"}},"required":["collection"],"additionalProperties":false}`)
 }
 
 func compareEvalRunsSchema() json.RawMessage {

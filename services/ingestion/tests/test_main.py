@@ -398,6 +398,65 @@ def test_list_collection_sources_not_found(mock_get_store):
 
 
 @patch("app.main.get_meta_db")
+def test_put_collection_manifest_stores_metadata(mock_get_meta_db):
+    mock_db = AsyncMock()
+    mock_get_meta_db.return_value = mock_db
+    payload = {
+        "collection": "eval_product_catalog_v1_a1b2c3d4",
+        "fixture_id": "product_catalog_v1",
+        "fixture_hash": "a1b2c3d4",
+        "documents": [],
+        "provisioned_at": "2026-05-20T00:00:00Z",
+        "provisioned_by": "eval-mcp-service",
+    }
+
+    response = client.put(
+        "/collections/eval_product_catalog_v1_a1b2c3d4/manifest",
+        json=payload,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "stored",
+        "collection": "eval_product_catalog_v1_a1b2c3d4",
+    }
+    mock_db.upsert_manifest.assert_awaited_once_with(
+        "eval_product_catalog_v1_a1b2c3d4", payload
+    )
+
+
+@patch("app.main.get_meta_db")
+def test_get_collection_manifest_returns_metadata(mock_get_meta_db):
+    payload = {
+        "collection": "eval_product_catalog_v1_a1b2c3d4",
+        "fixture_id": "product_catalog_v1",
+        "fixture_hash": "a1b2c3d4",
+        "documents": [],
+        "provisioned_at": "2026-05-20T00:00:00Z",
+        "provisioned_by": "eval-mcp-service",
+    }
+    mock_db = AsyncMock()
+    mock_db.get_manifest.return_value = payload
+    mock_get_meta_db.return_value = mock_db
+
+    response = client.get("/collections/eval_product_catalog_v1_a1b2c3d4/manifest")
+
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
+@patch("app.main.get_meta_db")
+def test_get_collection_manifest_404_when_unknown(mock_get_meta_db):
+    mock_db = AsyncMock()
+    mock_db.get_manifest.return_value = None
+    mock_get_meta_db.return_value = mock_db
+
+    response = client.get("/collections/eval_product_catalog_v1_a1b2c3d4/manifest")
+
+    assert response.status_code == 404
+
+
+@patch("app.main.get_meta_db")
 @patch("app.main.get_sparse_encoder")
 @patch("app.main.get_store")
 @patch("app.main.embed_texts", new_callable=AsyncMock)

@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -23,6 +25,13 @@ type Client struct {
 type Collection struct {
 	Name        string `json:"name"`
 	PointsCount int    `json:"points_count"`
+}
+
+type IngestResponse struct {
+	Status        string `json:"status"`
+	DocumentID    string `json:"document_id"`
+	ChunksCreated int    `json:"chunks_created"`
+	Filename      string `json:"filename"`
 }
 
 type Source struct {
@@ -67,6 +76,46 @@ func (c *Client) GetCollectionConfig(ctx context.Context, name string) (map[stri
 	return response, nil
 }
 
+func (c *Client) UploadPDF(ctx context.Context, collection, filename string, data []byte) (IngestResponse, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", filepath.Base(filename))
+	if err != nil {
+		return IngestResponse{}, err
+	}
+	if _, err := part.Write(data); err != nil {
+		return IngestResponse{}, err
+	}
+	if err := writer.Close(); err != nil {
+		return IngestResponse{}, err
+	}
+	path := "/ingest?collection=" + url.QueryEscape(collection)
+	var out IngestResponse
+	if err := c.doRaw(ctx, http.MethodPost, path, writer.FormDataContentType(), &body, &out); err != nil {
+		return IngestResponse{}, err
+	}
+	return out, nil
+}
+
+func (c *Client) PutCollectionManifest(ctx context.Context, name string, manifest map[string]any) error {
+	path := "/collections/" + url.PathEscape(name) + "/manifest"
+	return c.do(ctx, http.MethodPut, path, manifest, nil)
+}
+
+func (c *Client) GetCollectionManifest(ctx context.Context, name string) (map[string]any, error) {
+	var response map[string]any
+	path := "/collections/" + url.PathEscape(name) + "/manifest"
+	if err := c.do(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (c *Client) DeleteCollection(ctx context.Context, name string) error {
+	path := "/collections/" + url.PathEscape(name)
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
 func (c *Client) ListCollectionSources(ctx context.Context, name string) ([]Source, error) {
 	var response struct {
 		Sources []Source `json:"sources"`
@@ -80,19 +129,25 @@ func (c *Client) ListCollectionSources(ctx context.Context, name string) ([]Sour
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
+	contentType := ""
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
 			return err
 		}
 		reader = bytes.NewReader(data)
+		contentType = "application/json"
 	}
+	return c.doRaw(ctx, method, path, contentType, reader, out)
+}
+
+func (c *Client) doRaw(ctx context.Context, method, path, contentType string, reader io.Reader, out any) error {
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {
 		return err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)

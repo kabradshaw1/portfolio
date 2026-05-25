@@ -34,6 +34,7 @@ type Config struct {
 	MaxBackoff          time.Duration
 	TokenRefreshSkew    time.Duration
 	DatasetFixtureRoots []string
+	CorpusFixtureRoots  []string
 }
 
 func FromEnv() (Config, error) {
@@ -92,6 +93,7 @@ func FromEnv() (Config, error) {
 		MaxBackoff:          maxBackoff,
 		TokenRefreshSkew:    tokenRefreshSkew,
 		DatasetFixtureRoots: datasetFixtureRoots(),
+		CorpusFixtureRoots:  corpusFixtureRoots(),
 	}, nil
 }
 
@@ -117,14 +119,26 @@ func durationEnv(key string, fallback time.Duration) (time.Duration, error) {
 func datasetFixtureRoots() []string {
 	value := os.Getenv("EVAL_MCP_DATASET_FIXTURE_ROOTS")
 	if value != "" {
-		parts := strings.Split(value, string(os.PathListSeparator))
-		roots := make([]string, 0, len(parts))
-		for _, part := range parts {
-			if strings.TrimSpace(part) != "" {
-				roots = append(roots, part)
-			}
-		}
-		return roots
+		return splitPathList(value)
 	}
 	return []string{filepath.Clean(filepath.Join("..", "..", "docs", "product-catalog"))}
+}
+
+func corpusFixtureRoots() []string {
+	value := os.Getenv("EVAL_MCP_CORPUS_FIXTURE_ROOTS")
+	if value != "" {
+		return splitPathList(value)
+	}
+	return []string{filepath.Clean(filepath.Join("..", "..", "docs", "product-catalog"))}
+}
+
+func splitPathList(value string) []string {
+	parts := strings.Split(value, string(os.PathListSeparator))
+	roots := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) != "" {
+			roots = append(roots, part)
+		}
+	}
+	return roots
 }
