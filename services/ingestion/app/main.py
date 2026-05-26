@@ -12,6 +12,7 @@ from llm.factory import get_embedding_provider
 from qdrant_client import QdrantClient
 from rag.sparse import SparseVectorEncoder
 from shared.auth import create_auth_dependency
+from shared.host_validation import HostHeaderValidationMiddleware
 from shared.logging import RequestLoggingMiddleware, configure_logging
 from shared.tracing import configure_tracing, instrument_app
 from slowapi import Limiter
@@ -43,6 +44,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(HostHeaderValidationMiddleware)
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
 instrument_app(app)

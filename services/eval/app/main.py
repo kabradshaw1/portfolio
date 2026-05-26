@@ -10,6 +10,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from shared.auth import AuthContext, create_auth_context_dependency
+from shared.host_validation import HostHeaderValidationMiddleware
 from shared.rate_limits import FixedWindowRateLimiter, policies_from_settings
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -66,6 +67,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
+app.add_middleware(HostHeaderValidationMiddleware)
 
 instrumentator = Instrumentator()
 instrumentator.instrument(app).expose(app, include_in_schema=False)

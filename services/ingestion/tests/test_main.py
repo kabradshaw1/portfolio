@@ -51,6 +51,13 @@ def test_health_qdrant_down(mock_qdrant_cls, mock_provider):
     assert data["llm"] == "connected"
 
 
+def test_rejects_malformed_host_header():
+    response = client.get("/health", headers={"Host": "example.com/health?x="})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid Host header"
+
+
 @patch("app.main.get_meta_db")
 @patch("app.main.get_sparse_encoder")
 @patch("app.main.get_store")
