@@ -37,6 +37,24 @@ export default function Home() {
         {/* Sections */}
         <h2 className="mt-16 text-2xl font-semibold">Portfolio</h2>
         <div className="mt-6 grid gap-4">
+          <Link href="/galaxy" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>GalaxyVoyagers.com</CardTitle>
+                <CardDescription>
+                  Deployed collaborative sci-fi worldbuilding platform with a
+                  Go GraphQL gateway and AI-assisted creation tools
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Built with Next.js, Apollo Client, Go, gqlgen, gRPC,
+                  PostgreSQL, MongoDB, Redis, RabbitMQ, and AI generation.
+                  View the architecture walkthrough for the full system design.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
           <Link href="/go" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>

@@ -9,6 +9,7 @@ from llm.factory import get_embedding_provider, get_llm_provider
 from pydantic import BaseModel, ConfigDict, Field
 from qdrant_client import QdrantClient
 from shared.auth import AuthContext, create_auth_context_dependency
+from shared.host_validation import HostHeaderValidationMiddleware
 from shared.llm.admission import AdmissionRejected
 from shared.logging import RequestLoggingMiddleware, configure_logging
 from shared.rate_limits import FixedWindowRateLimiter, policies_from_settings
@@ -37,6 +38,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-RAG-Internal-Token"],
 )
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(HostHeaderValidationMiddleware)
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
 instrument_app(app)

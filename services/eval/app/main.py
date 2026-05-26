@@ -10,6 +10,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from shared.auth import AuthContext, create_auth_context_dependency
+from shared.host_validation import HostHeaderValidationMiddleware
 from shared.rate_limits import FixedWindowRateLimiter, policies_from_settings
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -19,7 +20,6 @@ from starlette.responses import JSONResponse
 
 from app.answer_models import AnswerModelOverride, resolve_answer_model_override
 from app.broker import EvalItemDLQClient, EvalItemMessage, EvalItemPublisher
-from app.collection_validation import validate_collection_exists
 from app.config import settings
 from app.config_capture import capture_run_config
 from app.db import EvalDB
@@ -45,6 +45,8 @@ from app.models import (
     EvaluationDashboard,
     MetricTrendPoint,
     QueryScore,
+    RAGReadinessRequest,
+    RAGReadinessResponse,
     ReplayDLQItemRequest,
     ReplayDLQItemResponse,
     RetrievalConfig,
@@ -52,6 +54,7 @@ from app.models import (
     UpdateExperimentRequest,
 )
 from app.rag_client import RAGClient
+from app.readiness import RAGReadinessChecker, RAGReadinessUpstream
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
+app.add_middleware(HostHeaderValidationMiddleware)
 
 instrumentator = Instrumentator()
 instrumentator.instrument(app).expose(app, include_in_schema=False)
@@ -332,6 +336,30 @@ def _effective_top_k(
     return 5
 
 
+async def _check_rag_readiness(
+    db: EvalDB,
+    *,
+    dataset_id: str,
+    collection: str,
+    rerank: bool,
+    retrieval_config: RetrievalConfig | None,
+    baseline_eval_id: str | None = None,
+    experiment_id: str | None = None,
+) -> RAGReadinessResponse:
+    upstream = RAGReadinessUpstream(
+        chat_url=settings.chat_service_url,
+        ingestion_url=settings.ingestion_service_url,
+    )
+    return await RAGReadinessChecker(db, upstream).check(
+        dataset_id=dataset_id,
+        collection=collection,
+        rerank=rerank,
+        retrieval_config=retrieval_config,
+        baseline_eval_id=baseline_eval_id,
+        experiment_id=experiment_id,
+    )
+
+
 async def _run_evaluation_task(
     eval_id: str,
     items: list[dict],
@@ -525,6 +553,25 @@ async def _validate_experiment_for_run(
 
 
 @app.post(
+    "/readiness/rag",
+    response_model=RAGReadinessResponse,
+    dependencies=[Depends(enforce_eval_read)],
+)
+async def check_rag_eval_readiness(request: Request, body: RAGReadinessRequest):
+    db = await get_db()
+    readiness = await _check_rag_readiness(
+        db,
+        dataset_id=body.dataset_id,
+        collection=body.collection,
+        rerank=body.rerank,
+        retrieval_config=body.retrieval_config,
+        baseline_eval_id=body.baseline_eval_id,
+        experiment_id=body.experiment_id,
+    )
+    return readiness.model_dump()
+
+
+@app.post(
     "/evaluations",
     status_code=202,
     dependencies=[Depends(enforce_eval_run_create)],
@@ -568,7 +615,18 @@ async def start_evaluation(
             db, body.experiment_id, body.dataset_id, collection
         )
 
-    await validate_collection_exists(settings.ingestion_service_url, collection)
+    readiness = await _check_rag_readiness(
+        db,
+        dataset_id=body.dataset_id,
+        collection=collection,
+        rerank=body.rerank,
+        retrieval_config=body.retrieval_config,
+        baseline_eval_id=body.baseline_eval_id,
+        experiment_id=body.experiment_id,
+    )
+    readiness_payload = readiness.model_dump()
+    if readiness.status == "blocked":
+        raise HTTPException(status_code=422, detail=readiness_payload)
 
     eval_id = await db.create_evaluation(
         dataset_id=body.dataset_id,
@@ -593,6 +651,7 @@ async def start_evaluation(
             "model": settings.llm_model,
         },
     )
+    config["readiness"] = readiness_payload
     await db.set_evaluation_config(eval_id, config)
     if body.experiment_id is not None and body.experiment_label is not None:
         try:

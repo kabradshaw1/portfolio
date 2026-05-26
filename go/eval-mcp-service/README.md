@@ -124,6 +124,8 @@ Restart Codex after adding the MCP server or changing the env file.
   responses, defaults to `30s`.
 - `EVAL_MCP_DATASET_FIXTURE_ROOTS`: path-list of curated eval fixture roots,
   defaults to the repo `docs/product-catalog` directory.
+- `EVAL_MCP_CORPUS_FIXTURE_ROOTS`: path-list of curated RAG corpus fixture
+  roots, defaults to the repo `docs/product-catalog` directory.
 
 When eval API polling receives `429`, the client respects `Retry-After` before
 falling back to deterministic exponential backoff capped by
@@ -170,6 +172,10 @@ before changing CORS.
 - `create_eval_dataset`
 - `list_rag_collections`
 - `get_rag_collection_config`
+- `list_rag_corpus_fixtures`
+- `provision_rag_corpus`
+- `get_rag_corpus_manifest`
+- `delete_rag_corpus`
 - `start_eval_run`
 - `wait_for_eval_run`
 - `attach_eval_run`

@@ -219,8 +219,10 @@ preflight-security:
 		echo "  Auditing Python service: $$service"; \
 		: "PYSEC-2025-183/CVE-2025-45768 is disputed by PyJWT and has no fixed version"; \
 		: "services/shared/auth.py rejects HS256 secrets shorter than 32 bytes"; \
+		: "PYSEC-2026-161/CVE-2026-48710 is mitigated by shared HostHeaderValidationMiddleware"; \
+		: "Starlette 1.0.1 is blocked by prometheus-fastapi-instrumentator's starlette<1.0.0 cap"; \
 		chat_model_audit_ignores="--ignore-vuln PYSEC-2024-277 --ignore-vuln PYSEC-2025-210 --ignore-vuln PYSEC-2025-194 --ignore-vuln PYSEC-2025-196 --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-193 --ignore-vuln PYSEC-2025-192 --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2025-191 --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-189 --ignore-vuln PYSEC-2025-190 --ignore-vuln PYSEC-2025-217 --ignore-vuln PYSEC-2025-214 --ignore-vuln PYSEC-2025-218 --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212 --ignore-vuln PYSEC-2025-213 --ignore-vuln PYSEC-2025-215 --ignore-vuln PYSEC-2025-216"; \
-		audit_args="--ignore-vuln PYSEC-2025-183"; \
+		audit_args="--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161"; \
 		if [ "$$service" = "chat" ]; then audit_args="$$audit_args $$chat_model_audit_ignores --ignore-vuln CVE-2026-1839"; fi; \
 		tmpdir=$$(mktemp -d /tmp/preflight-pip-audit-$$service.XXXXXX); \
 		python3.11 -m venv "$$tmpdir/venv"; \

@@ -5,13 +5,14 @@ from io import BytesIO
 
 import httpx
 import structlog
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Body, Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from llm.factory import get_embedding_provider
 from qdrant_client import QdrantClient
 from rag.sparse import SparseVectorEncoder
 from shared.auth import create_auth_dependency
+from shared.host_validation import HostHeaderValidationMiddleware
 from shared.logging import RequestLoggingMiddleware, configure_logging
 from shared.tracing import configure_tracing, instrument_app
 from slowapi import Limiter
@@ -43,6 +44,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(HostHeaderValidationMiddleware)
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
 instrument_app(app)
@@ -169,6 +171,58 @@ async def get_collection_config(
     if cfg is None:
         raise HTTPException(status_code=404, detail="collection not found")
     return cfg
+
+
+@app.put("/collections/{name}/manifest")
+@limiter.limit("30/minute")
+async def put_collection_manifest(
+    request: Request,
+    name: str,
+    manifest: dict = Body(...),
+    user_id: str = Depends(require_auth),
+):
+    if not _COLLECTION_NAME_RE.match(name):
+        raise HTTPException(status_code=422, detail="Invalid collection name")
+    if manifest.get("collection") != name:
+        raise HTTPException(
+            status_code=422,
+            detail="manifest collection must match path collection",
+        )
+    db = await get_meta_db()
+    await db.upsert_manifest(name, manifest)
+    return {"status": "stored", "collection": name}
+
+
+@app.get("/collections/{name}/manifest")
+@limiter.limit("30/minute")
+async def get_collection_manifest(
+    request: Request, name: str, user_id: str = Depends(require_auth)
+):
+    if not _COLLECTION_NAME_RE.match(name):
+        raise HTTPException(status_code=422, detail="Invalid collection name")
+    db = await get_meta_db()
+    manifest = await db.get_manifest(name)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="manifest not found")
+    return manifest
+
+
+@app.get("/collections/{name}/sources")
+@limiter.limit("30/minute")
+async def list_collection_sources(
+    request: Request, name: str, user_id: str = Depends(require_auth)
+):
+    if not _COLLECTION_NAME_RE.match(name):
+        raise HTTPException(status_code=422, detail="Invalid collection name")
+    store = get_store()
+    try:
+        sources = store.list_sources(name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Qdrant error listing collection sources: %s", e, exc_info=True)
+        raise HTTPException(status_code=503, detail="Vector store unavailable")
+    return {"collection": name, "sources": sources}
 
 
 @app.post("/ingest")

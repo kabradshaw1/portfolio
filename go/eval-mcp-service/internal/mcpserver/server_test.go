@@ -10,6 +10,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/corpusfixture"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalworkflow"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/fixturecatalog"
@@ -18,6 +19,7 @@ import (
 
 type fakeEvalService struct {
 	startExperimentInput  evalworkflow.StartExperimentInput
+	readinessInput        evalworkflow.ReadinessInput
 	startRunInput         evalworkflow.StartRunInput
 	worstCasesInput       evalworkflow.WorstCasesInput
 	triageInput           evalworkflow.TriageInput
@@ -26,6 +28,9 @@ type fakeEvalService struct {
 	triageCalls           int
 	compareInput          evalworkflow.CompareInput
 	recordConclusionInput evalworkflow.RecordConclusionInput
+	provisionCorpusInput  evalworkflow.ProvisionCorpusInput
+	corpusManifestInput   string
+	deletedCorpus         string
 	listDLQLimit          int
 	listDLQResponse       evalapi.DLQListResponse
 	replayDLQRequest      evalapi.ReplayDLQItemRequest
@@ -74,6 +79,30 @@ func (f *fakeEvalService) ListRAGCollections(context.Context) ([]ingestionapi.Co
 
 func (f *fakeEvalService) GetRAGCollectionConfig(context.Context, string) (map[string]any, error) {
 	return map[string]any{"chunk_size": 1000}, nil
+}
+
+func (f *fakeEvalService) ListRAGCorpusFixtures(context.Context) ([]corpusfixture.Fixture, error) {
+	return []corpusfixture.Fixture{{ID: "product_catalog_v1", DefaultCollection: "eval_product_catalog_v1_a1b2c3d4"}}, nil
+}
+
+func (f *fakeEvalService) ProvisionRAGCorpus(_ context.Context, in evalworkflow.ProvisionCorpusInput) (evalworkflow.ProvisionCorpusResult, error) {
+	f.provisionCorpusInput = in
+	return evalworkflow.ProvisionCorpusResult{Collection: "eval_product_catalog_v1_a1b2c3d4", FixtureID: "product_catalog_v1"}, nil
+}
+
+func (f *fakeEvalService) GetRAGCorpusManifest(_ context.Context, collection string) (map[string]any, error) {
+	f.corpusManifestInput = collection
+	return map[string]any{"fixture_id": "product_catalog_v1"}, nil
+}
+
+func (f *fakeEvalService) DeleteRAGCorpus(_ context.Context, collection string) error {
+	f.deletedCorpus = collection
+	return nil
+}
+
+func (f *fakeEvalService) CheckReadiness(_ context.Context, in evalworkflow.ReadinessInput) (evalapi.RAGReadinessResponse, error) {
+	f.readinessInput = in
+	return evalapi.RAGReadinessResponse{Status: "ready", NextSteps: []string{"Proceed with the eval run."}}, nil
 }
 
 func (f *fakeEvalService) StartRun(_ context.Context, in evalworkflow.StartRunInput) (evalworkflow.StartRunResult, error) {
@@ -153,18 +182,23 @@ func TestServerRegistersPromptResourceAndTools(t *testing.T) {
 	}
 	wantTools := []string{
 		"attach_eval_run",
+		"check_rag_eval_readiness",
 		"compare_eval_runs",
 		"create_eval_dataset",
+		"delete_rag_corpus",
 		"get_eval_experiment",
 		"get_eval_run",
 		"get_eval_run_evidence",
 		"get_rag_collection_config",
+		"get_rag_corpus_manifest",
 		"get_worst_eval_cases",
 		"list_eval_dataset_fixtures",
 		"list_eval_datasets",
 		"list_eval_experiments",
 		"list_eval_item_dlq",
 		"list_rag_collections",
+		"list_rag_corpus_fixtures",
+		"provision_rag_corpus",
 		"record_eval_experiment_conclusion",
 		"replay_eval_item_dlq",
 		"start_eval_experiment",
@@ -660,6 +694,119 @@ func TestListRAGCollectionsHandler(t *testing.T) {
 	}
 }
 
+func TestRAGCorpusToolSchemasUseManagedCollectionPattern(t *testing.T) {
+	const wantPattern = `^eval_[a-z0-9_]+_[a-f0-9]{8,16}$`
+	for name, raw := range map[string]json.RawMessage{
+		"provision": provisionRAGCorpusSchema(),
+		"manifest":  ragCorpusManifestSchema(),
+	} {
+		var schema struct {
+			Properties map[string]map[string]any `json:"properties"`
+		}
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatalf("%s schema is invalid JSON: %v", name, err)
+		}
+		if got := schema.Properties["collection"]["pattern"]; got != wantPattern {
+			t.Fatalf("%s collection pattern = %#v", name, got)
+		}
+	}
+}
+
+func TestListRAGCorpusFixturesHandler(t *testing.T) {
+	result, err := listRAGCorpusFixturesHandler(&fakeEvalService{})(context.Background(), callReq(map[string]any{}))
+	if err != nil || result.IsError {
+		t.Fatalf("handler failed: result=%#v err=%v", result, err)
+	}
+	var payload []corpusfixture.Fixture
+	unmarshalTextResult(t, result, &payload)
+	if len(payload) != 1 || payload[0].ID != "product_catalog_v1" {
+		t.Fatalf("unexpected payload: %#v", payload)
+	}
+}
+
+func TestProvisionRAGCorpusHandlerForwardsInput(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := provisionRAGCorpusHandler(fake)(context.Background(), callReq(map[string]any{
+		"fixture":        "product_catalog_v1",
+		"collection":     "eval_product_catalog_v1_a1b2c3d4",
+		"force_recreate": true,
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("handler failed: result=%#v err=%v", result, err)
+	}
+	if fake.provisionCorpusInput.Fixture != "product_catalog_v1" || fake.provisionCorpusInput.Collection != "eval_product_catalog_v1_a1b2c3d4" || !fake.provisionCorpusInput.ForceRecreate {
+		t.Fatalf("input = %#v", fake.provisionCorpusInput)
+	}
+	var payload evalworkflow.ProvisionCorpusResult
+	unmarshalTextResult(t, result, &payload)
+	if payload.Collection != "eval_product_catalog_v1_a1b2c3d4" {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestProvisionRAGCorpusHandlerRequiresFixture(t *testing.T) {
+	result, err := provisionRAGCorpusHandler(&fakeEvalService{})(context.Background(), callReq(map[string]any{}))
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError || !strings.Contains(textResult(t, result), "fixture is required") {
+		t.Fatalf("expected fixture error, got %#v", result)
+	}
+}
+
+func TestGetRAGCorpusManifestHandlerForwardsCollection(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := getRAGCorpusManifestHandler(fake)(context.Background(), callReq(map[string]any{
+		"collection": "eval_product_catalog_v1_a1b2c3d4",
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("handler failed: result=%#v err=%v", result, err)
+	}
+	if fake.corpusManifestInput != "eval_product_catalog_v1_a1b2c3d4" {
+		t.Fatalf("collection = %q", fake.corpusManifestInput)
+	}
+	var payload map[string]any
+	unmarshalTextResult(t, result, &payload)
+	if payload["fixture_id"] != "product_catalog_v1" {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestDeleteRAGCorpusHandlerForwardsCollection(t *testing.T) {
+	fake := &fakeEvalService{}
+	result, err := deleteRAGCorpusHandler(fake)(context.Background(), callReq(map[string]any{
+		"collection": "eval_product_catalog_v1_a1b2c3d4",
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("handler failed: result=%#v err=%v", result, err)
+	}
+	if fake.deletedCorpus != "eval_product_catalog_v1_a1b2c3d4" {
+		t.Fatalf("collection = %q", fake.deletedCorpus)
+	}
+	var payload map[string]bool
+	unmarshalTextResult(t, result, &payload)
+	if !payload["ok"] {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestRAGCorpusCollectionHandlersRequireCollection(t *testing.T) {
+	for name, handler := range map[string]sdkmcp.ToolHandler{
+		"get":    getRAGCorpusManifestHandler(&fakeEvalService{}),
+		"delete": deleteRAGCorpusHandler(&fakeEvalService{}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			result, err := handler(context.Background(), callReq(map[string]any{}))
+			if err != nil {
+				t.Fatalf("handler returned transport error: %v", err)
+			}
+			if !result.IsError || !strings.Contains(textResult(t, result), "collection is required") {
+				t.Fatalf("expected collection error, got %#v", result)
+			}
+		})
+	}
+}
+
 func TestStartEvalRunRejectsLabelWithoutExperimentID(t *testing.T) {
 	fake := &fakeEvalService{}
 	result, err := startEvalRunHandler(fake)(context.Background(), callReq(map[string]any{
@@ -880,7 +1027,7 @@ func TestEvalPromptHandler(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected text prompt content, got %T", result.Messages[0].Content)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "check_rag_eval_readiness", "list_rag_corpus_fixtures", "provision_rag_corpus", "get_rag_corpus_manifest", "delete_rag_corpus", "Never mutate a collection after baseline starts", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(text.Text, want) {
 			t.Fatalf("expected prompt to mention %s, got %q", want, text.Text)
 		}
@@ -908,7 +1055,7 @@ func TestWorkflowResourceHandler(t *testing.T) {
 	if content.MIMEType != "text/markdown" {
 		t.Fatalf("unexpected resource MIME type: %q", content.MIMEType)
 	}
-	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
+	for _, want := range []string{"start_eval_experiment", "list_eval_dataset_fixtures", "create_eval_dataset", "list_eval_datasets", "list_rag_collections", "get_rag_collection_config", "check_rag_eval_readiness", "list_rag_corpus_fixtures", "provision_rag_corpus", "get_rag_corpus_manifest", "delete_rag_corpus", "Never mutate a collection after baseline starts", "start_eval_run", "wait_for_eval_run", "compare_eval_runs", "get_worst_eval_cases", "record_eval_experiment_conclusion", "list_eval_item_dlq", "replay_eval_item_dlq", "operator", "mutating", "Never infer a collection from a dataset name", "model ladder", "answer_tier", "answer_provider", "answer_model"} {
 		if !strings.Contains(content.Text, want) {
 			t.Fatalf("expected workflow resource to mention %s, got %q", want, content.Text)
 		}

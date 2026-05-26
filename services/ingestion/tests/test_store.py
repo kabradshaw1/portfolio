@@ -99,6 +99,34 @@ def test_list_documents(mock_qdrant_client):
     assert docs[1]["chunks"] == 1
 
 
+def test_list_sources_counts_distinct_filenames(mock_qdrant_client):
+    mock_qdrant_client.collection_exists.return_value = True
+    store = QdrantStore(host="localhost", port=6333, collection_name="default")
+
+    mock_qdrant_client.collection_exists.return_value = True
+    mock_qdrant_client.scroll.return_value = (
+        [
+            MagicMock(payload={"filename": "laptop.pdf"}),
+            MagicMock(payload={"filename": "laptop.pdf"}),
+            MagicMock(payload={"filename": "monitor.pdf"}),
+            MagicMock(payload={"filename": ""}),
+            MagicMock(payload={}),
+        ],
+        None,
+    )
+
+    got = store.list_sources("documents")
+
+    assert got == [
+        {"filename": "laptop.pdf", "chunks": 2},
+        {"filename": "monitor.pdf", "chunks": 1},
+    ]
+    mock_qdrant_client.scroll.assert_called_once()
+    assert mock_qdrant_client.scroll.call_args.kwargs["collection_name"] == "documents"
+    assert mock_qdrant_client.scroll.call_args.kwargs["with_payload"] is True
+    assert mock_qdrant_client.scroll.call_args.kwargs["with_vectors"] is False
+
+
 def test_delete_document(mock_qdrant_client):
     mock_qdrant_client.collection_exists.return_value = True
     store = QdrantStore(host="localhost", port=6333, collection_name="test")
