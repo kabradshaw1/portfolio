@@ -34,6 +34,32 @@ class RetrievalConfig(BaseModel):
     top_k: int | None = Field(default=None, ge=1, le=20, strict=True)
 
 
+ReadinessStatus = Literal["ready", "warning", "blocked"]
+
+
+class ReadinessFinding(BaseModel):
+    code: str
+    message: str
+    remediation: str
+
+
+class RAGReadinessRequest(BaseModel):
+    dataset_id: str
+    collection: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,100}$")
+    rerank: bool = False
+    retrieval_config: RetrievalConfig | None = None
+    baseline_eval_id: str | None = None
+    experiment_id: str | None = None
+
+
+class RAGReadinessResponse(BaseModel):
+    status: ReadinessStatus
+    blocking_failures: list[ReadinessFinding] = Field(default_factory=list)
+    warnings: list[ReadinessFinding] = Field(default_factory=list)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    next_steps: list[str] = Field(default_factory=list)
+
+
 class StartEvaluationRequest(BaseModel):
     dataset_id: str
     collection: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,100}$")

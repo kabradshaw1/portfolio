@@ -1,6 +1,7 @@
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from shared.host_validation import HostHeaderValidationMiddleware
 
 from app.config import settings
 from app.eval_client import EvalAPIError, EvalClient
@@ -21,6 +22,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
+app.add_middleware(HostHeaderValidationMiddleware)
 
 instrumentator.instrument(app).expose(app, include_in_schema=False)
 

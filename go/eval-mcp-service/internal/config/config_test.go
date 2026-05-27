@@ -66,6 +66,9 @@ func TestFromEnvDefaults(t *testing.T) {
 	if !slices.Equal(cfg.DatasetFixtureRoots, []string{"../../docs/product-catalog"}) {
 		t.Fatalf("DatasetFixtureRoots = %#v", cfg.DatasetFixtureRoots)
 	}
+	if !slices.Equal(cfg.CorpusFixtureRoots, []string{"../../docs/product-catalog"}) {
+		t.Fatalf("CorpusFixtureRoots = %#v", cfg.CorpusFixtureRoots)
+	}
 }
 
 func TestFromEnvOverrides(t *testing.T) {
@@ -101,6 +104,19 @@ func TestFromEnvOverrides(t *testing.T) {
 	}
 	if !slices.Equal(cfg.DatasetFixtureRoots, []string{"/tmp/a", "/tmp/b"}) {
 		t.Fatalf("DatasetFixtureRoots = %#v", cfg.DatasetFixtureRoots)
+	}
+}
+
+func TestFromEnvReadsCorpusFixtureRoots(t *testing.T) {
+	t.Setenv("EVAL_API_TOKEN", "token")
+	t.Setenv("EVAL_MCP_CORPUS_FIXTURE_ROOTS", "/tmp/a"+string(os.PathListSeparator)+"/tmp/b")
+
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv returned error: %v", err)
+	}
+	if len(cfg.CorpusFixtureRoots) != 2 || cfg.CorpusFixtureRoots[0] != "/tmp/a" || cfg.CorpusFixtureRoots[1] != "/tmp/b" {
+		t.Fatalf("CorpusFixtureRoots = %#v", cfg.CorpusFixtureRoots)
 	}
 }
 

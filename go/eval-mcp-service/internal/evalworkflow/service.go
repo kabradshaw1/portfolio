@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/corpusfixture"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/fixturecatalog"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/ingestionapi"
@@ -24,9 +27,12 @@ const (
 	maxCompareEvalIDs  = 5
 )
 
+var managedEvalCollectionPattern = regexp.MustCompile(`^eval_[a-z0-9_]+_[a-f0-9]{8,16}$`)
+
 type API interface {
 	ListDatasets(context.Context) ([]evalapi.Dataset, error)
 	CreateDataset(context.Context, evalapi.CreateDatasetRequest) (evalapi.CreateDatasetResponse, error)
+	CheckRAGReadiness(context.Context, evalapi.RAGReadinessRequest) (evalapi.RAGReadinessResponse, error)
 	StartEvaluation(context.Context, evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error)
 	GetEvaluation(context.Context, string) (evalapi.EvaluationDetail, error)
 	CompareEvaluations(context.Context, []string) (evalapi.Comparison, error)
@@ -42,6 +48,10 @@ type API interface {
 type Ingestion interface {
 	ListCollections(context.Context) ([]ingestionapi.Collection, error)
 	GetCollectionConfig(context.Context, string) (map[string]any, error)
+	UploadPDF(context.Context, string, string, []byte) (ingestionapi.IngestResponse, error)
+	PutCollectionManifest(context.Context, string, map[string]any) error
+	GetCollectionManifest(context.Context, string) (map[string]any, error)
+	DeleteCollection(context.Context, string) error
 }
 
 type Fixtures interface {
@@ -49,18 +59,24 @@ type Fixtures interface {
 	Load(string) (fixturecatalog.Fixture, error)
 }
 
+type CorpusFixtures interface {
+	List() ([]corpusfixture.Fixture, error)
+	Load(string) (corpusfixture.Fixture, error)
+}
+
 type TriageAPI interface {
 	TriageRAGRegression(context.Context, TriageInput) (map[string]any, error)
 }
 
 type Service struct {
-	api          API
-	ingestion    Ingestion
-	fixtures     Fixtures
-	triage       TriageAPI
-	pollInterval time.Duration
-	waitTimeout  time.Duration
-	maxBackoff   time.Duration
+	api            API
+	ingestion      Ingestion
+	fixtures       Fixtures
+	corpusFixtures CorpusFixtures
+	triage         TriageAPI
+	pollInterval   time.Duration
+	waitTimeout    time.Duration
+	maxBackoff     time.Duration
 }
 
 type StartExperimentInput struct {
@@ -89,6 +105,15 @@ type StartRunInput struct {
 	AnswerAPIKeySecret string
 }
 
+type ReadinessInput struct {
+	DatasetID       string
+	Collection      string
+	Rerank          bool
+	RetrievalConfig *evalapi.RetrievalConfig
+	BaselineEvalID  string
+	ExperimentID    string
+}
+
 type StartRunResult struct {
 	EvalID string
 	Status string
@@ -97,6 +122,28 @@ type StartRunResult struct {
 type CreateDatasetResult struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+type ProvisionCorpusInput struct {
+	Fixture       string `json:"fixture"`
+	Collection    string `json:"collection,omitempty"`
+	ForceRecreate bool   `json:"force_recreate,omitempty"`
+}
+
+type ProvisionCorpusResult struct {
+	Collection    string         `json:"collection"`
+	FixtureID     string         `json:"fixture_id"`
+	FixtureHash   string         `json:"fixture_hash"`
+	DocumentCount int            `json:"document_count"`
+	ChunksCreated int            `json:"chunks_created"`
+	Documents     []CorpusUpload `json:"documents"`
+	Idempotent    bool           `json:"idempotent"`
+}
+
+type CorpusUpload struct {
+	Path          string `json:"path"`
+	SHA256        string `json:"sha256"`
+	ChunksCreated int    `json:"chunks_created"`
 }
 
 type WaitResult struct {
@@ -196,6 +243,11 @@ func (s *Service) WithTriageAPI(triage TriageAPI) *Service {
 	return s
 }
 
+func (s *Service) WithCorpusFixtures(corpusFixtures CorpusFixtures) *Service {
+	s.corpusFixtures = corpusFixtures
+	return s
+}
+
 func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) (evalapi.Experiment, error) {
 	collection := in.Collection
 	if collection == "" {
@@ -209,6 +261,17 @@ func (s *Service) StartExperiment(ctx context.Context, in StartExperimentInput) 
 		return evalapi.Experiment{}, err
 	}
 	if err := s.validateCollectionExists(ctx, collection); err != nil {
+		return evalapi.Experiment{}, err
+	}
+	readiness, err := s.CheckReadiness(ctx, ReadinessInput{
+		DatasetID:      in.DatasetID,
+		Collection:     collection,
+		BaselineEvalID: in.BaselineEvalID,
+	})
+	if err != nil {
+		return evalapi.Experiment{}, err
+	}
+	if err := ensureReadinessAllowed(readiness); err != nil {
 		return evalapi.Experiment{}, err
 	}
 
@@ -268,8 +331,156 @@ func (s *Service) GetRAGCollectionConfig(ctx context.Context, name string) (map[
 	return s.ingestion.GetCollectionConfig(ctx, name)
 }
 
+func (s *Service) CheckReadiness(ctx context.Context, in ReadinessInput) (evalapi.RAGReadinessResponse, error) {
+	collection := in.Collection
+	if collection == "" {
+		collection = DefaultCollection
+	}
+	return s.api.CheckRAGReadiness(ctx, evalapi.RAGReadinessRequest{
+		DatasetID:       in.DatasetID,
+		Collection:      collection,
+		Rerank:          in.Rerank,
+		RetrievalConfig: in.RetrievalConfig,
+		BaselineEvalID:  in.BaselineEvalID,
+		ExperimentID:    in.ExperimentID,
+	})
+}
+
+func ensureReadinessAllowed(readiness evalapi.RAGReadinessResponse) error {
+	if readiness.Status != "blocked" {
+		return nil
+	}
+	codes := make([]string, 0, len(readiness.BlockingFailures))
+	for _, finding := range readiness.BlockingFailures {
+		codes = append(codes, finding.Code)
+	}
+	if len(codes) == 0 {
+		codes = append(codes, "unknown")
+	}
+	return fmt.Errorf("readiness blocked: %s", strings.Join(codes, ", "))
+}
+
+func (s *Service) ListRAGCorpusFixtures(context.Context) ([]corpusfixture.Fixture, error) {
+	if s.corpusFixtures == nil {
+		return nil, errors.New("corpus fixture catalog is not configured")
+	}
+	return s.corpusFixtures.List()
+}
+
+func (s *Service) GetRAGCorpusManifest(ctx context.Context, collection string) (map[string]any, error) {
+	if !isManagedEvalCollection(collection) {
+		return nil, fmt.Errorf("collection %q is not a managed eval collection", collection)
+	}
+	return s.ingestion.GetCollectionManifest(ctx, collection)
+}
+
+func (s *Service) DeleteRAGCorpus(ctx context.Context, collection string) error {
+	if !isManagedEvalCollection(collection) {
+		return fmt.Errorf("collection %q is not a managed eval collection", collection)
+	}
+	return s.ingestion.DeleteCollection(ctx, collection)
+}
+
+func (s *Service) ProvisionRAGCorpus(ctx context.Context, in ProvisionCorpusInput) (ProvisionCorpusResult, error) {
+	if in.Collection != "" && !isManagedEvalCollection(in.Collection) {
+		return ProvisionCorpusResult{}, fmt.Errorf("collection %q is not a managed eval collection", in.Collection)
+	}
+	if s.corpusFixtures == nil {
+		return ProvisionCorpusResult{}, errors.New("corpus fixture catalog is not configured")
+	}
+	fixture, err := s.corpusFixtures.Load(in.Fixture)
+	if err != nil {
+		return ProvisionCorpusResult{}, err
+	}
+	collection := in.Collection
+	if collection == "" {
+		collection = fixture.DefaultCollection
+	}
+	if !isManagedEvalCollection(collection) {
+		return ProvisionCorpusResult{}, fmt.Errorf("collection %q is not a managed eval collection", collection)
+	}
+	if in.ForceRecreate {
+		if err := s.ingestion.DeleteCollection(ctx, collection); err != nil {
+			if !isHTTPStatus(err, http.StatusNotFound) {
+				return ProvisionCorpusResult{}, fmt.Errorf("delete existing corpus collection: %w", err)
+			}
+		}
+	} else {
+		manifest, err := s.ingestion.GetCollectionManifest(ctx, collection)
+		if err != nil && !isHTTPStatus(err, http.StatusNotFound) {
+			return ProvisionCorpusResult{}, fmt.Errorf("get corpus manifest: %w", err)
+		}
+		if err == nil && manifest["fixture_hash"] == fixture.SourceHash {
+			documents, chunksCreated := corpusUploadsFromManifest(manifest)
+			return ProvisionCorpusResult{
+				Collection:    collection,
+				FixtureID:     fixture.ID,
+				FixtureHash:   fixture.SourceHash,
+				DocumentCount: fixture.DocumentCount,
+				ChunksCreated: chunksCreated,
+				Documents:     documents,
+				Idempotent:    true,
+			}, nil
+		}
+	}
+
+	uploads := make([]CorpusUpload, 0, len(fixture.Documents))
+	chunksCreated := 0
+	manifestDocuments := make([]map[string]any, 0, len(fixture.Documents))
+	for _, doc := range fixture.Documents {
+		data, err := os.ReadFile(doc.Abs)
+		if err != nil {
+			return ProvisionCorpusResult{}, fmt.Errorf("read corpus document %q: %w", doc.Path, err)
+		}
+		response, err := s.ingestion.UploadPDF(ctx, collection, doc.Path, data)
+		if err != nil {
+			return ProvisionCorpusResult{}, fmt.Errorf("upload corpus document %q: %w", doc.Path, err)
+		}
+		chunksCreated += response.ChunksCreated
+		uploads = append(uploads, CorpusUpload{Path: doc.Path, SHA256: doc.SHA256, ChunksCreated: response.ChunksCreated})
+		manifestDocuments = append(manifestDocuments, map[string]any{
+			"path":           doc.Path,
+			"sha256":         doc.SHA256,
+			"chunks_created": response.ChunksCreated,
+		})
+	}
+	manifest := map[string]any{
+		"collection":     collection,
+		"fixture_id":     fixture.ID,
+		"fixture_hash":   fixture.SourceHash,
+		"documents":      manifestDocuments,
+		"provisioned_at": time.Now().UTC().Format(time.RFC3339),
+		"provisioned_by": "eval-mcp-service",
+	}
+	if err := s.ingestion.PutCollectionManifest(ctx, collection, manifest); err != nil {
+		return ProvisionCorpusResult{}, fmt.Errorf("put corpus manifest: %w", err)
+	}
+	return ProvisionCorpusResult{
+		Collection:    collection,
+		FixtureID:     fixture.ID,
+		FixtureHash:   fixture.SourceHash,
+		DocumentCount: fixture.DocumentCount,
+		ChunksCreated: chunksCreated,
+		Documents:     uploads,
+	}, nil
+}
+
 func (s *Service) StartRun(ctx context.Context, in StartRunInput) (StartRunResult, error) {
 	if err := s.validateCollectionExists(ctx, in.Collection); err != nil {
+		return StartRunResult{}, err
+	}
+	readiness, err := s.CheckReadiness(ctx, ReadinessInput{
+		DatasetID:       in.DatasetID,
+		Collection:      in.Collection,
+		Rerank:          in.Rerank,
+		RetrievalConfig: in.RetrievalConfig,
+		BaselineEvalID:  in.BaselineEvalID,
+		ExperimentID:    in.ExperimentID,
+	})
+	if err != nil {
+		return StartRunResult{}, err
+	}
+	if err := ensureReadinessAllowed(readiness); err != nil {
 		return StartRunResult{}, err
 	}
 	resp, err := s.api.StartEvaluation(ctx, evalapi.StartEvaluationRequest{
@@ -655,6 +866,48 @@ func validateCompareIDs(ids []string) error {
 		return fmt.Errorf("compare requires %d to %d eval IDs, got %d", minCompareEvalIDs, maxCompareEvalIDs, len(ids))
 	}
 	return nil
+}
+
+func isManagedEvalCollection(name string) bool {
+	return managedEvalCollectionPattern.MatchString(name)
+}
+
+func isHTTPStatus(err error, status int) bool {
+	var httpErr *ingestionapi.HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == status
+}
+
+func corpusUploadsFromManifest(manifest map[string]any) ([]CorpusUpload, int) {
+	rawDocs, ok := manifest["documents"].([]any)
+	if !ok {
+		return nil, 0
+	}
+	uploads := make([]CorpusUpload, 0, len(rawDocs))
+	totalChunks := 0
+	for _, rawDoc := range rawDocs {
+		doc, ok := rawDoc.(map[string]any)
+		if !ok {
+			continue
+		}
+		upload := CorpusUpload{}
+		if path, ok := doc["path"].(string); ok {
+			upload.Path = path
+		}
+		if sha, ok := doc["sha256"].(string); ok {
+			upload.SHA256 = sha
+		}
+		switch chunks := doc["chunks_created"].(type) {
+		case int:
+			upload.ChunksCreated = chunks
+		case int64:
+			upload.ChunksCreated = int(chunks)
+		case float64:
+			upload.ChunksCreated = int(chunks)
+		}
+		totalChunks += upload.ChunksCreated
+		uploads = append(uploads, upload)
+	}
+	return uploads, totalChunks
 }
 
 func (s *Service) validateCollectionExists(ctx context.Context, collection string) error {

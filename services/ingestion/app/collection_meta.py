@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import aiosqlite
 
 
@@ -45,6 +47,14 @@ class CollectionMetaDB:
                 await self._db.execute(
                     f"ALTER TABLE collection_meta ADD COLUMN {column_name} {definition}"
                 )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS collection_manifests (
+                collection TEXT PRIMARY KEY,
+                manifest_json TEXT NOT NULL
+            )
+            """
+        )
         await self._db.commit()
 
     async def close(self) -> None:
@@ -112,3 +122,23 @@ class CollectionMetaDB:
                 }
             )
         return config
+
+    async def upsert_manifest(self, collection: str, manifest: dict) -> None:
+        await self._db.execute(
+            "INSERT INTO collection_manifests (collection, manifest_json) "
+            "VALUES (?, ?) "
+            "ON CONFLICT(collection) DO UPDATE SET "
+            "manifest_json=excluded.manifest_json",
+            (collection, json.dumps(manifest, sort_keys=True)),
+        )
+        await self._db.commit()
+
+    async def get_manifest(self, collection: str) -> dict | None:
+        cursor = await self._db.execute(
+            "SELECT manifest_json FROM collection_manifests WHERE collection = ?",
+            (collection,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return json.loads(row["manifest_json"])

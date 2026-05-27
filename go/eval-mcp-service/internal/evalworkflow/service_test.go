@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/corpusfixture"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/evalapi"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/fixturecatalog"
 	"github.com/kabradshaw1/portfolio/go/eval-mcp-service/internal/ingestionapi"
@@ -102,12 +106,221 @@ func TestCreateDatasetFromFixture(t *testing.T) {
 	}
 }
 
+func TestCheckReadinessDelegatesToEvalAPI(t *testing.T) {
+	api := &fakeAPI{readinessResponse: evalapi.RAGReadinessResponse{Status: "ready"}}
+	svc := newTestService(api)
+
+	got, err := svc.CheckReadiness(context.Background(), ReadinessInput{
+		DatasetID:  "ds-1",
+		Collection: "documents",
+		Rerank:     true,
+	})
+	if err != nil {
+		t.Fatalf("CheckReadiness error: %v", err)
+	}
+	if got.Status != "ready" {
+		t.Fatalf("readiness = %#v", got)
+	}
+	if api.readinessRequest.DatasetID != "ds-1" || api.readinessRequest.Collection != "documents" || !api.readinessRequest.Rerank {
+		t.Fatalf("request = %#v", api.readinessRequest)
+	}
+}
+
+func TestStartRunBlocksWhenReadinessBlocked(t *testing.T) {
+	api := &fakeAPI{readinessResponse: evalapi.RAGReadinessResponse{
+		Status: "blocked",
+		BlockingFailures: []evalapi.ReadinessFinding{{
+			Code: "collection_empty",
+		}},
+	}}
+	svc := newTestService(api)
+
+	_, err := svc.StartRun(context.Background(), StartRunInput{
+		DatasetID:  "ds-1",
+		Collection: "documents",
+	})
+	if err == nil || !strings.Contains(err.Error(), "readiness blocked") || !strings.Contains(err.Error(), "collection_empty") {
+		t.Fatalf("error = %v", err)
+	}
+	if len(api.startRequests) != 0 {
+		t.Fatalf("StartEvaluation calls = %d, want 0", len(api.startRequests))
+	}
+}
+
+func TestStartRunAllowsReadinessWarning(t *testing.T) {
+	api := &fakeAPI{
+		readinessResponse: evalapi.RAGReadinessResponse{
+			Status:   "warning",
+			Warnings: []evalapi.ReadinessFinding{{Code: "top_k_override"}},
+		},
+		startResponse: evalapi.StartEvaluationResponse{ID: "eval-1", Status: "queued"},
+	}
+	svc := newTestService(api)
+
+	got, err := svc.StartRun(context.Background(), StartRunInput{
+		DatasetID:  "ds-1",
+		Collection: "documents",
+	})
+	if err != nil {
+		t.Fatalf("StartRun error: %v", err)
+	}
+	if got.EvalID != "eval-1" || len(api.startRequests) != 1 {
+		t.Fatalf("result=%#v startRequests=%d", got, len(api.startRequests))
+	}
+}
+
+func TestStartExperimentBlocksWhenReadinessBlocked(t *testing.T) {
+	api := &fakeAPI{readinessResponse: evalapi.RAGReadinessResponse{
+		Status:           "blocked",
+		BlockingFailures: []evalapi.ReadinessFinding{{Code: "collection_empty"}},
+	}}
+	svc := newTestService(api)
+
+	_, err := svc.StartExperiment(context.Background(), StartExperimentInput{
+		Name:       "experiment",
+		DatasetID:  "ds-1",
+		Collection: "documents",
+	})
+	if err == nil || !strings.Contains(err.Error(), "readiness blocked") {
+		t.Fatalf("error = %v", err)
+	}
+	if len(api.createExperimentRequests) != 0 {
+		t.Fatalf("CreateExperiment calls = %d, want 0", len(api.createExperimentRequests))
+	}
+}
+
 func TestStartRunRejectsMissingCollection(t *testing.T) {
 	api := &fakeAPI{}
 	service := New(api, fakeIngestion{collections: []ingestionapi.Collection{{Name: "documents"}}}, fakeFixtures{}, time.Second, time.Minute)
 	_, err := service.StartRun(context.Background(), StartRunInput{DatasetID: "ds-1", Collection: "missing"})
 	if err == nil || !strings.Contains(err.Error(), `retrieval collection "missing" does not exist`) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestProvisionRAGCorpusUploadsFixtureAndWritesManifest(t *testing.T) {
+	root := t.TempDir()
+	pdfPath := filepath.Join(root, "laptop.pdf")
+	if err := os.WriteFile(pdfPath, []byte("%PDF-1.4\nlaptop"), 0o644); err != nil {
+		t.Fatalf("write pdf: %v", err)
+	}
+	ingestion := &recordingCorpusIngestion{
+		collections: []ingestionapi.Collection{},
+		uploadResponse: ingestionapi.IngestResponse{
+			Status:        "success",
+			DocumentID:    "doc-1",
+			ChunksCreated: 4,
+			Filename:      "laptop.pdf",
+		},
+	}
+	fixtures := fakeCorpusFixtures{fixture: corpusfixture.Fixture{
+		ID:                "product_catalog_v1",
+		Name:              "Product Catalog v1",
+		SourceHash:        "a1b2c3d4e5f6",
+		DefaultCollection: "eval_product_catalog_v1_a1b2c3d4",
+		Documents: []corpusfixture.Document{{
+			Path:   "laptop.pdf",
+			Abs:    pdfPath,
+			SHA256: "abc123",
+		}},
+		DocumentCount: 1,
+	}}
+	service := New(&fakeAPI{}, ingestion, fakeFixtures{}, time.Second, time.Minute).
+		WithCorpusFixtures(fixtures)
+
+	got, err := service.ProvisionRAGCorpus(context.Background(), ProvisionCorpusInput{
+		Fixture: "product_catalog_v1",
+	})
+	if err != nil {
+		t.Fatalf("ProvisionRAGCorpus returned error: %v", err)
+	}
+	if got.Collection != "eval_product_catalog_v1_a1b2c3d4" || got.ChunksCreated != 4 || got.FixtureHash != "a1b2c3d4e5f6" {
+		t.Fatalf("result = %#v", got)
+	}
+	if ingestion.uploadCollection != "eval_product_catalog_v1_a1b2c3d4" || ingestion.uploadFilename != "laptop.pdf" {
+		t.Fatalf("upload collection=%q filename=%q", ingestion.uploadCollection, ingestion.uploadFilename)
+	}
+	if ingestion.manifest["fixture_hash"] != "a1b2c3d4e5f6" {
+		t.Fatalf("manifest = %#v", ingestion.manifest)
+	}
+}
+
+func TestProvisionRAGCorpusRejectsUnsafeCollection(t *testing.T) {
+	service := New(&fakeAPI{}, fakeIngestion{}, fakeFixtures{}, time.Second, time.Minute)
+	_, err := service.ProvisionRAGCorpus(context.Background(), ProvisionCorpusInput{
+		Fixture:    "product_catalog_v1",
+		Collection: "documents",
+	})
+	if err == nil || !strings.Contains(err.Error(), "managed eval collection") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestProvisionRAGCorpusIdempotentManifestReturnsTotals(t *testing.T) {
+	ingestion := &recordingCorpusIngestion{
+		manifestResponse: map[string]any{
+			"fixture_hash": "a1b2c3d4e5f6",
+			"documents": []any{
+				map[string]any{"path": "laptop.pdf", "sha256": "abc123", "chunks_created": float64(4)},
+			},
+		},
+	}
+	fixtures := fakeCorpusFixtures{fixture: corpusfixture.Fixture{
+		ID:                "product_catalog_v1",
+		SourceHash:        "a1b2c3d4e5f6",
+		DefaultCollection: "eval_product_catalog_v1_a1b2c3d4",
+		DocumentCount:     1,
+	}}
+	service := New(&fakeAPI{}, ingestion, fakeFixtures{}, time.Second, time.Minute).
+		WithCorpusFixtures(fixtures)
+
+	got, err := service.ProvisionRAGCorpus(context.Background(), ProvisionCorpusInput{Fixture: "product_catalog_v1"})
+	if err != nil {
+		t.Fatalf("ProvisionRAGCorpus returned error: %v", err)
+	}
+	if !got.Idempotent || got.ChunksCreated != 4 || len(got.Documents) != 1 || got.Documents[0].Path != "laptop.pdf" {
+		t.Fatalf("result = %#v", got)
+	}
+	if ingestion.uploadFilename != "" {
+		t.Fatalf("unexpected upload: %q", ingestion.uploadFilename)
+	}
+}
+
+func TestProvisionRAGCorpusForceRecreateIgnoresMissingCollection(t *testing.T) {
+	root := t.TempDir()
+	pdfPath := filepath.Join(root, "laptop.pdf")
+	if err := os.WriteFile(pdfPath, []byte("%PDF-1.4\nlaptop"), 0o644); err != nil {
+		t.Fatalf("write pdf: %v", err)
+	}
+	ingestion := &recordingCorpusIngestion{
+		deleteErr: &ingestionapi.HTTPError{Method: http.MethodDelete, Path: "/collections/eval_product_catalog_v1_a1b2c3d4", StatusCode: http.StatusNotFound},
+		uploadResponse: ingestionapi.IngestResponse{
+			ChunksCreated: 4,
+		},
+	}
+	fixtures := fakeCorpusFixtures{fixture: corpusfixture.Fixture{
+		ID:                "product_catalog_v1",
+		SourceHash:        "a1b2c3d4e5f6",
+		DefaultCollection: "eval_product_catalog_v1_a1b2c3d4",
+		Documents: []corpusfixture.Document{{
+			Path:   "laptop.pdf",
+			Abs:    pdfPath,
+			SHA256: "abc123",
+		}},
+		DocumentCount: 1,
+	}}
+	service := New(&fakeAPI{}, ingestion, fakeFixtures{}, time.Second, time.Minute).
+		WithCorpusFixtures(fixtures)
+
+	got, err := service.ProvisionRAGCorpus(context.Background(), ProvisionCorpusInput{
+		Fixture:       "product_catalog_v1",
+		ForceRecreate: true,
+	})
+	if err != nil {
+		t.Fatalf("ProvisionRAGCorpus returned error: %v", err)
+	}
+	if !ingestion.deleteCalled || got.ChunksCreated != 4 {
+		t.Fatalf("deleteCalled=%v result=%#v", ingestion.deleteCalled, got)
 	}
 }
 
@@ -773,6 +986,8 @@ type fakeAPI struct {
 	createdDatasetID         string
 	startResponse            evalapi.StartEvaluationResponse
 	startRequests            []evalapi.StartEvaluationRequest
+	readinessRequest         evalapi.RAGReadinessRequest
+	readinessResponse        evalapi.RAGReadinessResponse
 	detailsByID              map[string][]evalapi.EvaluationDetail
 	getEvaluationErrorsByID  map[string][]error
 	compareIDs               []string
@@ -803,6 +1018,11 @@ func (f *fakeAPI) CreateDataset(_ context.Context, req evalapi.CreateDatasetRequ
 func (f *fakeAPI) StartEvaluation(_ context.Context, in evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error) {
 	f.startRequests = append(f.startRequests, in)
 	return f.startResponse, nil
+}
+
+func (f *fakeAPI) CheckRAGReadiness(_ context.Context, in evalapi.RAGReadinessRequest) (evalapi.RAGReadinessResponse, error) {
+	f.readinessRequest = in
+	return f.readinessResponse, nil
 }
 
 func (f *fakeAPI) GetEvaluation(_ context.Context, id string) (evalapi.EvaluationDetail, error) {
@@ -912,6 +1132,22 @@ func (f fakeIngestion) GetCollectionConfig(_ context.Context, name string) (map[
 	return f.configs[name], nil
 }
 
+func (f fakeIngestion) UploadPDF(context.Context, string, string, []byte) (ingestionapi.IngestResponse, error) {
+	return ingestionapi.IngestResponse{}, nil
+}
+
+func (f fakeIngestion) PutCollectionManifest(context.Context, string, map[string]any) error {
+	return nil
+}
+
+func (f fakeIngestion) GetCollectionManifest(context.Context, string) (map[string]any, error) {
+	return nil, &ingestionapi.HTTPError{Method: http.MethodGet, Path: "/manifest", StatusCode: http.StatusNotFound}
+}
+
+func (f fakeIngestion) DeleteCollection(context.Context, string) error {
+	return nil
+}
+
 type fakeFixtures struct {
 	fixtures []fixturecatalog.Fixture
 	fixture  fixturecatalog.Fixture
@@ -919,6 +1155,61 @@ type fakeFixtures struct {
 
 func (f fakeFixtures) List() ([]fixturecatalog.Fixture, error)     { return f.fixtures, nil }
 func (f fakeFixtures) Load(string) (fixturecatalog.Fixture, error) { return f.fixture, nil }
+
+type fakeCorpusFixtures struct {
+	fixtures []corpusfixture.Fixture
+	fixture  corpusfixture.Fixture
+}
+
+func (f fakeCorpusFixtures) List() ([]corpusfixture.Fixture, error) {
+	return f.fixtures, nil
+}
+
+func (f fakeCorpusFixtures) Load(string) (corpusfixture.Fixture, error) {
+	return f.fixture, nil
+}
+
+type recordingCorpusIngestion struct {
+	collections      []ingestionapi.Collection
+	manifest         map[string]any
+	manifestResponse map[string]any
+	uploadResponse   ingestionapi.IngestResponse
+	deleteErr        error
+	deleteCalled     bool
+	uploadCollection string
+	uploadFilename   string
+}
+
+func (r *recordingCorpusIngestion) ListCollections(context.Context) ([]ingestionapi.Collection, error) {
+	return r.collections, nil
+}
+
+func (r *recordingCorpusIngestion) GetCollectionConfig(context.Context, string) (map[string]any, error) {
+	return map[string]any{}, nil
+}
+
+func (r *recordingCorpusIngestion) UploadPDF(_ context.Context, collection, filename string, _ []byte) (ingestionapi.IngestResponse, error) {
+	r.uploadCollection = collection
+	r.uploadFilename = filename
+	return r.uploadResponse, nil
+}
+
+func (r *recordingCorpusIngestion) PutCollectionManifest(_ context.Context, _ string, manifest map[string]any) error {
+	r.manifest = manifest
+	return nil
+}
+
+func (r *recordingCorpusIngestion) GetCollectionManifest(context.Context, string) (map[string]any, error) {
+	if r.manifestResponse != nil {
+		return r.manifestResponse, nil
+	}
+	return nil, &ingestionapi.HTTPError{Method: http.MethodGet, Path: "/manifest", StatusCode: http.StatusNotFound}
+}
+
+func (r *recordingCorpusIngestion) DeleteCollection(context.Context, string) error {
+	r.deleteCalled = true
+	return r.deleteErr
+}
 
 type fakeTriageAPI struct {
 	input  TriageInput
@@ -948,6 +1239,10 @@ func (b *blockingGetEvaluationAPI) ListDatasets(context.Context) ([]evalapi.Data
 
 func (b *blockingGetEvaluationAPI) CreateDataset(context.Context, evalapi.CreateDatasetRequest) (evalapi.CreateDatasetResponse, error) {
 	return evalapi.CreateDatasetResponse{}, nil
+}
+
+func (b *blockingGetEvaluationAPI) CheckRAGReadiness(context.Context, evalapi.RAGReadinessRequest) (evalapi.RAGReadinessResponse, error) {
+	return evalapi.RAGReadinessResponse{Status: "ready"}, nil
 }
 
 func (b *blockingGetEvaluationAPI) StartEvaluation(context.Context, evalapi.StartEvaluationRequest) (evalapi.StartEvaluationResponse, error) {

@@ -51,6 +51,13 @@ def test_health_qdrant_down(mock_qdrant_cls, mock_provider):
     assert data["llm"] == "connected"
 
 
+def test_rejects_malformed_host_header():
+    response = client.get("/health", headers={"Host": "example.com/health?x="})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid Host header"
+
+
 @patch("app.main.get_meta_db")
 @patch("app.main.get_sparse_encoder")
 @patch("app.main.get_store")
@@ -352,6 +359,108 @@ def test_get_collection_config_404_when_unknown(mock_get_meta_db):
     response = client.get("/collections/nope/config")
     assert response.status_code == 404
     assert "not found" in response.json()["detail"]
+
+
+@patch("app.main.get_store")
+def test_list_collection_sources(mock_get_store):
+    mock_store = MagicMock()
+    mock_store.list_sources.return_value = [
+        {"filename": "laptop.pdf", "chunks": 2},
+        {"filename": "monitor.pdf", "chunks": 1},
+    ]
+    mock_get_store.return_value = mock_store
+
+    response = client.get("/collections/documents/sources")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "collection": "documents",
+        "sources": [
+            {"filename": "laptop.pdf", "chunks": 2},
+            {"filename": "monitor.pdf", "chunks": 1},
+        ],
+    }
+    mock_store.list_sources.assert_called_once_with("documents")
+
+
+@patch("app.main.get_store")
+def test_list_collection_sources_rejects_invalid_collection_name(mock_get_store):
+    response = client.get("/collections/bad name/sources")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Invalid collection name"
+    mock_get_store.assert_not_called()
+
+
+@patch("app.main.get_store")
+def test_list_collection_sources_not_found(mock_get_store):
+    mock_store = MagicMock()
+    mock_store.list_sources.side_effect = ValueError("Collection missing not found")
+    mock_get_store.return_value = mock_store
+
+    response = client.get("/collections/missing/sources")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Collection missing not found"
+
+
+@patch("app.main.get_meta_db")
+def test_put_collection_manifest_stores_metadata(mock_get_meta_db):
+    mock_db = AsyncMock()
+    mock_get_meta_db.return_value = mock_db
+    payload = {
+        "collection": "eval_product_catalog_v1_a1b2c3d4",
+        "fixture_id": "product_catalog_v1",
+        "fixture_hash": "a1b2c3d4",
+        "documents": [],
+        "provisioned_at": "2026-05-20T00:00:00Z",
+        "provisioned_by": "eval-mcp-service",
+    }
+
+    response = client.put(
+        "/collections/eval_product_catalog_v1_a1b2c3d4/manifest",
+        json=payload,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "stored",
+        "collection": "eval_product_catalog_v1_a1b2c3d4",
+    }
+    mock_db.upsert_manifest.assert_awaited_once_with(
+        "eval_product_catalog_v1_a1b2c3d4", payload
+    )
+
+
+@patch("app.main.get_meta_db")
+def test_get_collection_manifest_returns_metadata(mock_get_meta_db):
+    payload = {
+        "collection": "eval_product_catalog_v1_a1b2c3d4",
+        "fixture_id": "product_catalog_v1",
+        "fixture_hash": "a1b2c3d4",
+        "documents": [],
+        "provisioned_at": "2026-05-20T00:00:00Z",
+        "provisioned_by": "eval-mcp-service",
+    }
+    mock_db = AsyncMock()
+    mock_db.get_manifest.return_value = payload
+    mock_get_meta_db.return_value = mock_db
+
+    response = client.get("/collections/eval_product_catalog_v1_a1b2c3d4/manifest")
+
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
+@patch("app.main.get_meta_db")
+def test_get_collection_manifest_404_when_unknown(mock_get_meta_db):
+    mock_db = AsyncMock()
+    mock_db.get_manifest.return_value = None
+    mock_get_meta_db.return_value = mock_db
+
+    response = client.get("/collections/eval_product_catalog_v1_a1b2c3d4/manifest")
+
+    assert response.status_code == 404
 
 
 @patch("app.main.get_meta_db")
