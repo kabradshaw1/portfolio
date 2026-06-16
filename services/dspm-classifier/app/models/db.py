@@ -20,6 +20,7 @@ class FindingRow(Base):
     bucket: Mapped[str] = mapped_column(String(255), nullable=False)
     key: Mapped[str] = mapped_column(Text, nullable=False)
     sensitivity: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Postgres-specific ARRAY type; this service deliberately targets Postgres only.
     categories: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
     match_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     classified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

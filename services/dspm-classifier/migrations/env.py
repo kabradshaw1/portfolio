@@ -18,6 +18,8 @@ target_metadata = Base.metadata
 
 DSN = os.environ.get("POSTGRES_DSN", "")
 SYNC_DSN = DSN.replace("+asyncpg", "+psycopg2") if DSN else ""
+if not SYNC_DSN:
+    raise RuntimeError("POSTGRES_DSN must be set before running Alembic migrations.")
 config.set_main_option("sqlalchemy.url", SYNC_DSN)
 
 
