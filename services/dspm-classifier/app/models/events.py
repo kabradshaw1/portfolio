@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from enum import IntEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class Sensitivity(IntEnum):
@@ -23,7 +22,7 @@ class DataEvent(BaseModel):
     bucket: str
     key: str
     size_bytes: int = Field(ge=0)
-    occurred_at: datetime
+    occurred_at: AwareDatetime
 
 
 class Finding(BaseModel):
@@ -36,7 +35,7 @@ class Finding(BaseModel):
     sensitivity: Sensitivity
     categories: list[str] = Field(default_factory=list)
     match_count: int = Field(ge=0)
-    classified_at: datetime
-    pipeline_version: int
+    classified_at: AwareDatetime
+    pipeline_version: int = Field(ge=1)
     llm_failed: bool = False
     reason: str | None = None  # e.g. "too_large", "object_missing"

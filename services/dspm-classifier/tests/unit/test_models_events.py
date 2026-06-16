@@ -53,3 +53,31 @@ def test_finding_with_categories():
 
 def test_sensitivity_ordering():
     assert Sensitivity.NONE < Sensitivity.LOW < Sensitivity.MEDIUM < Sensitivity.HIGH
+
+
+def test_data_event_rejects_naive_datetime():
+    with pytest.raises(ValidationError):
+        DataEvent(
+            event_id="x",
+            tenant_id="t",
+            bucket="b",
+            key="k",
+            size_bytes=1,
+            occurred_at=datetime(2026, 1, 1),  # no tzinfo
+        )
+
+
+def test_finding_rejects_pipeline_version_zero():
+    with pytest.raises(ValidationError):
+        Finding(
+            event_id="evt_1",
+            tenant_id="acme",
+            bucket="b",
+            key="k",
+            sensitivity=Sensitivity.NONE,
+            categories=[],
+            match_count=0,
+            classified_at=datetime.now(UTC),
+            pipeline_version=0,
+            llm_failed=False,
+        )
