@@ -17,6 +17,10 @@ def test_defaults_load_with_required_env(monkeypatch):
     assert s.pipeline_version == 1
     assert s.s3_endpoint_url is None  # real AWS by default
     assert s.ner_confidence_threshold == 0.6
+    assert s.s3_region == "us-east-1"
+    assert s.log_level == "INFO"
+    assert s.metrics_port == 9100
+    assert s.llm_timeout_seconds == 15.0
 
 
 def test_env_overrides(monkeypatch):

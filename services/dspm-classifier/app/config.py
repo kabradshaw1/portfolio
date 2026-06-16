@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     llm_base_url: str
     llm_model: str = "llama3.1:8b"
-    llm_timeout_s: float = 15.0
+    llm_timeout_seconds: float = 15.0
     llm_concurrency: int = 8
 
     max_object_bytes: int = 10 * 1024 * 1024
