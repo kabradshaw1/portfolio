@@ -12,11 +12,14 @@ Unmapped entity types (e.g. DATE_TIME) are dropped; they are noise, not PII.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import ClassVar
 
 from presidio_analyzer import AnalyzerEngine
 
 from app.classifiers.base import ClassificationResult, Match
+
+_LOGGER = logging.getLogger(__name__)
 
 _PRESIDIO_TO_CATEGORY: dict[str, str] = {
     "EMAIL_ADDRESS": "PII.EMAIL",
@@ -58,6 +61,7 @@ class PresidioClassifier:
             category = _PRESIDIO_TO_CATEGORY.get(r.entity_type)
             if category is None:
                 # Drop unmapped entity types (DATE_TIME, NRP, etc.) — not PII.
+                _LOGGER.debug("Dropping unmapped Presidio entity type %r", r.entity_type)
                 continue
             matches.append(
                 Match(
