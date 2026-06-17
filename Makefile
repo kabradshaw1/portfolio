@@ -213,7 +213,7 @@ preflight-compose-config:
 # --- Security scans ---
 preflight-security:
 	@echo "\n=== Security: bandit ==="
-	bandit -r services/ -ll
+	bandit -r services/ -ll -x services/dspm-classifier/.venv
 	@echo "\n=== Security: CORS guardrail ==="
 	@if grep -r 'allow_origins=\["\*"\]' services/; then \
 		echo "ERROR: Wildcard CORS found"; exit 1; \
