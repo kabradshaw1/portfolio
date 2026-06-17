@@ -18,3 +18,10 @@ Requires Docker (Postgres + MinIO via testcontainers for tests):
 ```bash
 make preflight-python  # runs from repo root
 ```
+
+## First-time setup
+
+```bash
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+```
