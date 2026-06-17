@@ -17,6 +17,19 @@ test.describe("Production smoke tests", () => {
     ).toBeVisible();
   });
 
+  test("dspm learning page renders", async ({ page }) => {
+    await page.goto(`${FRONTEND_URL}/dspm`);
+    await expect(
+      page.locator("h1", {
+        hasText: "Sensitive-data classification at Kafka scale",
+      })
+    ).toBeVisible();
+    await expect(page.getByTestId("cli-output-example")).toBeVisible();
+    await expect(page.getByTestId("failure-policy-table")).toBeVisible();
+    await expect(page.getByTestId("metrics-grid")).toBeVisible();
+    await expect(page.getByTestId("pipeline-stage-regex")).toBeVisible();
+  });
+
   test("backend health checks pass", async ({ request }) => {
     const chatHealth = await request.get(`${API_URL}/chat/health`);
     expect(chatHealth.ok()).toBeTruthy();
