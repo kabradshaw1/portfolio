@@ -22,7 +22,15 @@ async def test_mark_processed_inserts_row(session_factory):
         )
 
     async with session_factory() as s:
-        rows = (await s.execute(select(ProcessedMessageRow))).scalars().all()
+        rows = (
+            (
+                await s.execute(
+                    select(ProcessedMessageRow).where(ProcessedMessageRow.event_id == "evt_1")
+                )
+            )
+            .scalars()
+            .all()
+        )
         assert len(rows) == 1
         assert rows[0].event_id == "evt_1"
 
