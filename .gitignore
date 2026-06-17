@@ -82,3 +82,5 @@ docs/security/*.dat
 /go/ecommerce-service/server
 
 .claire
+
+.claude/settings.local.json
