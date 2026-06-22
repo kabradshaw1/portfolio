@@ -42,6 +42,25 @@ const graphDomains = [
   },
 ];
 
+const promptPrinciples = [
+  {
+    title: "Context injection over raw passthrough",
+    desc: "Generation never sends only the user's text to the model. The service assembles a prompt from related worldbuilding entities so output stays consistent with the established universe.",
+  },
+  {
+    title: "Relevance-scoped context",
+    desc: "Injected entities are fetched cache-first (Redis, 10-minute TTL) with a Postgres fallback, and scene characters are filtered to only the organizations involved in that scene — focused prompts, not context dumps.",
+  },
+  {
+    title: "Layered, compositional prompts",
+    desc: "Images compose a global art-direction base, a per-entity-type overlay, and the user's subject. Text layers a task instruction, the writer's seed text, and a structured context block.",
+  },
+  {
+    title: "Execution model matched to cost",
+    desc: "Cheap, latency-sensitive text streams back token-by-token over gRPC. Expensive image jobs are queued through RabbitMQ with retries and a dead-letter queue.",
+  },
+];
+
 export default function GalaxyPage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
@@ -146,6 +165,20 @@ export default function GalaxyPage() {
   IMAGE --> AI`}
           />
         </div>
+      </section>
+
+      <section className="mt-12">
+        <h2 className="text-2xl font-semibold">How the Generative AI Works</h2>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          GalaxyVoyagers has two generative capabilities with deliberately
+          opposite execution models, and both are driven by prompt engineering
+          rather than by passing raw user text to a model. Text generation runs
+          synchronously and streams results token-by-token, so the writer sees
+          prose appear immediately. Image generation is expensive, so it is
+          decoupled onto an asynchronous queue with retries. In both cases the
+          interesting work happens before the model call: the service assembles
+          a structured prompt from the surrounding worldbuilding data.
+        </p>
       </section>
 
       <section className="mt-12">
