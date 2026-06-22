@@ -54,7 +54,7 @@ test.describe("/async page", () => {
       "/async",
     );
     await expect(
-      page.getByRole("link", { name: /Asynchronous Systems Engineering/ }),
+      page.getByRole("link", { name: /Asynchronous Systems/ }),
     ).toHaveAttribute("href", "/async");
   });
 });
