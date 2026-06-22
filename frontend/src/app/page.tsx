@@ -154,7 +154,7 @@ export default function Home() {
                 <CardTitle>DSPM Classifier</CardTitle>
                 <CardDescription>
                   Sensitive-data classification at Kafka scale — Python microservice
-                  designed for the Varonis DSPM senior engineering role
+                  with a tiered regex → NER → LLM classification pipeline
                 </CardDescription>
               </CardHeader>
               <CardContent>
