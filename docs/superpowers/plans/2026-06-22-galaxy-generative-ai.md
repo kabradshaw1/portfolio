@@ -1,48 +1,41 @@
-import { ExternalLink } from "lucide-react";
+# Galaxy Generative-AI Explainer — Implementation Plan
 
-import { MermaidDiagram } from "@/components/MermaidDiagram";
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-const stack = [
-  "Next.js App Router",
-  "React",
-  "TypeScript",
-  "Apollo Client",
-  "Go",
-  "gqlgen",
-  "GraphQL subscriptions",
-  "gRPC + Protobuf",
-  "PostgreSQL",
-  "MongoDB",
-  "Redis",
-  "RabbitMQ",
-  "OpenAI",
-  "Image generation",
-  "Prompt engineering",
-  "Docker",
-  "GitHub Actions",
-  "Kubernetes",
-  "Cloudflare Tunnel",
-];
+**Goal:** Add a deep-technical "How the Generative AI Works" explainer (text-gen flow, image-gen flow, prompt-engineering emphasis) to the existing `/galaxy` portfolio page.
 
-const graphDomains = [
-  {
-    title: "Connected worldbuilding data",
-    desc: "Stories connect to scenes, characters, locations, organizations, conflicts, roles, ships, generated images, and discussion content.",
-  },
-  {
-    title: "One declarative UI query",
-    desc: "The frontend can ask for the nested shape a screen needs instead of fetching a story, then scenes, then related entities, then media through chained browser calls.",
-  },
-  {
-    title: "Gateway-owned composition",
-    desc: "The Go GraphQL gateway resolves fields across backend services and datastores while keeping the browser API explicit and stable.",
-  },
-  {
-    title: "Subscriptions fit live generation",
-    desc: "GraphQL subscriptions support streaming story suggestions and async creation flows without adding a second frontend API model.",
-  },
-];
+**Architecture:** Pure frontend documentation change to a single Next.js App Router page. Three new `<section>` blocks appended after "Architecture" and before "Engineering Focus", reusing the existing `MermaidDiagram` component, the card-grid pattern, and the established `<pre>` code-block style. Content is grounded verbatim in the real `~/repos/story` services.
 
+**Tech Stack:** Next.js (App Router), React, TypeScript, Tailwind, Mermaid (via existing `MermaidDiagram` client component).
+
+## Global Constraints
+
+- Single file modified: `frontend/src/app/galaxy/page.tsx`. No new components, no backend changes.
+- Place new sections **between** the existing `Architecture` section (ends ~line 149) and the `Engineering Focus` section (starts ~line 185).
+- Reuse existing patterns only:
+  - Diagrams: `<MermaidDiagram chart={`...`} />` (already imported; dark theme).
+  - Cards: `grid grid-cols-1 gap-3 sm:grid-cols-2` with `rounded-lg border border-foreground/10 p-4`.
+  - Code/prompt blocks: `<pre className="overflow-x-auto rounded-lg border border-border bg-muted/50 p-4 text-sm">`.
+  - Section wrappers: `<section className="mt-12">`, headings `text-2xl font-semibold`, body `mt-4 text-muted-foreground leading-relaxed`.
+- Content must stay accurate to the real services: text gen = **synchronous gRPC streaming** (no broker); image gen = **async via RabbitMQ, retry ×3 → DLQ**.
+- Verification per task: `npx tsc --noEmit` and `npm run lint` pass (CI-checks rule); page renders in dev server. Doc commits stay local (no push) until shipped.
+- Work in a git worktree created before execution (per worktree-before-execution rule).
+
+---
+
+### Task 1: Intro section + prompt-engineering takeaway data
+
+**Files:**
+- Modify: `frontend/src/app/galaxy/page.tsx` (add a `promptPrinciples` data array near the top alongside `stack`/`graphDomains`; insert intro `<section>` after Architecture).
+
+**Interfaces:**
+- Produces: module-level `const promptPrinciples: { title: string; desc: string }[]` consumed by Task 4's card grid.
+
+- [ ] **Step 1: Add the `promptPrinciples` data array**
+
+Add after the existing `graphDomains` array (~line 43):
+
+```tsx
 const promptPrinciples = [
   {
     title: "Context injection over raw passthrough",
@@ -61,113 +54,13 @@ const promptPrinciples = [
     desc: "Cheap, latency-sensitive text streams back token-by-token over gRPC. Expensive image jobs are queued through RabbitMQ with retries and a dead-letter queue.",
   },
 ];
+```
 
-export default function GalaxyPage() {
-  return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
-      <section>
-        <p className="text-sm font-medium text-primary">Deployed project</p>
-        <h1 className="mt-3 text-3xl font-bold">GalaxyVoyagers.com</h1>
-        <p className="mt-6 text-muted-foreground leading-relaxed">
-          GalaxyVoyagers is a collaborative sci-fi worldbuilding platform for
-          building stories, scenes, characters, organizations, locations, ships,
-          conflicts, and supporting media. It is a separate production
-          deployment that demonstrates how I design a full-stack application
-          around a connected domain instead of treating each screen as an
-          isolated CRUD form.
-        </p>
-        <p className="mt-4 text-muted-foreground leading-relaxed">
-          The live site uses a Next.js frontend backed by a Go GraphQL gateway.
-          Behind that gateway, Go services communicate over gRPC, store domain
-          data in PostgreSQL and MongoDB, use Redis for shared runtime state,
-          and send async work through RabbitMQ for AI-assisted story and image
-          generation flows.
-        </p>
-        <a
-          href="https://galaxyvoyagers.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          Open GalaxyVoyagers.com
-          <ExternalLink className="size-4" aria-hidden="true" />
-        </a>
-      </section>
+- [ ] **Step 2: Insert the intro section**
 
-      <section className="mt-12">
-        <h2 className="text-2xl font-semibold">Technology Stack</h2>
-        <p className="mt-4 text-muted-foreground leading-relaxed">
-          The project is intentionally polyglot at the system boundary but
-          conservative inside each service: TypeScript and Apollo Client in the
-          browser, Go and gqlgen at the API gateway, protobuf-defined gRPC
-          contracts between services, and proven datastores selected for the
-          access pattern they serve.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {stack.map((tech) => (
-            <span
-              key={tech}
-              className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
-            >
-              {tech}
-            </span>
-          ))}
-        </div>
-      </section>
+Add immediately after the closing `</section>` of the Architecture section (~line 149), before the "Why GraphQL" section:
 
-      <section className="mt-12">
-        <h2 className="text-2xl font-semibold">Architecture</h2>
-        <p className="mt-4 text-muted-foreground leading-relaxed">
-          The browser talks to one GraphQL entry point for queries, mutations,
-          and subscriptions. The gateway owns backend composition: it calls the
-          story, chat, auth, image, story-generation, and Stripe services over
-          gRPC, while async generation work moves through RabbitMQ and streams
-          results back to the UI.
-        </p>
-        <div className="mt-6">
-          <MermaidDiagram
-            chart={`flowchart LR
-  U[Browser]
-  NEXT[Next.js App Router<br/>Apollo Client]
-  GW[Go GraphQL Gateway<br/>gqlgen :4000]
-  STORY[story-service<br/>gRPC :50051]
-  CHAT[chat-service<br/>gRPC :50052]
-  STRIPE[stripe-service<br/>gRPC :50053]
-  STORYGEN[storygen-service<br/>gRPC :50054]
-  IMAGE[image-service<br/>gRPC :50055]
-  AUTH[authv2-service<br/>gRPC :50056]
-  PG[(PostgreSQL<br/>world + auth data)]
-  MONGO[(MongoDB<br/>chat/discussion data)]
-  REDIS[(Redis<br/>shared runtime state)]
-  MQ{{RabbitMQ<br/>async jobs}}
-  AI[OpenAI<br/>story + image models]
-  K8S[Kubernetes homelab<br/>Cloudflare Tunnel]
-  U --> NEXT
-  NEXT -->|GraphQL queries + mutations| GW
-  NEXT -->|GraphQL subscriptions| GW
-  K8S -. serves .-> NEXT
-  K8S -. routes API .-> GW
-  GW -->|gRPC| STORY
-  GW -->|gRPC| CHAT
-  GW -->|gRPC| AUTH
-  GW -->|gRPC| IMAGE
-  GW -->|gRPC| STORYGEN
-  GW -->|gRPC| STRIPE
-  STORY --> PG
-  AUTH --> PG
-  STRIPE --> PG
-  CHAT --> MONGO
-  STORY --> REDIS
-  AUTH --> REDIS
-  IMAGE --> REDIS
-  GW --> MQ
-  IMAGE --> MQ
-  STORYGEN --> AI
-  IMAGE --> AI`}
-          />
-        </div>
-      </section>
-
+```tsx
       <section className="mt-12">
         <h2 className="text-2xl font-semibold">How the Generative AI Works</h2>
         <p className="mt-4 text-muted-foreground leading-relaxed">
@@ -181,7 +74,37 @@ export default function GalaxyPage() {
           a structured prompt from the surrounding worldbuilding data.
         </p>
       </section>
+```
 
+- [ ] **Step 3: Type-check and lint**
+
+Run: `cd frontend && npx tsc --noEmit && npm run lint`
+Expected: PASS (no errors). The `promptPrinciples` array will be flagged as unused by lint until Task 4 — if lint errors on unused var, proceed to Task 4 in the same working session before committing, or add the array in Task 4 instead. To keep tasks independently committable, **defer committing until Task 4 consumes it** OR add `promptPrinciples` in Task 4. Chosen approach: add the array here but commit at end of Task 1 only if lint passes; Next.js/eslint default does not error on unused module consts, so this is expected to pass.
+
+- [ ] **Step 4: Commit**
+
+```bash
+cd /Users/kylebradshaw/repos/gen_ai_engineer
+git add frontend/src/app/galaxy/page.tsx
+git commit -m "feat(galaxy): add generative-AI intro section + prompt principles data"
+```
+
+---
+
+### Task 2: Text Generation section (flow + assembly diagrams + prompt snippet)
+
+**Files:**
+- Modify: `frontend/src/app/galaxy/page.tsx` (insert section after the intro section from Task 1).
+
+**Interfaces:**
+- Consumes: nothing new.
+- Produces: nothing consumed downstream.
+
+- [ ] **Step 1: Insert the Text Generation section**
+
+Add immediately after the intro section's closing `</section>`:
+
+```tsx
       <section className="mt-12">
         <h2 className="text-2xl font-semibold">
           Text Generation: Context-Injected Prompting
@@ -255,7 +178,42 @@ prompt += "The following organizations are involved in this scene: " + orgs
           established characters and places instead of inventing contradictions.
         </p>
       </section>
+```
 
+- [ ] **Step 2: Type-check and lint**
+
+Run: `cd frontend && npx tsc --noEmit && npm run lint`
+Expected: PASS.
+
+- [ ] **Step 3: Verify render**
+
+Run: `cd frontend && npm run dev` (if not already running), open `http://localhost:3000/galaxy`.
+Expected: Both new Mermaid diagrams render in dark theme; the prompt `<pre>` shows literal `\n` escapes as written and no JSX errors. Confirm `&apos;` renders as an apostrophe.
+
+- [ ] **Step 4: Commit**
+
+```bash
+cd /Users/kylebradshaw/repos/gen_ai_engineer
+git add frontend/src/app/galaxy/page.tsx
+git commit -m "feat(galaxy): add text-generation flow + prompt-assembly explainer"
+```
+
+---
+
+### Task 3: Image Generation section (flow + composer diagrams + YAML snippet)
+
+**Files:**
+- Modify: `frontend/src/app/galaxy/page.tsx` (insert section after the Text Generation section).
+
+**Interfaces:**
+- Consumes: nothing new.
+- Produces: nothing consumed downstream.
+
+- [ ] **Step 1: Insert the Image Generation section**
+
+Add immediately after the Text Generation section's closing `</section>`:
+
+```tsx
       <section className="mt-12">
         <h2 className="text-2xl font-semibold">
           Image Generation: Layered Style Composition
@@ -336,7 +294,41 @@ entities:
           generated image a consistent, art-directed look across the platform.
         </p>
       </section>
+```
 
+- [ ] **Step 2: Type-check and lint**
+
+Run: `cd frontend && npx tsc --noEmit && npm run lint`
+Expected: PASS.
+
+- [ ] **Step 3: Verify render**
+
+Open `http://localhost:3000/galaxy`.
+Expected: Both diagrams render; the YAML `<pre>` preserves indentation and quotes; `<code>` inline renders the `Subject:` example.
+
+- [ ] **Step 4: Commit**
+
+```bash
+cd /Users/kylebradshaw/repos/gen_ai_engineer
+git add frontend/src/app/galaxy/page.tsx
+git commit -m "feat(galaxy): add image-generation flow + style-composer explainer"
+```
+
+---
+
+### Task 4: Prompt Engineering Takeaways cards + final verification
+
+**Files:**
+- Modify: `frontend/src/app/galaxy/page.tsx` (insert card section after the Image Generation section; consumes `promptPrinciples` from Task 1).
+
+**Interfaces:**
+- Consumes: `promptPrinciples` (module const from Task 1).
+
+- [ ] **Step 1: Insert the takeaways section**
+
+Add immediately after the Image Generation section's closing `</section>`:
+
+```tsx
       <section className="mt-12">
         <h2 className="text-2xl font-semibold">Prompt Engineering Takeaways</h2>
         <p className="mt-4 text-muted-foreground leading-relaxed">
@@ -359,51 +351,53 @@ entities:
           ))}
         </div>
       </section>
+```
 
-      <section className="mt-12">
-        <h2 className="text-2xl font-semibold">
-          Why GraphQL Was The Right Boundary
-        </h2>
-        <p className="mt-4 text-muted-foreground leading-relaxed">
-          GalaxyVoyagers is not a flat resource catalog. A useful screen often
-          needs a nested view: a story, its ordered scenes, the characters and
-          locations in each scene, related organizations and conflicts,
-          generated images, and discussion context. GraphQL fits that shape
-          because the UI can request the exact graph it needs in one operation.
-        </p>
-        <p className="mt-4 text-muted-foreground leading-relaxed">
-          With a REST-only browser API, that same screen would tend to become a
-          chain of dependent requests: fetch the story, fetch scenes, fetch the
-          entities attached to each scene, fetch media, then fetch comments. The
-          GraphQL gateway moves that composition into the backend, where it can
-          resolve nested fields through service calls and datastore access
-          without forcing the browser to coordinate every step.
-        </p>
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {graphDomains.map((item) => (
-            <div
-              key={item.title}
-              className="rounded-lg border border-foreground/10 p-4"
-            >
-              <h3 className="text-sm font-semibold">{item.title}</h3>
-              <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                {item.desc}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
+- [ ] **Step 2: Add "Prompt engineering" to the stack chip list**
 
-      <section className="mt-12">
-        <h2 className="text-2xl font-semibold">Engineering Focus</h2>
-        <p className="mt-4 text-muted-foreground leading-relaxed">
-          The project highlights production-oriented backend design: a typed
-          GraphQL boundary, protobuf service contracts, separate persistence
-          models for relational worldbuilding data and document-style discussion
-          data, async job handling for expensive generation work, and deployment
-          through containerized services on Kubernetes.
-        </p>
-      </section>
-    </div>
-  );
-}
+In the `stack` array (~line 5-24), add `"Prompt engineering"` after `"Image generation"`:
+
+```tsx
+  "Image generation",
+  "Prompt engineering",
+```
+
+- [ ] **Step 3: Type-check and lint**
+
+Run: `cd frontend && npx tsc --noEmit && npm run lint`
+Expected: PASS, no unused-variable warnings (`promptPrinciples` now consumed).
+
+- [ ] **Step 4: Full-page render verification**
+
+Open `http://localhost:3000/galaxy`. Verify section order top-to-bottom:
+Deployed project → Technology Stack (now includes "Prompt engineering") →
+Architecture → **How the Generative AI Works → Text Generation → Image
+Generation → Prompt Engineering Takeaways** → Why GraphQL → Engineering Focus.
+Expected: all four new diagrams render in dark theme; both prompt blocks
+readable; cards laid out two-up on `sm+`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /Users/kylebradshaw/repos/gen_ai_engineer
+git add frontend/src/app/galaxy/page.tsx
+git commit -m "feat(galaxy): add prompt-engineering takeaways + stack chip"
+```
+
+---
+
+## Self-Review
+
+**Spec coverage:**
+- Section A (intro) → Task 1. ✓
+- Section B (text gen flow + assembly diagram + verbatim snippet + relevance-scoped callout) → Task 2. ✓
+- Section C (image gen flow + composer diagram + YAML snippet + configmap callout) → Task 3. ✓
+- Section D (4 takeaway cards) → Task 4. ✓
+- "Append after Architecture, before Engineering Focus" → Tasks insert between those sections. ✓
+- Reuse `MermaidDiagram` / card grid / `<pre>` patterns → all tasks use existing classes. ✓
+- Accuracy: text sync streaming (Task 2 diagram, no broker) / image async retry×3→DLQ (Task 3 diagram). ✓
+- Verification tsc+lint+render → every task. ✓
+
+**Placeholder scan:** No TBD/TODO; all code blocks are complete and literal.
+
+**Type consistency:** `promptPrinciples` defined in Task 1 (`{title, desc}[]`), consumed in Task 4 with `item.title` / `item.desc` matching the existing `graphDomains` card pattern. ✓
