@@ -257,6 +257,87 @@ prompt += "The following organizations are involved in this scene: " + orgs
 
       <section className="mt-12">
         <h2 className="text-2xl font-semibold">
+          Image Generation: Layered Style Composition
+        </h2>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          Image generation is slow and expensive, so it is decoupled from the
+          request path. The image service accepts the job over gRPC and enqueues
+          it on RabbitMQ. A consumer composes the final prompt, calls the image
+          model, uploads the PNG to object storage, records metadata in
+          PostgreSQL, and notifies the gateway with a signed URL through an HTTP
+          callback. Failed jobs are retried up to three times before moving to a
+          dead-letter queue.
+        </p>
+        <div className="mt-6">
+          <MermaidDiagram
+            chart={`flowchart LR
+  GW[Go GraphQL Gateway]
+  IMG[image-service<br/>ProcessImage gRPC]
+  MQ{{RabbitMQ<br/>image queue}}
+  W[image-consumer<br/>generation worker]
+  COMP[Style composer<br/>YAML templates]
+  AI[OpenAI gpt-image-1.5<br/>1024x1024]
+  OBJ[(Object storage<br/>signed URLs)]
+  PG[(PostgreSQL<br/>GenImageJob / GenFile)]
+  GW -->|gRPC| IMG
+  IMG -->|enqueue job| MQ
+  MQ -->|consume| W
+  W --> COMP
+  COMP -->|composed prompt| AI
+  AI -->|PNG bytes| W
+  W -->|upload| OBJ
+  W -->|metadata| PG
+  W -->|HTTP callback + signed URL| GW
+  MQ -. retry x3 then DLQ .-> MQ`}
+          />
+        </div>
+        <p className="mt-6 text-muted-foreground leading-relaxed">
+          The prompt is assembled by a style composer from a three-part template:
+          a global art-direction base, a per-entity-type overlay that reframes
+          the composition, and the user&apos;s subject text.
+        </p>
+        <div className="mt-4">
+          <MermaidDiagram
+            chart={`flowchart LR
+  BASE["base<br/>global art direction"]
+  OVL["overlay<br/>per entity type"]
+  SUBJ["Subject: user_prompt"]
+  OUT["{base}. {overlay}. Subject: {user_prompt}"]
+  BASE --> OUT
+  OVL --> OUT
+  SUBJ --> OUT`}
+          />
+        </div>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          The entire visual identity lives in a YAML configmap loaded at startup,
+          so the art direction can be tuned without a code change:
+        </p>
+        <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-muted/50 p-4 text-sm">
+{`# services/image/style/templates.yaml
+version: 1
+format: "{base}. {overlay}. Subject: {user_prompt}"
+base: |-
+  Anime sci-fi superhero aesthetic. Cel-shaded with crisp ink lines and
+  vibrant saturated palette. Dramatic rim lighting against deep space or
+  neon-lit backdrops. High detail, dynamic composition, painterly shading.
+entities:
+  characters:
+    overlay: "Hero portrait, three-quarter angle, expressive pose, costume detail emphasized."
+  ships:
+    overlay: "Exterior hero shot, 3/4 angle, sense of scale, engines glowing, motion-blurred star field."
+  scenes:
+    overlay: "Wide cinematic establishing shot, atmospheric perspective, characters small in frame."`}
+        </pre>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          A request to illustrate a character therefore composes to a single
+          prompt — the base style, the character overlay, then{" "}
+          <code>Subject: &lt;the user&apos;s description&gt;</code> — giving every
+          generated image a consistent, art-directed look across the platform.
+        </p>
+      </section>
+
+      <section className="mt-12">
+        <h2 className="text-2xl font-semibold">
           Why GraphQL Was The Right Boundary
         </h2>
         <p className="mt-4 text-muted-foreground leading-relaxed">
