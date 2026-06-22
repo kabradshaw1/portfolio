@@ -14,12 +14,11 @@ export default function Home() {
         {/* Name & Bio */}
         <h1 className="text-4xl font-bold">Kyle Bradshaw</h1>
         <p className="mt-6 text-lg text-muted-foreground leading-relaxed">
-          Software engineer focused on building production systems with modern
-          tooling. Since August 2022, I&apos;ve been working full-time on
-          personal projects and consulting, with a focus on Go, TypeScript, and
-          cloud-native infrastructure. This portfolio showcases three areas of
-          specialization — agentic AI systems, Go backend services, and
-          full-stack Java development.
+          Full-stack engineer — React, Go and Python microservices, and LLM/RAG
+          integration. Four years of experience, the last stretch spent
+          consulting and building production systems independently: designing
+          the APIs, shipping the frontends, and running the whole stack on
+          Kubernetes. Everything below is deployed and instrumented, not a demo.
         </p>
         <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
           Every service in this portfolio ships Prometheus metrics to a live{" "}
@@ -34,8 +33,8 @@ export default function Home() {
           .
         </p>
 
-        {/* Sections */}
-        <h2 className="mt-16 text-2xl font-semibold">Portfolio</h2>
+        {/* Featured Project */}
+        <h2 className="mt-16 text-2xl font-semibold">Featured Project</h2>
         <div className="mt-6 grid gap-4">
           <Link href="/galaxy" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
@@ -55,13 +54,20 @@ export default function Home() {
               </CardContent>
             </Card>
           </Link>
+        </div>
+
+        {/* Backend & Data Engineering */}
+        <h2 className="mt-16 text-2xl font-semibold">
+          Backend &amp; Data Engineering
+        </h2>
+        <div className="mt-6 grid gap-4">
           <Link href="/go" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
-                <CardTitle>Go Backend Developer</CardTitle>
+                <CardTitle>Go Ecommerce Platform</CardTitle>
                 <CardDescription>
-                  Ecommerce platform built with Go, PostgreSQL, Redis, and
-                  RabbitMQ
+                  Microservices ecommerce platform built with Go, PostgreSQL,
+                  Redis, and RabbitMQ
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -69,6 +75,23 @@ export default function Home() {
                   Microservices architecture with JWT authentication, product
                   catalog, cart, orders, and asynchronous worker pools —
                   deployed on Kubernetes.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/java" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>Full-Stack Java</CardTitle>
+                <CardDescription>
+                  Task Management System built with Spring Boot, GraphQL, and
+                  Kubernetes
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Microservices architecture with PostgreSQL, MongoDB, Redis,
+                  RabbitMQ, Google OAuth, and CI/CD automation.
                 </p>
               </CardContent>
             </Card>
@@ -96,7 +119,7 @@ export default function Home() {
           <Link href="/async" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
-                <CardTitle>Asynchronous Systems Engineering</CardTitle>
+                <CardTitle>Asynchronous Systems</CardTitle>
                 <CardDescription>
                   Go ecommerce messaging with Kafka event streams, RabbitMQ
                   sagas, DLQs, replay, and production observability
@@ -112,24 +135,38 @@ export default function Home() {
               </CardContent>
             </Card>
           </Link>
+        </div>
+
+        {/* AI Systems */}
+        <h2 className="mt-16 text-2xl font-semibold">AI Systems</h2>
+        <div className="mt-6 grid gap-4">
           <Link href="/ai" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
-                <CardTitle>AI Engineer</CardTitle>
+                <CardTitle>Document Q&amp;A Assistant</CardTitle>
                 <CardDescription>
-                  Document Q&A Assistant built with RAG, FastAPI, Qdrant, and
-                  Ollama
+                  A RAG document assistant plus a Kafka-scale sensitive-data
+                  classifier — retrieval-augmented generation and applied LLM
+                  classification
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground text-sm">
-                  A full-stack retrieval-augmented generation system
-                  demonstrating PDF ingestion, vector search, prompt
-                  engineering, and streaming LLM responses.
+                  A full-stack retrieval-augmented generation system (FastAPI,
+                  Qdrant, Ollama) for PDF Q&amp;A, plus a DSPM classifier that
+                  detects sensitive data at Kafka scale with a tiered regex
+                  &rarr; NER &rarr; LLM pipeline. Explore both from the AI page.
                 </p>
               </CardContent>
             </Card>
           </Link>
+        </div>
+
+        {/* Platform & Operations */}
+        <h2 className="mt-16 text-2xl font-semibold">
+          Platform &amp; Operations
+        </h2>
+        <div className="mt-6 grid gap-4">
           <Link href="/observability" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
@@ -144,25 +181,6 @@ export default function Home() {
                   Three-pillar stack with deploy annotations, Kubernetes event
                   exporter, gRPC client interceptors, saga-stalled alerts, and
                   Kafka-header trace propagation across the async boundary.
-                </p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/dspm" className="block">
-            <Card className="hover:ring-foreground/20 transition-all">
-              <CardHeader>
-                <CardTitle>DSPM Classifier</CardTitle>
-                <CardDescription>
-                  Sensitive-data classification at Kafka scale — Python microservice
-                  with a tiered regex → NER → LLM classification pipeline
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-sm">
-                  Tiered regex → NER → LLM pipeline, tenant-keyed Kafka
-                  partitioning, idempotency via processed_messages, backpressure
-                  via BoundedWorkPool, and a two-deployment K8s topology from one
-                  image. See the architecture walkthrough for the full design.
                 </p>
               </CardContent>
             </Card>
@@ -190,7 +208,7 @@ export default function Home() {
           <Link href="/aws" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
-                <CardTitle>Infrastructure & Deployment</CardTitle>
+                <CardTitle>Infrastructure &amp; Deployment</CardTitle>
                 <CardDescription>
                   Production Kubernetes on a home server, AWS-ready with
                   Terraform and EKS
@@ -221,23 +239,6 @@ export default function Home() {
                   contexts, Sealed Secrets for GitOps-friendly secret
                   management, UFW default-deny firewall, Tailscale-only SSH,
                   auditd, sysctl hardening, and a lynis baseline score of 77.
-                </p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/java" className="block">
-            <Card className="hover:ring-foreground/20 transition-all">
-              <CardHeader>
-                <CardTitle>Full Stack Java Developer</CardTitle>
-                <CardDescription>
-                  Task Management System built with Spring Boot, GraphQL, and
-                  Kubernetes
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-sm">
-                  Microservices architecture with PostgreSQL, MongoDB, Redis,
-                  RabbitMQ, Google OAuth, and CI/CD automation.
                 </p>
               </CardContent>
             </Card>
