@@ -1,4 +1,5 @@
 import { ExternalLink } from "lucide-react";
+import Link from "next/link";
 
 import { MermaidDiagram } from "@/components/MermaidDiagram";
 
@@ -20,8 +21,21 @@ const stack = [
   "Prompt engineering",
   "Docker",
   "GitHub Actions",
-  "Kubernetes",
-  "Cloudflare Tunnel",
+  "AWS",
+  "EKS",
+  "Karpenter",
+  "Graviton (ARM64)",
+  "Terraform",
+  "Aurora Serverless v2",
+  "DocumentDB",
+  "ElastiCache (Valkey)",
+  "Amazon MQ",
+  "ALB",
+  "Route 53",
+  "ACM",
+  "IRSA",
+  "External Secrets",
+  "ghcr.io",
 ];
 
 const graphDomains = [
@@ -62,12 +76,126 @@ const promptPrinciples = [
   },
 ];
 
+const datastoreMigration = [
+  {
+    from: "PostgreSQL (story, auth)",
+    to: "Aurora PostgreSQL Serverless v2",
+    note: "One cluster, two databases; autoscales from a low ACU floor.",
+  },
+  {
+    from: "MongoDB (chat)",
+    to: "Amazon DocumentDB",
+    note: "CRUD-only chat usage; TLS required on the connection.",
+  },
+  {
+    from: "Redis",
+    to: "ElastiCache Serverless (Valkey)",
+    note: "Pay-per-use, scales to a low idle floor.",
+  },
+  {
+    from: "RabbitMQ",
+    to: "Amazon MQ for RabbitMQ",
+    note: "Single-instance broker for cost; cluster deployment for HA later.",
+  },
+  {
+    from: "Static AWS keys in pods",
+    to: "IRSA (scoped IAM roles)",
+    note: "S3 image access without long-lived credentials.",
+  },
+  {
+    from: "sealed-secrets",
+    to: "Secrets Manager + External Secrets Operator",
+    note: "Synced into native Kubernetes Secrets via IRSA.",
+  },
+  {
+    from: "nginx ingress",
+    to: "ALB + ACM + external-dns",
+    note: "Route 53 record for api.galaxyvoyagers.com.",
+  },
+];
+
+const phases = [
+  {
+    name: "Phase 1 — Foundation",
+    status: "In progress",
+    desc: "Remote state, VPC, EKS + Graviton baseline node group, Karpenter, and core cluster add-ons (LB Controller, external-dns, External Secrets Operator, metrics-server).",
+  },
+  {
+    name: "Phase 2 — Data layer",
+    status: "Upcoming",
+    desc: "Aurora, DocumentDB, ElastiCache, and Amazon MQ; Secrets Manager entries synced into the cluster by External Secrets.",
+  },
+  {
+    name: "Phase 3 — App layer",
+    status: "Upcoming",
+    desc: "IRSA roles, an EKS kustomize overlay pointing services at the managed datastores, and the ALB Ingress with ACM + external-dns.",
+  },
+  {
+    name: "Phase 4 — Cutover",
+    status: "Upcoming",
+    desc: "Data migration, flip the api.galaxyvoyagers.com Route 53 record to the ALB, verify, then decommission the homelab stack.",
+  },
+];
+
+const awsTargetDiagram = `flowchart TD
+  VERCEL[Next.js on Vercel<br/>galaxyvoyagers.com]
+  R53[Route 53 + ACM<br/>api.galaxyvoyagers.com]
+  ALB[AWS ALB<br/>Load Balancer Controller]
+  VERCEL -->|GraphQL API| R53
+  R53 --> ALB
+
+  subgraph EKS["EKS — Graviton baseline + Karpenter spot"]
+    GW[gateway<br/>gqlgen :4000]
+    STORY[story<br/>gRPC :50051]
+    CHAT[chat<br/>gRPC :50052]
+    STRIPE[stripe<br/>gRPC :50053 · webhook :4003]
+    STORYGEN[storygen<br/>gRPC :50054]
+    IMAGE[image<br/>gRPC :50055]
+    AUTH[authv2<br/>gRPC :50056]
+    ESO[External Secrets Operator]
+  end
+
+  ALB -->|/graphql| GW
+  ALB -->|/webhook| STRIPE
+  GW -->|gRPC| STORY
+  GW -->|gRPC| CHAT
+  GW -->|gRPC| STRIPE
+  GW -->|gRPC| STORYGEN
+  GW -->|gRPC| IMAGE
+  GW -->|gRPC| AUTH
+
+  subgraph Managed["AWS Managed Data"]
+    AURORA[(Aurora PostgreSQL<br/>Serverless v2)]
+    DOCDB[(Amazon DocumentDB)]
+    EC[(ElastiCache<br/>Valkey)]
+    MQ{{Amazon MQ<br/>RabbitMQ}}
+  end
+
+  STORY --> AURORA
+  AUTH --> AURORA
+  CHAT --> DOCDB
+  STORY --> EC
+  AUTH --> EC
+  IMAGE --> EC
+  GW --> MQ
+  IMAGE --> MQ
+
+  SM[Secrets Manager] --> ESO
+  ESO -. syncs secrets .-> GW
+  IMAGE -->|IRSA| S3[(S3 images bucket)]
+  GHCR[ghcr.io] -. pulls images .-> EKS
+  STORYGEN --> OPENAI[OpenAI]
+  IMAGE --> OPENAI`;
+
 export default function GalaxyPage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
       <section>
         <p className="text-sm font-medium text-primary">Deployed project</p>
         <h1 className="mt-3 text-3xl font-bold">GalaxyVoyagers.com</h1>
+        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-foreground/15 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
+          Migrating to AWS · Phase 1 of 4
+        </div>
         <p className="mt-6 text-muted-foreground leading-relaxed">
           GalaxyVoyagers is a collaborative sci-fi worldbuilding platform for
           building stories, scenes, characters, organizations, locations, ships,
@@ -82,6 +210,11 @@ export default function GalaxyPage() {
           data in PostgreSQL and MongoDB, use Redis for shared runtime state,
           and send async work through RabbitMQ for AI-assisted story and image
           generation flows.
+        </p>
+        <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
+          The site is served today from a self-hosted k3s homelab and is
+          actively migrating to a production AWS deployment — the target
+          architecture is documented below.
         </p>
         <a
           href="https://galaxyvoyagers.com"
@@ -395,13 +528,113 @@ entities:
       </section>
 
       <section className="mt-12">
+        <h2 className="text-2xl font-semibold">Production AWS Migration</h2>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          The migration moves GalaxyVoyagers from a self-hosted homelab onto a
+          managed, autoscaling AWS deployment without rewriting application
+          services. Managed EKS runs the existing manifests; Karpenter
+          provisions spot capacity over a small Graviton (ARM64) on-demand
+          baseline, consolidating and scaling to zero extra nodes when idle.
+          ARM instances run the Go services at roughly 20% lower cost than x86.
+        </p>
+        <div className="mt-6">
+          <MermaidDiagram chart={awsTargetDiagram} />
+        </div>
+
+        <h3 className="mt-8 text-lg font-medium">Self-hosted → AWS managed</h3>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-sm text-muted-foreground">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="pb-2 pr-4 font-medium text-foreground">
+                  Today (homelab)
+                </th>
+                <th className="pb-2 pr-4 font-medium text-foreground">
+                  AWS managed target
+                </th>
+                <th className="pb-2 font-medium text-foreground">Notes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {datastoreMigration.map((row) => (
+                <tr key={row.from}>
+                  <td className="py-2 pr-4">{row.from}</td>
+                  <td className="py-2 pr-4 text-foreground">{row.to}</td>
+                  <td className="py-2">{row.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <h3 className="mt-8 text-lg font-medium">Migration phases</h3>
+        <div className="mt-4 space-y-3">
+          {phases.map((phase) => (
+            <div
+              key={phase.name}
+              className="rounded-lg border border-foreground/10 p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="text-sm font-semibold text-foreground">
+                  {phase.name}
+                </h4>
+                <span
+                  className={
+                    phase.status === "In progress"
+                      ? "rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+                      : "rounded-full bg-foreground/5 px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
+                  }
+                >
+                  {phase.status}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                {phase.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-6 text-sm text-muted-foreground leading-relaxed">
+          For a leaner, ephemeral take on the same AWS tools — spin up the
+          portfolio&apos;s own services for a demo and tear them down after —
+          see the{" "}
+          <Link href="/aws" className="text-primary hover:underline">
+            portfolio AWS deployment
+          </Link>
+          .
+        </p>
+      </section>
+
+      <section className="mt-12">
+        <div className="rounded-xl border border-foreground/10 bg-card p-6">
+          <h2 className="text-lg font-semibold">Observability</h2>
+          <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
+            GalaxyVoyagers ships the same Prometheus / Loki / Grafana
+            observability stack used across this portfolio — Prometheus scrape
+            annotations on pods, Loki log queries, and Grafana dashboards for the
+            story services. The approach is documented in detail in the{" "}
+            <Link
+              href="/observability"
+              className="text-primary hover:underline"
+            >
+              Observability section
+            </Link>
+            .
+          </p>
+        </div>
+      </section>
+
+      <section className="mt-12">
         <h2 className="text-2xl font-semibold">Engineering Focus</h2>
         <p className="mt-4 text-muted-foreground leading-relaxed">
-          The project highlights production-oriented backend design: a typed
-          GraphQL boundary, protobuf service contracts, separate persistence
-          models for relational worldbuilding data and document-style discussion
-          data, async job handling for expensive generation work, and deployment
-          through containerized services on Kubernetes.
+          The project highlights production-oriented backend design and
+          infrastructure: a typed GraphQL boundary, protobuf service contracts,
+          separate persistence models for relational worldbuilding data and
+          document-style discussion data, async job handling for expensive
+          generation work, and a Terraform-defined migration onto autoscaling
+          AWS managed services (EKS with Karpenter and Graviton, Aurora
+          Serverless v2, DocumentDB, IRSA, and External Secrets).
         </p>
       </section>
     </div>
