@@ -17,6 +17,7 @@ const stack = [
   "RabbitMQ",
   "OpenAI",
   "Image generation",
+  "Prompt engineering",
   "Docker",
   "GitHub Actions",
   "Kubernetes",
@@ -334,6 +335,29 @@ entities:
           <code>Subject: &lt;the user&apos;s description&gt;</code> — giving every
           generated image a consistent, art-directed look across the platform.
         </p>
+      </section>
+
+      <section className="mt-12">
+        <h2 className="text-2xl font-semibold">Prompt Engineering Takeaways</h2>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          Across both generation paths, the same prompt-engineering principles
+          recur: ground the model in real domain data, keep that data relevant
+          and cheap to fetch, compose prompts in layers, and match the execution
+          model to the cost of the work.
+        </p>
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {promptPrinciples.map((item) => (
+            <div
+              key={item.title}
+              className="rounded-lg border border-foreground/10 p-4"
+            >
+              <h3 className="text-sm font-semibold">{item.title}</h3>
+              <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                {item.desc}
+              </p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="mt-12">
