@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { MermaidDiagram } from "@/components/MermaidDiagram";
 
 const currentProductionDiagram = `flowchart TD
@@ -93,13 +95,29 @@ export default function AWSPage() {
       {/* Intro */}
       <section className="mt-8">
         <p className="text-muted-foreground leading-relaxed">
-          Every service in this portfolio runs in Kubernetes — today on a home
-          server behind Cloudflare Tunnel, and optionally on AWS with EKS and
-          managed services. The home server costs nothing to run. The AWS
-          deployment spins up in 15 minutes with a single script and tears down
-          after to keep costs near zero. Same application code, different
+          This page covers this portfolio&apos;s own services
+          (<code>ai-services</code>, <code>java-tasks</code>,{" "}
+          <code>go-ecommerce</code>) and an intentionally ephemeral,
+          cost-first approach to AWS. Every service runs in Kubernetes — today
+          on a home server behind Cloudflare Tunnel, and optionally on AWS with
+          EKS and managed services. The home server costs nothing to run. The
+          AWS deployment spins up in 15 minutes with a single script and tears
+          down after to keep costs near zero. Same application code, different
           infrastructure — swapped via Kustomize overlays.
         </p>
+      </section>
+
+      {/* Contrast cross-link */}
+      <section className="mt-6">
+        <div className="rounded-xl border border-foreground/10 bg-card p-5 text-sm text-muted-foreground leading-relaxed">
+          This is the lean, ephemeral approach. For a production, always-on AWS
+          migration — Karpenter spot autoscaling, Graviton, Aurora Serverless
+          v2, IRSA, and External Secrets — see the{" "}
+          <Link href="/galaxy" className="text-primary hover:underline">
+            GalaxyVoyagers project
+          </Link>
+          .
+        </div>
       </section>
 
       {/* Current Production */}

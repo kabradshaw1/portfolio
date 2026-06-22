@@ -32,10 +32,21 @@ Two independent deliverables → two tasks. Both `/galaxy` and `/aws` routes alr
 
 ---
 
-### Task 1: Rewrite the `/galaxy` page
+### Task 1: Integrate AWS content into the `/galaxy` page
+
+> **Correction (2026-06-22):** This task was first written as a full-file
+> rewrite against a stale main working tree. The `qa` branch already has a
+> generative-AI explainer on `/galaxy` (PR #381). Task 1 is therefore an
+> **integration on top of the `qa` page**, not a rewrite: preserve all existing
+> sections (incl. the four gen-AI sections and the homelab Architecture
+> diagram), and **insert the Production AWS Migration + Observability sections
+> after "Why GraphQL Was The Right Boundary" and before "Engineering Focus".**
+> The full-file code block below is retained as the source of the exact AWS
+> section markup, status pill, tech chips, and Mermaid diagram to graft in — do
+> NOT use it to delete the gen-AI sections.
 
 **Files:**
-- Modify (full rewrite): `frontend/src/app/galaxy/page.tsx`
+- Modify (surgical integration on the `qa` version): `frontend/src/app/galaxy/page.tsx`
 - Test: `frontend/e2e/mocked/galaxy-portfolio.spec.ts`
 
 **Interfaces:**

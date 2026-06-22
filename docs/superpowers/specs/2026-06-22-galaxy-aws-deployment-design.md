@@ -64,37 +64,48 @@ The migration is **in progress** — apps still serve from the homelab. The
 
 ## Design
 
-### Page: `/galaxy` rewrite (`frontend/src/app/galaxy/page.tsx`)
+> **Implementation correction (2026-06-22):** The `qa` branch already carries a
+> generative-AI explainer on `/galaxy` (merged via PR #381): four sections —
+> *How the Generative AI Works*, *Text Generation: Context-Injected Prompting*,
+> *Image Generation: Layered Style Composition*, and *Prompt Engineering
+> Takeaways* — with Go/YAML code samples and flow diagrams. This content was NOT
+> present in the stale main working tree this spec was first drafted against. The
+> `/galaxy` work is therefore an **integration on top of the `qa` page**, not a
+> full rewrite: every existing section is preserved, the existing homelab
+> Architecture diagram is kept (it honestly shows the current-state topology),
+> and the AWS sections are **inserted before Engineering Focus**.
 
-Section order, top → bottom:
+### Page: `/galaxy` integration (`frontend/src/app/galaxy/page.tsx`)
 
-1. **Hero** — keep the "Deployed project" tag, title, the two intro paragraphs
-   (lightly trimmed), and the live "Open GalaxyVoyagers.com" button. Add the
-   status pill (`Migrating to AWS · Phase 1 of 4`) and the one-sentence homelab
-   → AWS framing.
+Base on the current `qa` version. Surgical changes only:
 
-2. **Technology Stack** — keep app/runtime chips (Next.js, React, TypeScript,
-   Apollo Client, Go, gqlgen, GraphQL subscriptions, gRPC + Protobuf,
-   PostgreSQL, MongoDB, Redis, RabbitMQ, OpenAI, image generation, Docker,
-   GitHub Actions). Replace deployment chips with the AWS target: **AWS, EKS,
-   Karpenter, Graviton (ARM64), Terraform, Aurora Serverless v2, DocumentDB,
-   ElastiCache (Valkey), Amazon MQ, ALB, Route 53, ACM, IRSA, External Secrets,
-   ghcr.io.** Remove "Cloudflare Tunnel" and the bare "Kubernetes" chip
-   (superseded by EKS).
+1. **Hero** — keep the "Deployed project" tag, title, the two intro paragraphs,
+   and the live "Open GalaxyVoyagers.com" button. Add the status pill
+   (`Migrating to AWS · Phase 1 of 4`) and the one-sentence homelab → AWS
+   framing.
 
-3. **Architecture** — replace the homelab Mermaid diagram with a single
-   **AWS-target** diagram:
-   - Vercel frontend → Route 53 / ACM → ALB (AWS Load Balancer Controller)
-   - ALB → EKS: GraphQL `gateway` + gRPC services (`story`, `chat`, `image`,
-     `storygen`, `authv2`, `stripe`)
-   - EKS compute: Graviton baseline managed node group + Karpenter spot
-   - Datastores: Aurora PostgreSQL Serverless v2, Amazon DocumentDB, ElastiCache
-     Valkey, Amazon MQ
-   - IRSA → S3 images bucket; Secrets Manager + External Secrets Operator;
-     images pulled from ghcr.io
-   - Path routing preserved: `/graphql` → gateway:4000, `/webhook` → stripe:4003
+2. **Technology Stack** — keep app/runtime chips (incl. "Prompt engineering").
+   Add the AWS-target chips: **AWS, EKS, Karpenter, Graviton (ARM64), Terraform,
+   Aurora Serverless v2, DocumentDB, ElastiCache (Valkey), Amazon MQ, ALB,
+   Route 53, ACM, IRSA, External Secrets, ghcr.io.** Remove "Cloudflare Tunnel"
+   and the bare "Kubernetes" chip (superseded by EKS).
 
-4. **Production AWS Migration** *(new centerpiece)*:
+3. **Architecture** — **keep the existing homelab Mermaid diagram unchanged**
+   (current-state logical/deployment view; reinforces the current→target honesty
+   framing). The AWS-target diagram lives in the new Production AWS Migration
+   section, not here.
+
+4. **Preserve unchanged** — *How the Generative AI Works*, *Text Generation:
+   Context-Injected Prompting*, *Image Generation: Layered Style Composition*,
+   *Prompt Engineering Takeaways*, and *Why GraphQL Was The Right Boundary* are
+   left exactly as they are on `qa`.
+
+5. **Production AWS Migration** *(new section, inserted after "Why GraphQL Was
+   The Right Boundary" and before "Engineering Focus")*, including the
+   AWS-target Mermaid diagram (Vercel → Route 53/ACM → ALB → EKS with Graviton
+   baseline + Karpenter spot; Aurora SLv2, DocumentDB, ElastiCache Valkey,
+   Amazon MQ; IRSA → S3; Secrets Manager + ESO; ghcr.io; `/graphql`→gateway:4000,
+   `/webhook`→stripe:4003):
    - **Why this shape** — managed EKS preserves the existing kustomize/gRPC
      topology; Karpenter on spot over a small Graviton on-demand baseline for
      burst-ready, cost-conscious scaling; ~20% ARM cost savings.
@@ -113,13 +124,12 @@ Section order, top → bottom:
    - **Cross-link** to `/aws`: *"For a leaner, ephemeral take on the same AWS
      tools, see the portfolio's spin-up/tear-down deployment."*
 
-5. **Observability callout** — short bordered box linking to `/observability`.
-   Wording kept to what is actually deployed (see Verify-items): *"GalaxyVoyagers
-   exposes the same Prometheus-based metrics approach documented in the
-   Observability section."* Upgrade wording toward full parity only if confirmed
-   true at implementation time.
-
-6. **Why GraphQL Was The Right Boundary** — keep as-is.
+6. **Observability callout** *(new section, immediately after Production AWS
+   Migration)* — short bordered box linking to `/observability`. Confirmed
+   deployed in `~/repos/story` (Prometheus scrape annotations, Loki queries in
+   `docs/observability/loki-queries.md`, Grafana dashboards in
+   `k8s/story/observability/dashboards/`), so the wording names the
+   **Prometheus / Loki / Grafana** stack.
 
 7. **Engineering Focus** — update the closing paragraph to add the production
    AWS migration and Terraform IaC as highlighted competencies.
@@ -162,14 +172,15 @@ diagrams, the cost model. No Terraform or k8s changes.
 - Run frontend CI gates before committing (`tsc` + eslint/lint).
 - Confirm Mermaid diagrams render.
 
-## Verify-items (resolve during implementation)
+## Verify-items (resolved)
 
-- **Observability parity** — inspect `~/repos/story/k8s/story/observability` and
-  `~/repos/story/docs/observability` to confirm exactly what is deployed
-  (Prometheus scrape annotations + OTel, vs. full Prometheus/Loki/Jaeger/Grafana).
-  Keep the `/galaxy` callout wording to what is true; upgrade only if confirmed.
-- **Service list** — confirm the gRPC service set and ports against the current
-  `~/repos/story/k8s/story` manifests before finalizing the architecture diagram.
+- **Observability parity** — confirmed in `~/repos/story`: Prometheus scrape
+  annotations on deployments, Loki queries (`docs/observability/loki-queries.md`),
+  and Grafana dashboards (`k8s/story/observability/dashboards/`). Callout names
+  the **Prometheus / Loki / Grafana** stack.
+- **Service list** — confirmed against `~/repos/story/k8s/story`: `story` :50051,
+  `chat` :50052, `stripe` :50053, `storygen` :50054, `image` :50055,
+  `authv2` :50056; gateway :4000; stripe webhook :4003.
 
 ## Out of scope
 
