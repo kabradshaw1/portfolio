@@ -183,6 +183,80 @@ export default function GalaxyPage() {
 
       <section className="mt-12">
         <h2 className="text-2xl font-semibold">
+          Text Generation: Context-Injected Prompting
+        </h2>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          When a writer asks for a scene description, the request reaches the
+          storygen service over gRPC. Before calling the model, storygen pulls
+          the entities related to that scene — characters, locations, conflicts,
+          organizations, and ship casualties — from a Redis cache, falling back
+          to PostgreSQL on a miss. It folds them into a single context-injected
+          prompt, then streams the model&apos;s output back token-by-token over a
+          gRPC server stream.
+        </p>
+        <div className="mt-6">
+          <MermaidDiagram
+            chart={`flowchart LR
+  U[Browser]
+  GW[Go GraphQL Gateway]
+  SG[storygen-service<br/>gRPC :50054]
+  CACHE[(Redis cache<br/>10-min TTL)]
+  PG[(PostgreSQL<br/>world data)]
+  AI[OpenAI /responses<br/>streaming SSE]
+  U -->|request scene text| GW
+  GW -->|gRPC StreamScene| SG
+  SG -->|fetch related entities| CACHE
+  CACHE -. cache miss .-> PG
+  PG -. hydrate .-> CACHE
+  SG -->|context-injected prompt| AI
+  AI -->|output_text.delta chunks| SG
+  SG -->|gRPC stream| GW
+  GW -->|tokens stream to UI| U`}
+          />
+        </div>
+        <p className="mt-6 text-muted-foreground leading-relaxed">
+          The prompt itself is built in layers. A fixed task instruction comes
+          first, then the writer&apos;s seed text, then a context block populated
+          with the related entities:
+        </p>
+        <div className="mt-4">
+          <MermaidDiagram
+            chart={`flowchart TB
+  A["1 · Task instruction<br/>I need a description of this scene as an essay"]
+  B["2 · Writer's seed text"]
+  C["3 · For context: injected entities"]
+  C1[Characters — filtered to in-scene organizations]
+  C2[Locations · Conflicts · Organizations · Casualties]
+  OUT[Assembled prompt → OpenAI /responses]
+  A --> OUT
+  B --> OUT
+  C --> OUT
+  C1 --> C
+  C2 --> C`}
+          />
+        </div>
+        <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-muted/50 p-4 text-sm">
+{`// storygen assembles the scene prompt by injecting related entities (Go)
+prompt := "I need a description of this scene in the form of an essay.\\n"
+prompt += req.Text                          // the writer's seed text
+prompt += "\\nFor context:\\n"
+prompt += "The following characters are involved in this scene: " + characters
+prompt += "The scene takes place at the following locations: "    + locations
+prompt += "This scene is associated with the following conflicts: " + conflicts
+prompt += "The following organizations are involved in this scene: " + orgs
+
+// characters are filtered to ONLY the organizations involved in this scene,
+// and every entity is fetched cache-first (Redis, 10-min TTL) -> Postgres.`}
+        </pre>
+        <p className="mt-4 text-muted-foreground leading-relaxed">
+          The result is a prompt grounded in the specific corner of the universe
+          the writer is editing, which keeps generated prose consistent with
+          established characters and places instead of inventing contradictions.
+        </p>
+      </section>
+
+      <section className="mt-12">
+        <h2 className="text-2xl font-semibold">
           Why GraphQL Was The Right Boundary
         </h2>
         <p className="mt-4 text-muted-foreground leading-relaxed">
