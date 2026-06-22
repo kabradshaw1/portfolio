@@ -9,7 +9,7 @@ import {
   architectureDiagram,
   cliOutputExample,
   failurePolicy,
-  interviewBullets,
+  engineeringHighlights,
   k8sTopologyDiagram,
   metrics,
   pipelineDiagram,
@@ -32,7 +32,7 @@ export default function DspmPage() {
       {/* 3.1 Hero */}
       <section className="mt-8">
         <p className="text-sm font-medium uppercase text-muted-foreground">
-          DSPM classifier · senior python / varonis dac
+          DSPM classifier · async python · kafka · kubernetes
         </p>
         <h1 className="mt-3 text-4xl font-bold">
           Sensitive-data classification at Kafka scale
@@ -46,10 +46,10 @@ export default function DspmPage() {
           writes scale independently.
         </p>
         <p className="mt-4 max-w-3xl leading-relaxed text-muted-foreground">
-          The service is designed to exercise the Varonis DSPM role&apos;s
-          mandatory skills: async Python, Kafka at scale, Kubernetes
-          microservices, AWS-compatible storage, and Gen-AI integration. The
-          domain mirrors Varonis&apos;s DSPM product surface.
+          The service exercises a demanding production skill set: async Python,
+          Kafka at scale, Kubernetes microservices, AWS-compatible storage, and
+          Gen-AI integration. The domain mirrors a real DSPM (data security
+          posture management) product surface.
         </p>
         <div className="mt-6 flex flex-wrap gap-2">
           {planStatuses.map((p) => (
@@ -227,11 +227,11 @@ export default function DspmPage() {
         </div>
       </section>
 
-      {/* 3.7 Interview talking points */}
+      {/* 3.7 Engineering highlights */}
       <section className="mt-12">
-        <h2 className="text-2xl font-semibold">Interview talking points</h2>
+        <h2 className="text-2xl font-semibold">Engineering highlights</h2>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {interviewBullets.map((bullet) => (
+          {engineeringHighlights.map((bullet) => (
             <div
               key={bullet.tag}
               className="rounded-lg border border-foreground/10 p-4"

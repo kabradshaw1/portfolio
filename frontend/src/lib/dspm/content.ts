@@ -284,7 +284,7 @@ finding   tenant=acme-corp  event=evt_01HZABCXYZ  sensitivity=HIGH
           pipeline_version=1  llm_failed=false
 persisted to findings(tenant_id=acme-corp, event_id=evt_01HZABCXYZ)`;
 
-export const interviewBullets: readonly { tag: string; body: string }[] = [
+export const engineeringHighlights: readonly { tag: string; body: string }[] = [
   {
     tag: "Async + perf",
     body: "Backpressure via BoundedWorkPool (semaphore + partition pause/resume), tiered classifier so the cheap path stays cheap, asyncio throughout.",
