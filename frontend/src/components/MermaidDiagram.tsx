@@ -30,6 +30,12 @@ export function MermaidDiagram({ chart }: { chart: string }) {
           USE_PROFILES: { svg: true, svgFilters: true, html: true },
           ADD_TAGS: ["foreignObject"],
           ADD_ATTR: ["xmlns"],
+          // Mermaid renders flowchart node labels as HTML (<div><span>) inside
+          // <foreignObject>. DOMPurify >=3.4.9 stopped treating foreignObject as
+          // an HTML integration point by default, which strips that label text.
+          // The chart is a static, source-controlled string (no user input), so
+          // re-allowing the SVG->HTML transition here is safe.
+          HTML_INTEGRATION_POINTS: { foreignobject: true, "annotation-xml": true },
         });
         ref.current.innerHTML = clean;
       }

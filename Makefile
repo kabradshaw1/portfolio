@@ -16,6 +16,12 @@ preflight-python:
 	PYTHONPATH=services pytest services/chat/tests/ -v
 	@echo "\n=== Python: pytest (debug) ==="
 	PYTHONPATH=services pytest services/debug/tests/ -v
+	@echo "\n=== Python: pytest (dspm-classifier unit) ==="
+	@if [ -x services/dspm-classifier/.venv/bin/pytest ]; then \
+		cd services/dspm-classifier && .venv/bin/pytest tests/unit/ -v; \
+	else \
+		echo "skipping dspm-classifier: .venv missing (run 'python3.12 -m venv services/dspm-classifier/.venv && services/dspm-classifier/.venv/bin/pip install -r services/dspm-classifier/requirements.txt')"; \
+	fi
 
 # --- Frontend ---
 preflight-frontend:
@@ -207,7 +213,7 @@ preflight-compose-config:
 # --- Security scans ---
 preflight-security:
 	@echo "\n=== Security: bandit ==="
-	bandit -r services/ -ll
+	bandit -r services/ -ll -x services/dspm-classifier/.venv
 	@echo "\n=== Security: CORS guardrail ==="
 	@if grep -r 'allow_origins=\["\*"\]' services/; then \
 		echo "ERROR: Wildcard CORS found"; exit 1; \

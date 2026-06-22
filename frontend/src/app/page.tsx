@@ -148,6 +148,25 @@ export default function Home() {
               </CardContent>
             </Card>
           </Link>
+          <Link href="/dspm" className="block">
+            <Card className="hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <CardTitle>DSPM Classifier</CardTitle>
+                <CardDescription>
+                  Sensitive-data classification at Kafka scale — Python microservice
+                  with a tiered regex → NER → LLM classification pipeline
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Tiered regex → NER → LLM pipeline, tenant-keyed Kafka
+                  partitioning, idempotency via processed_messages, backpressure
+                  via BoundedWorkPool, and a two-deployment K8s topology from one
+                  image. See the architecture walkthrough for the full design.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
           <Link href="/cicd" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
