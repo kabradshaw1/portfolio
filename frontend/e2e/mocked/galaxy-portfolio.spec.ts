@@ -32,5 +32,17 @@ test.describe("GalaxyVoyagers portfolio case study", () => {
     await expect(
       page.getByText(/one operation/i)
     ).toBeVisible();
+    await expect(
+      page.getByText(/Migrating to AWS · Phase 1 of 4/i)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Production AWS Migration" })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Observability section/i })
+    ).toHaveAttribute("href", "/observability");
+    await expect(
+      page.getByRole("link", { name: /portfolio AWS deployment/i })
+    ).toHaveAttribute("href", "/aws");
   });
 });

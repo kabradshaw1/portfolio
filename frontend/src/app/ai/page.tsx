@@ -192,6 +192,22 @@ export default function AISection() {
             Try the Debug Demo &rarr;
           </Link>
         </section>
+
+        {/* Related Work */}
+        <section className="mt-16">
+          <h2 className="text-2xl font-semibold">Related Work</h2>
+          <p className="mt-4 text-muted-foreground leading-relaxed">
+            For AI applied to data security, see the DSPM Classifier — a
+            Kafka-scale service that detects sensitive data with a tiered
+            regex &rarr; NER &rarr; LLM classification pipeline.
+          </p>
+          <Link
+            href="/dspm"
+            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            View the DSPM Classifier &rarr;
+          </Link>
+        </section>
       </div>
     </div>
   );
