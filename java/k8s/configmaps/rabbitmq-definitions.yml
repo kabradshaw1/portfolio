@@ -7,7 +7,10 @@ data:
   # Template rendered at pod start by the render-definitions initContainer,
   # which substitutes ${STORY_RABBIT_PASSWORD} from java-secrets. The story
   # user password is therefore never committed. RabbitMQ reloads definitions
-  # on every boot, so the story user/vhost self-heal even on a fresh volume.
+  # on every boot, so the story user self-heals even on a fresh volume.
+  # NOTE: Story connects as user `story` on the default vhost `/` (per
+  # story-secrets rabbit-url: amqp://story:***@rabbitmq.java-tasks.svc:5672/).
+  # Permission MUST be granted on `/`, not a separate `story` vhost.
   definitions.json.tmpl: |
     {
       "users": [
@@ -16,13 +19,12 @@ data:
       ],
       "vhosts": [
         {"name": "/"},
-        {"name": "qa"},
-        {"name": "story"}
+        {"name": "qa"}
       ],
       "permissions": [
         {"user": "guest", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*"},
         {"user": "guest", "vhost": "qa", "configure": ".*", "write": ".*", "read": ".*"},
-        {"user": "story", "vhost": "story", "configure": ".*", "write": ".*", "read": ".*"}
+        {"user": "story", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*"}
       ]
     }
   rabbitmq.conf: |
