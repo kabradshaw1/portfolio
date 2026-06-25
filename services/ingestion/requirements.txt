@@ -1,7 +1,7 @@
 fastapi==0.135.3
 uvicorn[standard]==0.44.0
-python-multipart==0.0.27
-pypdf==6.10.2
+python-multipart==0.0.31
+pypdf==6.13.3
 langchain-text-splitters==1.1.2
 qdrant-client==1.17.1
 httpx==0.28.1
