@@ -98,15 +98,12 @@ class PipelineContext(Generic[StateT]):
     state: StateT                       # typed per-pipeline payload (dataclass/Pydantic)
     run_id: str                         # correlation id for this pipeline run
     metadata: dict[str, Any]            # request-scoped: collection, user, prompt_version...
-    def emit(self, event: dict) -> None # push a streaming event (token delta, step, etc.)
     async def check_cancelled(self) -> None  # raises CancelledPipelineError if cancelled
 ```
 
 - **State** is a per-pipeline typed payload (e.g. a `ChatState` dataclass holding `question`,
   `chunks`, `answer`). Stages read and write it — this is how the output of one stage becomes
   the context of the next.
-- **`emit`** writes onto an internal `asyncio.Queue`; `Pipeline.stream()` drains it (see
-  streaming below). Non-streaming consumers ignore emitted events.
 - **`check_cancelled`** generalizes eval's existing cancellation checkpoints; the hook is a
   no-op unless a consumer supplies a cancellation predicate.
 - Context injection helpers (assembling prompts from `state`, appending to a message history)
@@ -116,16 +113,23 @@ class PipelineContext(Generic[StateT]):
 
 ```python
 @runtime_checkable
-class Stage(Protocol[StateT]):
+class Stage(Protocol):
     name: str
-    async def run(self, ctx: PipelineContext[StateT]) -> PipelineContext[StateT]: ...
+    async def run(self, ctx: PipelineContext) -> PipelineContext: ...
+
+@runtime_checkable
+class StreamingStage(Protocol):
+    name: str
+    def stream(self, ctx: PipelineContext) -> AsyncIterator[dict]: ...
 ```
 
 - One method, one responsibility. Dependencies (retriever, reranker, an LLM `Role`) are
   injected via the stage's constructor, so each stage is unit-testable with fakes.
-- A stage mutates `ctx.state` and returns the context (return enables clean composition and
-  testing). Stages are the explicit role boundaries: `RetrieveStage`, `RerankStage`,
-  `GenerateStage`, `JudgeStage`, etc.
+- A transform stage mutates `ctx.state` and returns the context (return enables clean
+  composition and testing). Stages are the explicit role boundaries: `RetrieveStage`,
+  `RerankStage`, `GenerateStage`, `JudgeStage`, etc.
+- A `StreamingStage` yields progressive events (token deltas, ReAct step events) instead of
+  returning a context — used for the generate stage in chat and the agent loop in debug.
 
 ### Primitive 3 — `Role` (role separation at the agent level)
 
@@ -186,12 +190,12 @@ class Pipeline(Generic[StateT]):
         contextvar binding (stage=<name>), per-stage duration+status metric,
         and error classification. Re-raises classified errors."""
 
-    async def run(self, stages: list[Stage[StateT]], ctx) -> PipelineContext[StateT]:
+    async def run(self, stages: list[Stage], ctx) -> PipelineContext:
         """Convenience: execute stages in order (the linear case)."""
 
-    async def stream(self, runner, ctx) -> AsyncIterator[dict]:
-        """Run `runner(ctx)` (any async control flow that calls execute) while
-        concurrently draining ctx's event queue, yielding emitted events."""
+    async def execute_stream(self, stage: StreamingStage, ctx) -> AsyncIterator[dict]:
+        """Run a streaming stage, yielding its events, wrapped with the same
+        metrics/tracing/log-context/error handling as execute()."""
 ```
 
 - **The key to fitting all four shapes:** consumers call `pipeline.execute(stage, ctx)` inside
@@ -233,11 +237,15 @@ class Pipeline(Generic[StateT]):
 
 ## Streaming
 
-- Stages emit progressive output via `ctx.emit(event)`.
-- `Pipeline.stream(runner, ctx)` runs the control-flow `runner` as a task while draining the
-  context's event queue, yielding events to the FastAPI `StreamingResponse`. This preserves
-  the exact SSE event contracts of chat and debug.
-- Non-streaming consumers (eval, dspm) call `run`/`execute` directly and never touch the queue.
+- Progressive output is produced by a `StreamingStage` whose `stream(ctx)` is an async
+  generator (matching the existing `stream_response` shape in chat).
+- `Pipeline.execute_stream(stage, ctx)` wraps the streaming stage with the same
+  metrics/tracing/log-context/error handling as `execute`, yielding events straight to the
+  FastAPI `StreamingResponse`. This preserves the exact SSE event contracts of chat and debug.
+- Non-streaming consumers (eval, dspm) call `run`/`execute` directly.
+- *(Considered and deferred: a `ctx.emit()` event queue draining concurrently with a control-flow
+  runner. The `StreamingStage` protocol is simpler and fits the existing async-generator code;
+  the queue can return later if a consumer needs to fan out events from mid-stage.)*
 
 ## Testing Strategy
 
