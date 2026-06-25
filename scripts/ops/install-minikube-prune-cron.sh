@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="${SCRIPT_DIR}/prune-minikube-docker.sh"
 REMOTE_DIR="${REMOTE_DIR:-/home/kyle/.local/lib/portfolio-diskclean}"
-TEXTFILE_DIR="${TEXTFILE_DIR:-/var/lib/node_exporter/textfile_collector}"
+TEXTFILE_DIR="${TEXTFILE_DIR:-/var/tmp/portfolio-diskclean}"
 
 [[ -f "$SOURCE" ]] || { echo "ERROR: missing $SOURCE" >&2; exit 1; }
 
@@ -24,7 +24,8 @@ chmod 0755 "$SCRIPT"
 if docker ps >/dev/null 2>&1; then DOCKER="docker"; else DOCKER="sudo docker"; fi
 echo "docker invocation: ${DOCKER}"
 
-mkdir -p "$TEXTFILE_DIR" 2>/dev/null || sudo install -d -m 0777 "$TEXTFILE_DIR"
+# The metrics textfile dir lives inside the minikube node and is created by the
+# prune script via docker exec — nothing to create on the host here.
 
 CRON_LINE="0 * * * * DOCKER=\"${DOCKER}\" TEXTFILE_DIR=\"${TEXTFILE_DIR}\" ${SCRIPT} ${MARKER}"
 existing="$(crontab -l 2>/dev/null | grep -v "$MARKER" || true)"

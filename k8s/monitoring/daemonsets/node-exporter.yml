@@ -22,7 +22,7 @@ spec:
             - "--path.sysfs=/host/sys"
             - "--path.rootfs=/host/root"
             - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($|/)"
-            - "--collector.textfile.directory=/host/root/var/lib/node_exporter/textfile_collector"
+            - "--collector.textfile.directory=/host/root/var/tmp/portfolio-diskclean"
           ports:
             - name: metrics
               containerPort: 9100
