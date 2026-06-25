@@ -71,3 +71,19 @@ metadata:
   name: postgres-initdb
   namespace: java-tasks
 $patch: delete
+---
+# Remove mongodb PVC — Atlas replaces in-cluster Mongo
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-data
+  namespace: java-tasks
+$patch: delete
+---
+# Remove mongodb-initdb ConfigMap — Atlas handles initialization
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-initdb
+  namespace: java-tasks
+$patch: delete

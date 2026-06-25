@@ -5,6 +5,7 @@ resources:
   - namespace.yml
   - configmaps/activity-service-config.yml
   - configmaps/gateway-service-config.yml
+  - configmaps/mongodb-initdb.yml
   - configmaps/notification-service-config.yml
   - configmaps/postgres-exporter-queries.yml
   - configmaps/postgres-hba.yml
@@ -35,6 +36,7 @@ resources:
   - services/redis.yml
   - services/task-service.yml
   - services/pgbouncer.yml
+  - volumes/mongodb-pvc.yml
   - volumes/postgres-pvc.yml
   - volumes/postgres-backup-pv.yml
   - volumes/postgres-backup-readonly-pv.yml
