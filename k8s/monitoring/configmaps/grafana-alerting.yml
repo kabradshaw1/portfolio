@@ -1888,10 +1888,26 @@ data:
                 relativeTimeRange: { from: 900, to: 0 }
                 datasourceUid: PBFA97CFB590B2093
                 model:
+                  # Ratio of current mean vs 7-day baseline, GUARDED by an absolute
+                  # floor: only consider queries whose current mean is also >5ms.
+                  # Without the floor, sub-millisecond/idle queries (e.g. empty-table
+                  # outbox pollers) trip the >2x ratio on pure measurement jitter
+                  # (~0.02ms -> ~0.05ms). The exporter exposes no datname label, so a
+                  # floor — not a database exclusion — is the only reliable noise guard.
+                  # Floor sizing (observed 2026-06): the entire instance runs
+                  # sub-millisecond; the busiest steady-state query is ~1.6ms. 5ms sits
+                  # ~100x above idle jitter and ~3x above the busiest query (no flapping),
+                  # yet ~200x below the >1s absolute alarm (pg-query-mean-exec-time-high),
+                  # so the two alerts form an early-warning ladder. Re-tune if the
+                  # workload's normal mean shifts upward.
                   expr: >-
-                    (max(pg_stat_statements_mean_exec_time) by (queryid))
-                    /
-                    (max(avg_over_time(pg_stat_statements_mean_exec_time[7d])) by (queryid))
+                    (
+                      (max(pg_stat_statements_mean_exec_time) by (queryid))
+                      /
+                      (max(avg_over_time(pg_stat_statements_mean_exec_time[7d])) by (queryid))
+                    )
+                    and on(queryid)
+                    (max(pg_stat_statements_mean_exec_time) by (queryid) > 5)
                   instant: true
                   refId: A
               - refId: B
@@ -1915,7 +1931,7 @@ data:
             labels:
               severity: warning
             annotations:
-              summary: "Postgres query mean is >2× its 7-day baseline (queryid {{ $labels.queryid }})"
+              summary: "Postgres query mean is >2× its 7-day baseline and >5ms (queryid {{ $labels.queryid }})"
 
           - uid: pg-slow-query-rate-spike
             title: Postgres Slow Query Rate Spike
