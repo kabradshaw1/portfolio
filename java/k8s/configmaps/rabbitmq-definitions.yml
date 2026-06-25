@@ -4,18 +4,25 @@ metadata:
   name: rabbitmq-definitions
   namespace: java-tasks
 data:
-  definitions.json: |
+  # Template rendered at pod start by the render-definitions initContainer,
+  # which substitutes ${STORY_RABBIT_PASSWORD} from java-secrets. The story
+  # user password is therefore never committed. RabbitMQ reloads definitions
+  # on every boot, so the story user/vhost self-heal even on a fresh volume.
+  definitions.json.tmpl: |
     {
       "users": [
-        {"name": "guest", "password": "guest", "tags": ["administrator"]}
+        {"name": "guest", "password": "guest", "tags": ["administrator"]},
+        {"name": "story", "password": "${STORY_RABBIT_PASSWORD}", "tags": []}
       ],
       "vhosts": [
         {"name": "/"},
-        {"name": "qa"}
+        {"name": "qa"},
+        {"name": "story"}
       ],
       "permissions": [
         {"user": "guest", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*"},
-        {"user": "guest", "vhost": "qa", "configure": ".*", "write": ".*", "read": ".*"}
+        {"user": "guest", "vhost": "qa", "configure": ".*", "write": ".*", "read": ".*"},
+        {"user": "story", "vhost": "story", "configure": ".*", "write": ".*", "read": ".*"}
       ]
     }
   rabbitmq.conf: |

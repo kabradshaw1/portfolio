@@ -5,6 +5,8 @@ metadata:
   namespace: java-tasks
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: rabbitmq
@@ -13,6 +15,30 @@ spec:
       labels:
         app: rabbitmq
     spec:
+      initContainers:
+        - name: render-definitions
+          image: busybox:1.36
+          # Inject the story password (from java-secrets) into the committed
+          # template. '|' is the sed delimiter, so rabbit-story-password must
+          # not contain a literal '|'. \$ keeps the token literal for matching;
+          # $STORY_RABBIT_PASSWORD expands to the real value.
+          command:
+            - sh
+            - -c
+            - 'sed "s|\${STORY_RABBIT_PASSWORD}|$STORY_RABBIT_PASSWORD|" /templates/definitions.json.tmpl > /rendered/definitions.json'
+          env:
+            - name: STORY_RABBIT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: rabbit-story-password
+          volumeMounts:
+            - name: definitions
+              mountPath: /templates/definitions.json.tmpl
+              subPath: definitions.json.tmpl
+              readOnly: true
+            - name: rendered-definitions
+              mountPath: /rendered
       containers:
         - name: rabbitmq
           image: rabbitmq:3-management-alpine
@@ -29,15 +55,18 @@ spec:
             - name: prometheus
               containerPort: 15692
           volumeMounts:
-            - name: definitions
+            - name: rendered-definitions
               mountPath: /etc/rabbitmq/definitions.json
               subPath: definitions.json
+              readOnly: true
             - name: definitions
               mountPath: /etc/rabbitmq/conf.d/20-definitions.conf
               subPath: rabbitmq.conf
             - name: definitions
               mountPath: /etc/rabbitmq/enabled_plugins
               subPath: enabled_plugins
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
           resources:
             requests:
               memory: "128Mi"
@@ -49,3 +78,8 @@ spec:
         - name: definitions
           configMap:
             name: rabbitmq-definitions
+        - name: rendered-definitions
+          emptyDir: {}
+        - name: rabbitmq-data
+          persistentVolumeClaim:
+            claimName: rabbitmq-data
