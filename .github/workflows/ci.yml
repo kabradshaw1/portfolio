@@ -986,9 +986,15 @@ jobs:
           # PYSEC-2026-161/CVE-2026-48710 is mitigated in FastAPI services by
           # shared HostHeaderValidationMiddleware. Starlette 1.0.1 is currently
           # blocked by prometheus-fastapi-instrumentator's starlette<1.0.0 cap.
+          # CVE-2026-48817/48818/54282/54283 are the starlette "BADHOST" family
+          # (authority poisoning of request.url.hostname via Host header or path).
+          # Header variants are rejected by HostHeaderValidationMiddleware; the
+          # path variants have no sink here — no service reads request.url.hostname
+          # or request.url.netloc. Fixes need starlette>=1.1.0, still blocked by
+          # the prometheus-fastapi-instrumentator cap above.
           - service: ingestion
             paths: services/ingestion services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161"
+            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161 --ignore-vuln CVE-2026-48817 --ignore-vuln CVE-2026-48818 --ignore-vuln CVE-2026-54282 --ignore-vuln CVE-2026-54283"
           - service: chat
             paths: services/chat services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
             # No-fix transitive advisories in the reranker/model stack require
@@ -1017,15 +1023,19 @@ jobs:
               --ignore-vuln PYSEC-2025-216
               --ignore-vuln PYSEC-2026-161
               --ignore-vuln CVE-2026-1839
+              --ignore-vuln CVE-2026-48817
+              --ignore-vuln CVE-2026-48818
+              --ignore-vuln CVE-2026-54282
+              --ignore-vuln CVE-2026-54283
           - service: debug
             paths: services/debug services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161"
+            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161 --ignore-vuln CVE-2026-48817 --ignore-vuln CVE-2026-48818 --ignore-vuln CVE-2026-54282 --ignore-vuln CVE-2026-54283"
           - service: eval
             paths: services/eval services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161"
+            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161 --ignore-vuln CVE-2026-48817 --ignore-vuln CVE-2026-48818 --ignore-vuln CVE-2026-54282 --ignore-vuln CVE-2026-54283"
           - service: rag-triage
             paths: services/rag-triage services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: "--ignore-vuln PYSEC-2026-161"
+            pip_audit_args: "--ignore-vuln PYSEC-2026-161 --ignore-vuln CVE-2026-48817 --ignore-vuln CVE-2026-48818 --ignore-vuln CVE-2026-54282 --ignore-vuln CVE-2026-54283"
     steps:
       - uses: actions/checkout@v4
         with:
