@@ -43,7 +43,8 @@ def _stage_count(stage: str, status: str) -> float:
     # Extract count from the histogram samples
     samples = labeled._samples()
     count_samples = [s for s in samples if s.name == "_count"]
-    return count_samples[0].value if count_samples else 0.0
+    assert len(count_samples) == 1, f"expected one _count sample, got {count_samples!r}"
+    return count_samples[0].value
 
 
 class _FailStage:
