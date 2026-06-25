@@ -9,6 +9,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "==> Creating namespace..."
 kubectl apply -f "$SCRIPT_DIR/namespace.yml"
 
+# java-secrets (secrets/java-secrets.yml, NOT committed) must include these keys,
+# in addition to postgres-password:
+#   mongo-story-chat-password  — password for the Mongo story_chat app user
+#   rabbit-story-password      — password for the RabbitMQ story user
+#                                (must NOT contain a literal '|')
+# Values must match the corresponding Story credentials in the GalaxyVoyagers
+# story-secrets Secret. Coordinate cross-repo; do not commit real values here.
 echo "==> Applying secrets..."
 kubectl apply -f "$SCRIPT_DIR/secrets/java-secrets.yml"
 
