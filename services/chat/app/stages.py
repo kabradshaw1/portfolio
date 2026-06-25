@@ -19,12 +19,16 @@ from app.retriever import RetrievalResult
 
 
 async def retrieve_chunks(*args, **kwargs):
-    """Thin module-level shim so monkeypatch can target app.stages.retrieve_chunks."""
+    """Shim resolving app.chain.retrieve_chunks at call time, not import time.
+    Lets test_chain.py patch app.chain.* and test_stages.py patch app.stages.*
+    independently — do NOT inline this or one test suite breaks."""
     return await _chain.retrieve_chunks(*args, **kwargs)
 
 
 async def stream_response(*args, **kwargs):
-    """Thin module-level shim so monkeypatch can target app.stages.stream_response."""
+    """Shim resolving app.chain.stream_response at call time, not import time.
+    Lets test_chain.py patch app.chain.* and test_stages.py patch app.stages.*
+    independently — do NOT inline this or one test suite breaks."""
     async for event in _chain.stream_response(*args, **kwargs):
         yield event
 

@@ -3,7 +3,6 @@ from collections.abc import AsyncIterator
 import pytest
 
 from shared.orchestration.context import PipelineContext
-from shared.orchestration.errors import StageError
 from shared.orchestration.metrics import STAGE_DURATION
 from shared.orchestration.pipeline import Pipeline
 from shared.orchestration.stage import Stage, StreamingStage
@@ -71,13 +70,11 @@ async def test_execute_records_ok_metric():
 
 
 @pytest.mark.asyncio
-async def test_execute_classifies_and_records_error():
+async def test_execute_records_error_metric_and_reraises_original():
     pipe = Pipeline("test")
     before = _stage_count("fail", "error")
-    with pytest.raises(StageError) as exc:
+    with pytest.raises(ValueError, match="boom"):
         await pipe.execute(_FailStage(), PipelineContext(state=None))
-    assert exc.value.stage == "fail"
-    assert exc.value.retryable is False
     assert _stage_count("fail", "error") == before + 1
 
 

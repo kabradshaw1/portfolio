@@ -339,7 +339,7 @@ async def rag_query(
     # Retrieve + build prompt (transform stages).
     ctx = await pipeline.run([RetrieveStage(), BuildPromptStage()], ctx)
     retrieval = ctx.state.retrieval
-    chunks = retrieval.chunks
+    chunks = retrieval.chunks if retrieval else []
 
     # Collect unique sources (unchanged contract).
     seen = set()

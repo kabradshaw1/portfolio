@@ -44,11 +44,11 @@ class Pipeline:
                 err = classify_error(exc, stage=stage.name)
                 logger.warning(
                     "stage_error",
-                    error=str(err),
+                    error=str(exc),
                     retryable=err.retryable,
                     exc_info=True,
                 )
-                raise err from exc
+                raise
             finally:
                 STAGE_DURATION.labels(self.name, stage.name, status).observe(
                     time.perf_counter() - start
@@ -78,8 +78,13 @@ class Pipeline:
             except Exception as exc:
                 status = "error"
                 err = classify_error(exc, stage=stage.name)
-                logger.warning("stage_error", error=str(err), exc_info=True)
-                raise err from exc
+                logger.warning(
+                    "stage_error",
+                    error=str(exc),
+                    retryable=err.retryable,
+                    exc_info=True,
+                )
+                raise
             finally:
                 STAGE_DURATION.labels(self.name, stage.name, status).observe(
                     time.perf_counter() - start

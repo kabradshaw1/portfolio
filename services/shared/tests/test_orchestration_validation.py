@@ -33,8 +33,6 @@ def _role_with(provider):
         api_key="",
         model="m",
     )
-    # Bypass the real factory; bind the fake provider directly.
-    object.__setattr__(role, "_test_provider", provider)
     return role
 
 
