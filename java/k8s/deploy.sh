@@ -12,8 +12,9 @@ kubectl apply -f "$SCRIPT_DIR/namespace.yml"
 # java-secrets (secrets/java-secrets.yml, NOT committed) must include these keys,
 # in addition to postgres-password:
 #   mongo-story-chat-password  — password for the Mongo story_chat app user
+#                                (avoid " \ $ — injected unescaped into a JS string)
 #   rabbit-story-password      — password for the RabbitMQ story user
-#                                (must NOT contain a literal '|')
+#                                (must NOT contain a literal '|' — it is the sed delimiter)
 # Values must match the corresponding Story credentials in the GalaxyVoyagers
 # story-secrets Secret. Coordinate cross-repo; do not commit real values here.
 echo "==> Applying secrets..."
