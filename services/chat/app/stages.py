@@ -13,8 +13,20 @@ from typing import Any
 from llm.base import EmbeddingProvider, LLMProvider
 from shared.orchestration import PipelineContext
 
-from app.chain import build_rag_prompt, retrieve_chunks, stream_response
+import app.chain as _chain
+from app.prompt import build_rag_prompt
 from app.retriever import RetrievalResult
+
+
+async def retrieve_chunks(*args, **kwargs):
+    """Thin module-level shim so monkeypatch can target app.stages.retrieve_chunks."""
+    return await _chain.retrieve_chunks(*args, **kwargs)
+
+
+async def stream_response(*args, **kwargs):
+    """Thin module-level shim so monkeypatch can target app.stages.stream_response."""
+    async for event in _chain.stream_response(*args, **kwargs):
+        yield event
 
 
 @dataclass

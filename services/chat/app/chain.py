@@ -6,6 +6,7 @@ import structlog
 from llm.base import EmbeddingProvider, LLMProvider
 from rag.sparse import SparseVectorEncoder
 from shared.llm.admission import embed_limiter, generate_limiter, rerank_limiter
+from shared.orchestration import Pipeline, PipelineContext
 
 from app.config import settings
 from app.metrics import (
@@ -16,7 +17,7 @@ from app.metrics import (
     RAG_PIPELINE_DURATION,
     RERANK_FALLBACKS,
 )
-from app.prompt import SYSTEM_PROMPT, build_rag_prompt
+from app.prompt import SYSTEM_PROMPT
 from app.reranker import rerank_chunks
 from app.retriever import QdrantRetriever, RetrievalResult
 
@@ -311,27 +312,36 @@ async def rag_query(
     top_k: int = 5,
     rerank: bool = False,
 ) -> AsyncGenerator[dict, None]:
-    # Retrieve relevant chunks
-    retrieval = await retrieve_chunks(
-        question=question,
-        embedding_provider=embedding_provider,
-        embedding_model=embedding_model,
-        qdrant_host=qdrant_host,
-        qdrant_port=qdrant_port,
-        collection_name=collection_name,
-        top_k=top_k,
-        rerank=rerank,
+    from app.stages import (  # local import to avoid circular dependency
+        BuildPromptStage,
+        ChatState,
+        GenerateStreamStage,
+        RetrieveStage,
     )
+
+    pipeline = Pipeline("chat")
+    ctx = PipelineContext(
+        state=ChatState(
+            question=question,
+            top_k=top_k,
+            rerank=rerank,
+            chat_model=chat_model,
+            embedding_model=embedding_model,
+            qdrant_host=qdrant_host,
+            qdrant_port=qdrant_port,
+            collection_name=collection_name,
+            embedding_provider=embedding_provider,
+            llm_provider=llm_provider,
+        ),
+        metadata={"collection": collection_name},
+    )
+
+    # Retrieve + build prompt (transform stages).
+    ctx = await pipeline.run([RetrieveStage(), BuildPromptStage()], ctx)
+    retrieval = ctx.state.retrieval
     chunks = retrieval.chunks
 
-    # Build prompt
-    build_start = time.perf_counter()
-    prompt = build_rag_prompt(question=question, chunks=chunks)
-    RAG_PIPELINE_DURATION.labels(stage="build_prompt").observe(
-        time.perf_counter() - build_start
-    )
-
-    # Collect unique sources
+    # Collect unique sources (unchanged contract).
     seen = set()
     sources = []
     for chunk in chunks:
@@ -340,19 +350,13 @@ async def rag_query(
             seen.add(key)
             sources.append({"file": chunk["filename"], "page": chunk["page_number"]})
 
-    # Stream response (generate stage timing is inside stream_response)
-    generate_start = time.perf_counter()
-    usage = {}
-    async for event in stream_response(
-        prompt=prompt, model=chat_model, provider=llm_provider
-    ):
+    # Generate (streaming stage).
+    usage: dict = {}
+    async for event in pipeline.execute_stream(GenerateStreamStage(), ctx):
         if "token" in event:
             yield event
         if event.get("done"):
             usage = event.get("usage", {})
-    RAG_PIPELINE_DURATION.labels(stage="generate").observe(
-        time.perf_counter() - generate_start
-    )
 
     usage = {**usage, "answer_model": chat_model}
     yield {
