@@ -216,15 +216,22 @@ grep -c 'type: Recreate' /tmp/base.yaml
 ```
 Expected: command exits 0; each count is ≥ 1 (mongodb-data and mongodb-initdb each appear in both the resource and the deployment volume → ≥ 2; `type: Recreate` includes postgres + mongodb → ≥ 2).
 
-- [ ] **Step 8: Validate AWS overlay render (new infra removed)**
+- [ ] **Step 8: Validate the AWS overlay delete patches structurally**
 
-Run:
+NOTE: `kubectl kustomize java/k8s/overlays/aws` does **not** render — the overlay
+references `../../` (the base) which contains it, a pre-existing kustomize "cycle"
+documented in `docs/adr/infrastructure/kustomize-cycle-fix.md` and
+`debian-server-migration.md`. This predates #393 and is out of scope here. Validate
+the delete patches by structure instead:
+
 ```bash
-kubectl kustomize java/k8s/overlays/aws > /tmp/aws.yaml && \
-grep -c 'name: mongodb-data' /tmp/aws.yaml; \
-grep -c 'name: mongodb-initdb' /tmp/aws.yaml
+grep -c 'name: mongodb-data' java/k8s/overlays/aws/patches/remove-infra.yaml && \
+grep -c 'name: mongodb-initdb' java/k8s/overlays/aws/patches/remove-infra.yaml && \
+grep -c '$patch: delete' java/k8s/overlays/aws/patches/remove-infra.yaml
 ```
-Expected: overlay renders without error; both counts are `0` (resources deleted by the overlay).
+Expected: `mongodb-data` and `mongodb-initdb` each appear once; `$patch: delete`
+count increased by 2 vs. before this task. The new entries mirror the existing
+`postgres-data` / `postgres-initdb` delete blocks exactly.
 
 - [ ] **Step 9: Commit**
 
@@ -442,14 +449,17 @@ grep -c 'STORY_RABBIT_PASSWORD' /tmp/base.yaml
 ```
 Expected: command exits 0; every count is ≥ 1. Confirm no literal password is present: `grep -c 'rabbit-story-password' /tmp/base.yaml` shows the secret **key name** only (in `secretKeyRef`), never a value.
 
-- [ ] **Step 8: Validate AWS overlay render (PVC removed)**
+- [ ] **Step 8: Validate the AWS overlay delete patch structurally**
 
-Run:
+NOTE: `kubectl kustomize java/k8s/overlays/aws` does not render — pre-existing
+kustomize cycle (see Task 1 Step 8 and `docs/adr/infrastructure/kustomize-cycle-fix.md`).
+Out of scope for #393. Validate by structure instead:
+
 ```bash
-kubectl kustomize java/k8s/overlays/aws > /tmp/aws.yaml && \
-grep -c 'name: rabbitmq-data' /tmp/aws.yaml
+grep -c 'name: rabbitmq-data' java/k8s/overlays/aws/patches/remove-infra.yaml
 ```
-Expected: overlay renders without error; count is `0`.
+Expected: `rabbitmq-data` appears once in a `$patch: delete` block mirroring the
+existing `postgres-data` delete block.
 
 - [ ] **Step 9: Commit**
 
