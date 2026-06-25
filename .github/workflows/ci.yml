@@ -884,7 +884,17 @@ jobs:
       - name: Build JARs (Dockerfiles expect pre-built JARs)
         if: steps.changes.outputs.changed == 'true'
         working-directory: java
-        run: ./gradlew bootJar --no-daemon
+        run: |
+          # Retry to absorb transient Maven Central failures (e.g. HTTP 403)
+          # during dependency resolution. Mirrors the docker pull retry above.
+          for attempt in 1 2 3; do
+            if ./gradlew bootJar --no-daemon; then
+              exit 0
+            fi
+            echo "gradlew bootJar failed on attempt ${attempt}/3" >&2
+            sleep 10
+          done
+          exit 1
 
       - name: Build Java service images
         if: steps.changes.outputs.changed == 'true'
@@ -1426,7 +1436,17 @@ jobs:
       - name: Build JAR
         if: matrix.java-service && steps.changes.outputs.changed == 'true'
         working-directory: java
-        run: ./gradlew :${{ matrix.java-service }}:bootJar --no-daemon
+        run: |
+          # Retry to absorb transient Maven Central failures (e.g. HTTP 403)
+          # during dependency resolution. Mirrors the docker pull retry above.
+          for attempt in 1 2 3; do
+            if ./gradlew :${{ matrix.java-service }}:bootJar --no-daemon; then
+              exit 0
+            fi
+            echo "gradlew bootJar failed on attempt ${attempt}/3" >&2
+            sleep 10
+          done
+          exit 1
 
       - name: Set up Docker Buildx
         if: steps.changes.outputs.changed == 'true'
