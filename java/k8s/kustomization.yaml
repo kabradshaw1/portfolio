@@ -42,6 +42,7 @@ resources:
   - volumes/postgres-backup-readonly-pv.yml
   - volumes/postgres-basebackup-pv.yml
   - volumes/postgres-wal-archive-pv.yml
+  - volumes/rabbitmq-pvc.yml
   - jobs/postgres-backup.yml
   - jobs/postgres-extensions-bootstrap.yml
   - jobs/postgres-grafana-reader.yml

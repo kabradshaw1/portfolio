@@ -87,3 +87,11 @@ metadata:
   name: mongodb-initdb
   namespace: java-tasks
 $patch: delete
+---
+# Remove rabbitmq PVC — Amazon MQ replaces in-cluster RabbitMQ
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbitmq-data
+  namespace: java-tasks
+$patch: delete
