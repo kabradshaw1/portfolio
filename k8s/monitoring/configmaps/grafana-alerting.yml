@@ -302,7 +302,7 @@ data:
                   to: 0
                 datasourceUid: PBFA97CFB590B2093
                 model:
-                  expr: time() - max(minikube_docker_prune_last_run_timestamp_seconds)
+                  expr: time() - (max(minikube_docker_prune_last_run_timestamp_seconds) or vector(0))
                   instant: true
                   refId: A
               - refId: B
@@ -330,10 +330,54 @@ data:
                           - 10800
                   refId: C
             for: 10m
+            noDataState: Alerting
             labels:
               severity: warning
             annotations:
               summary: "minikube disk-prune cron has not run in over 3h — automation may be down"
+
+          - uid: minikube-prune-failing
+            title: Minikube Prune Failing
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: PBFA97CFB590B2093
+                model:
+                  expr: max_over_time(minikube_docker_prune_last_success[3h])
+                  instant: true
+                  refId: A
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: reduce
+                  expression: A
+                  reducer: last
+                  refId: B
+              - refId: C
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: lt
+                        params:
+                          - 1
+                  refId: C
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "minikube disk-prune cron has had no successful run in 3h — prune is alive but failing"
 
       - orgId: 1
         name: Kubernetes Health

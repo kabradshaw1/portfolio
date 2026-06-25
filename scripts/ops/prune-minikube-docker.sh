@@ -49,7 +49,7 @@ write_metrics() {
   # Write into the minikube node (where node-exporter reads textfiles), atomically,
   # world-readable so node-exporter (uid nobody) can read it.
   $DOCKER exec minikube mkdir -p "$TEXTFILE_DIR" >/dev/null 2>&1 || true
-  $DOCKER exec -i minikube sh -c "cat > '${TEXTFILE}.tmp' && chmod 0644 '${TEXTFILE}.tmp' && mv '${TEXTFILE}.tmp' '${TEXTFILE}'" <<EOF || log "WARN: failed to write metrics into minikube node"
+  $DOCKER exec -i minikube sh -c "cat > '${TEXTFILE}.$$' && chmod 0644 '${TEXTFILE}.$$' && mv '${TEXTFILE}.$$' '${TEXTFILE}'" <<EOF || log "WARN: failed to write metrics into minikube node"
 # HELP minikube_docker_disk_used_ratio Root filesystem used fraction (0-1).
 # TYPE minikube_docker_disk_used_ratio gauge
 minikube_docker_disk_used_ratio ${ratio}
