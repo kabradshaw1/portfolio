@@ -5,6 +5,8 @@ metadata:
   namespace: java-tasks
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: mongodb
@@ -13,11 +15,23 @@ spec:
       labels:
         app: mongodb
     spec:
+      securityContext:
+        fsGroup: 999
       containers:
         - name: mongodb
           image: mongo:7
           ports:
             - containerPort: 27017
+          env:
+            - name: MONGO_STORY_CHAT_DB
+              value: story_chat
+            - name: MONGO_STORY_CHAT_USER
+              value: story_chat
+            - name: MONGO_STORY_CHAT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: java-secrets
+                  key: mongo-story-chat-password
           readinessProbe:
             exec:
               command:
@@ -40,6 +54,12 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db
+              subPath: data
+            - name: mongodb-initdb
+              mountPath: /docker-entrypoint-initdb.d
           resources:
             requests:
               memory: "128Mi"
@@ -47,3 +67,11 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+      volumes:
+        - name: mongodb-data
+          persistentVolumeClaim:
+            claimName: mongodb-data
+        - name: mongodb-initdb
+          configMap:
+            name: mongodb-initdb
+            defaultMode: 0755
