@@ -654,3 +654,46 @@ def test_search_internal_eval_token_uses_internal_eval_limit(
     )
 
     assert wrong.status_code == 401
+
+
+# --- Pipeline error-contract tests (Fix 1 regression proofs) ---
+# These patch app.chain.retrieve_chunks so errors originate INSIDE a pipeline stage
+# (RetrieveStage → app.stages.retrieve_chunks shim → app.chain.retrieve_chunks),
+# proving that Pipeline.execute re-raises the original type to the endpoint handlers.
+
+
+@patch("app.chain.retrieve_chunks", new_callable=AsyncMock)
+def test_chat_json_returns_503_when_pipeline_stage_raises_connect_error(mock_retrieve):
+    """httpx.ConnectError raised inside RetrieveStage flows through the pipeline
+    and hits the (httpx.ConnectError, httpx.TimeoutException) handler → 503."""
+    mock_retrieve.side_effect = httpx.ConnectError("Connection refused")
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        response = c.post(
+            "/chat",
+            json={"question": "What is this?"},
+            headers={"Accept": "application/json"},
+        )
+    assert response.status_code == 503
+    assert "unavailable" in response.json()["detail"].lower()
+
+
+@patch("app.chain.retrieve_chunks", new_callable=AsyncMock)
+def test_chat_json_returns_503_with_retry_after_when_stage_raises_admission_rejected(
+    mock_retrieve,
+):
+    """AdmissionRejected raised inside RetrieveStage flows through the pipeline
+    and hits the AdmissionRejected handler → 503 + Retry-After header."""
+    from shared.llm.admission import AdmissionRejected
+
+    mock_retrieve.side_effect = AdmissionRejected(retry_after_seconds=30)
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        response = c.post(
+            "/chat",
+            json={"question": "What is this?"},
+            headers={"Accept": "application/json"},
+        )
+    assert response.status_code == 503
+    assert "Retry-After" in response.headers
+    assert int(response.headers["Retry-After"]) == 30

@@ -14,6 +14,8 @@ preflight-python:
 	PYTHONPATH=services pytest services/ingestion/tests/ -v
 	@echo "\n=== Python: pytest (chat) ==="
 	PYTHONPATH=services pytest services/chat/tests/ -v
+	@echo "\n=== Python: pytest (shared/orchestration) ==="
+	PYTHONPATH=services pytest services/shared/tests/ -v
 	@echo "\n=== Python: pytest (debug) ==="
 	PYTHONPATH=services pytest services/debug/tests/ -v
 	@echo "\n=== Python: pytest (dspm-classifier unit) ==="
