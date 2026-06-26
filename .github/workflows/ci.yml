@@ -884,7 +884,17 @@ jobs:
       - name: Build JARs (Dockerfiles expect pre-built JARs)
         if: steps.changes.outputs.changed == 'true'
         working-directory: java
-        run: ./gradlew bootJar --no-daemon
+        run: |
+          # Retry to absorb transient Maven Central failures (e.g. HTTP 403)
+          # during dependency resolution. Mirrors the docker pull retry above.
+          for attempt in 1 2 3; do
+            if ./gradlew bootJar --no-daemon; then
+              exit 0
+            fi
+            echo "gradlew bootJar failed on attempt ${attempt}/3" >&2
+            sleep 10
+          done
+          exit 1
 
       - name: Build Java service images
         if: steps.changes.outputs.changed == 'true'
@@ -986,9 +996,15 @@ jobs:
           # PYSEC-2026-161/CVE-2026-48710 is mitigated in FastAPI services by
           # shared HostHeaderValidationMiddleware. Starlette 1.0.1 is currently
           # blocked by prometheus-fastapi-instrumentator's starlette<1.0.0 cap.
+          # CVE-2026-48817/48818/54282/54283 are the starlette "BADHOST" family
+          # (authority poisoning of request.url.hostname via Host header or path).
+          # Header variants are rejected by HostHeaderValidationMiddleware; the
+          # path variants have no sink here — no service reads request.url.hostname
+          # or request.url.netloc. Fixes need starlette>=1.1.0, still blocked by
+          # the prometheus-fastapi-instrumentator cap above.
           - service: ingestion
             paths: services/ingestion services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161"
+            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161 --ignore-vuln CVE-2026-48817 --ignore-vuln CVE-2026-48818 --ignore-vuln CVE-2026-54282 --ignore-vuln CVE-2026-54283"
           - service: chat
             paths: services/chat services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
             # No-fix transitive advisories in the reranker/model stack require
@@ -1017,15 +1033,19 @@ jobs:
               --ignore-vuln PYSEC-2025-216
               --ignore-vuln PYSEC-2026-161
               --ignore-vuln CVE-2026-1839
+              --ignore-vuln CVE-2026-48817
+              --ignore-vuln CVE-2026-48818
+              --ignore-vuln CVE-2026-54282
+              --ignore-vuln CVE-2026-54283
           - service: debug
             paths: services/debug services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161"
+            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161 --ignore-vuln CVE-2026-48817 --ignore-vuln CVE-2026-48818 --ignore-vuln CVE-2026-54282 --ignore-vuln CVE-2026-54283"
           - service: eval
             paths: services/eval services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161"
+            pip_audit_args: "--ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161 --ignore-vuln CVE-2026-48817 --ignore-vuln CVE-2026-48818 --ignore-vuln CVE-2026-54282 --ignore-vuln CVE-2026-54283"
           - service: rag-triage
             paths: services/rag-triage services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
-            pip_audit_args: "--ignore-vuln PYSEC-2026-161"
+            pip_audit_args: "--ignore-vuln PYSEC-2026-161 --ignore-vuln CVE-2026-48817 --ignore-vuln CVE-2026-48818 --ignore-vuln CVE-2026-54282 --ignore-vuln CVE-2026-54283"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1416,7 +1436,17 @@ jobs:
       - name: Build JAR
         if: matrix.java-service && steps.changes.outputs.changed == 'true'
         working-directory: java
-        run: ./gradlew :${{ matrix.java-service }}:bootJar --no-daemon
+        run: |
+          # Retry to absorb transient Maven Central failures (e.g. HTTP 403)
+          # during dependency resolution. Mirrors the docker pull retry above.
+          for attempt in 1 2 3; do
+            if ./gradlew :${{ matrix.java-service }}:bootJar --no-daemon; then
+              exit 0
+            fi
+            echo "gradlew bootJar failed on attempt ${attempt}/3" >&2
+            sleep 10
+          done
+          exit 1
 
       - name: Set up Docker Buildx
         if: steps.changes.outputs.changed == 'true'

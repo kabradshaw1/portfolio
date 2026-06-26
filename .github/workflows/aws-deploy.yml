@@ -99,7 +99,17 @@ jobs:
       - name: Build JAR
         if: matrix.java
         working-directory: java
-        run: ./gradlew :${{ matrix.service }}:bootJar --no-daemon
+        run: |
+          # Retry to absorb transient Maven Central failures (e.g. HTTP 403)
+          # during dependency resolution. Mirrors the docker pull retry in ci.yml.
+          for attempt in 1 2 3; do
+            if ./gradlew :${{ matrix.service }}:bootJar --no-daemon; then
+              exit 0
+            fi
+            echo "gradlew bootJar failed on attempt ${attempt}/3" >&2
+            sleep 10
+          done
+          exit 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
