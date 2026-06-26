@@ -188,7 +188,8 @@ class Pipeline(Generic[StateT]):
     async def execute(self, stage: Stage[StateT], ctx) -> PipelineContext[StateT]:
         """Run one stage wrapped with: OTel span (stage.<name>), structlog
         contextvar binding (stage=<name>), per-stage duration+status metric,
-        and error classification. Re-raises classified errors."""
+        and error logging with classify_error verdict. Re-raises the ORIGINAL
+        exception unchanged so consumer handlers see the concrete type."""
 
     async def run(self, stages: list[Stage], ctx) -> PipelineContext:
         """Convenience: execute stages in order (the linear case)."""
@@ -213,8 +214,10 @@ class Pipeline(Generic[StateT]):
   stage automatically carries `trace_id`/`span_id` — no manual plumbing. (Confirmed against
   `shared/tracing.py` + `shared/logging.py`.)
 - **Logging context**: binds `stage=<name>` to structlog contextvars for the stage's duration.
-- **Error classification** (`errors.py`): promotes eval's `classify_item_error`
-  (retryable vs. permanent) into a shared taxonomy used uniformly across consumers.
+- **Error logging with classification** (`errors.py`): `classify_error` is called to compute
+  a retryable verdict which is included in the `stage_error` log line for observability.
+  `classify_error` is an opt-in utility — consumers (e.g. eval retry/DLQ) call it themselves
+  on the re-raised original exception; the runner does not replace the exception type.
 
 ## Data Flow — how each consumer maps
 
@@ -228,12 +231,18 @@ class Pipeline(Generic[StateT]):
 ## Error Handling
 
 - `errors.py` defines a small taxonomy: `StageError` (base), with `retryable: bool`, plus a
-  `classify(exc) -> StageError` helper seeded from eval's existing logic.
-- `Pipeline.execute` catches exceptions, records a `status="error"` metric for the stage,
-  logs with the bound stage context, and re-raises a classified error.
+  `classify_error(exc, *, stage) -> StageError` utility that maps an arbitrary exception to a
+  retryable verdict.
+- `Pipeline.execute` catches exceptions, records a `status="error"` metric, logs a
+  `stage_error` line that includes `retryable=<bool>` (from `classify_error`), and then
+  **re-raises the ORIGINAL exception unchanged** (bare `raise`). The exception's concrete type
+  is preserved so consumer `except` handlers (e.g. `except httpx.ConnectError`,
+  `except AdmissionRejected`) see the exact type they expect.
+- `classify_error` is an opt-in utility for consumers (eval retry/DLQ) to call themselves on
+  the re-raised exception — the runner never wraps or replaces what's raised.
 - Consumers decide policy: the eval worker keeps its retry/DLQ behavior; dspm keeps its
   best-effort tolerance (LLM-stage failure does not block a result); chat/debug surface errors
-  as SSE error events. The scaffold standardizes *classification*, not *policy*.
+  as SSE error events. The scaffold standardizes *observability*, not *policy*.
 
 ## Streaming
 
