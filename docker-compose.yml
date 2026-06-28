@@ -89,6 +89,18 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  ir-agent:
+    image: ghcr.io/kabradshaw1/portfolio/ir-agent:latest
+    build:
+      context: ./services
+      dockerfile: ir-agent/Dockerfile
+    env_file: .env
+    environment:
+      - IR_ANTHROPIC_API_KEY=${IR_ANTHROPIC_API_KEY:-}
+      - IR_JWT_SECRET=${JWT_SECRET:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   eval:
     image: ghcr.io/kabradshaw1/portfolio/eval:latest
     build:

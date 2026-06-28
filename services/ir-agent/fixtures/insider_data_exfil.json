@@ -1,0 +1,30 @@
+{
+  "incident": {
+    "id": "INC-EXFIL-003",
+    "source": "SIEM",
+    "title": "Large outbound transfer to personal cloud storage",
+    "raw": {"user": "msmith"},
+    "observables": [
+      {"kind": "user", "value": "msmith"},
+      {"kind": "domain", "value": "personal-drive.example"},
+      {"kind": "host", "value": "WS-MSMITH-03"}
+    ]
+  },
+  "alerts": [
+    {"id": "A1", "user": "msmith", "text": "DLP: 4.2GB uploaded to personal-drive.example outside policy"},
+    {"id": "A2", "user": "msmith", "text": "Access to 'M&A-2026' share spiked 20x in 48h before resignation notice"}
+  ],
+  "logs": {
+    "msmith": [
+      "2026-06-27T18:40Z proxy upload bytes=4200000000 dst=personal-drive.example",
+      "2026-06-27T18:10Z fileshare read share=M&A-2026 files=312"
+    ]
+  },
+  "ioc": {
+    "personal-drive.example": {"reputation": "suspicious", "categories": ["personal-storage"]}
+  },
+  "assets": {
+    "msmith": {"criticality": "medium", "owner": "Corp-Dev", "role": "analyst", "status": "resigning"},
+    "WS-MSMITH-03": {"criticality": "medium", "owner": "msmith", "os": "macOS"}
+  }
+}
