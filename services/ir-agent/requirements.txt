@@ -1,8 +1,8 @@
 fastapi==0.135.3
 uvicorn[standard]==0.44.0
-langgraph==0.6.7
-langchain-core==0.3.78
-langchain-anthropic==0.3.22
+langgraph==1.2.6
+langchain-core==1.4.8
+langchain-anthropic==1.4.8
 anthropic>=0.30
 pydantic-settings==2.3.0
 sse-starlette==2.1.0
