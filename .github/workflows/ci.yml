@@ -65,6 +65,8 @@ jobs:
             paths: services/eval services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
           - service: rag-triage
             paths: services/rag-triage services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - service: ir-agent
+            paths: services/ir-agent services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1046,6 +1048,9 @@ jobs:
           - service: rag-triage
             paths: services/rag-triage services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
             pip_audit_args: "--ignore-vuln PYSEC-2026-161 --ignore-vuln CVE-2026-48817 --ignore-vuln CVE-2026-48818 --ignore-vuln CVE-2026-54282 --ignore-vuln CVE-2026-54283"
+          - service: ir-agent
+            paths: services/ir-agent services/shared .github/workflows/ci.yml .github/actions/check-changes/action.yml
+            pip_audit_args: "--ignore-vuln PYSEC-2026-161 --ignore-vuln PYSEC-2026-248 --ignore-vuln PYSEC-2026-249 --ignore-vuln CVE-2026-48817 --ignore-vuln CVE-2026-48818"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1136,6 +1141,8 @@ jobs:
             paths: services/eval/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
           - dockerfile: services/rag-triage/Dockerfile
             paths: services/rag-triage/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
+          - dockerfile: services/ir-agent/Dockerfile
+            paths: services/ir-agent/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
           - dockerfile: java/task-service/Dockerfile
             paths: java/task-service/Dockerfile .github/workflows/ci.yml .github/actions/check-changes/action.yml
           - dockerfile: java/activity-service/Dockerfile
@@ -1350,6 +1357,11 @@ jobs:
             file: services/rag-triage/Dockerfile
             image: rag-triage
             paths: services/rag-triage services/shared
+          - service: ir-agent
+            context: services
+            file: services/ir-agent/Dockerfile
+            image: ir-agent
+            paths: services/ir-agent services/shared
           - service: java-task-service
             context: java/task-service
             file: java/task-service/Dockerfile

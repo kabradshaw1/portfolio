@@ -1,0 +1,8 @@
+# The notebook imports the ir-agent service package and drives it with fake
+# models (no API key needed). Install the service deps to run it:
+#   python3.11 -m venv .venv
+#   .venv/bin/pip install ../../../services/shared
+#   .venv/bin/pip install -r ../../../services/ir-agent/requirements.txt
+#   .venv/bin/pip install jupyter
+-r ../../../services/ir-agent/requirements.txt
+jupyter
