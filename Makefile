@@ -18,6 +18,12 @@ preflight-python:
 	PYTHONPATH=services pytest services/shared/tests/ -v
 	@echo "\n=== Python: pytest (debug) ==="
 	PYTHONPATH=services pytest services/debug/tests/ -v
+	@echo "\n=== Python: pytest (ir-agent) ==="
+	@if [ -x services/ir-agent/.venv/bin/pytest ]; then \
+		PYTHONPATH=services services/ir-agent/.venv/bin/pytest services/ir-agent/tests/ -v; \
+	else \
+		echo "skipping ir-agent: .venv missing (run 'python3.11 -m venv services/ir-agent/.venv && services/ir-agent/.venv/bin/pip install services/shared/ && services/ir-agent/.venv/bin/pip install -r services/ir-agent/requirements.txt')"; \
+	fi
 	@echo "\n=== Python: pytest (dspm-classifier unit) ==="
 	@if [ -x services/dspm-classifier/.venv/bin/pytest ]; then \
 		cd services/dspm-classifier && .venv/bin/pytest tests/unit/ -v; \
@@ -215,7 +221,7 @@ preflight-compose-config:
 # --- Security scans ---
 preflight-security:
 	@echo "\n=== Security: bandit ==="
-	bandit -r services/ -ll -x services/dspm-classifier/.venv
+	bandit -r services/ -ll -x services/dspm-classifier/.venv,services/ir-agent/.venv
 	@echo "\n=== Security: CORS guardrail ==="
 	@if grep -r 'allow_origins=\["\*"\]' services/; then \
 		echo "ERROR: Wildcard CORS found"; exit 1; \
