@@ -182,14 +182,49 @@ jobs:
             kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
           done
 
+      # Resolve AWS managed-service endpoints once and export for later steps.
+      # RDS + ElastiCache are required; Amazon MQ is best-effort — the broker is
+      # a documented prerequisite, and when it's absent java-tasks deploy (which
+      # needs RabbitMQ for every service) is skipped.
+      - name: Resolve managed-service endpoints
+        run: |
+          set -euo pipefail
+          RDS_ENDPOINT=$(aws rds describe-db-instances \
+            --db-instance-identifier gen-ai-portfolio-postgres \
+            --query 'DBInstances[0].Endpoint.Address' --output text)
+          ELASTICACHE_ENDPOINT=$(aws elasticache describe-cache-clusters \
+            --cache-cluster-id gen-ai-portfolio-redis --show-cache-node-info \
+            --query 'CacheClusters[0].CacheNodes[0].Endpoint.Address' --output text)
+          echo "RDS_ENDPOINT=$RDS_ENDPOINT" >> "$GITHUB_ENV"
+          echo "ELASTICACHE_ENDPOINT=$ELASTICACHE_ENDPOINT" >> "$GITHUB_ENV"
+          echo "Resolved RDS_ENDPOINT=$RDS_ENDPOINT ELASTICACHE_ENDPOINT=$ELASTICACHE_ENDPOINT"
+
+          MQ_ID=$(aws mq list-brokers \
+            --query "BrokerSummaries[?BrokerName=='gen-ai-portfolio-rabbitmq'].BrokerId | [0]" \
+            --output text 2>/dev/null || echo "None")
+          if [ -n "$MQ_ID" ] && [ "$MQ_ID" != "None" ]; then
+            MQ_EP=$(aws mq describe-broker --broker-id "$MQ_ID" \
+              --query 'BrokerInstances[0].Endpoints[0]' --output text)
+            echo "AMAZON_MQ_ENDPOINT=$MQ_EP" >> "$GITHUB_ENV"
+            echo "Resolved AMAZON_MQ_ENDPOINT=$MQ_EP"
+          else
+            echo "::warning::Amazon MQ broker gen-ai-portfolio-rabbitmq not found — java-tasks deploy will be skipped (see docs/ops/aws-eks-prerequisites.md)."
+          fi
+
       - name: Create K8s secrets from GitHub secrets
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
-          DB_PASSWORD: ${{ secrets.AWS_DB_PASSWORD }}
+          TASK_DB_PASSWORD: ${{ secrets.AWS_TASK_DB_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET_PROD }}
+          MQ_USERNAME: ${{ secrets.AWS_MQ_USERNAME }}
           MQ_PASSWORD: ${{ secrets.AWS_MQ_PASSWORD }}
         run: |
+          set -euo pipefail
           # AI services secrets
           kubectl create secret generic llm-secrets \
             --namespace=ai-services \
@@ -197,18 +232,63 @@ jobs:
             --from-literal=EMBEDDING_API_KEY="$EMBEDDING_API_KEY" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          # Java secrets
+          # Java secrets — postgres-password is the TASKUSER password. Java
+          # connects to RDS as taskuser (not the RDS master created by Terraform).
           kubectl create secret generic java-secrets \
             --namespace=java-tasks \
-            --from-literal=postgres-password="$DB_PASSWORD" \
+            --from-literal=postgres-password="$TASK_DB_PASSWORD" \
             --from-literal=jwt-secret="$JWT_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          # Go secrets
+          # Go secrets — google-* default to placeholders when unset (mirrors the
+          # QA deploy; OAuth login is non-functional with placeholders but
+          # go-auth-service still starts).
           kubectl create secret generic go-secrets \
             --namespace=go-ecommerce \
             --from-literal=jwt-secret="$JWT_SECRET" \
+            --from-literal=google-client-id="${GOOGLE_CLIENT_ID:-placeholder}" \
+            --from-literal=google-client-secret="${GOOGLE_CLIENT_SECRET:-placeholder}" \
             --dry-run=client -o yaml | kubectl apply -f -
+
+          # Go DB credentials (all use the taskuser RDS password):
+          #  - task-db-password feeds the DSN-style services' $(TASK_DB_PASSWORD)
+          #    dependent-env (auth/order/product/payment).
+          #  - cart-service-db / order-projector-db replace the debian
+          #    SealedSecrets (which can't decrypt on EKS) for the discrete
+          #    services that assemble their DSN from DB_USER/DB_PASSWORD.
+          kubectl create secret generic task-db-password \
+            --namespace=go-ecommerce \
+            --from-literal=password="$TASK_DB_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          for svc in cart-service-db order-projector-db; do
+            kubectl create secret generic "$svc" \
+              --namespace=go-ecommerce \
+              --from-literal=DB_USER=taskuser \
+              --from-literal=DB_PASSWORD="$TASK_DB_PASSWORD" \
+              --dry-run=client -o yaml | kubectl apply -f -
+          done
+
+          # Stripe secrets for payment-service (the debian sealed-secret won't
+          # decrypt on EKS — create from CI secrets instead).
+          kubectl create secret generic stripe-secrets \
+            --namespace=go-ecommerce \
+            --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
+            --from-literal=STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # eval-rabbitmq (ai-services) — the debian sealed-secret won't decrypt
+          # on EKS. Create from CI secrets once Amazon MQ is provisioned (Amazon
+          # MQ for RabbitMQ is TLS-only on :5671). Until then eval / eval-worker
+          # stay NotReady — a documented follow-up.
+          if [ -n "${AMAZON_MQ_ENDPOINT:-}" ]; then
+            MQ_HOSTPORT="${AMAZON_MQ_ENDPOINT#amqps://}"
+            kubectl create secret generic eval-rabbitmq \
+              --namespace=ai-services \
+              --from-literal=url="amqps://${MQ_USERNAME}:${MQ_PASSWORD}@${MQ_HOSTPORT}" \
+              --dry-run=client -o yaml | kubectl apply -f -
+          else
+            echo "::warning::Skipping eval-rabbitmq secret — Amazon MQ not provisioned; eval/eval-worker will not start."
+          fi
 
       # Create the taskuser role and the per-service databases on RDS. RDS only
       # ships taskdb owned by the master user; this in-cluster Job creates the
@@ -219,9 +299,7 @@ jobs:
           TASK_DB_PASSWORD: ${{ secrets.AWS_TASK_DB_PASSWORD }}
         run: |
           set -euo pipefail
-          RDS_HOST=$(aws rds describe-db-instances \
-            --db-instance-identifier gen-ai-portfolio-postgres \
-            --query 'DBInstances[0].Endpoint.Address' --output text)
+          RDS_HOST="$RDS_ENDPOINT"  # resolved by "Resolve managed-service endpoints"
 
           # RDS global CA bundle for verify-full TLS from the bootstrap Job.
           curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
@@ -279,35 +357,82 @@ jobs:
       - name: Deploy monitoring
         run: kubectl apply -k k8s/monitoring
 
-      - name: Deploy java-tasks
-        run: kubectl apply -k k8s/overlays/aws-java
-
-      - name: Deploy go-ecommerce (order-service)
-        run: kubectl apply -k k8s/overlays/aws-go
+      - name: Deploy go-ecommerce
+        run: |
+          set -euo pipefail
+          # Substitute only the managed-service endpoints; $(TASK_DB_PASSWORD)
+          # uses $(...) syntax and is left for the kubelet to resolve.
+          kustomize build k8s/overlays/aws-go \
+            | envsubst '${RDS_ENDPOINT} ${ELASTICACHE_ENDPOINT}' \
+            > /tmp/aws-go.yaml
+          # Migration Jobs are immutable — delete then recreate from the render
+          # so a re-deploy with changed config doesn't conflict.
+          kubectl delete job -n go-ecommerce \
+            go-auth-migrate go-order-migrate go-product-migrate \
+            go-cart-migrate go-payment-migrate go-projector-migrate \
+            --ignore-not-found --wait=true
+          kubectl apply -f /tmp/aws-go.yaml
 
       - name: Run Go migrations
         run: |
-          kubectl delete job go-auth-migrate go-order-migrate \
-            -n go-ecommerce --ignore-not-found --wait=true
+          set -euo pipefail
+          # All six migrate Jobs were created by the go-ecommerce apply above
+          # with RDS/verify-full config, ordered after the RDS bootstrap Job
+          # that created the databases. Wait for each to complete.
+          for job in go-auth-migrate go-order-migrate go-product-migrate \
+                     go-cart-migrate go-payment-migrate go-projector-migrate; do
+            echo "Waiting for $job ..."
+            kubectl wait --for=condition=complete --timeout=300s \
+              "job/$job" -n go-ecommerce
+          done
 
-          kubectl apply -f go/k8s/jobs/auth-service-migrate.yml
-          kubectl wait --for=condition=complete --timeout=180s \
-            job/go-auth-migrate -n go-ecommerce
-
-          kubectl apply -f go/k8s/jobs/order-service-migrate.yml
-          kubectl wait --for=condition=complete --timeout=180s \
-            job/go-order-migrate -n go-ecommerce
+      # java-tasks needs RabbitMQ (every service) and MongoDB (activity-service).
+      # Until Amazon MQ + Atlas are provisioned, skip the deploy rather than
+      # stand up a crash-looping namespace. See docs/ops/aws-eks-prerequisites.md.
+      - name: Deploy java-tasks
+        env:
+          MONGODB_ATLAS_URI: ${{ secrets.AWS_MONGODB_ATLAS_URI }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AMAZON_MQ_ENDPOINT:-}" ] || [ -z "${MONGODB_ATLAS_URI:-}" ]; then
+            echo "::warning::Skipping java-tasks deploy — Amazon MQ and/or MongoDB Atlas not provisioned."
+            exit 0
+          fi
+          kustomize build k8s/overlays/aws-java \
+            | envsubst '${RDS_ENDPOINT} ${ELASTICACHE_ENDPOINT} ${AMAZON_MQ_ENDPOINT} ${MONGODB_ATLAS_URI}' \
+            | kubectl apply -f -
 
       - name: Wait for deployments
+        env:
+          MONGODB_ATLAS_URI: ${{ secrets.AWS_MONGODB_ATLAS_URI }}
         run: |
+          set -uo pipefail
+          # ai-services: eval/eval-worker need RabbitMQ (Amazon MQ) — wait on the
+          # RAG core, report the eval workers.
           kubectl wait --for=condition=available --timeout=300s \
-            deployment -n ai-services --all
-          kubectl wait --for=condition=available --timeout=300s \
-            deployment -n java-tasks --all
-          kubectl wait --for=condition=available --timeout=300s \
-            deployment -n go-ecommerce --all
+            deployment/chat deployment/debug deployment/ingestion deployment/qdrant \
+            -n ai-services
+          echo "ai-services eval workers pending Amazon MQ (expected NotReady):"
+          kubectl get deployment -n ai-services eval eval-worker || true
           kubectl wait --for=condition=available --timeout=300s \
             deployment -n monitoring --all
+          # go-ecommerce: only the managed-service-independent services are
+          # expected healthy this phase. cart/order/payment need RabbitMQ
+          # (Amazon MQ, a documented follow-up) — report them, don't fail.
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment/go-auth-service deployment/go-product-service \
+            deployment/go-order-projector deployment/go-analytics-service \
+            -n go-ecommerce
+          echo "go-ecommerce services pending Amazon MQ (expected NotReady):"
+          kubectl get deployment -n go-ecommerce \
+            go-order-service go-cart-service go-payment-service go-ai-service || true
+          # java-tasks only if it was actually deployed (MQ + Atlas present).
+          if [ -n "${AMAZON_MQ_ENDPOINT:-}" ] && [ -n "${MONGODB_ATLAS_URI:-}" ]; then
+            kubectl wait --for=condition=available --timeout=300s \
+              deployment -n java-tasks --all
+          else
+            echo "Skipping java-tasks wait — not deployed this run."
+          fi
 
       - name: Smoke test
         run: |
