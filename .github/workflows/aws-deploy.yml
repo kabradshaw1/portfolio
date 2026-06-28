@@ -41,6 +41,10 @@ jobs:
             context: services
             dockerfile: services/debug/Dockerfile
             ecr_repo: gen-ai-portfolio/debug
+          - service: eval
+            context: services
+            dockerfile: services/eval/Dockerfile
+            ecr_repo: gen-ai-portfolio/eval
           # Java services
           - service: task-service
             context: java/task-service
@@ -75,6 +79,26 @@ jobs:
             context: go
             dockerfile: go/ai-service/Dockerfile
             ecr_repo: gen-ai-portfolio/go-ai-service
+          - service: analytics-service
+            context: go
+            dockerfile: go/analytics-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-analytics-service
+          - service: product-service
+            context: go
+            dockerfile: go/product-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-product-service
+          - service: cart-service
+            context: go
+            dockerfile: go/cart-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-cart-service
+          - service: payment-service
+            context: go
+            dockerfile: go/payment-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-payment-service
+          - service: order-projector
+            context: go
+            dockerfile: go/order-projector/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-order-projector
     steps:
       - uses: actions/checkout@v4
 
@@ -143,6 +167,15 @@ jobs:
       - name: Configure kubectl
         run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
 
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Install kustomize
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
       - name: Create namespaces
         run: |
           for ns in ai-services java-tasks go-ecommerce monitoring; do
@@ -176,6 +209,31 @@ jobs:
             --namespace=go-ecommerce \
             --from-literal=jwt-secret="$JWT_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
+
+      # The aws/ overlays reference ghcr.io/kabradshaw1/portfolio/* images. Point
+      # each at the ECR repo built above (same basename under gen-ai-portfolio/).
+      # ECR_REGISTRY comes from the ecr-login action output, not user input.
+      - name: Remap overlay images to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+        run: |
+          set -euo pipefail
+          remap() {
+            local dir="$1"; shift
+            pushd "$dir" >/dev/null
+            for name in "$@"; do
+              kustomize edit set image \
+                "ghcr.io/kabradshaw1/portfolio/${name}=${ECR_REGISTRY}/gen-ai-portfolio/${name}:latest"
+            done
+            popd >/dev/null
+          }
+          remap k8s/overlays/aws \
+            chat debug eval ingestion
+          remap java/k8s/overlays/aws \
+            java-task-service java-activity-service java-notification-service java-gateway-service
+          remap go/k8s/overlays/aws \
+            go-ai-service go-auth-service go-order-service go-analytics-service \
+            go-product-service go-cart-service go-payment-service go-order-projector
 
       - name: Deploy ai-services
         run: kubectl apply -k k8s/overlays/aws
