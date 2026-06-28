@@ -222,6 +222,15 @@ jobs:
           RDS_HOST=$(aws rds describe-db-instances \
             --db-instance-identifier gen-ai-portfolio-postgres \
             --query 'DBInstances[0].Endpoint.Address' --output text)
+
+          # RDS global CA bundle for verify-full TLS from the bootstrap Job.
+          curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+            -o /tmp/rds-global-bundle.pem
+          kubectl create configmap rds-ca-bundle \
+            --namespace=go-ecommerce \
+            --from-file=global-bundle.pem=/tmp/rds-global-bundle.pem \
+            --dry-run=client -o yaml | kubectl apply -f -
+
           kubectl create secret generic rds-bootstrap \
             --namespace=go-ecommerce \
             --from-literal=RDS_HOST="$RDS_HOST" \
@@ -230,8 +239,12 @@ jobs:
             --from-literal=APP_USER=taskuser \
             --from-literal=APP_PASSWORD="$TASK_DB_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
+
           kubectl delete job rds-bootstrap -n go-ecommerce --ignore-not-found --wait=true
           kubectl apply -f k8s/aws/rds-bootstrap-job.yml
+          # Always remove the master-credential Secret once the Job settles, so
+          # it never outlives the bootstrap or sits readable by app pods.
+          trap 'kubectl delete secret rds-bootstrap -n go-ecommerce --ignore-not-found' EXIT
           kubectl wait --for=condition=complete --timeout=300s \
             job/rds-bootstrap -n go-ecommerce
 
