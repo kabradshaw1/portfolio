@@ -1,0 +1,125 @@
+# RDS bootstrap — AWS only.
+#
+# Terraform creates a single RDS instance whose master database is `taskdb`,
+# owned by the master user `postgres`. The application expects a dedicated
+# login role `taskuser` plus one database per service. On the self-hosted
+# Postgres these were created by docker-entrypoint-initdb.d scripts
+# (java/k8s/configmaps/postgres-initdb.yml), which RDS does not run.
+#
+# This Job runs inside the cluster (RDS lives in private subnets, unreachable
+# from the Terraform runner) and connects as the master user to create the
+# role, the databases, and the pg_stat_statements extension. It is idempotent
+# and safe to re-run on every deploy. Connection details come from the
+# rds-bootstrap Secret, which the deploy workflow creates from CI secrets.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rds-bootstrap
+  namespace: go-ecommerce
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: rds-bootstrap
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: postgres:17-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              export PGPASSWORD="$MASTER_PASSWORD"
+
+              # TLS is verified against the RDS global CA bundle (mounted below),
+              # so the master credential never crosses an unauthenticated channel.
+              # APP_USER / APP_PASSWORD are passed as psql variables and quoted
+              # client-side (:"role" / :'pw'), never interpolated into SQL text.
+              # Wrapped in a function with quoted args so a password containing
+              # spaces or shell metacharacters cannot break word-splitting.
+              psql_m() {
+                psql -h "$RDS_HOST" -U "$MASTER_USER" -v ON_ERROR_STOP=1 -w \
+                  -v "role=$APP_USER" -v "pw=$APP_PASSWORD" "$@"
+              }
+
+              echo "==> Ensuring login role"
+              if [ "$(psql_m -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname = :'role'")" = "1" ]; then
+                psql_m -d postgres -c "ALTER ROLE :\"role\" WITH LOGIN PASSWORD :'pw'"
+              else
+                psql_m -d postgres -c "CREATE ROLE :\"role\" WITH LOGIN PASSWORD :'pw'"
+              fi
+
+              for db in taskdb authdb orderdb productdb cartdb paymentdb ecommercedb projectordb; do
+                if [ "$(psql_m -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'")" != "1" ]; then
+                  echo "==> Creating database $db"
+                  psql_m -d postgres -c "CREATE DATABASE \"$db\" OWNER :\"role\""
+                fi
+                # taskdb is created by RDS owned by the master user; re-own it.
+                psql_m -d postgres -c "ALTER DATABASE \"$db\" OWNER TO :\"role\""
+                psql_m -d "$db" -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"
+              done
+
+              echo "==> RDS bootstrap complete"
+          env:
+            # Verify the RDS server certificate against the mounted global CA
+            # bundle; fail closed if the cert/hostname does not match.
+            - name: PGSSLMODE
+              value: verify-full
+            - name: PGSSLROOTCERT
+              value: /etc/ssl/rds-ca/global-bundle.pem
+            - name: RDS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: rds-bootstrap
+                  key: RDS_HOST
+            - name: MASTER_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rds-bootstrap
+                  key: MASTER_USER
+            - name: MASTER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rds-bootstrap
+                  key: MASTER_PASSWORD
+            - name: APP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rds-bootstrap
+                  key: APP_USER
+            - name: APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rds-bootstrap
+                  key: APP_PASSWORD
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: rds-ca
+              mountPath: /etc/ssl/rds-ca
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: rds-ca
+          configMap:
+            name: rds-ca-bundle

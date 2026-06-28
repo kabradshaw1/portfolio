@@ -216,17 +216,6 @@ grep -c 'type: Recreate' /tmp/base.yaml
 ```
 Expected: command exits 0; each count is ≥ 1 (mongodb-data and mongodb-initdb each appear in both the resource and the deployment volume → ≥ 2; `type: Recreate` includes postgres + mongodb → ≥ 2).
 
-<<<<<<< HEAD
-- [ ] **Step 8: Validate AWS overlay render (new infra removed)**
-
-Run:
-```bash
-kubectl kustomize java/k8s/overlays/aws > /tmp/aws.yaml && \
-grep -c 'name: mongodb-data' /tmp/aws.yaml; \
-grep -c 'name: mongodb-initdb' /tmp/aws.yaml
-```
-Expected: overlay renders without error; both counts are `0` (resources deleted by the overlay).
-=======
 - [ ] **Step 8: Validate the AWS overlay delete patches structurally**
 
 NOTE: `kubectl kustomize java/k8s/overlays/aws` does **not** render — the overlay
@@ -243,7 +232,6 @@ grep -c '$patch: delete' java/k8s/overlays/aws/patches/remove-infra.yaml
 Expected: `mongodb-data` and `mongodb-initdb` each appear once; `$patch: delete`
 count increased by 2 vs. before this task. The new entries mirror the existing
 `postgres-data` / `postgres-initdb` delete blocks exactly.
->>>>>>> 611ea71df2b7f3dc5771c94ed67908c08e25f17f
 
 - [ ] **Step 9: Commit**
 
@@ -461,16 +449,6 @@ grep -c 'STORY_RABBIT_PASSWORD' /tmp/base.yaml
 ```
 Expected: command exits 0; every count is ≥ 1. Confirm no literal password is present: `grep -c 'rabbit-story-password' /tmp/base.yaml` shows the secret **key name** only (in `secretKeyRef`), never a value.
 
-<<<<<<< HEAD
-- [ ] **Step 8: Validate AWS overlay render (PVC removed)**
-
-Run:
-```bash
-kubectl kustomize java/k8s/overlays/aws > /tmp/aws.yaml && \
-grep -c 'name: rabbitmq-data' /tmp/aws.yaml
-```
-Expected: overlay renders without error; count is `0`.
-=======
 - [ ] **Step 8: Validate the AWS overlay delete patch structurally**
 
 NOTE: `kubectl kustomize java/k8s/overlays/aws` does not render — pre-existing
@@ -482,7 +460,6 @@ grep -c 'name: rabbitmq-data' java/k8s/overlays/aws/patches/remove-infra.yaml
 ```
 Expected: `rabbitmq-data` appears once in a `$patch: delete` block mirroring the
 existing `postgres-data` delete block.
->>>>>>> 611ea71df2b7f3dc5771c94ed67908c08e25f17f
 
 - [ ] **Step 9: Commit**
 

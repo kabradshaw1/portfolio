@@ -41,6 +41,10 @@ jobs:
             context: services
             dockerfile: services/debug/Dockerfile
             ecr_repo: gen-ai-portfolio/debug
+          - service: eval
+            context: services
+            dockerfile: services/eval/Dockerfile
+            ecr_repo: gen-ai-portfolio/eval
           # Java services
           - service: task-service
             context: java/task-service
@@ -75,6 +79,26 @@ jobs:
             context: go
             dockerfile: go/ai-service/Dockerfile
             ecr_repo: gen-ai-portfolio/go-ai-service
+          - service: analytics-service
+            context: go
+            dockerfile: go/analytics-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-analytics-service
+          - service: product-service
+            context: go
+            dockerfile: go/product-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-product-service
+          - service: cart-service
+            context: go
+            dockerfile: go/cart-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-cart-service
+          - service: payment-service
+            context: go
+            dockerfile: go/payment-service/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-payment-service
+          - service: order-projector
+            context: go
+            dockerfile: go/order-projector/Dockerfile
+            ecr_repo: gen-ai-portfolio/go-order-projector
     steps:
       - uses: actions/checkout@v4
 
@@ -143,6 +167,15 @@ jobs:
       - name: Configure kubectl
         run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
 
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Install kustomize
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
       - name: Create namespaces
         run: |
           for ns in ai-services java-tasks go-ecommerce monitoring; do
@@ -176,6 +209,69 @@ jobs:
             --namespace=go-ecommerce \
             --from-literal=jwt-secret="$JWT_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
+
+      # Create the taskuser role and the per-service databases on RDS. RDS only
+      # ships taskdb owned by the master user; this in-cluster Job creates the
+      # rest. Runs before any service or migration that needs those databases.
+      - name: Bootstrap RDS databases and role
+        env:
+          MASTER_PASSWORD: ${{ secrets.AWS_DB_PASSWORD }}
+          TASK_DB_PASSWORD: ${{ secrets.AWS_TASK_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          RDS_HOST=$(aws rds describe-db-instances \
+            --db-instance-identifier gen-ai-portfolio-postgres \
+            --query 'DBInstances[0].Endpoint.Address' --output text)
+
+          # RDS global CA bundle for verify-full TLS from the bootstrap Job.
+          curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+            -o /tmp/rds-global-bundle.pem
+          kubectl create configmap rds-ca-bundle \
+            --namespace=go-ecommerce \
+            --from-file=global-bundle.pem=/tmp/rds-global-bundle.pem \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create secret generic rds-bootstrap \
+            --namespace=go-ecommerce \
+            --from-literal=RDS_HOST="$RDS_HOST" \
+            --from-literal=MASTER_USER=postgres \
+            --from-literal=MASTER_PASSWORD="$MASTER_PASSWORD" \
+            --from-literal=APP_USER=taskuser \
+            --from-literal=APP_PASSWORD="$TASK_DB_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl delete job rds-bootstrap -n go-ecommerce --ignore-not-found --wait=true
+          kubectl apply -f k8s/aws/rds-bootstrap-job.yml
+          # Always remove the master-credential Secret once the Job settles, so
+          # it never outlives the bootstrap or sits readable by app pods.
+          trap 'kubectl delete secret rds-bootstrap -n go-ecommerce --ignore-not-found' EXIT
+          kubectl wait --for=condition=complete --timeout=300s \
+            job/rds-bootstrap -n go-ecommerce
+
+      # The aws/ overlays reference ghcr.io/kabradshaw1/portfolio/* images. Point
+      # each at the ECR repo built above (same basename under gen-ai-portfolio/).
+      # ECR_REGISTRY comes from the ecr-login action output, not user input.
+      - name: Remap overlay images to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+        run: |
+          set -euo pipefail
+          remap() {
+            local dir="$1"; shift
+            pushd "$dir" >/dev/null
+            for name in "$@"; do
+              kustomize edit set image \
+                "ghcr.io/kabradshaw1/portfolio/${name}=${ECR_REGISTRY}/gen-ai-portfolio/${name}:latest"
+            done
+            popd >/dev/null
+          }
+          remap k8s/overlays/aws \
+            chat debug eval ingestion
+          remap java/k8s/overlays/aws \
+            java-task-service java-activity-service java-notification-service java-gateway-service
+          remap go/k8s/overlays/aws \
+            go-ai-service go-auth-service go-order-service go-analytics-service \
+            go-product-service go-cart-service go-payment-service go-order-projector
 
       - name: Deploy ai-services
         run: kubectl apply -k k8s/overlays/aws
