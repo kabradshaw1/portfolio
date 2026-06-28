@@ -267,9 +267,9 @@ jobs:
           }
           remap k8s/overlays/aws \
             chat debug eval ingestion
-          remap java/k8s/overlays/aws \
+          remap k8s/overlays/aws-java \
             java-task-service java-activity-service java-notification-service java-gateway-service
-          remap go/k8s/overlays/aws \
+          remap k8s/overlays/aws-go \
             go-ai-service go-auth-service go-order-service go-analytics-service \
             go-product-service go-cart-service go-payment-service go-order-projector
 
@@ -280,10 +280,10 @@ jobs:
         run: kubectl apply -k k8s/monitoring
 
       - name: Deploy java-tasks
-        run: kubectl apply -k java/k8s/overlays/aws
+        run: kubectl apply -k k8s/overlays/aws-java
 
       - name: Deploy go-ecommerce (order-service)
-        run: kubectl apply -k go/k8s/overlays/aws
+        run: kubectl apply -k k8s/overlays/aws-go
 
       - name: Run Go migrations
         run: |
