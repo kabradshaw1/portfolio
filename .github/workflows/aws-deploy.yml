@@ -210,6 +210,31 @@ jobs:
             --from-literal=jwt-secret="$JWT_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      # Create the taskuser role and the per-service databases on RDS. RDS only
+      # ships taskdb owned by the master user; this in-cluster Job creates the
+      # rest. Runs before any service or migration that needs those databases.
+      - name: Bootstrap RDS databases and role
+        env:
+          MASTER_PASSWORD: ${{ secrets.AWS_DB_PASSWORD }}
+          TASK_DB_PASSWORD: ${{ secrets.AWS_TASK_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          RDS_HOST=$(aws rds describe-db-instances \
+            --db-instance-identifier gen-ai-portfolio-postgres \
+            --query 'DBInstances[0].Endpoint.Address' --output text)
+          kubectl create secret generic rds-bootstrap \
+            --namespace=go-ecommerce \
+            --from-literal=RDS_HOST="$RDS_HOST" \
+            --from-literal=MASTER_USER=postgres \
+            --from-literal=MASTER_PASSWORD="$MASTER_PASSWORD" \
+            --from-literal=APP_USER=taskuser \
+            --from-literal=APP_PASSWORD="$TASK_DB_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl delete job rds-bootstrap -n go-ecommerce --ignore-not-found --wait=true
+          kubectl apply -f k8s/aws/rds-bootstrap-job.yml
+          kubectl wait --for=condition=complete --timeout=300s \
+            job/rds-bootstrap -n go-ecommerce
+
       # The aws/ overlays reference ghcr.io/kabradshaw1/portfolio/* images. Point
       # each at the ECR repo built above (same basename under gen-ai-portfolio/).
       # ECR_REGISTRY comes from the ecr-login action output, not user input.
