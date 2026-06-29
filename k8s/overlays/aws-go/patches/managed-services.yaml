@@ -1,0 +1,288 @@
+# Repoint Go services from in-cluster Postgres/Redis to AWS managed services.
+#
+# Substitution model (matches java/aws-java):
+#   ${RDS_ENDPOINT} / ${ELASTICACHE_ENDPOINT}  -> envsubst at deploy time
+#   $(TASK_DB_PASSWORD)                         -> k8s dependent-env, resolved
+#                                                  by the kubelet from the
+#                                                  task-db-password Secret. It
+#                                                  uses $(...) syntax so envsubst
+#                                                  (which only expands ${VAR})
+#                                                  leaves it untouched.
+#
+# TLS: RDS PG17 default parameter group sets rds.force_ssl=1. Connections use
+# sslmode=verify-full with the RDS global CA bundle mounted from the
+# rds-ca-bundle ConfigMap (created by the deploy workflow) at
+# /etc/rds/global-bundle.pem.
+#
+# pgbouncer / postgres-replica do not exist on EKS, so discrete services point
+# their pooled AND _DIRECT hosts straight at RDS:5432, and order-service's
+# reporting replica falls back to the RDS primary.
+
+# --- Redis -> ElastiCache (plaintext, port 6379) ---
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-service-config
+  namespace: go-ecommerce
+data:
+  REDIS_URL: "redis://${ELASTICACHE_ENDPOINT}:6379"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-service-config
+  namespace: go-ecommerce
+data:
+  REDIS_URL: "redis://${ELASTICACHE_ENDPOINT}:6379"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: product-service-config
+  namespace: go-ecommerce
+data:
+  REDIS_URL: "redis://${ELASTICACHE_ENDPOINT}:6379"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cart-service-config
+  namespace: go-ecommerce
+data:
+  REDIS_URL: "redis://${ELASTICACHE_ENDPOINT}:6379"
+  # --- Discrete DSN components -> RDS (no pgbouncer on EKS) ---
+  DB_HOST: "${RDS_ENDPOINT}"
+  DB_PORT: "5432"
+  DB_OPTIONS: "sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=cart-service"
+  DB_HOST_DIRECT: "${RDS_ENDPOINT}"
+  DB_PORT_DIRECT: "5432"
+  DB_OPTIONS_DIRECT: "sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=cart-service-migrate"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analytics-service-config
+  namespace: go-ecommerce
+data:
+  REDIS_URL: "redis://${ELASTICACHE_ENDPOINT}:6379/0"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-service-config
+  namespace: go-ecommerce
+data:
+  REDIS_URL: "redis://${ELASTICACHE_ENDPOINT}:6379"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-projector-config
+  namespace: go-ecommerce
+data:
+  DB_HOST: "${RDS_ENDPOINT}"
+  DB_PORT: "5432"
+  DB_OPTIONS: "sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=order-projector"
+  DB_HOST_DIRECT: "${RDS_ENDPOINT}"
+  DB_PORT_DIRECT: "5432"
+  DB_OPTIONS_DIRECT: "sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=order-projector-migrate"
+
+# --- DSN-style deployments: inject taskuser password + repoint to RDS ---
+# DATABASE_URL is set here as a container env so it overrides the in-cluster
+# value the base configmap supplies via envFrom.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-auth-service
+  namespace: go-ecommerce
+spec:
+  template:
+    spec:
+      volumes:
+        - name: rds-ca
+          configMap:
+            name: rds-ca-bundle
+      containers:
+        - name: go-auth-service
+          env:
+            - name: TASK_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: task-db-password
+                  key: password
+            - name: DATABASE_URL
+              value: "postgres://taskuser:$(TASK_DB_PASSWORD)@${RDS_ENDPOINT}:5432/authdb?sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=auth-service"
+          volumeMounts:
+            - name: rds-ca
+              mountPath: /etc/rds
+              readOnly: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-order-service
+  namespace: go-ecommerce
+spec:
+  template:
+    spec:
+      volumes:
+        - name: rds-ca
+          configMap:
+            name: rds-ca-bundle
+      containers:
+        - name: go-order-service
+          env:
+            - name: TASK_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: task-db-password
+                  key: password
+            - name: DATABASE_URL
+              value: "postgres://taskuser:$(TASK_DB_PASSWORD)@${RDS_ENDPOINT}:5432/orderdb?sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=order-service"
+            # No read replica on EKS — reporting reads fall back to the primary.
+            - name: DATABASE_URL_REPLICA
+              value: "postgres://taskuser:$(TASK_DB_PASSWORD)@${RDS_ENDPOINT}:5432/orderdb?sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=order-service-reporting"
+          volumeMounts:
+            - name: rds-ca
+              mountPath: /etc/rds
+              readOnly: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-product-service
+  namespace: go-ecommerce
+spec:
+  template:
+    spec:
+      volumes:
+        - name: rds-ca
+          configMap:
+            name: rds-ca-bundle
+      containers:
+        - name: go-product-service
+          env:
+            - name: TASK_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: task-db-password
+                  key: password
+            - name: DATABASE_URL
+              value: "postgres://taskuser:$(TASK_DB_PASSWORD)@${RDS_ENDPOINT}:5432/productdb?sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=product-service"
+          volumeMounts:
+            - name: rds-ca
+              mountPath: /etc/rds
+              readOnly: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-payment-service
+  namespace: go-ecommerce
+spec:
+  template:
+    spec:
+      volumes:
+        - name: rds-ca
+          configMap:
+            name: rds-ca-bundle
+      containers:
+        - name: go-payment-service
+          env:
+            - name: TASK_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: task-db-password
+                  key: password
+            - name: DATABASE_URL
+              value: "postgres://taskuser:$(TASK_DB_PASSWORD)@${RDS_ENDPOINT}:5432/paymentdb?sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=payment-service"
+          volumeMounts:
+            - name: rds-ca
+              mountPath: /etc/rds
+              readOnly: true
+
+# --- Discrete-style deployments: mount the RDS CA (creds come from the
+# cart-service-db / order-projector-db Secrets the workflow recreates). ---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-cart-service
+  namespace: go-ecommerce
+spec:
+  template:
+    spec:
+      volumes:
+        - name: rds-ca
+          configMap:
+            name: rds-ca-bundle
+      containers:
+        - name: go-cart-service
+          volumeMounts:
+            - name: rds-ca
+              mountPath: /etc/rds
+              readOnly: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-order-projector
+  namespace: go-ecommerce
+spec:
+  template:
+    spec:
+      volumes:
+        - name: rds-ca
+          configMap:
+            name: rds-ca-bundle
+      containers:
+        - name: go-order-projector
+          volumeMounts:
+            - name: rds-ca
+              mountPath: /etc/rds
+              readOnly: true
+
+# --- Discrete-style migration Jobs: mount the RDS CA so the shell-assembled
+# verify-full DSN can find sslrootcert. (DSN-style migration Jobs are patched
+# via inline JSON6902 in kustomization.yaml — they need DATABASE_URL replaced,
+# not merged.) ---
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: go-cart-migrate
+  namespace: go-ecommerce
+spec:
+  template:
+    spec:
+      volumes:
+        - name: rds-ca
+          configMap:
+            name: rds-ca-bundle
+      containers:
+        - name: migrate
+          volumeMounts:
+            - name: rds-ca
+              mountPath: /etc/rds
+              readOnly: true
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: go-projector-migrate
+  namespace: go-ecommerce
+spec:
+  template:
+    spec:
+      volumes:
+        - name: rds-ca
+          configMap:
+            name: rds-ca-bundle
+      containers:
+        - name: migrate
+          volumeMounts:
+            - name: rds-ca
+              mountPath: /etc/rds
+              readOnly: true

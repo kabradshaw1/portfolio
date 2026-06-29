@@ -46,7 +46,9 @@ Option B.
 - The fix shipped alongside the QA deploy debugging in a single short chain of commits (`ba9613d` → `15e2ada` → `6ad8482`..`5cd2ec8`) rather than as a separate 66-file restructure.
 
 **Trade-offs:**
-- `java/k8s/overlays/{minikube,aws}/` still use the original `../../` pattern. If those overlays ever get pulled into a Kustomize-v5.7+ CI path, they'll hit the same cycle and need to be moved (either into a future `base/` subdir per Option A, or out to `k8s/overlays/` like the QA ones). For now they're unaffected because they're not part of the QA/prod deploy flow.
+- `java/k8s/overlays/minikube/` and `go/k8s/overlays/minikube/` still use the original `../../` pattern. If those overlays ever get pulled into a Kustomize-v5.7+ CI path, they'll hit the same cycle and need to be moved (either into a future `base/` subdir per Option A, or out to `k8s/overlays/` like the others). For now they're unaffected because they're not built in CI.
+
+  **Update (2026-06-28):** the `aws` overlays *were* pulled into a v5.8 CI path (the EKS `aws-deploy.yml` flow) and hit exactly this cycle. They were moved out per Option B to `k8s/overlays/aws-go` and `k8s/overlays/aws-java` (referencing `../../../go/k8s` and `../../../java/k8s`), matching the `qa-*` overlays. Only the `minikube` overlays remain on the legacy `../../` pattern.
 - The QA overlay paths are slightly less discoverable — someone touching `java/k8s/` might not realize a QA counterpart lives at the repo root. Mitigated by `CLAUDE.md` documenting the layout.
 
 ## Superseded artifacts

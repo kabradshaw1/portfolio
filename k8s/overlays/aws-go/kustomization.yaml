@@ -1,0 +1,139 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../go/k8s
+
+patches:
+  - path: patches/ai-service-llm.yaml
+  - path: patches/ingress-alb.yaml
+  - path: patches/managed-services.yaml
+
+  # DSN-style migration Jobs read DATABASE_URL from a configMapKeyRef
+  # (DATABASE_URL_DIRECT). Replace it with the taskuser/RDS verify-full DSN and
+  # inject the dependent-env password + CA mount. JSON6902 (not strategic merge)
+  # because an env entry can't carry both `value` and `valueFrom`.
+  - target:
+      group: batch
+      version: v1
+      kind: Job
+      name: go-auth-migrate
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/0
+        value:
+          name: TASK_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: task-db-password
+              key: password
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1
+        value:
+          name: DATABASE_URL
+          value: "postgres://taskuser:$(TASK_DB_PASSWORD)@${RDS_ENDPOINT}:5432/authdb?sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=auth-service-migrate"
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: rds-ca
+            configMap:
+              name: rds-ca-bundle
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - name: rds-ca
+            mountPath: /etc/rds
+            readOnly: true
+  - target:
+      group: batch
+      version: v1
+      kind: Job
+      name: go-order-migrate
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/0
+        value:
+          name: TASK_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: task-db-password
+              key: password
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1
+        value:
+          name: DATABASE_URL
+          value: "postgres://taskuser:$(TASK_DB_PASSWORD)@${RDS_ENDPOINT}:5432/orderdb?sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=order-service-migrate"
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: rds-ca
+            configMap:
+              name: rds-ca-bundle
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - name: rds-ca
+            mountPath: /etc/rds
+            readOnly: true
+  - target:
+      group: batch
+      version: v1
+      kind: Job
+      name: go-product-migrate
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/0
+        value:
+          name: TASK_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: task-db-password
+              key: password
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1
+        value:
+          name: DATABASE_URL
+          value: "postgres://taskuser:$(TASK_DB_PASSWORD)@${RDS_ENDPOINT}:5432/productdb?sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=product-service-migrate"
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: rds-ca
+            configMap:
+              name: rds-ca-bundle
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - name: rds-ca
+            mountPath: /etc/rds
+            readOnly: true
+  - target:
+      group: batch
+      version: v1
+      kind: Job
+      name: go-payment-migrate
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/0
+        value:
+          name: TASK_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: task-db-password
+              key: password
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1
+        value:
+          name: DATABASE_URL
+          value: "postgres://taskuser:$(TASK_DB_PASSWORD)@${RDS_ENDPOINT}:5432/paymentdb?sslmode=verify-full&sslrootcert=/etc/rds/global-bundle.pem&application_name=payment-service-migrate"
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: rds-ca
+            configMap:
+              name: rds-ca-bundle
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - name: rds-ca
+            mountPath: /etc/rds
+            readOnly: true
