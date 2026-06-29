@@ -20,6 +20,7 @@ from app.config import settings
 from app.graph import build_graph
 from app.metrics import INVESTIGATE_ATTEMPTS, instrumentator
 from app.roles import model_for
+from app.usage import RunAccountant
 
 logger = structlog.get_logger()
 
@@ -104,6 +105,14 @@ def _serialize(value) -> str:
 # State keys that map to SSE events streamed to the client.
 _STREAM_KEYS = ("triage", "evidence", "findings", "verdict", "report")
 
+# Role -> configured model, for per-role cost attribution in the run summary.
+ROLE_MODELS = {
+    "triage": settings.triage_model,
+    "investigate": settings.investigate_model,
+    "validate": settings.validate_model,
+    "report": settings.report_model,
+}
+
 
 def _iter_updates(chunk: dict):
     """Yield (state_key, value) pairs from one stream chunk.
@@ -133,20 +142,31 @@ async def investigate(
     start_state = {"incident": incident, "evidence": [], "investigate_attempts": 0}
     graph_app = _get_graph_app()
 
+    accountant = RunAccountant(ROLE_MODELS)
+    config = {"callbacks": [accountant]}
+
     async def event_generator():
+        tool_calls = 0
+        attempts = 0
         try:
-            for chunk in graph_app.stream(start_state):
+            for chunk in graph_app.stream(start_state, config=config):
                 for key, payload in _iter_updates(chunk):
                     if payload is None:
                         continue
                     if key in _STREAM_KEYS:
                         if key == "evidence":
+                            tool_calls = len(payload)
                             data = json.dumps([e.model_dump() for e in payload])
                         else:
                             data = _serialize(payload)
                         yield {"event": key, "data": data}
                     elif key == "investigate_attempts":
+                        attempts = payload
                         INVESTIGATE_ATTEMPTS.observe(payload)
+            summary = accountant.summary()
+            summary["tool_calls"] = tool_calls
+            summary["investigate_attempts"] = attempts
+            yield {"event": "summary", "data": json.dumps(summary)}
             yield {"event": "done", "data": json.dumps({})}
         except Exception as e:  # noqa: BLE001
             logger.error("investigation_error", error=str(e), exc_info=True)

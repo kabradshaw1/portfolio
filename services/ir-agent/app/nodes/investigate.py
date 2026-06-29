@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
+from app import metrics
 from app.models import EvidenceItem, Findings
 from app.prompts import INVESTIGATE_SYSTEM
 from app.state import IRState
@@ -46,6 +47,7 @@ def make_investigate_node(model, *, max_tool_steps: int) -> Callable[[IRState], 
             for call in tool_calls:
                 name = call["name"]
                 args = call.get("args", {})
+                metrics.TOOL_CALLS.labels(tool=name).inc()
                 tool = tools.get(name)
                 result = tool.invoke(args) if tool else f"Unknown tool: {name}"
                 eid = f"{name}-{counter}"

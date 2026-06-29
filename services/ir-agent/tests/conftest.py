@@ -49,6 +49,20 @@ def make_fake_model():
 
 
 @pytest.fixture(autouse=True)
+def _reset_sse_appstatus():
+    """sse-starlette caches an exit Event bound to the first test's event loop;
+    reset it so each streaming test gets a fresh one (otherwise the second
+    streaming test fails with 'bound to a different event loop')."""
+    try:
+        from sse_starlette.sse import AppStatus
+
+        AppStatus.should_exit_event = None
+    except Exception:
+        pass
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _disable_rate_limiting():
     """Disable rate limiting when main.py is imported (mirrors debug)."""
     try:

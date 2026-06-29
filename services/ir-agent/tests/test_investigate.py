@@ -37,6 +37,30 @@ def test_investigate_runs_tools_then_produces_findings(make_fake_model):
     assert out["evidence"][0].source_tool == "search_alerts"
 
 
+def test_investigate_records_tool_calls_metric(make_fake_model):
+    from prometheus_client import REGISTRY
+
+    tool_script = [
+        AIMessage(
+            content="",
+            tool_calls=[_tool_call("search_alerts", {"query": "login"}, "c1")],
+        ),
+        AIMessage(content="done"),
+    ]
+    model = make_fake_model(
+        structured=Findings(summary="s", hypothesis="h"), tool_script=tool_script
+    )
+    node = make_investigate_node(model, max_tool_steps=4)
+
+    before = (
+        REGISTRY.get_sample_value("ir_tool_calls_total", {"tool": "search_alerts"})
+        or 0.0
+    )
+    node({"incident": Incident(id="INC-PHISH-001", source="email-gw", title="t")})
+    after = REGISTRY.get_sample_value("ir_tool_calls_total", {"tool": "search_alerts"})
+    assert after == before + 1
+
+
 def test_investigate_increments_attempts_and_keeps_prior_evidence(make_fake_model):
     findings = Findings(summary="s", hypothesis="h")
     model = make_fake_model(
