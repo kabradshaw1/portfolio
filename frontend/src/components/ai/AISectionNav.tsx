@@ -1,4 +1,5 @@
 const aiSectionLinks = [
+  { href: "#ir-agent", label: "IR Agent" },
   { href: "#mcp-server", label: "MCP Server" },
   { href: "#internal-mcps", label: "Internal MCPs" },
   { href: "#rag-evaluation", label: "RAG Evaluation" },
