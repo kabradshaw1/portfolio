@@ -94,12 +94,49 @@ async def health():
     )
 
 
-def _serialize(value) -> str:
-    return (
-        value.model_dump_json()
-        if hasattr(value, "model_dump_json")
-        else json.dumps(value)
-    )
+def _to_jsonable(key: str, payload):
+    """Reduce a streamed state value to a plain JSON-able object.
+
+    Evidence is a list of pydantic items; the other streamed keys are single
+    pydantic models. Anything already plain (a dict/list) passes through. This
+    is the canonical wire content for one event, shared by the live SSE endpoint
+    and the transcript capture script so replay never drifts from live runs.
+    """
+    if key == "evidence":
+        return [e.model_dump() for e in payload]
+    if hasattr(payload, "model_dump"):
+        return payload.model_dump()
+    return payload
+
+
+def run_investigation_events(graph_app, start_state, accountant, config=None):
+    """Drive the graph and yield ordered ``(event_name, jsonable_data)`` tuples.
+
+    Single source of truth for the investigation event sequence. The ``/investigate``
+    SSE endpoint wraps each tuple as an SSE frame; the capture script serializes the
+    same tuples to a static transcript for the public replay demo. Token/cost/latency
+    accounting is collected via ``accountant`` (attached through the stream config)
+    and emitted as the trailing ``summary`` event, followed by ``done``.
+    """
+    cfg = config or {"callbacks": [accountant]}
+    tool_calls = 0
+    attempts = 0
+    for chunk in graph_app.stream(start_state, config=cfg):
+        for key, payload in _iter_updates(chunk):
+            if payload is None:
+                continue
+            if key in _STREAM_KEYS:
+                if key == "evidence":
+                    tool_calls = len(payload)
+                yield key, _to_jsonable(key, payload)
+            elif key == "investigate_attempts":
+                attempts = payload
+                INVESTIGATE_ATTEMPTS.observe(payload)
+    summary = accountant.summary()
+    summary["tool_calls"] = tool_calls
+    summary["investigate_attempts"] = attempts
+    yield "summary", summary
+    yield "done", {}
 
 
 # State keys that map to SSE events streamed to the client.
@@ -143,31 +180,13 @@ async def investigate(
     graph_app = _get_graph_app()
 
     accountant = RunAccountant(ROLE_MODELS)
-    config = {"callbacks": [accountant]}
 
     async def event_generator():
-        tool_calls = 0
-        attempts = 0
         try:
-            for chunk in graph_app.stream(start_state, config=config):
-                for key, payload in _iter_updates(chunk):
-                    if payload is None:
-                        continue
-                    if key in _STREAM_KEYS:
-                        if key == "evidence":
-                            tool_calls = len(payload)
-                            data = json.dumps([e.model_dump() for e in payload])
-                        else:
-                            data = _serialize(payload)
-                        yield {"event": key, "data": data}
-                    elif key == "investigate_attempts":
-                        attempts = payload
-                        INVESTIGATE_ATTEMPTS.observe(payload)
-            summary = accountant.summary()
-            summary["tool_calls"] = tool_calls
-            summary["investigate_attempts"] = attempts
-            yield {"event": "summary", "data": json.dumps(summary)}
-            yield {"event": "done", "data": json.dumps({})}
+            for event, data in run_investigation_events(
+                graph_app, start_state, accountant
+            ):
+                yield {"event": event, "data": json.dumps(data)}
         except Exception as e:  # noqa: BLE001
             logger.error("investigation_error", error=str(e), exc_info=True)
             yield {

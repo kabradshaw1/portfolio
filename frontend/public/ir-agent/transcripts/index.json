@@ -1,0 +1,20 @@
+[
+  {
+    "incident_id": "INC-EXFIL-003",
+    "title": "Large outbound transfer to personal cloud storage",
+    "source": "SIEM",
+    "file": "INC-EXFIL-003.json"
+  },
+  {
+    "incident_id": "INC-MAL-002",
+    "title": "Endpoint beaconing to suspected C2",
+    "source": "EDR",
+    "file": "INC-MAL-002.json"
+  },
+  {
+    "incident_id": "INC-PHISH-001",
+    "title": "Credential phishing email followed by anomalous login",
+    "source": "email-gw",
+    "file": "INC-PHISH-001.json"
+  }
+]

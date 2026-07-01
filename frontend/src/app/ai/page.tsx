@@ -73,7 +73,49 @@ export default function AISection() {
 
         <AISectionNav />
 
-        {/* MCP Server (top section) */}
+        {/* IR Agent (featured) */}
+        <section id="ir-agent" className="mt-16 scroll-mt-20">
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-6">
+            <span className="inline-flex items-center rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+              Featured
+            </span>
+            <h2 className="mt-3 text-2xl font-semibold">Incident-Response Agent</h2>
+            <p className="mt-3 text-muted-foreground leading-relaxed">
+              A LangGraph multi-agent service that investigates security
+              incidents: four specialized agents (triage, investigate, validate,
+              report) pass typed state through a graph with a bounded validator
+              loop. Each node runs the cheapest Claude model that fits the job —
+              Haiku to triage, Opus to investigate and validate, Sonnet to
+              report — and every run reports its real per-role tokens, cost,
+              latency, and savings versus running Opus everywhere.
+            </p>
+
+            <h3 className="mt-6 text-lg font-medium">What It Demonstrates</h3>
+            <ul className="mt-2 list-disc pl-6 text-muted-foreground space-y-1">
+              <li>Multi-agent LangGraph orchestration with a bounded retry loop</li>
+              <li>Per-role model tiering with measured cost/savings telemetry</li>
+              <li>Two-layer validation: structured outputs + a grounding validator agent</li>
+              <li>SSE streaming of typed agent state, replayable as a free public demo</li>
+            </ul>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/ai/ir-agent"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Explore the IR Agent &rarr;
+              </Link>
+              <Link
+                href="/ai/ir-agent/demo"
+                className="inline-flex items-center gap-2 rounded-lg border px-5 py-2.5 text-sm font-medium hover:bg-accent transition-colors"
+              >
+                Try the live demo &rarr;
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* MCP Server */}
         <MCPSection />
 
         {/* RAG Evaluation */}
