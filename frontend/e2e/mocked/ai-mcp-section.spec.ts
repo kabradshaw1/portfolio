@@ -1,16 +1,20 @@
 import { test, expect } from "./fixtures";
 
 test.describe("/ai MCP Server section", () => {
-  test("MCP Server is the first section heading on /ai", async ({ page }) => {
+  test("Featured IR Agent leads, MCP Server follows, on /ai", async ({ page }) => {
     await page.goto("/ai");
     const sectionHeadings = page.locator("section h2");
-    await expect(sectionHeadings.first()).toHaveText("MCP Server");
+    // The IR agent is the featured AI project, so it heads the page; the MCP
+    // server section follows it.
+    await expect(sectionHeadings.first()).toHaveText("Incident-Response Agent");
+    await expect(sectionHeadings.nth(1)).toHaveText("MCP Server");
   });
 
-  test("RAG Evaluation appears as the second section on /ai", async ({ page }) => {
+  test("RAG Evaluation renders as a section on /ai", async ({ page }) => {
     await page.goto("/ai");
-    const sectionHeadings = page.locator("section h2");
-    await expect(sectionHeadings.nth(1)).toHaveText("RAG Evaluation");
+    await expect(page.locator("section#rag-evaluation h2")).toHaveText(
+      "RAG Evaluation",
+    );
   });
 
   test("MCP section shows the verified public endpoint", async ({ page }) => {
