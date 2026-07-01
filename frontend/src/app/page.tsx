@@ -33,9 +33,37 @@ export default function Home() {
           .
         </p>
 
-        {/* Featured Project */}
-        <h2 className="mt-16 text-2xl font-semibold">Featured Project</h2>
+        {/* Featured Projects */}
+        <h2 className="mt-16 text-2xl font-semibold">Featured Projects</h2>
         <div className="mt-6 grid gap-4">
+          <Link href="/ai/ir-agent" className="block">
+            <Card className="border-primary/40 ring-1 ring-primary/10 hover:ring-foreground/20 transition-all">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                    Featured
+                  </span>
+                </div>
+                <CardTitle className="mt-2">Incident-Response Agent</CardTitle>
+                <CardDescription>
+                  A LangGraph multi-agent system that triages, investigates,
+                  validates, and reports on security incidents — with role-tiered
+                  Claude models, a grounding validator, and measured
+                  cost/latency telemetry
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">
+                  Four specialized agents pass typed state through a graph with a
+                  bounded validator loop that catches overclaims before they
+                  reach the report. Each node runs the right-sized Claude model
+                  (Haiku &rarr; Opus &rarr; Sonnet), every run reports real
+                  per-role tokens, cost, and latency, and a free replay demo
+                  streams captured investigations with no backend required.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
           <Link href="/galaxy" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>
@@ -140,29 +168,6 @@ export default function Home() {
         {/* AI Systems */}
         <h2 className="mt-16 text-2xl font-semibold">AI Systems</h2>
         <div className="mt-6 grid gap-4">
-          <Link href="/ai/ir-agent" className="block">
-            <Card className="border-primary/30 hover:ring-foreground/20 transition-all">
-              <CardHeader>
-                <CardTitle>Incident-Response Agent</CardTitle>
-                <CardDescription>
-                  A LangGraph multi-agent system that triages, investigates,
-                  validates, and reports on security incidents — with role-tiered
-                  Claude models and measured cost/latency telemetry
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-sm">
-                  Four specialized agents pass typed state through a graph with a
-                  bounded validator loop. Each node runs the cheapest capable
-                  Claude model (Haiku → Opus → Sonnet), and every run reports its
-                  real per-role tokens, cost, latency, and savings versus
-                  Opus-everywhere. Streamed over SSE with a free, always-on replay
-                  demo.
-                </p>
-              </CardContent>
-            </Card>
-          </Link>
-
           <Link href="/ai" className="block">
             <Card className="hover:ring-foreground/20 transition-all">
               <CardHeader>

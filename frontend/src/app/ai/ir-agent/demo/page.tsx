@@ -119,6 +119,15 @@ export default function IRAgentDemo() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // Auto-play the replay once on first load so the demo is alive immediately.
+  const didAutoplay = useRef(false);
+  useEffect(() => {
+    if (didAutoplay.current) return;
+    if (mode !== "replay" || !selected || manifest.length === 0) return;
+    didAutoplay.current = true;
+    void run();
+  }, [selected, manifest, mode, run]);
+
   const hasTranscripts = manifest.length > 0;
   const liveBlocked = mode === "live" && liveHealthy === false;
 

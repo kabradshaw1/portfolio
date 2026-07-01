@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
 import { PillarSection } from "@/components/database/PillarSection";
@@ -6,6 +7,28 @@ import {
   IR_AGENT_METRICS,
   MEASURED,
 } from "@/lib/ir-agent/metrics";
+
+const DESCRIPTION =
+  "A LangGraph multi-agent incident-response service: four role-tiered Claude " +
+  "agents (Haiku → Opus → Sonnet) triage, investigate, validate, and report on " +
+  "security incidents. A grounding validator catches overclaims before they reach " +
+  "the report, and every run is measured for per-role tokens, cost, and latency. " +
+  "Free, always-on replay demo.";
+
+export const metadata: Metadata = {
+  title: "Incident-Response Agent — Kyle Bradshaw",
+  description: DESCRIPTION,
+  openGraph: {
+    title: "Incident-Response Agent",
+    description: DESCRIPTION,
+    type: "article",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Incident-Response Agent",
+    description: DESCRIPTION,
+  },
+};
 
 const ADR_URL =
   "https://github.com/kabradshaw1/portfolio/blob/main/docs/adr/ir-agent/01_langgraph_multi_agent_design.ipynb";
