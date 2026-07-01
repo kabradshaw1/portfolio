@@ -28,23 +28,46 @@ export interface IncidentMetric {
 }
 
 /** Flip to true once IR_AGENT_METRICS holds real captured numbers. */
-export const MEASURED = false;
+export const MEASURED = true;
 
 /** Date the figures below were captured (ISO date). */
-export const CAPTURED_ON = "";
+export const CAPTURED_ON = "2026-07-01";
 
 export const IR_AGENT_METRICS: IncidentMetric[] = [
-  // Filled from the capture run, e.g.:
-  // {
-  //   incidentId: "INC-PHISH-001",
-  //   title: "Phishing credential theft",
-  //   category: "phishing",
-  //   costUsd: 0,
-  //   opusCostUsd: 0,
-  //   totalTokens: 0,
-  //   seconds: 0,
-  //   savingsFactor: 0,
-  //   investigateAttempts: 0,
-  //   toolCalls: 0,
-  // },
+  {
+    incidentId: "INC-PHISH-001",
+    title: "Credential phishing email followed by anomalous login",
+    category: "phishing",
+    costUsd: 0.5502,
+    opusCostUsd: 0.5835,
+    totalTokens: 62903,
+    seconds: 234.4,
+    savingsFactor: 1.06,
+    investigateAttempts: 2,
+    toolCalls: 38,
+  },
+  {
+    incidentId: "INC-MAL-002",
+    title: "Endpoint beaconing to suspected C2",
+    category: "malware",
+    costUsd: 0.4055,
+    opusCostUsd: 0.431,
+    totalTokens: 46266,
+    seconds: 138.2,
+    savingsFactor: 1.06,
+    investigateAttempts: 2,
+    toolCalls: 25,
+  },
+  {
+    incidentId: "INC-EXFIL-003",
+    title: "Large outbound transfer to personal cloud storage",
+    category: "data-exfil",
+    costUsd: 0.4454,
+    opusCostUsd: 0.4717,
+    totalTokens: 51615,
+    seconds: 161.5,
+    savingsFactor: 1.06,
+    investigateAttempts: 2,
+    toolCalls: 31,
+  },
 ];

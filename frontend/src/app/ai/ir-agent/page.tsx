@@ -36,9 +36,17 @@ export default function IRAgentPage() {
           end to end. Four specialized agents — triage, investigate, validate,
           and report — pass typed state through a graph, calling read-only
           evidence tools and looping until a validator confirms the findings are
-          grounded. Every node is assigned the cheapest Claude model that can do
-          its job, and every run is fully instrumented: per-role tokens, cost,
-          latency, and the savings from tiering versus running Opus everywhere.
+          grounded. Every node runs a right-sized Claude model, and every run is
+          fully instrumented: per-role tokens, cost, and latency.
+        </p>
+        <p className="mt-4 leading-relaxed text-muted-foreground">
+          This page is a progress narrative, not a pitch:{" "}
+          <span className="text-foreground">build → instrument → measure →</span>{" "}
+          learn what the data actually says. The headline finding is that the
+          service&rsquo;s value isn&rsquo;t cost arbitrage — it&rsquo;s{" "}
+          <span className="text-foreground">grounding rigor</span>: a validation
+          agent that catches the subtle overclaiming which turns a plausible
+          incident report into a wrong one.
         </p>
 
         <div className="mt-6 flex flex-wrap gap-3">
@@ -75,23 +83,58 @@ export default function IRAgentPage() {
         {/* Pillars */}
         <div className="mt-12 space-y-12">
           <PillarSection
-            id="role-tiering"
-            title="Role-based model tiering"
+            id="two-layer-validation"
+            title="Two-layer validation — the real value"
             narrative={
               <>
                 <p>
-                  Not every step needs the same horsepower. Triage is a fast
-                  classification, so it runs on <code>Haiku</code>. The
-                  investigate and validate agents do the heavy reasoning over
-                  evidence, so they run on <code>Opus</code>. Drafting the final
-                  report is a structured write-up, well within{" "}
-                  <code>Sonnet</code>&rsquo;s reach.
+                  Hallucinated incident reports are worse than none. The agent
+                  defends against that twice. First, every node emits a validated
+                  Pydantic model rather than free text — the graph state is
+                  type-checked end to end. Second, a dedicated validate agent
+                  checks the findings against the <em>actual</em> evidence and
+                  decides whether they&rsquo;re grounded, sending weak
+                  investigations back for another bounded pass.
                 </p>
                 <p>
-                  The service is Anthropic-locked by design — the per-role
-                  tiering <em>is</em> the architecture. Each run reports its
-                  actual cost against a hypothetical &ldquo;Opus everywhere&rdquo;
-                  baseline, so the savings are measured, not asserted.
+                  This isn&rsquo;t theater. In the captured runs the validator
+                  caught specific, load-bearing overclaims — the kind that read
+                  as confident and are quietly wrong:
+                </p>
+              </>
+            }
+            bullets={[
+              "Inferred-not-stated bindings: “get_asset_context-20 contains NO field naming ‘jdoe’ … the findings label this ‘confirmed’, which overstates the evidence.”",
+              "Duplicate evidence counted as independent: “get_logs-4/5/6 are byte-identical copies of the same two log lines … cited as if independent, artificially inflating the network evidence.”",
+              "Unverifiable tool bindings: “lookup_ioc results don’t echo the queried indicator, so the reputation→IOC link is an inference, not grounded.”",
+              "Bounded investigate↔validate loop over read-only evidence tools and deterministic fixtures — reproducible, and it always terminates.",
+            ]}
+            links={[{ label: "ADR: LangGraph multi-agent design", href: ADR_URL }]}
+          />
+
+          <PillarSection
+            id="role-tiering"
+            title="Role-based model tiering — and what measuring it revealed"
+            narrative={
+              <>
+                <p>
+                  Each node runs a right-sized model: <code>Haiku</code> triages
+                  (~$0.002, ~2s), <code>Opus</code> does the heavy reasoning in
+                  investigate and validate, and <code>Sonnet</code> drafts the
+                  report. A callback handler taps the raw model calls to
+                  attribute tokens per role — usage that{" "}
+                  <code>with_structured_output</code> would otherwise discard.
+                </p>
+                <p>
+                  I built the telemetry expecting a strong &ldquo;tiering saves
+                  money&rdquo; story. The data said otherwise, and that&rsquo;s
+                  the point of measuring: tiering saves only{" "}
+                  <span className="text-foreground">~6% vs Opus-everywhere</span>,
+                  because incident investigation is irreducibly reasoning-heavy —
+                  ~80–85% of every run is the investigate step, which is{" "}
+                  <em>already</em> on Opus. So I keep Opus where correctness
+                  matters and spend the tiny savings budget on the validation
+                  loop instead of cutting corners on reasoning.
                 </p>
               </>
             }
@@ -100,39 +143,9 @@ export default function IRAgentPage() {
                 <code>triage</code> → Haiku, <code>investigate</code> /{" "}
                 <code>validate</code> → Opus, <code>report</code> → Sonnet
               </>,
-              "A callback handler taps raw model calls to attribute tokens per role — usage that with_structured_output would otherwise discard",
-              "Per-run summary: per-role tokens, cost, latency, and a tiered-vs-Opus savings factor",
+              "Per-run summary: per-role tokens, cost, latency, and a measured tiered-vs-Opus factor (~1.06×)",
               "Prometheus metrics (LLM tokens, node duration, tool calls) exported for every run",
-            ]}
-            links={[{ label: "ADR: LangGraph multi-agent design", href: ADR_URL }]}
-          />
-
-          <PillarSection
-            id="two-layer-validation"
-            title="Two-layer validation"
-            narrative={
-              <>
-                <p>
-                  Hallucinated incident reports are worse than none. The agent
-                  defends against that twice. First, every node emits a
-                  validated Pydantic model rather than free text — the graph
-                  state is type-checked end to end. Second, a dedicated validate
-                  agent checks the findings against the actual evidence and
-                  decides whether they&rsquo;re grounded.
-                </p>
-                <p>
-                  If the validator finds unsupported claims or gaps, it sends
-                  the investigation back for another pass. A bounded loop keeps
-                  it from running forever — after the attempt cap, it proceeds to
-                  the report with what it has.
-                </p>
-              </>
-            }
-            bullets={[
-              "Structured outputs (Pydantic) at every node — no free-text state",
-              "A validator agent scores grounding and flags unsupported claims and gaps",
-              "Bounded investigate↔validate loop: re-investigates on weak evidence, always terminates",
-              "Read-only evidence tools over deterministic fixtures — fully reproducible runs",
+              "The honest finding drives the roadmap below — measurement pointing at the real bottleneck, not the assumed one",
             ]}
             links={[{ label: "ADR: LangGraph multi-agent design", href: ADR_URL }]}
           />
@@ -207,6 +220,49 @@ export default function IRAgentPage() {
               for per-run numbers.
             </p>
           )}
+        </section>
+
+        {/* Roadmap */}
+        <section className="mt-12">
+          <h2 className="text-2xl font-semibold">
+            What the data revealed — and what&rsquo;s next
+          </h2>
+          <p className="mt-3 leading-relaxed text-muted-foreground">
+            The measurements point at the real bottleneck, and — elegantly — the
+            validator&rsquo;s own complaints double as the optimization backlog.
+            The investigate step re-sends 27k–39k input tokens across 9–11 ReAct
+            calls, and the validator keeps flagging tools that don&rsquo;t echo
+            what they were queried for and logs it sees duplicated. Each is a
+            concrete, measured next move:
+          </p>
+          <ul className="mt-4 space-y-2 list-disc pl-5 text-sm text-muted-foreground">
+            <li>
+              <span className="text-foreground">Prompt caching</span> on the
+              investigate loop — cache the stable prefix re-sent every ReAct
+              step. Cuts input cost sharply at zero quality cost. (Honest caveat:
+              investigate&rsquo;s output tokens are the larger half, so this
+              dents cost, it doesn&rsquo;t halve it.)
+            </li>
+            <li>
+              <span className="text-foreground">Tools echo the queried
+              indicator</span> — directly fixes the validator&rsquo;s most common
+              complaint and improves grounding: a correctness <em>and</em> cost
+              win.
+            </li>
+            <li>
+              <span className="text-foreground">Deduplicate evidence</span> — the
+              validator flagged byte-identical log copies; removing them means
+              fewer tokens and cleaner evidence weighting.
+            </li>
+            <li>
+              <span className="text-foreground">Re-measure</span> — publish a
+              before/after so the progress arc is provable, not asserted.
+            </li>
+          </ul>
+          <p className="mt-4 text-sm text-muted-foreground">
+            That is the loop worth showing: build → measure → let the system tell
+            you what to fix → measure again.
+          </p>
         </section>
       </div>
     </div>

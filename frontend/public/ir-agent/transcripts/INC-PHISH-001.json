@@ -1,0 +1,544 @@
+{
+  "incident_id": "INC-PHISH-001",
+  "title": "Credential phishing email followed by anomalous login",
+  "captured_at": "2026-07-01T17:43:46.795707+00:00",
+  "events": [
+    {
+      "event": "triage",
+      "data": {
+        "severity": "high",
+        "category": "phishing",
+        "confidence": 0.95,
+        "rationale": "Credential phishing email from spoofed IT support domain (corp-secure.example mimicking internal IT) followed by anomalous login activity on the targeted user's workstation (jdoe@WS-JDOE-01). The combination of phishing delivery and subsequent suspicious login from external IP 203.0.113.42 indicates likely successful credential compromise and account takeover attempt. High confidence due to clear phishing indicators and correlated post-compromise activity."
+      }
+    },
+    {
+      "event": "findings",
+      "data": {
+        "summary": "Successful credential phishing attack leading to account takeover of user jdoe, followed by an MFA bypass and suspected hands-on-keyboard activity on workstation WS-JDOE-01. Attack chain: (1) Email gateway flagged a credential-harvesting URL hxxps://corp-secure.example/login targeting jdoe [search_alerts-0, search_alerts-1]; the corp-secure.example domain is malicious/phishing [lookup_ioc-2]. (2) A successful Okta login for jdoe occurred from 203.0.113.42 (Bucharest, RO) 3 minutes after the email click [search_alerts-0, search_alerts-9], confirmed in auth logs at 2026-06-28T09:14Z [get_logs-6, get_logs-7]; that IP is malicious, categorized credential-theft and tor-exit [lookup_ioc-3]. (3) One minute later an MFA bypass via legacy-token was recorded for jdoe at 2026-06-28T09:15Z [get_logs-6]. (4) At 2026-06-28T09:20Z EDR observed powershell.exe spawned with parent=outlook.exe on WS-JDOE-01 [get_logs-8, get_logs-10], a common phishing follow-on execution pattern. Impact context: jdoe is a high-criticality Finance AP clerk account [get_asset_context-4], a high-value target for financial fraud; WS-JDOE-01 is a medium-criticality Windows 11 host owned by jdoe [get_asset_context-5]. Caveats: the PowerShell command line/content was not available in evidence so specific malicious actions cannot be confirmed [get_logs-8]; no alerts existed for powershell, mfa-bypass, or WS-JDOE-01 [search_alerts-11, search_alerts-12, search_alerts-13], indicating a detection-coverage gap.",
+        "hypothesis": "User jdoe was successfully phished via the malicious spoofed IT-support domain corp-secure.example, resulting in credential compromise and account takeover from a malicious Tor-exit IP (203.0.113.42). The attacker bypassed MFA using a legacy-token authentication path and initiated post-compromise execution on WS-JDOE-01 (Outlook spawning PowerShell). Given the compromised identity is a Finance AP clerk, the likely objective is financial fraud, though specific attacker actions on the endpoint remain unconfirmed pending forensic triage.",
+        "evidence_refs": [
+          "search_alerts-0",
+          "search_alerts-1",
+          "lookup_ioc-2",
+          "lookup_ioc-3",
+          "get_asset_context-4",
+          "get_asset_context-5",
+          "get_logs-6",
+          "get_logs-7",
+          "get_logs-8",
+          "search_alerts-9",
+          "get_logs-10",
+          "search_alerts-11",
+          "search_alerts-12",
+          "search_alerts-13"
+        ],
+        "iocs": [
+          "corp-secure.example",
+          "203.0.113.42",
+          "hxxps://corp-secure.example/login"
+        ],
+        "affected_assets": [
+          "jdoe",
+          "WS-JDOE-01"
+        ]
+      }
+    },
+    {
+      "event": "evidence",
+      "data": [
+        {
+          "id": "search_alerts-0",
+          "source_tool": "search_alerts",
+          "query": "jdoe",
+          "content": "[{\"id\": \"A1\", \"user\": \"jdoe\", \"text\": \"Email gateway flagged credential-harvest URL hxxps://corp-secure.example/login\"}, {\"id\": \"A2\", \"user\": \"jdoe\", \"text\": \"Successful Okta login for jdoe from 203.0.113.42 (Bucharest, RO) 3m after email click\"}]"
+        },
+        {
+          "id": "search_alerts-1",
+          "source_tool": "search_alerts",
+          "query": "corp-secure.example",
+          "content": "[{\"id\": \"A1\", \"user\": \"jdoe\", \"text\": \"Email gateway flagged credential-harvest URL hxxps://corp-secure.example/login\"}]"
+        },
+        {
+          "id": "lookup_ioc-2",
+          "source_tool": "lookup_ioc",
+          "query": "corp-secure.example",
+          "content": "{\"reputation\": \"malicious\", \"categories\": [\"phishing\"]}"
+        },
+        {
+          "id": "lookup_ioc-3",
+          "source_tool": "lookup_ioc",
+          "query": "203.0.113.42",
+          "content": "{\"reputation\": \"malicious\", \"categories\": [\"credential-theft\", \"tor-exit\"]}"
+        },
+        {
+          "id": "get_asset_context-4",
+          "source_tool": "get_asset_context",
+          "query": "jdoe",
+          "content": "{\"criticality\": \"high\", \"owner\": \"Finance\", \"role\": \"AP clerk\"}"
+        },
+        {
+          "id": "get_asset_context-5",
+          "source_tool": "get_asset_context",
+          "query": "WS-JDOE-01",
+          "content": "{\"criticality\": \"medium\", \"owner\": \"jdoe\", \"os\": \"Windows 11\"}"
+        },
+        {
+          "id": "get_logs-6",
+          "source_tool": "get_logs",
+          "query": "jdoe",
+          "content": "2026-06-28T09:14Z okta auth success user=jdoe ip=203.0.113.42 geo=RO\n2026-06-28T09:15Z okta mfa-bypass user=jdoe method=legacy-token"
+        },
+        {
+          "id": "get_logs-7",
+          "source_tool": "get_logs",
+          "query": "203.0.113.42",
+          "content": "2026-06-28T09:14Z okta auth success user=jdoe ip=203.0.113.42 geo=RO"
+        },
+        {
+          "id": "get_logs-8",
+          "source_tool": "get_logs",
+          "query": "WS-JDOE-01",
+          "content": "2026-06-28T09:20Z edr process powershell.exe parent=outlook.exe"
+        },
+        {
+          "id": "search_alerts-9",
+          "source_tool": "search_alerts",
+          "query": "203.0.113.42",
+          "content": "[{\"id\": \"A2\", \"user\": \"jdoe\", \"text\": \"Successful Okta login for jdoe from 203.0.113.42 (Bucharest, RO) 3m after email click\"}]"
+        },
+        {
+          "id": "get_logs-10",
+          "source_tool": "get_logs",
+          "query": "powershell",
+          "content": "2026-06-28T09:20Z edr process powershell.exe parent=outlook.exe"
+        },
+        {
+          "id": "search_alerts-11",
+          "source_tool": "search_alerts",
+          "query": "powershell",
+          "content": "No matching alerts."
+        },
+        {
+          "id": "search_alerts-12",
+          "source_tool": "search_alerts",
+          "query": "mfa-bypass",
+          "content": "No matching alerts."
+        },
+        {
+          "id": "search_alerts-13",
+          "source_tool": "search_alerts",
+          "query": "WS-JDOE-01",
+          "content": "No matching alerts."
+        }
+      ]
+    },
+    {
+      "event": "verdict",
+      "data": {
+        "grounded": false,
+        "unsupported_claims": [
+          "See list above."
+        ],
+        "gaps": [
+          "No evidence maps the lookup_ioc results to their specific IOCs (domain vs IP). Re-run or document the IOC-to-lookup binding to confirm which reputation applies to which indicator.",
+          "No hostname is present in the EDR logs (get_logs-8/10). Retrieve host/asset field to confirm the PowerShell activity actually occurred on WS-JDOE-01.",
+          "PowerShell command line/content is missing, so malicious intent of the powershell.exe execution is unconfirmed. Needs endpoint forensic triage.",
+          "No evidence of the actual phishing email delivery, the click event, or credential submission by jdoe; only gateway flagging and post-login alerts exist.",
+          "No evidence linking the two asset_context records to the named assets (jdoe, WS-JDOE-01). Confirm the entity each context query was run against.",
+          "Detection-coverage-gap conclusion rests on three 'No matching alerts' results (search_alerts-11/12/13), but the queries used are not shown; confirm the searches actually targeted powershell, mfa-bypass, and WS-JDOE-01.",
+          "MFA bypass via legacy-token is logged but there is no evidence tying it causally to the attacker session/IP; correlate the mfa-bypass event to source IP 203.0.113.42."
+        ],
+        "needs_more_investigation": true
+      }
+    },
+    {
+      "event": "findings",
+      "data": {
+        "summary": "Evidence supports a credential-phishing sequence against user jdoe (a high-criticality Finance AP clerk [get_asset_context-20]) with subsequent account-takeover indicators. Timeline of confirmed events: (1) Email gateway flagged a credential-harvest URL hxxps://corp-secure.example/login for jdoe [search_alerts-14, search_alerts-15]. (2) The domain corp-secure.example has malicious reputation, category phishing [lookup_ioc-18]; the IP 203.0.113.42 has malicious reputation, categories credential-theft and tor-exit [lookup_ioc-19]. (3) At 2026-06-28T09:14Z a successful Okta auth for jdoe originated from 203.0.113.42 (geo=RO) [get_logs-22, get_logs-24, get_logs-36], corroborated by alert A2 which notes it occurred 3m after the email click [search_alerts-14, search_alerts-16]. (4) At 2026-06-28T09:15Z an Okta mfa-bypass for jdoe via method=legacy-token was logged [get_logs-25, get_logs-37]. (5) At 2026-06-28T09:20Z EDR observed powershell.exe spawned by parent outlook.exe [get_logs-23, get_logs-26, get_logs-34, get_logs-35].\n\nRESOLVED PRIOR GAPS: IOC-to-lookup binding is confirmed \u2014 domain lookup [lookup_ioc-18] applies to corp-secure.example (phishing) and IP lookup [lookup_ioc-19] applies to 203.0.113.42 (credential-theft/tor-exit). Asset-context entity binding is confirmed \u2014 [get_asset_context-20] describes jdoe (Finance AP clerk) and [get_asset_context-21] describes WS-JDOE-01 (Windows 11, owner jdoe). Detection-coverage gap documented \u2014 searches for powershell [search_alerts-31], mfa-bypass [search_alerts-32], and WS-JDOE-01 [search_alerts-17] all returned No matching alerts, confirming these logged behaviors did not raise correlated alerts.\n\nOPEN GAPS (insufficient evidence, do not conclude): (A) PowerShell host attribution to WS-JDOE-01 is UNCONFIRMED \u2014 the EDR event carries no hostname/asset field [get_logs-23, get_logs-26, get_logs-34, get_logs-35] and an explicit host-field query returned nothing [get_logs-27]. (B) PowerShell intent is UNCONFIRMED \u2014 no command-line/script content is present [get_logs-28]; malicious intent is only inferred from the outlook.exe parent relationship. (C) MFA-bypass causal link to 203.0.113.42 is UNCONFIRMED \u2014 the mfa-bypass log line has no source IP [get_logs-25] and an IP-field query returned nothing [get_logs-29]; the association is temporal/same-user only (09:14 login [get_logs-22] vs 09:15 bypass [get_logs-25]). (D) Email delivery, click event, and credential submission by jdoe are UNCONFIRMED \u2014 only gateway flagging [search_alerts-14] and post-login alerts [search_alerts-16] exist; delivery/click/credential-submission queries returned nothing [get_logs-30, search_alerts-33].",
+        "hypothesis": "A phishing email spoofing internal IT (corp-secure.example, a known-malicious phishing domain [lookup_ioc-18]) targeted jdoe [search_alerts-14]; within minutes an actor authenticated to jdoe's Okta account from a malicious tor-exit/credential-theft IP 203.0.113.42 [get_logs-22, lookup_ioc-19], followed by an MFA bypass via legacy-token [get_logs-25] and Outlook-spawned PowerShell on the endpoint [get_logs-26], consistent with successful credential compromise and account takeover of a high-value Finance user [get_asset_context-20]. This hypothesis is supported for the phishing-delivery-flag and anomalous-login stages but NOT fully proven: host attribution of the PowerShell event (A), PowerShell malicious intent (B), the MFA-bypass-to-attacker-IP causal link (C), and the actual click/credential-submission (D) remain unconfirmed by retrieved evidence and require endpoint forensic triage plus raw Okta/email-gateway log retrieval before confidence can be raised.",
+        "evidence_refs": [
+          "search_alerts-14",
+          "search_alerts-15",
+          "search_alerts-16",
+          "lookup_ioc-18",
+          "lookup_ioc-19",
+          "get_asset_context-20",
+          "get_asset_context-21",
+          "get_logs-22",
+          "get_logs-24",
+          "get_logs-36",
+          "get_logs-25",
+          "get_logs-37",
+          "get_logs-23",
+          "get_logs-26",
+          "get_logs-34",
+          "get_logs-35",
+          "get_logs-27",
+          "get_logs-28",
+          "get_logs-29",
+          "get_logs-30",
+          "search_alerts-17",
+          "search_alerts-31",
+          "search_alerts-32",
+          "search_alerts-33"
+        ],
+        "iocs": [
+          "corp-secure.example",
+          "203.0.113.42",
+          "hxxps://corp-secure.example/login"
+        ],
+        "affected_assets": [
+          "jdoe",
+          "WS-JDOE-01"
+        ]
+      }
+    },
+    {
+      "event": "evidence",
+      "data": [
+        {
+          "id": "search_alerts-0",
+          "source_tool": "search_alerts",
+          "query": "jdoe",
+          "content": "[{\"id\": \"A1\", \"user\": \"jdoe\", \"text\": \"Email gateway flagged credential-harvest URL hxxps://corp-secure.example/login\"}, {\"id\": \"A2\", \"user\": \"jdoe\", \"text\": \"Successful Okta login for jdoe from 203.0.113.42 (Bucharest, RO) 3m after email click\"}]"
+        },
+        {
+          "id": "search_alerts-1",
+          "source_tool": "search_alerts",
+          "query": "corp-secure.example",
+          "content": "[{\"id\": \"A1\", \"user\": \"jdoe\", \"text\": \"Email gateway flagged credential-harvest URL hxxps://corp-secure.example/login\"}]"
+        },
+        {
+          "id": "lookup_ioc-2",
+          "source_tool": "lookup_ioc",
+          "query": "corp-secure.example",
+          "content": "{\"reputation\": \"malicious\", \"categories\": [\"phishing\"]}"
+        },
+        {
+          "id": "lookup_ioc-3",
+          "source_tool": "lookup_ioc",
+          "query": "203.0.113.42",
+          "content": "{\"reputation\": \"malicious\", \"categories\": [\"credential-theft\", \"tor-exit\"]}"
+        },
+        {
+          "id": "get_asset_context-4",
+          "source_tool": "get_asset_context",
+          "query": "jdoe",
+          "content": "{\"criticality\": \"high\", \"owner\": \"Finance\", \"role\": \"AP clerk\"}"
+        },
+        {
+          "id": "get_asset_context-5",
+          "source_tool": "get_asset_context",
+          "query": "WS-JDOE-01",
+          "content": "{\"criticality\": \"medium\", \"owner\": \"jdoe\", \"os\": \"Windows 11\"}"
+        },
+        {
+          "id": "get_logs-6",
+          "source_tool": "get_logs",
+          "query": "jdoe",
+          "content": "2026-06-28T09:14Z okta auth success user=jdoe ip=203.0.113.42 geo=RO\n2026-06-28T09:15Z okta mfa-bypass user=jdoe method=legacy-token"
+        },
+        {
+          "id": "get_logs-7",
+          "source_tool": "get_logs",
+          "query": "203.0.113.42",
+          "content": "2026-06-28T09:14Z okta auth success user=jdoe ip=203.0.113.42 geo=RO"
+        },
+        {
+          "id": "get_logs-8",
+          "source_tool": "get_logs",
+          "query": "WS-JDOE-01",
+          "content": "2026-06-28T09:20Z edr process powershell.exe parent=outlook.exe"
+        },
+        {
+          "id": "search_alerts-9",
+          "source_tool": "search_alerts",
+          "query": "203.0.113.42",
+          "content": "[{\"id\": \"A2\", \"user\": \"jdoe\", \"text\": \"Successful Okta login for jdoe from 203.0.113.42 (Bucharest, RO) 3m after email click\"}]"
+        },
+        {
+          "id": "get_logs-10",
+          "source_tool": "get_logs",
+          "query": "powershell",
+          "content": "2026-06-28T09:20Z edr process powershell.exe parent=outlook.exe"
+        },
+        {
+          "id": "search_alerts-11",
+          "source_tool": "search_alerts",
+          "query": "powershell",
+          "content": "No matching alerts."
+        },
+        {
+          "id": "search_alerts-12",
+          "source_tool": "search_alerts",
+          "query": "mfa-bypass",
+          "content": "No matching alerts."
+        },
+        {
+          "id": "search_alerts-13",
+          "source_tool": "search_alerts",
+          "query": "WS-JDOE-01",
+          "content": "No matching alerts."
+        },
+        {
+          "id": "search_alerts-14",
+          "source_tool": "search_alerts",
+          "query": "jdoe",
+          "content": "[{\"id\": \"A1\", \"user\": \"jdoe\", \"text\": \"Email gateway flagged credential-harvest URL hxxps://corp-secure.example/login\"}, {\"id\": \"A2\", \"user\": \"jdoe\", \"text\": \"Successful Okta login for jdoe from 203.0.113.42 (Bucharest, RO) 3m after email click\"}]"
+        },
+        {
+          "id": "search_alerts-15",
+          "source_tool": "search_alerts",
+          "query": "corp-secure.example",
+          "content": "[{\"id\": \"A1\", \"user\": \"jdoe\", \"text\": \"Email gateway flagged credential-harvest URL hxxps://corp-secure.example/login\"}]"
+        },
+        {
+          "id": "search_alerts-16",
+          "source_tool": "search_alerts",
+          "query": "203.0.113.42",
+          "content": "[{\"id\": \"A2\", \"user\": \"jdoe\", \"text\": \"Successful Okta login for jdoe from 203.0.113.42 (Bucharest, RO) 3m after email click\"}]"
+        },
+        {
+          "id": "search_alerts-17",
+          "source_tool": "search_alerts",
+          "query": "WS-JDOE-01",
+          "content": "No matching alerts."
+        },
+        {
+          "id": "lookup_ioc-18",
+          "source_tool": "lookup_ioc",
+          "query": "corp-secure.example",
+          "content": "{\"reputation\": \"malicious\", \"categories\": [\"phishing\"]}"
+        },
+        {
+          "id": "lookup_ioc-19",
+          "source_tool": "lookup_ioc",
+          "query": "203.0.113.42",
+          "content": "{\"reputation\": \"malicious\", \"categories\": [\"credential-theft\", \"tor-exit\"]}"
+        },
+        {
+          "id": "get_asset_context-20",
+          "source_tool": "get_asset_context",
+          "query": "jdoe",
+          "content": "{\"criticality\": \"high\", \"owner\": \"Finance\", \"role\": \"AP clerk\"}"
+        },
+        {
+          "id": "get_asset_context-21",
+          "source_tool": "get_asset_context",
+          "query": "WS-JDOE-01",
+          "content": "{\"criticality\": \"medium\", \"owner\": \"jdoe\", \"os\": \"Windows 11\"}"
+        },
+        {
+          "id": "get_logs-22",
+          "source_tool": "get_logs",
+          "query": "jdoe",
+          "content": "2026-06-28T09:14Z okta auth success user=jdoe ip=203.0.113.42 geo=RO\n2026-06-28T09:15Z okta mfa-bypass user=jdoe method=legacy-token"
+        },
+        {
+          "id": "get_logs-23",
+          "source_tool": "get_logs",
+          "query": "WS-JDOE-01",
+          "content": "2026-06-28T09:20Z edr process powershell.exe parent=outlook.exe"
+        },
+        {
+          "id": "get_logs-24",
+          "source_tool": "get_logs",
+          "query": "203.0.113.42",
+          "content": "2026-06-28T09:14Z okta auth success user=jdoe ip=203.0.113.42 geo=RO"
+        },
+        {
+          "id": "get_logs-25",
+          "source_tool": "get_logs",
+          "query": "mfa-bypass",
+          "content": "2026-06-28T09:15Z okta mfa-bypass user=jdoe method=legacy-token"
+        },
+        {
+          "id": "get_logs-26",
+          "source_tool": "get_logs",
+          "query": "powershell",
+          "content": "2026-06-28T09:20Z edr process powershell.exe parent=outlook.exe"
+        },
+        {
+          "id": "get_logs-27",
+          "source_tool": "get_logs",
+          "query": "edr process powershell.exe host",
+          "content": "No matching logs."
+        },
+        {
+          "id": "get_logs-28",
+          "source_tool": "get_logs",
+          "query": "powershell.exe commandline",
+          "content": "No matching logs."
+        },
+        {
+          "id": "get_logs-29",
+          "source_tool": "get_logs",
+          "query": "okta mfa-bypass ip",
+          "content": "No matching logs."
+        },
+        {
+          "id": "get_logs-30",
+          "source_tool": "get_logs",
+          "query": "email delivery jdoe click",
+          "content": "No matching logs."
+        },
+        {
+          "id": "search_alerts-31",
+          "source_tool": "search_alerts",
+          "query": "powershell",
+          "content": "No matching alerts."
+        },
+        {
+          "id": "search_alerts-32",
+          "source_tool": "search_alerts",
+          "query": "mfa-bypass",
+          "content": "No matching alerts."
+        },
+        {
+          "id": "search_alerts-33",
+          "source_tool": "search_alerts",
+          "query": "credential submission jdoe",
+          "content": "No matching alerts."
+        },
+        {
+          "id": "get_logs-34",
+          "source_tool": "get_logs",
+          "query": "edr",
+          "content": "2026-06-28T09:20Z edr process powershell.exe parent=outlook.exe"
+        },
+        {
+          "id": "get_logs-35",
+          "source_tool": "get_logs",
+          "query": "outlook.exe",
+          "content": "2026-06-28T09:20Z edr process powershell.exe parent=outlook.exe"
+        },
+        {
+          "id": "get_logs-36",
+          "source_tool": "get_logs",
+          "query": "okta",
+          "content": "2026-06-28T09:14Z okta auth success user=jdoe ip=203.0.113.42 geo=RO\n2026-06-28T09:15Z okta mfa-bypass user=jdoe method=legacy-token"
+        },
+        {
+          "id": "get_logs-37",
+          "source_tool": "get_logs",
+          "query": "legacy-token",
+          "content": "2026-06-28T09:15Z okta mfa-bypass user=jdoe method=legacy-token"
+        }
+      ]
+    },
+    {
+      "event": "verdict",
+      "data": {
+        "grounded": true,
+        "unsupported_claims": [
+          "Asset-context entity binding claim: the findings assert [get_asset_context-20] 'describes jdoe (Finance AP clerk)' and [get_asset_context-21] 'describes WS-JDOE-01 (Windows 11, owner jdoe)'. The raw evidence for get_asset_context-20 is {criticality: high, owner: Finance, role: AP clerk} \u2014 it contains NO entity/user field naming 'jdoe'. Likewise get_asset_context-21 is {criticality: medium, owner: jdoe, os: Windows 11} \u2014 it contains NO asset name 'WS-JDOE-01'. The specific entity names 'jdoe' (for -20) and 'WS-JDOE-01' (for -21) are inferred, not present. The findings label this binding as 'confirmed', which overstates the evidence.",
+          "The findings state WS-JDOE-01 has 'high-criticality' context via [get_asset_context-20], but get_asset_context-20 (criticality: high) is the Finance/AP-clerk record the investigator maps to the user jdoe, while the WS-JDOE-01 record [get_asset_context-21] actually reads criticality: medium. Referring to the workstation/user as uniformly high-criticality conflates the two records.",
+          "IOC-to-lookup binding described as 'confirmed': lookup_ioc-18 and lookup_ioc-19 contain only reputation/category data with NO indicator string identifying which IOC they correspond to. The mapping of -18 to corp-secure.example and -19 to 203.0.113.42 is a reasonable inference but is not explicitly grounded in the returned lookup payloads, so calling it 'confirmed' overstates certainty."
+        ],
+        "gaps": [
+          "get_asset_context outputs lack entity identifiers; a re-query or field-level confirmation binding each asset record to the named entity (jdoe vs WS-JDOE-01) is warranted to justify the 'confirmed' language.",
+          "lookup_ioc outputs lack the indicator string; confirm which IOC each reputation record maps to before treating the binding as proven.",
+          "Open gaps A\u2013D (PowerShell host attribution, PowerShell intent, MFA-bypass-to-IP causal link, and click/credential-submission) are all correctly flagged as unconfirmed and require endpoint forensic triage plus raw Okta/email-gateway log retrieval \u2014 consistent with the evidence (get_logs-27/28/29/30 and search_alerts-33 returned nothing)."
+        ],
+        "needs_more_investigation": true
+      }
+    },
+    {
+      "event": "report",
+      "data": {
+        "executive_summary": "A high-confidence (0.95) credential phishing attack targeted jdoe, a Finance Accounts Payable clerk with high-criticality asset classification, on 2026-06-28. A phishing email spoofing internal IT via the malicious domain corp-secure.example delivered a credential-harvesting URL (hxxps://corp-secure.example/login). Within approximately three minutes of the email gateway flagging the URL, a successful Okta authentication for jdoe was recorded from external IP 203.0.113.42 (geolocation: Romania), a known malicious tor-exit and credential-theft node. This was immediately followed at 09:15Z by an MFA bypass event using a legacy-token method, and at 09:20Z by an EDR-observed PowerShell process spawned from outlook.exe on the affected endpoint (WS-JDOE-01, Windows 11).\n\nThe sequencing \u2014 phishing lure, near-immediate login from a known-malicious tor-exit IP, MFA bypass via legacy token, and Outlook-parented PowerShell \u2014 is strongly consistent with a successful account takeover of a high-value Finance user. However, four evidentiary gaps remain unconfirmed and must not be overstated: (A) PowerShell host attribution to WS-JDOE-01 is unconfirmed (no hostname field in EDR logs); (B) PowerShell malicious intent is unconfirmed (no command-line content retrieved); (C) the causal link between the MFA bypass and IP 203.0.113.42 is unconfirmed (bypass log carries no source IP); (D) actual email delivery, user click, and credential submission by jdoe are unconfirmed (only gateway flagging and post-login alerts exist). Additionally, asset-record-to-entity bindings (jdoe \u2194 get_asset_context-20; WS-JDOE-01 \u2194 get_asset_context-21) and IOC-to-reputation-lookup bindings are inferred rather than explicitly grounded in raw evidence payloads. Immediate containment of jdoe's account and endpoint isolation are warranted pending full forensic triage.",
+        "timeline": [
+          "2026-06-28T09:11Z (approx.) \u2014 Email gateway flags credential-harvesting URL hxxps://corp-secure.example/login targeting jdoe [search_alerts-14, search_alerts-15]. Exact delivery and click times unconfirmed; delivery/click/credential-submission log queries returned no results [get_logs-30, search_alerts-33].",
+          "2026-06-28T09:14Z \u2014 Successful Okta authentication for jdoe recorded from external IP 203.0.113.42 (geo: Romania). IP has malicious reputation (credential-theft, tor-exit) [get_logs-22, get_logs-24, get_logs-36, lookup_ioc-19]. Alert A2 notes this login occurred approximately 3 minutes after the email click event [search_alerts-14, search_alerts-16].",
+          "2026-06-28T09:15Z \u2014 Okta MFA bypass for jdoe logged via method=legacy-token [get_logs-25, get_logs-37]. Causal link to IP 203.0.113.42 is unconfirmed; the bypass log contains no source IP field [get_logs-29]. Association is temporal and same-user only.",
+          "2026-06-28T09:20Z \u2014 EDR observes powershell.exe spawned by parent process outlook.exe [get_logs-23, get_logs-26, get_logs-34, get_logs-35]. Host attribution to WS-JDOE-01 is unconfirmed (no hostname in EDR log [get_logs-27]); PowerShell command-line content unavailable [get_logs-28]. No correlated alert fired for this event [search_alerts-31, search_alerts-17]."
+        ],
+        "severity": "high",
+        "iocs": [
+          "corp-secure.example (malicious domain, category: phishing) [lookup_ioc-18]",
+          "203.0.113.42 (malicious IP, categories: credential-theft, tor-exit, geo: Romania) [lookup_ioc-19]",
+          "hxxps://corp-secure.example/login (credential-harvesting URL) [search_alerts-14, search_alerts-15]"
+        ],
+        "mitre_attack": [
+          "T1566.002 \u2014 Phishing: Spearphishing Link (credential-harvesting URL delivered via spoofed IT support email)",
+          "T1078 \u2014 Valid Accounts (successful Okta authentication using likely compromised jdoe credentials from tor-exit IP)",
+          "T1556 \u2014 Modify Authentication Process / T1621 \u2014 Multi-Factor Authentication Request Generation (MFA bypass via legacy-token method)",
+          "T1059.001 \u2014 Command and Scripting Interpreter: PowerShell (powershell.exe spawned by outlook.exe on endpoint)",
+          "T1566 \u2014 Phishing / T1598 \u2014 Phishing for Information (spoofed internal IT domain corp-secure.example mimicking corporate identity)"
+        ],
+        "recommended_containment": [
+          "IMMEDIATE \u2014 Suspend/disable jdoe's Okta account and all active sessions to halt any ongoing unauthorized access. Revoke all active tokens, including legacy tokens, associated with the account.",
+          "IMMEDIATE \u2014 Block IP 203.0.113.42 at the perimeter firewall, proxy, and SIEM detection rules. Add corp-secure.example and hxxps://corp-secure.example/login to DNS/web proxy blocklists.",
+          "IMMEDIATE \u2014 Isolate workstation WS-JDOE-01 from the network pending endpoint forensic triage. NOTE: PowerShell host attribution to WS-JDOE-01 is currently unconfirmed; isolation should proceed as a precaution given the correlated user context.",
+          "URGENT \u2014 Conduct full endpoint forensic triage of WS-JDOE-01: retrieve PowerShell command-line arguments and script content (gap B), confirm EDR hostname binding (gap A), capture memory and prefetch artifacts, and review outlook.exe child process history.",
+          "URGENT \u2014 Retrieve raw Okta logs to confirm source IP for the 09:15Z MFA bypass event (gap C) and audit all legacy-token usage for jdoe. Disable legacy authentication methods for the affected account and evaluate org-wide legacy-auth policy.",
+          "URGENT \u2014 Retrieve full email gateway logs to confirm delivery, click event, and credential submission by jdoe (gap D). Quarantine any copies of the phishing email from jdoe's mailbox and scan for lateral delivery to other recipients.",
+          "INVESTIGATE \u2014 Re-query asset context records with explicit entity identifier fields to confirm binding of high-criticality Finance/AP-clerk record to jdoe and medium-criticality Windows 11 record to WS-JDOE-01. Do not treat these bindings as confirmed until raw payloads are verified.",
+          "INVESTIGATE \u2014 Audit jdoe's Okta activity from 2026-06-28T09:14Z onward for privilege escalation, data access (Finance/AP systems), email rule creation, or lateral movement. Given jdoe's Finance AP clerk role, prioritize review of payment and accounts payable systems for unauthorized transactions.",
+          "INVESTIGATE \u2014 Perform threat hunting for additional phishing targets using corp-secure.example lures across the email gateway. Check for other accounts authenticating from 203.0.113.42 or related tor-exit nodes.",
+          "PROCESS \u2014 Investigate detection coverage gaps: no alerts fired for the PowerShell event [search_alerts-31], MFA bypass [search_alerts-32], or WS-JDOE-01 endpoint activity [search_alerts-17]. Create or tune SIEM/EDR detection rules for: Outlook-spawned PowerShell, legacy-token MFA bypass, and logins from known tor-exit nodes.",
+          "NOTIFY \u2014 Escalate to Finance leadership and CISO given jdoe's AP clerk role and potential exposure of payment systems. Assess legal/regulatory notification obligations if financial data access is confirmed."
+        ],
+        "confidence": 0.95
+      }
+    },
+    {
+      "event": "summary",
+      "data": {
+        "per_role": {
+          "triage": {
+            "model": "claude-haiku-4-5",
+            "input_tokens": 910,
+            "output_tokens": 187,
+            "calls": 1,
+            "cost_usd": 0.0018,
+            "seconds": 2.96
+          },
+          "investigate": {
+            "model": "claude-opus-4-8",
+            "input_tokens": 39022,
+            "output_tokens": 9091,
+            "calls": 11,
+            "cost_usd": 0.4224,
+            "seconds": 165.53
+          },
+          "validate": {
+            "model": "claude-opus-4-8",
+            "input_tokens": 6596,
+            "output_tokens": 2169,
+            "calls": 2,
+            "cost_usd": 0.0872,
+            "seconds": 28.87
+          },
+          "report": {
+            "model": "claude-sonnet-4-6",
+            "input_tokens": 2928,
+            "output_tokens": 2000,
+            "calls": 1,
+            "cost_usd": 0.0388,
+            "seconds": 37.08
+          }
+        },
+        "totals": {
+          "input_tokens": 49456,
+          "output_tokens": 13447,
+          "total_tokens": 62903,
+          "cost_usd": 0.5502,
+          "seconds": 234.45
+        },
+        "comparison": {
+          "tiered_cost_usd": 0.5502,
+          "opus_everywhere_cost_usd": 0.5835,
+          "savings_factor": 1.06
+        },
+        "tool_calls": 38,
+        "investigate_attempts": 2
+      }
+    },
+    {
+      "event": "done",
+      "data": {}
+    }
+  ]
+}

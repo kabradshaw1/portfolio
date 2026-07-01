@@ -1,0 +1,467 @@
+{
+  "incident_id": "INC-EXFIL-003",
+  "title": "Large outbound transfer to personal cloud storage",
+  "captured_at": "2026-07-01T17:38:46.992626+00:00",
+  "events": [
+    {
+      "event": "triage",
+      "data": {
+        "severity": "high",
+        "category": "data-exfil",
+        "confidence": 0.85,
+        "rationale": "Large outbound data transfer from employee workstation (WS-MSMITH-03) to personal cloud storage domain (personal-drive.example) indicates potential unauthorized data exfiltration. User msmith transferring data to personal storage outside corporate control represents significant data loss risk. High confidence due to clear exfiltration indicators (personal domain, large transfer volume), though some uncertainty remains regarding user intent and data sensitivity without additional context."
+      }
+    },
+    {
+      "event": "findings",
+      "data": {
+        "summary": "Likely insider data-exfiltration by a resigning employee. User msmith read 312 files from the sensitive 'M&A-2026' share at 2026-06-27T18:10Z [get_logs-7, get_logs-9], then 30 minutes later uploaded 4.2GB to the personal-storage domain personal-drive.example at 2026-06-27T18:40Z [get_logs-7, get_logs-8, A1/search_alerts-0]. DLP flagged the upload as out-of-policy [A1/search_alerts-0, search_alerts-1] and the destination is rated suspicious in the personal-storage category [lookup_ioc-2]. Access to the M&A-2026 share spiked 20x in the 48h before the user's resignation notice [A2/search_alerts-0, search_alerts-6], and identity context confirms msmith is a Corp-Dev analyst with status 'resigning' [get_asset_context-4]. The affected workstation WS-MSMITH-03 is owned by msmith (macOS) [get_asset_context-3].",
+        "hypothesis": "A resigning Corp-Dev analyst (msmith) mass-accessed sensitive M&A-2026 data and exfiltrated it via a 4.2GB upload to a suspicious personal cloud-storage domain. The temporal chain (bulk sensitive-file read at 18:10Z followed by large out-of-policy upload at 18:40Z), the 20x access spike before resignation, and the resigning status together support intentional insider data theft. Caveat: no byte-level evidence confirms the uploaded 4.2GB contained the specific M&A files; the linkage is temporal/inferential and endpoint telemetry was unavailable [get_logs-5].",
+        "evidence_refs": [
+          "search_alerts-0",
+          "search_alerts-1",
+          "lookup_ioc-2",
+          "get_asset_context-3",
+          "get_asset_context-4",
+          "get_logs-5",
+          "search_alerts-6",
+          "get_logs-7",
+          "get_logs-8",
+          "get_logs-9"
+        ],
+        "iocs": [
+          "personal-drive.example"
+        ],
+        "affected_assets": [
+          "WS-MSMITH-03",
+          "msmith",
+          "M&A-2026 share",
+          "personal-drive.example"
+        ]
+      }
+    },
+    {
+      "event": "evidence",
+      "data": [
+        {
+          "id": "search_alerts-0",
+          "source_tool": "search_alerts",
+          "query": "msmith",
+          "content": "[{\"id\": \"A1\", \"user\": \"msmith\", \"text\": \"DLP: 4.2GB uploaded to personal-drive.example outside policy\"}, {\"id\": \"A2\", \"user\": \"msmith\", \"text\": \"Access to 'M&A-2026' share spiked 20x in 48h before resignation notice\"}]"
+        },
+        {
+          "id": "search_alerts-1",
+          "source_tool": "search_alerts",
+          "query": "personal-drive.example",
+          "content": "[{\"id\": \"A1\", \"user\": \"msmith\", \"text\": \"DLP: 4.2GB uploaded to personal-drive.example outside policy\"}]"
+        },
+        {
+          "id": "lookup_ioc-2",
+          "source_tool": "lookup_ioc",
+          "query": "personal-drive.example",
+          "content": "{\"reputation\": \"suspicious\", \"categories\": [\"personal-storage\"]}"
+        },
+        {
+          "id": "get_asset_context-3",
+          "source_tool": "get_asset_context",
+          "query": "WS-MSMITH-03",
+          "content": "{\"criticality\": \"medium\", \"owner\": \"msmith\", \"os\": \"macOS\"}"
+        },
+        {
+          "id": "get_asset_context-4",
+          "source_tool": "get_asset_context",
+          "query": "msmith",
+          "content": "{\"criticality\": \"medium\", \"owner\": \"Corp-Dev\", \"role\": \"analyst\", \"status\": \"resigning\"}"
+        },
+        {
+          "id": "get_logs-5",
+          "source_tool": "get_logs",
+          "query": "WS-MSMITH-03",
+          "content": "No matching logs."
+        },
+        {
+          "id": "search_alerts-6",
+          "source_tool": "search_alerts",
+          "query": "M&A-2026",
+          "content": "[{\"id\": \"A2\", \"user\": \"msmith\", \"text\": \"Access to 'M&A-2026' share spiked 20x in 48h before resignation notice\"}]"
+        },
+        {
+          "id": "get_logs-7",
+          "source_tool": "get_logs",
+          "query": "msmith",
+          "content": "2026-06-27T18:40Z proxy upload bytes=4200000000 dst=personal-drive.example\n2026-06-27T18:10Z fileshare read share=M&A-2026 files=312"
+        },
+        {
+          "id": "get_logs-8",
+          "source_tool": "get_logs",
+          "query": "personal-drive.example",
+          "content": "2026-06-27T18:40Z proxy upload bytes=4200000000 dst=personal-drive.example"
+        },
+        {
+          "id": "get_logs-9",
+          "source_tool": "get_logs",
+          "query": "M&A-2026",
+          "content": "2026-06-27T18:10Z fileshare read share=M&A-2026 files=312"
+        }
+      ]
+    },
+    {
+      "event": "verdict",
+      "data": {
+        "grounded": false,
+        "unsupported_claims": [
+          "Proxy upload logs do not attribute the 4.2GB upload to user msmith.",
+          "get_asset_context-4 owner is 'Corp-Dev', not confirmed as msmith's identity record.",
+          "lookup_ioc-2 does not name the domain queried; suspicious rating not explicitly tied to personal-drive.example."
+        ],
+        "gaps": [
+          "No user attribution on the proxy upload logs (get_logs-7/8): the 4.2GB upload is not tied to msmith by the proxy telemetry itself; only the DLP alert (search_alerts-0/1) attributes activity to msmith. Confirm the upload originated from msmith's session/host.",
+          "No byte-level or content evidence links the 4.2GB upload to the 312 M&A-2026 files read 30 minutes earlier \u2014 the investigator correctly caveats this, but it remains a critical evidentiary gap for proving exfiltration of the specific data.",
+          "Endpoint telemetry unavailable (get_logs-5 returned 'No matching logs'), so the tie between WS-MSMITH-03, the file reads, and the upload is unconfirmed at the host level.",
+          "The lookup_ioc-2 record does not specify the queried indicator; verify it was executed against personal-drive.example.",
+          "get_asset_context-4 owner is 'Corp-Dev' not msmith; clarify whether this identity/asset context actually corresponds to the user msmith or to a departmental asset."
+        ],
+        "needs_more_investigation": true
+      }
+    },
+    {
+      "event": "findings",
+      "data": {
+        "summary": "Circumstantial evidence indicates possible insider data exfiltration by user msmith, a resigning analyst. A 4.2GB upload to the suspicious personal-storage domain personal-drive.example occurred at 2026-06-27T18:40Z [get_logs-7, get_logs-8, get_logs-13, get_logs-20, get_logs-27, get_logs-30], flagged by DLP as outside policy and attributed to msmith [search_alerts-0 A1, search_alerts-1 A1, search_alerts-10 A1, search_alerts-11 A1]. Approximately 30 minutes earlier, at 2026-06-27T18:10Z, a read of 312 files from the sensitive M&A-2026 fileshare occurred [get_logs-7, get_logs-9, get_logs-13, get_logs-18, get_logs-27], with a DLP alert noting msmith's access to that share spiked 20x in 48h before a resignation notice [search_alerts-0 A2, search_alerts-6 A2, search_alerts-10 A2, search_alerts-28 A2]. The destination domain is rated suspicious / personal-storage [lookup_ioc-2, lookup_ioc-14, lookup_ioc-22]. The identity record for msmith shows role analyst, status resigning [get_asset_context-4, get_asset_context-16], and the workstation WS-MSMITH-03 is owned by msmith (macOS, medium criticality) [get_asset_context-3, get_asset_context-15].\n\nCRITICAL EVIDENTIARY GAPS (unresolved): (1) The proxy upload telemetry [get_logs-7/8/13/20/27/30] contains NO source IP, host, session, or username field; attribution of the upload to msmith rests solely on the DLP alert [search_alerts-0/1 A1], not on independent proxy telemetry. (2) No endpoint/host-level telemetry is available to tie WS-MSMITH-03 to the file reads or the upload [get_logs-5, get_logs-12, get_logs-26 all 'No matching logs']. (3) No byte-level or content evidence links the 4.2GB upload to the 312 M&A-2026 files; the only relationship is temporal proximity (18:10Z read to 18:40Z upload) and shared alert attribution. (4) The get_asset_context-4/16 record's owner 'Corp-Dev' is the departmental owner of the msmith identity record (analyst, resigning), distinct from WS-MSMITH-03 whose owner is msmith [get_asset_context-3/15].",
+        "hypothesis": "Most likely (moderate-to-high circumstantial confidence, not proven): user msmith, a resigning analyst, read 312 files from the sensitive M&A-2026 share and exfiltrated them via a 4.2GB upload to the personal-storage domain personal-drive.example. This is supported by temporal sequencing [get_logs-13], DLP attribution to msmith [search_alerts-10 A1/A2], the suspicious personal-storage reputation of the destination [lookup_ioc-14], and the resigning-employee insider-risk context [get_asset_context-16]. However, the hypothesis is NOT conclusively proven: upload attribution depends on a single DLP source with no corroborating proxy source identifiers [get_logs-20], there is no host-level telemetry [get_logs-12], and there is no content/byte-level linkage between the M&A-2026 read and the upload. An alternative that cannot be excluded is that the 4.2GB upload contained data other than the M&A-2026 files, or originated from a session/host not definitively confirmed as msmith's.",
+        "evidence_refs": [
+          "search_alerts-0",
+          "search_alerts-1",
+          "lookup_ioc-2",
+          "get_asset_context-3",
+          "get_asset_context-4",
+          "get_logs-5",
+          "search_alerts-6",
+          "get_logs-7",
+          "get_logs-8",
+          "get_logs-9",
+          "search_alerts-10",
+          "search_alerts-11",
+          "get_logs-12",
+          "get_logs-13",
+          "lookup_ioc-14",
+          "get_asset_context-15",
+          "get_asset_context-16",
+          "get_logs-18",
+          "get_logs-20",
+          "lookup_ioc-22",
+          "get_logs-26",
+          "get_logs-27",
+          "search_alerts-28",
+          "get_logs-30"
+        ],
+        "iocs": [
+          "personal-drive.example"
+        ],
+        "affected_assets": [
+          "WS-MSMITH-03",
+          "msmith",
+          "M&A-2026 fileshare"
+        ]
+      }
+    },
+    {
+      "event": "evidence",
+      "data": [
+        {
+          "id": "search_alerts-0",
+          "source_tool": "search_alerts",
+          "query": "msmith",
+          "content": "[{\"id\": \"A1\", \"user\": \"msmith\", \"text\": \"DLP: 4.2GB uploaded to personal-drive.example outside policy\"}, {\"id\": \"A2\", \"user\": \"msmith\", \"text\": \"Access to 'M&A-2026' share spiked 20x in 48h before resignation notice\"}]"
+        },
+        {
+          "id": "search_alerts-1",
+          "source_tool": "search_alerts",
+          "query": "personal-drive.example",
+          "content": "[{\"id\": \"A1\", \"user\": \"msmith\", \"text\": \"DLP: 4.2GB uploaded to personal-drive.example outside policy\"}]"
+        },
+        {
+          "id": "lookup_ioc-2",
+          "source_tool": "lookup_ioc",
+          "query": "personal-drive.example",
+          "content": "{\"reputation\": \"suspicious\", \"categories\": [\"personal-storage\"]}"
+        },
+        {
+          "id": "get_asset_context-3",
+          "source_tool": "get_asset_context",
+          "query": "WS-MSMITH-03",
+          "content": "{\"criticality\": \"medium\", \"owner\": \"msmith\", \"os\": \"macOS\"}"
+        },
+        {
+          "id": "get_asset_context-4",
+          "source_tool": "get_asset_context",
+          "query": "msmith",
+          "content": "{\"criticality\": \"medium\", \"owner\": \"Corp-Dev\", \"role\": \"analyst\", \"status\": \"resigning\"}"
+        },
+        {
+          "id": "get_logs-5",
+          "source_tool": "get_logs",
+          "query": "WS-MSMITH-03",
+          "content": "No matching logs."
+        },
+        {
+          "id": "search_alerts-6",
+          "source_tool": "search_alerts",
+          "query": "M&A-2026",
+          "content": "[{\"id\": \"A2\", \"user\": \"msmith\", \"text\": \"Access to 'M&A-2026' share spiked 20x in 48h before resignation notice\"}]"
+        },
+        {
+          "id": "get_logs-7",
+          "source_tool": "get_logs",
+          "query": "msmith",
+          "content": "2026-06-27T18:40Z proxy upload bytes=4200000000 dst=personal-drive.example\n2026-06-27T18:10Z fileshare read share=M&A-2026 files=312"
+        },
+        {
+          "id": "get_logs-8",
+          "source_tool": "get_logs",
+          "query": "personal-drive.example",
+          "content": "2026-06-27T18:40Z proxy upload bytes=4200000000 dst=personal-drive.example"
+        },
+        {
+          "id": "get_logs-9",
+          "source_tool": "get_logs",
+          "query": "M&A-2026",
+          "content": "2026-06-27T18:10Z fileshare read share=M&A-2026 files=312"
+        },
+        {
+          "id": "search_alerts-10",
+          "source_tool": "search_alerts",
+          "query": "msmith",
+          "content": "[{\"id\": \"A1\", \"user\": \"msmith\", \"text\": \"DLP: 4.2GB uploaded to personal-drive.example outside policy\"}, {\"id\": \"A2\", \"user\": \"msmith\", \"text\": \"Access to 'M&A-2026' share spiked 20x in 48h before resignation notice\"}]"
+        },
+        {
+          "id": "search_alerts-11",
+          "source_tool": "search_alerts",
+          "query": "personal-drive.example",
+          "content": "[{\"id\": \"A1\", \"user\": \"msmith\", \"text\": \"DLP: 4.2GB uploaded to personal-drive.example outside policy\"}]"
+        },
+        {
+          "id": "get_logs-12",
+          "source_tool": "get_logs",
+          "query": "WS-MSMITH-03",
+          "content": "No matching logs."
+        },
+        {
+          "id": "get_logs-13",
+          "source_tool": "get_logs",
+          "query": "msmith",
+          "content": "2026-06-27T18:40Z proxy upload bytes=4200000000 dst=personal-drive.example\n2026-06-27T18:10Z fileshare read share=M&A-2026 files=312"
+        },
+        {
+          "id": "lookup_ioc-14",
+          "source_tool": "lookup_ioc",
+          "query": "personal-drive.example",
+          "content": "{\"reputation\": \"suspicious\", \"categories\": [\"personal-storage\"]}"
+        },
+        {
+          "id": "get_asset_context-15",
+          "source_tool": "get_asset_context",
+          "query": "WS-MSMITH-03",
+          "content": "{\"criticality\": \"medium\", \"owner\": \"msmith\", \"os\": \"macOS\"}"
+        },
+        {
+          "id": "get_asset_context-16",
+          "source_tool": "get_asset_context",
+          "query": "msmith",
+          "content": "{\"criticality\": \"medium\", \"owner\": \"Corp-Dev\", \"role\": \"analyst\", \"status\": \"resigning\"}"
+        },
+        {
+          "id": "get_logs-17",
+          "source_tool": "get_logs",
+          "query": "proxy upload personal-drive.example",
+          "content": "No matching logs."
+        },
+        {
+          "id": "get_logs-18",
+          "source_tool": "get_logs",
+          "query": "M&A-2026",
+          "content": "2026-06-27T18:10Z fileshare read share=M&A-2026 files=312"
+        },
+        {
+          "id": "get_logs-19",
+          "source_tool": "get_logs",
+          "query": "session",
+          "content": "No matching logs."
+        },
+        {
+          "id": "get_logs-20",
+          "source_tool": "get_logs",
+          "query": "4200000000",
+          "content": "2026-06-27T18:40Z proxy upload bytes=4200000000 dst=personal-drive.example"
+        },
+        {
+          "id": "get_asset_context-21",
+          "source_tool": "get_asset_context",
+          "query": "Corp-Dev",
+          "content": "No asset context found."
+        },
+        {
+          "id": "lookup_ioc-22",
+          "source_tool": "lookup_ioc",
+          "query": "personal-drive.example",
+          "content": "{\"reputation\": \"suspicious\", \"categories\": [\"personal-storage\"]}"
+        },
+        {
+          "id": "get_logs-23",
+          "source_tool": "get_logs",
+          "query": "proxy src=",
+          "content": "No matching logs."
+        },
+        {
+          "id": "get_logs-24",
+          "source_tool": "get_logs",
+          "query": "fileshare read user",
+          "content": "No matching logs."
+        },
+        {
+          "id": "get_logs-25",
+          "source_tool": "get_logs",
+          "query": "auth",
+          "content": "No matching logs."
+        },
+        {
+          "id": "get_logs-26",
+          "source_tool": "get_logs",
+          "query": "endpoint",
+          "content": "No matching logs."
+        },
+        {
+          "id": "get_logs-27",
+          "source_tool": "get_logs",
+          "query": "2026-06-27",
+          "content": "2026-06-27T18:40Z proxy upload bytes=4200000000 dst=personal-drive.example\n2026-06-27T18:10Z fileshare read share=M&A-2026 files=312"
+        },
+        {
+          "id": "search_alerts-28",
+          "source_tool": "search_alerts",
+          "query": "M&A-2026",
+          "content": "[{\"id\": \"A2\", \"user\": \"msmith\", \"text\": \"Access to 'M&A-2026' share spiked 20x in 48h before resignation notice\"}]"
+        },
+        {
+          "id": "get_asset_context-29",
+          "source_tool": "get_asset_context",
+          "query": "msmith@corp",
+          "content": "No asset context found."
+        },
+        {
+          "id": "get_logs-30",
+          "source_tool": "get_logs",
+          "query": "personal-drive.example",
+          "content": "2026-06-27T18:40Z proxy upload bytes=4200000000 dst=personal-drive.example"
+        }
+      ]
+    },
+    {
+      "event": "verdict",
+      "data": {
+        "grounded": true,
+        "unsupported_claims": [],
+        "gaps": [
+          "Upload attribution to msmith rests solely on the DLP alert (search_alerts A1); the proxy telemetry (get_logs-7/8/13/20/27/30) contains no source IP, host, session, or username field. The investigator correctly flags this. No further evidence resolves whether the upload session belonged to msmith.",
+          "No endpoint/host-level telemetry ties WS-MSMITH-03 to either the file reads or the upload (get_logs-5/12/26 return no matching logs). Host correlation is unverified.",
+          "No content/byte-level linkage exists between the 312 M&A-2026 files read at 18:10Z and the 4.2GB upload at 18:40Z; the connection is purely temporal and via shared alert attribution. The alternative that the upload contained unrelated data cannot be excluded.",
+          "The 4.2GB figure and the 312-file read are not independently corroborated beyond the single proxy/fileshare log line (repeated across duplicate get_logs results) and the DLP alerts.",
+          "get_asset_context-4/16 lists owner 'Corp-Dev' with role/status fields, whereas get_asset_context-3/15 lists owner 'msmith'. The investigator's note treating these as distinct records (identity vs. workstation) is a reasonable interpretation but is not explicitly labeled in the evidence; the association of WS-MSMITH-03 as the specific asset name is asserted in findings but the asset identifiers/names are not present in the get_asset_context payloads themselves."
+        ],
+        "needs_more_investigation": true
+      }
+    },
+    {
+      "event": "report",
+      "data": {
+        "executive_summary": "On 2026-06-27, a high-severity potential insider data exfiltration incident was detected involving user msmith, a resigning analyst in the Corp-Dev department. At approximately 18:10Z, 312 files were read from the sensitive M&A-2026 fileshare \u2014 a 20x spike in msmith's access to that share within 48 hours of submitting a resignation notice. Approximately 30 minutes later, at 18:40Z, a 4.2GB upload was made to personal-drive.example, a domain rated suspicious/personal-storage, flagged by the DLP system as a policy violation and attributed to msmith. The temporal sequence, DLP attribution, suspicious destination reputation, and insider-risk context collectively support a moderate-to-high circumstantial hypothesis of deliberate data exfiltration of M&A-2026 materials.\n\nCRITICAL CAVEATS \u2014 THIS INCIDENT IS NOT CONCLUSIVELY PROVEN: (1) Upload attribution to msmith rests solely on the DLP alert; independent proxy telemetry contains no source IP, hostname, session, or username fields. (2) No endpoint/host-level telemetry corroborates that workstation WS-MSMITH-03 was the source of the file reads or the upload. (3) No content or byte-level evidence links the 312 M&A-2026 files to the 4.2GB upload; the relationship is temporal and via shared alert attribution only. Alternative explanations \u2014 including that the upload originated from a different session/host or contained unrelated data \u2014 cannot be excluded. Immediate containment and deeper forensic investigation are required to resolve these evidentiary gaps.",
+        "timeline": [
+          "2026-06-27T18:10Z \u2014 312 files read from the sensitive M&A-2026 fileshare, attributed to user msmith. DLP alert notes this represents a 20x spike in msmith's access to this share in the preceding 48 hours, coinciding with submission of a resignation notice.",
+          "2026-06-27T18:40Z \u2014 4.2GB outbound upload detected to personal-drive.example (rated suspicious/personal-storage). DLP system flags the transfer as a policy violation and attributes it to msmith on workstation WS-MSMITH-03.",
+          "2026-06-27T18:40Z (approx.) \u2014 DLP alerts raised for both the fileshare access anomaly (A2) and the unauthorized upload (A1). Destination domain personal-drive.example confirmed as suspicious/personal-storage category by IOC lookup.",
+          "Post-incident (investigation) \u2014 Proxy telemetry reviewed (get_logs-7/8/13/20/27/30): no source IP, host, session, or username fields present; upload cannot be independently corroborated beyond the DLP alert. Endpoint telemetry queries for WS-MSMITH-03 return no matching logs (get_logs-5/12/26). Evidentiary gaps confirmed by validation."
+        ],
+        "severity": "high",
+        "iocs": [
+          "personal-drive.example (domain \u2014 rated suspicious/personal-storage; destination of 4.2GB outbound upload)"
+        ],
+        "mitre_attack": [
+          "T1078 \u2014 Valid Accounts (use of msmith's legitimate credentials to access the M&A-2026 fileshare)",
+          "T1039 \u2014 Data from Network Shared Drive (bulk read of 312 files from M&A-2026 fileshare)",
+          "T1567.002 \u2014 Exfiltration Over Web Service: Exfiltration to Cloud Storage (4.2GB upload to personal-drive.example personal cloud storage)",
+          "T1048 \u2014 Exfiltration Over Alternative Protocol / unauthorized channel (transfer to personal storage domain outside corporate control)"
+        ],
+        "recommended_containment": [
+          "IMMEDIATE \u2014 Suspend msmith's Active Directory / SSO account and revoke all active sessions and tokens to prevent further access or exfiltration, pending investigation.",
+          "IMMEDIATE \u2014 Block personal-drive.example at the web proxy, firewall, and DNS layers to prevent any additional data transfers to this destination.",
+          "IMMEDIATE \u2014 Preserve and legally-hold all relevant evidence: DLP alert logs (A1, A2), proxy logs (get_logs-7/8/13/20/27/30), fileshare access logs for M&A-2026, and msmith's identity and asset records.",
+          "URGENT \u2014 Acquire a forensic image of workstation WS-MSMITH-03 (macOS) before the device is returned or wiped. Prioritize recovery of browser history, recently accessed files, upload artifacts, and any staged data.",
+          "URGENT \u2014 Engage cloud/network security team to obtain detailed session-level proxy logs with full source IP, username, and session identifiers to resolve the upload attribution gap.",
+          "URGENT \u2014 Contact personal-drive.example (or relevant legal authority) to issue a legal hold or preservation request for account activity and uploaded content associated with this incident.",
+          "INVESTIGATE \u2014 Conduct a content inspection of the M&A-2026 fileshare to enumerate and classify the 312 files accessed; assess data sensitivity and regulatory/legal exposure.",
+          "INVESTIGATE \u2014 Review msmith's email, collaboration tools (e.g., Slack, Teams), and any removable media usage on WS-MSMITH-03 for additional exfiltration channels.",
+          "INVESTIGATE \u2014 Corroborate or refute upload attribution by cross-referencing DLP alert timestamps with Active Directory logon events, VPN logs, and network flow data for WS-MSMITH-03's IP.",
+          "PROCESS \u2014 Notify Legal, HR, and executive leadership per insider threat and data breach response procedures. Evaluate obligations under applicable data protection regulations (e.g., GDPR, CCPA) based on the sensitivity of the M&A-2026 data."
+        ],
+        "confidence": 0.85
+      }
+    },
+    {
+      "event": "summary",
+      "data": {
+        "per_role": {
+          "triage": {
+            "model": "claude-haiku-4-5",
+            "input_tokens": 873,
+            "output_tokens": 179,
+            "calls": 1,
+            "cost_usd": 0.0018,
+            "seconds": 2.18
+          },
+          "investigate": {
+            "model": "claude-opus-4-8",
+            "input_tokens": 32084,
+            "output_tokens": 7364,
+            "calls": 10,
+            "cost_usd": 0.3445,
+            "seconds": 105.31
+          },
+          "validate": {
+            "model": "claude-opus-4-8",
+            "input_tokens": 5493,
+            "output_tokens": 1709,
+            "calls": 2,
+            "cost_usd": 0.0702,
+            "seconds": 25.34
+          },
+          "report": {
+            "model": "claude-sonnet-4-6",
+            "input_tokens": 2482,
+            "output_tokens": 1431,
+            "calls": 1,
+            "cost_usd": 0.0289,
+            "seconds": 28.67
+          }
+        },
+        "totals": {
+          "input_tokens": 40932,
+          "output_tokens": 10683,
+          "total_tokens": 51615,
+          "cost_usd": 0.4454,
+          "seconds": 161.51
+        },
+        "comparison": {
+          "tiered_cost_usd": 0.4454,
+          "opus_everywhere_cost_usd": 0.4717,
+          "savings_factor": 1.06
+        },
+        "tool_calls": 31,
+        "investigate_attempts": 2
+      }
+    },
+    {
+      "event": "done",
+      "data": {}
+    }
+  ]
+}
