@@ -23,9 +23,12 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+_SERVICE_ROOT = Path(__file__).resolve().parents[1]  # services/ir-agent (has app/)
+_SERVICES_DIR = Path(__file__).resolve().parents[2]  # services (has shared/)
 REPO_ROOT = Path(__file__).resolve().parents[3]
-# Make `app`/`shared` importable without requiring PYTHONPATH to be set by hand.
-sys.path.insert(0, str(REPO_ROOT / "services"))
+# Make `app` and `shared` importable without requiring PYTHONPATH to be set.
+sys.path.insert(0, str(_SERVICES_DIR))
+sys.path.insert(0, str(_SERVICE_ROOT))
 
 DEFAULT_OUT = REPO_ROOT / "frontend" / "public" / "ir-agent" / "transcripts"
 

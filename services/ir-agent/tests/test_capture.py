@@ -5,6 +5,8 @@ live ``/investigate`` runs — both the SSE endpoint and the capture script cons
 ``run_investigation_events`` so the wire shape can never drift between them.
 """
 
+import os
+
 from app.models import (
     EvidenceItem,
     Findings,
@@ -160,6 +162,37 @@ def test_build_transcript_shape():
     json.dumps(transcript)
     summary = next(e for e in transcript["events"] if e["event"] == "summary")["data"]
     assert summary["per_role"]["triage"]["input_tokens"] == 1000
+
+
+def test_capture_script_resolves_imports_without_pythonpath():
+    """The script must bootstrap sys.path itself so it runs from a plain shell.
+
+    Runs it in a subprocess with no PYTHONPATH and no API key: it should get
+    *past* the ``app``/``shared`` imports and fail only at the key check —
+    proving the path bootstrapping works without any env setup.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    service_root = Path(__file__).resolve().parent.parent
+    script = service_root / "scripts" / "capture_transcripts.py"
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("PYTHONPATH", "IR_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY")
+    }
+    proc = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(service_root),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode != 0
+    # Reached settings.validate(), i.e. imports resolved — not a ModuleNotFoundError.
+    assert "ModuleNotFoundError" not in proc.stderr
+    assert "IR_ANTHROPIC_API_KEY is required" in proc.stderr
 
 
 def _load_script():
